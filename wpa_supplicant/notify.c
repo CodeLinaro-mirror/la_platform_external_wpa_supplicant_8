@@ -1207,3 +1207,12 @@ void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 
 	wpas_hidl_notify_pmk_cache_added(wpa_s, entry);
 }
+
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
+                                const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+
+	wpas_hidl_notify_vendor_ctrl_event(wpa_s, msg);
+}

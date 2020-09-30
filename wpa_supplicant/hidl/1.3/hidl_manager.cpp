@@ -502,6 +502,10 @@ int HidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		// session
 		wpa_s->conf->gas_rand_mac_addr = 1;
 		wpa_s->conf->gas_rand_addr_lifetime = 0;
+#ifdef SUPPLICANT_VENDOR_HIDL
+		vendor_sta_iface_callbacks_map_[wpa_s->ifname] =
+			std::vector<android::sp<ISupplicantVendorStaIfaceCallback>>();
+#endif
 	}
 
 	// Invoke the |onInterfaceCreated| method on all registered callbacks.
@@ -1784,6 +1788,28 @@ void HidlManager::notifyBssTmStatus(struct wpa_supplicant *wpa_s)
 #endif
 }
 
+	/**
+	 * Notify listener about the vendor control event from supplicant.
+	 *
+	 * @param wpa_s |wpa_supplicant| struct corresponding to the interface on which
+	 * the network is present.
+	 * @param msg vendor message
+	 */
+void HidlManager::notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+
+	if (checkForVendorStaIfaceCallback(wpa_s->ifname) == true) {
+		const std::string ifname(wpa_s->ifname);
+		const std::string event_str(msg);
+		callWithEachVendorStaIfaceCallback(
+		    wpa_s->ifname, std::bind(
+		    &ISupplicantVendorStaIfaceCallback::onCtrlEvent,
+		    std::placeholders::_1, ifname, event_str));
+	}
+}
+
 /**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.
@@ -2274,6 +2300,85 @@ int HidlManager::getVendorStaIfaceHidlObjectByIfname(
 
 	*iface_object = iface_object_iter->second;
 	return 0;
+}
+
+/**
+ * Add a new vendor iface callback hidl object reference to our
+ * interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param vendorcallback Hidl reference of the callback object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int HidlManager::addVendorStaIfaceCallbackHidlObject(
+    const std::string &ifname,
+    const android::sp<ISupplicantVendorStaIfaceCallback> &callback)
+{
+const std::function<void(
+	    const android::sp<ISupplicantVendorStaIfaceCallback> &)>
+	    on_hidl_died_fctor = std::bind(
+	&HidlManager::removeVendorStaIfaceCallbackHidlObject, this, ifname,
+		std::placeholders::_1);
+	return addIfaceCallbackHidlObjectToMap(
+	    ifname, callback, on_hidl_died_fctor, vendor_sta_iface_callbacks_map_);
+}
+
+/**
+ * Removes the provided vendor iface callback hidl object reference from
+ * our interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param vendor callback Hidl reference of the callback object.
+ */
+void HidlManager::removeVendorStaIfaceCallbackHidlObject(
+   const std::string &ifname,
+    const android::sp<ISupplicantVendorStaIfaceCallback> &callback)
+{
+	return removeIfaceCallbackHidlObjectFromMap(
+	    ifname, callback, vendor_sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to check if there is any callback of type
+ * ISupplicantVendorStaIfaceCallback is registered for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ */
+bool HidlManager::checkForVendorStaIfaceCallback(const std::string &ifname)
+{
+	if (ifname.empty())
+		return false;
+
+	auto iface_callback_map_iter = vendor_sta_iface_callbacks_map_.find(ifname);
+	if (iface_callback_map_iter == vendor_sta_iface_callbacks_map_.end())
+		return false;
+	const auto &iface_callback_list = iface_callback_map_iter->second;
+	for (const auto &callback : iface_callback_list) {
+		android::sp<ISupplicantVendorStaIfaceCallback> vendorCallback = callback;
+		if (vendorCallback != nullptr)
+			return true;
+	}
+	wpa_printf(MSG_ERROR, "No VendorStaIfaceCallback is register");
+	return false;
+}
+
+/**
+ * Helper fucntion to invoke the provided vendor callback method on all the
+ * registered vendor iface callback hidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required hidl method from
+ * |ISupplicantVendorIfaceCallback|.
+ */
+void HidlManager::callWithEachVendorStaIfaceCallback(
+    const std::string &ifname,
+    const std::function<Return<void>(android::sp<ISupplicantVendorStaIfaceCallback>)>
+	&method)
+{
+	callWithEachIfaceCallback(ifname, method, vendor_sta_iface_callbacks_map_);
 }
 #endif
 }  // namespace implementation
