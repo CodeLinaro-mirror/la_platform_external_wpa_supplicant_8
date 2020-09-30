@@ -44,9 +44,10 @@
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIface.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetwork.h>
-#include <vendor/qti/hardware/wifi/supplicant/2.2/ISupplicantVendorStaIface.h>
 #include <vendor/qti/hardware/wifi/supplicant/2.0/ISupplicantVendorStaNetwork.h>
+#include <vendor/qti/hardware/wifi/supplicant/2.3/ISupplicantVendorStaIface.h>
 #include <vendor/qti/hardware/wifi/supplicant/2.0/ISupplicantVendorStaIfaceCallback.h>
+#include <vendor/qti/hardware/wifi/supplicant/2.3/ISupplicantVendorStaIfaceCallback.h>
 
 extern "C" {
 #include "utils/common.h"
@@ -63,20 +64,19 @@ namespace qti {
 namespace hardware {
 namespace wifi {
 namespace supplicantvendor {
-namespace V2_2 {
+namespace V2_3 {
 namespace Implementation {
 using namespace android::hardware::wifi::supplicant::V1_0;
 using namespace android::hardware::wifi::supplicant::V1_3::implementation;
-using namespace vendor::qti::hardware::wifi::supplicant::V2_2;
 using namespace android::hardware;
-using supplicant::V2_0::ISupplicantVendorStaIfaceCallback;
-using supplicant::V2_0::ISupplicantVendorNetwork;
+using vendor::qti::hardware::wifi::supplicant::V2_0::ISupplicantVendorStaIfaceCallback;
+
 /**
  * Implementation of VendorStaIface hidl object. Each unique hidl
  * object is used for control operations on a specific interface
  * controlled by wpa_supplicant.
  */
-class VendorStaIface : public ISupplicantVendorStaIface
+class VendorStaIface : public vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIface
 {
 public:
 	VendorStaIface(struct wpa_global* wpa_global, const char ifname[]);
@@ -97,6 +97,9 @@ public:
 	bool isValid();
 	Return<void> registerVendorCallback(
 	    const android::sp<ISupplicantVendorStaIfaceCallback>& callback,
+	    registerVendorCallback_cb _hidl_cb) override;
+	Return<void> registerVendorCallback_2_3(
+	    const android::sp<vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIfaceCallback>& callback,
 	    registerVendorCallback_cb _hidl_cb) override;
 	Return<void> filsHlpFlushRequest(
 	    filsHlpFlushRequest_cb _hidl_cb) override;
@@ -140,10 +143,13 @@ public:
 	Return<void> doDriverCmd(const hidl_string& cmd,
 	    doDriverCmd_cb _hidl_cb) override;
 
+
 private:
 	// Corresponding worker functions for the HIDL methods.
 	std::pair<SupplicantStatus, std::string> doDriverCmdInternal(
 	    const std::string& cmd);
+	SupplicantStatus registerVendorCallbackInternal_2_3(
+	    const android::sp<vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIfaceCallback>& callback);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	// Reference to the global wpa_struct. This is assumed to be valid for
@@ -159,7 +165,7 @@ private:
 };
 
 }  // namespace implementation
-}  // namespace V2_2
+}  // namespace V2_3
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

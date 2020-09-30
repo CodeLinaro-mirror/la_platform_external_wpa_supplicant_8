@@ -1766,6 +1766,7 @@ ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.0
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.1
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.2
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.3
 endif
 LOCAL_SHARED_LIBRARIES += libhidlbase libutils libbase
 LOCAL_STATIC_LIBRARIES += libwpa_hidl
@@ -1851,7 +1852,8 @@ ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
 LOCAL_SHARED_LIBRARIES += \
     vendor.qti.hardware.wifi.supplicant@2.0 \
     vendor.qti.hardware.wifi.supplicant@2.1 \
-    vendor.qti.hardware.wifi.supplicant@2.2
+    vendor.qti.hardware.wifi.supplicant@2.2 \
+    vendor.qti.hardware.wifi.supplicant@2.3
 endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)

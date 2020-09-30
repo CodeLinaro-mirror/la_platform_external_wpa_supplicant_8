@@ -52,10 +52,9 @@ using V1_0::ISupplicantStaIfaceCallback;
 using V1_0::P2pGroupCapabilityMask;
 using V1_0::WpsConfigMethods;
 #ifdef SUPPLICANT_VENDOR_HIDL
-using namespace vendor::qti::hardware::wifi::supplicantvendor::V2_0::Implementation;
-using namespace vendor::qti::hardware::wifi::supplicantvendor::V2_2::Implementation;
-using namespace vendor::qti::hardware::wifi::supplicant::V2_0;
-using vendor::qti::hardware::wifi::supplicant::V2_2::ISupplicantVendorStaIface;
+using namespace vendor::qti::hardware::wifi::supplicantvendor::V2_3::Implementation;
+using vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIface;
+using vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIfaceCallback;
 #endif
 
 /**
@@ -157,6 +156,7 @@ public:
 	void notifyPmkCacheAdded(struct wpa_supplicant *wpa_s,
 			struct rsn_pmksa_cache_entry *pmksa_entry);
 	void notifyBssTmStatus(struct wpa_supplicant *wpa_s);
+	void notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char* msg);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
@@ -195,6 +195,9 @@ public:
 	int getVendorStaIfaceHidlObjectByIfname(
 	    const std::string &ifname,
 	    android::sp<ISupplicantVendorStaIface> *iface_object);
+	int addVendorStaIfaceCallbackHidlObject(
+	    const std::string &ifname,
+	    const android::sp<ISupplicantVendorStaIfaceCallback> &callback);
 #endif
 
 private:
@@ -254,6 +257,16 @@ private:
 	    const std::string &ifname, int network_id,
 	    const std::function<android::hardware::Return<void>(
 		android::sp<ISupplicantStaNetworkCallback>)> &method);
+#ifdef SUPPLICANT_VENDOR_HIDL
+	void removeVendorStaIfaceCallbackHidlObject(
+	    const std::string &ifname,
+	    const android::sp<ISupplicantVendorStaIfaceCallback> &callback);
+	bool checkForVendorStaIfaceCallback(const std::string &ifname);
+	void callWithEachVendorStaIfaceCallback(
+	    const std::string &ifname,
+	    const std::function<android::hardware::Return<void>(
+		android::sp<ISupplicantVendorStaIfaceCallback>)> &method);
+#endif
 
 	// Singleton instance of this class.
 	static HidlManager *instance_;
@@ -319,6 +332,13 @@ private:
 	// |ifname|.
 	std::map<const std::string, android::sp<VendorStaIface>>
 	    vendor_sta_iface_object_map_;
+	// Map of all the vendor callbacks registered for STA interface specific
+	// hidl objects controlled by wpa_supplicant.  This map is keyed in by
+	// the corresponding |ifname|.
+	std::map<
+	    const std::string,
+	    std::vector<android::sp<ISupplicantVendorStaIfaceCallback>>>
+	    vendor_sta_iface_callbacks_map_;
 #endif
 
 #if 0  // TODO(b/31632518): HIDL object death notifications.

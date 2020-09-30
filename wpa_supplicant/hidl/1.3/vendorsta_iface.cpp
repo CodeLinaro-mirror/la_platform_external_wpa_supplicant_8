@@ -58,7 +58,7 @@ namespace qti {
 namespace hardware {
 namespace wifi {
 namespace supplicantvendor {
-namespace V2_2 {
+namespace V2_3 {
 namespace Implementation {
 using android::hardware::wifi::supplicant::V1_3::implementation::hidl_return_util::validateAndCall;
 
@@ -79,6 +79,15 @@ Return<void> VendorStaIface::registerVendorCallback(
 {
 	_hidl_cb({SupplicantStatusCode::FAILURE_UNKNOWN, "NOT_SUPPORTED"});
 	return Void();
+}
+
+Return<void> VendorStaIface::registerVendorCallback_2_3(
+    const android::sp<vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIfaceCallback> &callback,
+    registerVendorCallback_cb _hidl_cb)
+{
+	return validateAndCall(
+	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+	    &VendorStaIface::registerVendorCallbackInternal_2_3, _hidl_cb, callback);
 }
 
 Return<void> VendorStaIface::filsHlpFlushRequest(filsHlpFlushRequest_cb _hidl_cb)
@@ -237,6 +246,18 @@ VendorStaIface::doDriverCmdInternal(const std::string& cmd)
 	os_free(reply);
 
 	return {{SupplicantStatusCode::SUCCESS, ""}, str_reply};
+}
+
+SupplicantStatus VendorStaIface::registerVendorCallbackInternal_2_3(
+    const android::sp<vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIfaceCallback> &callback)
+{
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager ||
+	    hidl_manager->addVendorStaIfaceCallbackHidlObject(ifname_, callback)) {
+		wpa_printf(MSG_INFO, "return failure vendor staiface callback_2_3");
+		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
+	}
+	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
 /**

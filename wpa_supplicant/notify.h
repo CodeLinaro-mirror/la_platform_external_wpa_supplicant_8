@@ -194,5 +194,5 @@ void wpas_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s);
 void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 				 struct rsn_pmksa_cache_entry *entry);
-
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
 #endif /* NOTIFY_H */
