@@ -1999,6 +1999,28 @@ void HidlManager::notifyNetworkNotFound(struct wpa_supplicant *wpa_s)
 }
 
 /**
+ * Notify listener about the vendor control event from supplicant.
+ *
+ * @param wpa_s |wpa_supplicant| struct corresponding to the interface on which
+ * the network is present.
+ * @param msg vendor message
+ */
+void HidlManager::notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+
+	if (checkForVendorStaIfaceCallback(wpa_s->ifname) == true) {
+		const std::string ifname(wpa_s->ifname);
+		const std::string event_str(msg);
+		callWithEachVendorStaIfaceCallback(
+		    wpa_s->ifname, std::bind(
+		    &ISupplicantVendorStaIfaceCallback::onCtrlEvent,
+		    std::placeholders::_1, ifname, event_str));
+	}
+}
+
+/**
  * Retrieve the |ISupplicantP2pIface| hidl object reference using the provided
  * ifname.
  *
