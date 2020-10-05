@@ -5337,6 +5337,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_UNPROT_BEACON:
 		wpas_event_unprot_beacon(wpa_s, &data->unprot_beacon);
 		break;
+	case EVENT_THERMAL_CHANGED:
+		wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_THERMAL_CHANGE "level=%d",
+			data->thermal_info.level);
+		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);
 		break;

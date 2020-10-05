@@ -2007,6 +2007,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			data->wds_sta_interface.ifname,
 			data->wds_sta_interface.sta_addr);
 		break;
+	case EVENT_THERMAL_CHANGED:
+		wpa_msg(hapd->msg_ctx, MSG_INFO, WPA_EVENT_THERMAL_CHANGE "level=%d",
+			data->thermal_info.level);
+		break;
 	default:
 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
 		break;
