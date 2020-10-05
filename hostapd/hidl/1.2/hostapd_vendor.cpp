@@ -40,13 +40,79 @@ extern "C"
 #include "ctrl_iface.h"
 }
 
+namespace {
+
+/**
+ * Notify listener about the vendor control event from hostapd.
+ *
+ * @param ctx |hostapd_data| struct corresponding to the interface on which
+ * the access point is operating on.
+ * @param msg vendor message
+ */
+std::function<void(struct hostapd_data*, const char*)> on_ctrl_event_internal_callback;
+void onVendorCtrlEventCb(void *ctx, const char* msg)
+{
+	struct hostapd_data* iface_hapd = (struct hostapd_data*)ctx;
+
+	if (!iface_hapd || !msg)
+		return;
+
+	if (on_ctrl_event_internal_callback) {
+		on_ctrl_event_internal_callback(iface_hapd, msg);
+	}
+}
+
+#if 0
+template <class CallbackType>
+int addIfaceCallbackHidlObjectToMap(
+    const std::string &ifname,
+    const android::sp<CallbackType> &callback,
+    std::map<const std::string, std::vector<android::sp<CallbackType>>> &callbacks_map)
+{
+	if (ifname.empty())
+		return 1;
+
+	auto iface_callback_map_iter = callbacks_map.find(ifname);
+	if (iface_callback_map_iter == callbacks_map.end())
+		return 1;
+
+	auto &iface_callback_list = iface_callback_map_iter->second;
+
+	std::vector<android::sp<CallbackType>> &callback_list = iface_callback_list;
+	callback_list.push_back(callback);
+	return 0;
+}
+
+template <class CallbackType>
+void callWithEachIfaceCallback(
+    const std::string &ifname,
+    const std::function<android::hardware::Return<void>(android::sp<CallbackType>)> &method,
+    const std::map<const std::string, std::vector<android::sp<CallbackType>>> &callbacks_map)
+{
+	if (ifname.empty())
+		return;
+
+	auto iface_callback_map_iter = callbacks_map.find(ifname);
+	if (iface_callback_map_iter == callbacks_map.end())
+		return;
+
+	const auto &iface_callback_list = iface_callback_map_iter->second;
+	for (const auto &callback : iface_callback_list) {
+		if (!method(callback).isOk()) {
+			wpa_printf(
+			    MSG_ERROR, "Failed to invoke Hostapd HIDL iface callback");
+		}
+	}
+}
+#endif
+} // namespace
 
 namespace vendor {
 namespace qti {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 
 using namespace android::hardware;
@@ -129,6 +195,15 @@ Return<void> HostapdVendor::registerVendorCallback_1_1(
 	return Void();
 }
 
+Return<void> HostapdVendor::registerVendorCallback_1_3(
+    const hidl_string& iface_name,
+    const android::sp<V1_3::IHostapdVendorIfaceCallback> &callback,
+    registerVendorCallback_cb _hidl_cb)
+{
+    return call(
+	    this, &HostapdVendor::registerCallbackInternal_1_3, _hidl_cb, iface_name, callback);
+}
+
 Return<void> HostapdVendor::listInterfaces(
     listInterfaces_cb _hidl_cb)
 {
@@ -145,8 +220,48 @@ Return<void> HostapdVendor::hostapdCmd(
 	    this, &HostapdVendor::hostapdCmdInternal, _hidl_cb, iface_name, cmd);
 }
 
-
 // private hidl implementation
+HostapdStatus HostapdVendor::registerCallbackInternal_1_3(
+    const std::string& iface_name,
+    const android::sp<V1_3::IHostapdVendorIfaceCallback> &callback)
+{
+	// Iface_name ignored, treat it as global callback
+	// Hook the hapd callback if not registered.
+	int i, j;
+
+	if (!on_ctrl_event_internal_callback) {
+		on_ctrl_event_internal_callback =
+		    [this](struct hostapd_data* iface_hapd, const char *msg) {
+			if (vendor_hostapd_callbacks_.size() == 0) {
+				wpa_printf(MSG_ERROR, "No hostapd vendor callback registered");
+				return;
+			}
+			const std::string ifname(iface_hapd->conf->iface);
+			const std::string event_str(msg);
+			for (const auto& callback : vendor_hostapd_callbacks_) {
+				 callback->onCtrlEvent(ifname, event_str);
+			}
+		};
+	}
+
+	for (i = 0; i < interfaces_->count; i++) {
+		struct hostapd_iface *iface = interfaces_->iface[i];
+
+		for (j = 0; j < iface->num_bss; j++) {
+			struct hostapd_data *hapd = iface->bss[j];
+			if (!hapd->ctrl_event_hidl_cb) {
+				hapd->ctrl_event_hidl_cb = onVendorCtrlEventCb;
+				hapd->ctrl_event_hidl_cb_ctx = hapd;
+			}
+		}
+	}
+
+	// Save client callbacks
+	vendor_hostapd_callbacks_.push_back(callback);
+
+	return {HostapdStatusCode::SUCCESS, ""};
+}
+
 std::pair<HostapdStatus, std::vector<hidl_string>>
 HostapdVendor::listInterfacesInternal()
 {
@@ -210,7 +325,7 @@ HostapdVendor::hostapdCmdInternal(const std::string& iface_name, const std::stri
 
 
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware

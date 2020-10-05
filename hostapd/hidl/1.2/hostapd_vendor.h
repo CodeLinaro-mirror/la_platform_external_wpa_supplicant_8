@@ -37,7 +37,7 @@
 #include <android-base/macros.h>
 
 #include <android/hardware/wifi/hostapd/1.1/IHostapd.h>
-#include <vendor/qti/hardware/wifi/hostapd/1.2/IHostapdVendor.h>
+#include <vendor/qti/hardware/wifi/hostapd/1.3/IHostapdVendor.h>
 
 extern "C"
 {
@@ -52,7 +52,7 @@ namespace qti {
 namespace hardware {
 namespace wifi {
 namespace hostapd {
-namespace V1_2 {
+namespace V1_3 {
 namespace implementation {
 
 using namespace android::hardware;
@@ -65,7 +65,7 @@ typedef IHostapd::NetworkParams NetworkParams;
  * object is used core for global control operations on
  * hostapd.
  */
-class HostapdVendor : public V1_2::IHostapdVendor
+class HostapdVendor : public V1_3::IHostapdVendor
 {
 public:
 	HostapdVendor(hapd_interfaces* interfaces);
@@ -98,6 +98,10 @@ public:
 	    const hidl_string& iface_name,
 	    const android::sp<V1_1::IHostapdVendorIfaceCallback>& callback,
 	    registerVendorCallback_cb _hidl_cb) override;
+	Return<void> registerVendorCallback_1_3(
+	    const hidl_string& iface_name,
+	    const android::sp<V1_3::IHostapdVendorIfaceCallback>& callback,
+	   registerVendorCallback_cb _hidl_cb) override;
 	Return<void> setDebugParams(
 	    IHostapdVendor::DebugLevel level,
 	    bool show_timestamp, bool show_keys,
@@ -115,14 +119,18 @@ private:
 	std::pair<HostapdStatus, std::vector<hidl_string>> listInterfacesInternal();
 	std::pair<HostapdStatus, std::string> hostapdCmdInternal(
 	    const std::string& iface_name, const std::string& cmd);
+	HostapdStatus registerCallbackInternal_1_3(
+	    const std::string& iface_name,
+	    const android::sp<V1_3::IHostapdVendorIfaceCallback>& callback);
 
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
+	std::vector<android::sp<V1_3::IHostapdVendorIfaceCallback>> vendor_hostapd_callbacks_;
 
 	DISALLOW_COPY_AND_ASSIGN(HostapdVendor);
 };
 }  // namespace implementation
-}  // namespace V1_2
+}  // namespace V1_3
 }  // namespace hostapd
 }  // namespace wifi
 }  // namespace hardware
