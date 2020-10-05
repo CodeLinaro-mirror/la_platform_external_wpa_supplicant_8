@@ -4994,6 +4994,13 @@ enum wpa_event_type {
 	 * is required to provide more details of the frame.
 	 */
 	EVENT_UNPROT_BEACON,
+
+	/**
+	 * EVENT_THERMAL_CHANGED - Thermal event from driver/kernel
+	 *
+	 * This event is called when thermal state changed in driver/kernel.
+	 */
+	EVENT_THERMAL_CHANGED,
 };
 
 
@@ -5806,6 +5813,14 @@ union wpa_event_data {
 			P2P_LO_STOPPED_REASON_NOT_SUPPORTED,
 		} reason_code;
 	} p2p_lo_stop;
+
+	/**
+	 * struct thermal_info - Thermal level for thermal event
+	 * @level: Thermal level in enum qca_wlan_vendor_thermal_level.
+	 */
+	struct thermal_info {
+		u32 level;
+	} thermal_info;
 
 	/* For EVENT_EXTERNAL_AUTH */
 	struct external_auth external_auth;
