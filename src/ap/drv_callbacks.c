@@ -1772,7 +1772,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
 	struct hostapd_data *hapd = ctx;
-	char thermal_msg[1024] = {0};
+	char event_msg[1024] = {0};
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 
@@ -2009,12 +2009,21 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			data->wds_sta_interface.sta_addr);
 		break;
 	case EVENT_THERMAL_CHANGED:
-		os_snprintf(thermal_msg, sizeof(thermal_msg),
+		os_snprintf(event_msg, sizeof(event_msg),
 			WPA_EVENT_THERMAL_CHANGE "level=%d", data->thermal_info.level);
-		wpa_msg(hapd->msg_ctx, MSG_INFO, "%s", thermal_msg);
+		wpa_msg(hapd->msg_ctx, MSG_INFO, "%s", event_msg);
 		if (hapd->ctrl_event_hidl_cb) {
 			hapd->ctrl_event_hidl_cb(
-				hapd->ctrl_event_hidl_cb_ctx, thermal_msg);
+				hapd->ctrl_event_hidl_cb_ctx, event_msg);
+		}
+		break;
+	case EVENT_CONGESTION_REPORT:
+		os_snprintf(event_msg, sizeof(event_msg),
+			WPA_EVENT_CONGESTION_REPORT "percentage=%d", data->congestion_info.percentage);
+		wpa_msg(hapd->msg_ctx, MSG_INFO, "%s", event_msg);
+		if (hapd->ctrl_event_hidl_cb) {
+			hapd->ctrl_event_hidl_cb(
+				hapd->ctrl_event_hidl_cb_ctx, event_msg);
 		}
 		break;
 	default:
