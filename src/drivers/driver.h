@@ -5119,6 +5119,13 @@ enum wpa_event_type {
 	 * This event is called when thermal state changed in driver/kernel.
 	 */
 	EVENT_THERMAL_CHANGED,
+
+	/**
+	 * EVENT_CONGESTION_REPORT - Congestion event from driver/kernel
+	 *
+	 * This event is called when congestion event detected in driver/kernel
+	 */
+	EVENT_CONGESTION_REPORT,
 };
 
 
@@ -5972,6 +5979,11 @@ union wpa_event_data {
 	struct thermal_info {
 		u32 level;
 	} thermal_info;
+
+	/* For EVENT_CONGESTION_REPORT */
+	struct congestion_info {
+		u8 percentage;
+	} congestion_info;
 
 	/* For EVENT_EXTERNAL_AUTH */
 	struct external_auth external_auth;
