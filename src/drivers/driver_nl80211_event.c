@@ -2448,6 +2448,39 @@ static void qca_nl80211_thermal_event(struct wpa_driver_nl80211_data *drv,
 		   "nl80211: thermal level: %d", event.thermal_info.level);
 	wpa_supplicant_event(drv->ctx, EVENT_THERMAL_CHANGED, &event);
 }
+
+static void qca_nl80211_medium_access_event(struct wpa_driver_nl80211_data *drv,
+					  u8 *data, size_t len)
+{
+	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_MEDIUM_ASSESS_MAX + 1];
+	union wpa_event_data event;
+	u8 type;
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: medium access event received");
+
+	if (nla_parse(tb, QCA_WLAN_VENDOR_ATTR_MEDIUM_ASSESS_MAX,
+		      (struct nlattr *) data, len, NULL) ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_MEDIUM_ASSESS_TYPE])
+		return;
+
+	type = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_MEDIUM_ASSESS_TYPE]);
+	if (type == QCA_WLAN_MEDIUM_ASSESS_CONGESTION_REPORT) {
+		wpa_printf(MSG_DEBUG,
+			    "nl80211: congestion event received");
+
+		if (!tb[QCA_WLAN_VENDOR_ATTR_MEDIUM_ASSESS_CONGESTION_PERCENTAGE])
+			return;
+
+		os_memset(&event, 0, sizeof(event));
+		event.congestion_info.percentage =
+			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_MEDIUM_ASSESS_CONGESTION_PERCENTAGE]);
+
+		wpa_printf(MSG_DEBUG,
+		   "nl80211: congestion percentage: %d", event.congestion_info.percentage);
+		wpa_supplicant_event(drv->ctx, EVENT_CONGESTION_REPORT, &event);
+	}
+}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
@@ -2486,6 +2519,9 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 		break;
 	case QCA_NL80211_VENDOR_SUBCMD_THERMAL_EVENT:
 		qca_nl80211_thermal_event(drv, data, len);
+		break;
+	case QCA_NL80211_VENDOR_SUBCMD_MEDIUM_ASSESS:
+		qca_nl80211_medium_access_event(drv, data, len);
 		break;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	default:

@@ -1966,6 +1966,15 @@ static int hostapd_ctrl_iface_driver_event(struct hostapd_data *hapd, char *cmd)
 		if (!pos)
 			return -1;
 		event.thermal_info.level = atoi(pos + 6);
+	} else if (os_strcmp(cmd, "CONGESTION_REPORT") == 0) {
+		// "CONGESTION_REPORT percentage=<percentage>"
+		ev = EVENT_CONGESTION_REPORT;
+		if (param == NULL)
+			return -1;
+		pos = os_strstr(param, "percentage=");
+		if (!pos)
+			return -1;
+		event.congestion_info.percentage = atoi(pos + 11);
 	} else {
 		wpa_printf(MSG_DEBUG, "Testing - unknown driver event: %s",
 			cmd);
