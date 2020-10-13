@@ -92,6 +92,7 @@ const char * event_to_string(enum wpa_event_type event)
 	E2S(UNPROT_BEACON);
 	E2S(TX_WAIT_EXPIRE);
 	E2S(THERMAL_CHANGED);
+	E2S(CONGESTION_REPORT);
 	}
 
 	return "UNKNOWN";
