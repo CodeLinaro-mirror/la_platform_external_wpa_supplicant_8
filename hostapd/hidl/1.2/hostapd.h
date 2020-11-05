@@ -31,6 +31,12 @@ namespace hardware {
 namespace wifi {
 namespace hostapd {
 namespace V1_2 {
+
+struct VendorParams {
+	std::string bridgeIfaceName;
+	std::string oweTransIfaceName;
+};
+
 namespace implementation {
 using namespace android::hardware::wifi::hostapd::V1_0;
 
@@ -87,10 +93,17 @@ private:
 	    const std::array<uint8_t, 6>& client_address,
 	    V1_2::Ieee80211ReasonCode reason_code);
 	V1_2::HostapdStatus setDebugParamsInternal(DebugLevel level);
+	V1_2::HostapdStatus addSingleAccessPoint(
+	    const IfaceParams& IfaceParams, const NetworkParams& nw_params,
+	    const VendorParams& vendor_params);
+	V1_2::HostapdStatus addConcurrentAccessPoints(
+	    const IfaceParams& IfaceParams, const NetworkParams& nw_params);
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.
 	std::vector<sp<V1_1::IHostapdCallback>> callbacks_;
+	// Bridge and its managed interfaces.
+	std::map<std::string, std::vector<std::string>> br_interfaces_;
 	DISALLOW_COPY_AND_ASSIGN(Hostapd);
 };
 }  // namespace implementation
