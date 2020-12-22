@@ -45,7 +45,7 @@ namespace qti {
 namespace hardware {
 namespace wifi {
 namespace supplicantvendor{
-namespace V2_0 {
+namespace V2_3 {
 namespace Implementation {
 using android::hardware::wifi::supplicant::V1_3::implementation::hidl_return_util::validateAndCall;
 using namespace android::hardware;
@@ -53,7 +53,7 @@ using namespace android::hardware::wifi::supplicant::V1_0;
 using namespace android::hardware::wifi::supplicant::V1_3::implementation;
 typedef android::hardware::wifi::supplicant::V1_1::ISupplicant ISupplicant;
 using namespace vendor::qti::hardware::wifi::supplicant::V2_0;
-using vendor::qti::hardware::wifi::supplicant::V2_2::ISupplicantVendorStaIface;
+using vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIface;
 
 SupplicantVendor::SupplicantVendor(struct wpa_global* global) : wpa_global_(global) {}
 bool SupplicantVendor::isValid()
