@@ -2183,6 +2183,28 @@ static void qca_nl80211_p2p_lo_stop_event(struct wpa_driver_nl80211_data *drv,
 	wpa_supplicant_event(drv->ctx, EVENT_P2P_LO_STOP, &event);
 }
 
+static void qca_nl80211_thermal_event(struct wpa_driver_nl80211_data *drv,
+					  u8 *data, size_t len)
+{
+	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_THERMAL_EVENT_MAX + 1];
+	union wpa_event_data event;
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: thermal vendor event received");
+
+	if (nla_parse(tb, QCA_WLAN_VENDOR_ATTR_THERMAL_EVENT_MAX,
+		      (struct nlattr *) data, len, NULL) ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_THERMAL_EVENT_LEVEL])
+		return;
+
+	os_memset(&event, 0, sizeof(event));
+	event.thermal_info.level =
+		nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_THERMAL_EVENT_LEVEL]);
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: thermal level: %d", event.thermal_info.level);
+	wpa_supplicant_event(drv->ctx, EVENT_THERMAL_CHANGED, &event);
+}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
@@ -2218,6 +2240,9 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 		break;
 	case QCA_NL80211_VENDOR_SUBCMD_P2P_LISTEN_OFFLOAD_STOP:
 		qca_nl80211_p2p_lo_stop_event(drv, data, len);
+		break;
+	case QCA_NL80211_VENDOR_SUBCMD_THERMAL_EVENT:
+		qca_nl80211_thermal_event(drv, data, len);
 		break;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	default:

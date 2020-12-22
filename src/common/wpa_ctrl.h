@@ -122,6 +122,8 @@ extern "C" {
 #define WPA_EVENT_FREQ_CONFLICT "CTRL-EVENT-FREQ-CONFLICT "
 /** Frequency ranges that the driver recommends to avoid */
 #define WPA_EVENT_AVOID_FREQ "CTRL-EVENT-AVOID-FREQ "
+/** Thermal state changed */
+#define WPA_EVENT_THERMAL_CHANGE "CTRL-EVENT-THERMAL-CHANGED "
 /** WPS overlap detected in PBC mode */
 #define WPS_EVENT_OVERLAP "WPS-OVERLAP-DETECTED "
 /** Available WPS AP with active PBC found in scan results */
