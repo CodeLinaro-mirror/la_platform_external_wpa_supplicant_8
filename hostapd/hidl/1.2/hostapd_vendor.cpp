@@ -314,8 +314,8 @@ HostapdVendor::hostapdCmdInternal(const std::string& iface_name, const std::stri
 	reply_len = hostapd_ctrl_iface_receive_process(iface_hapd, (char *)cmd.c_str(),
 						       reply, reply_size,
 						       NULL, 0);
-	if (reply_len > reply_size) reply_len = reply_size;
-	reply[reply_len] = '\0'; // make sure '\0' terminated.
+	if (reply_len >= reply_size) reply[reply_size - 1] = '\0';
+	else reply[reply_len] = '\0'; // make sure '\0' terminated.
 
 	std::string str_reply(reply);
 	os_free(reply);
