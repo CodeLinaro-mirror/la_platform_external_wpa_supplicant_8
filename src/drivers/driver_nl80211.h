@@ -225,6 +225,12 @@ struct wpa_driver_nl80211_data {
 	 * (NL80211_CMD_VENDOR). 0 if no pending scan request.
 	 */
 	int last_scan_cmd;
+#ifdef CONFIG_DRIVER_NL80211_QCA
+	bool roam_indication_done;
+	u8 *pending_roam_data;
+	size_t pending_roam_data_len;
+	struct os_reltime pending_roam_ind_time;
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 };
 
 struct nl_msg;
@@ -282,6 +288,8 @@ int process_bss_event(struct nl_msg *msg, void *arg);
 
 const char * nl80211_iftype_str(enum nl80211_iftype mode);
 
+void nl80211_restore_ap_mode(struct i802_bss *bss);
+
 #ifdef ANDROID
 int android_nl_socket_set_nonblocking(struct nl_sock *handle);
 int android_pno_start(struct i802_bss *bss,
@@ -289,6 +297,10 @@ int android_pno_start(struct i802_bss *bss,
 int android_pno_stop(struct i802_bss *bss);
 extern int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					 size_t buf_len);
+extern int wpa_driver_nl80211_driver_event(struct wpa_driver_nl80211_data *drv,
+					   u32 vendor_id, u32 subcmd,
+					   u8 *data, size_t len);
+
 
 #ifdef ANDROID_P2P
 int wpa_driver_set_p2p_noa(void *priv, u8 count, int start, int duration);

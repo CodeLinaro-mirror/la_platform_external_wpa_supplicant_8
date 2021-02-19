@@ -291,41 +291,6 @@ static void wpas_p2p_scan_res_handler(struct wpa_supplicant *wpa_s,
 }
 
 
-static int wpas_p2p_add_scan_freq_list(struct wpa_supplicant *wpa_s,
-				       enum hostapd_hw_mode band,
-				       struct wpa_driver_scan_params *params)
-{
-	struct hostapd_hw_modes *mode;
-	int num_chans = 0;
-	int *freqs, i;
-
-	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band, 0);
-	if (!mode)
-		return -1;
-
-	if (params->freqs) {
-		while (params->freqs[num_chans])
-			num_chans++;
-	}
-
-	freqs = os_realloc(params->freqs,
-			   (num_chans + mode->num_channels + 1) * sizeof(int));
-	if (!freqs)
-		return -1;
-
-	params->freqs = freqs;
-
-	for (i = 0; i < mode->num_channels; i++) {
-		if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED)
-			continue;
-		params->freqs[num_chans++] = mode->channels[i].freq;
-	}
-	params->freqs[num_chans] = 0;
-
-	return 0;
-}
-
-
 static void wpas_p2p_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
 {
 	struct wpa_supplicant *wpa_s = work->wpa_s;
@@ -351,10 +316,10 @@ static void wpas_p2p_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
 	if (wpa_s->conf->p2p_6ghz_disable && !params->freqs) {
 		wpa_printf(MSG_DEBUG,
 			   "P2P: 6 GHz disabled - update the scan frequency list");
-		wpas_p2p_add_scan_freq_list(wpa_s, HOSTAPD_MODE_IEEE80211G,
-					    params);
-		wpas_p2p_add_scan_freq_list(wpa_s, HOSTAPD_MODE_IEEE80211A,
-					    params);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, params,
+					0);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, params,
+					0);
 	}
 	ret = wpa_drv_scan(wpa_s, params);
 	if (ret == 0)
@@ -3603,7 +3568,7 @@ static int wpas_p2p_get_center_80mhz(struct wpa_supplicant *wpa_s,
 				     struct hostapd_hw_modes *mode,
 				     u8 channel)
 {
-	u8 center_channels[] = { 42, 58, 106, 122, 138, 155 };
+	u8 center_channels[] = { 42, 58, 106, 122, 138, 155, 171 };
 	size_t i;
 
 	if (mode->mode != HOSTAPD_MODE_IEEE80211A)
@@ -3664,7 +3629,7 @@ static int wpas_p2p_get_center_160mhz(struct wpa_supplicant *wpa_s,
 				     struct hostapd_hw_modes *mode,
 				     u8 channel)
 {
-	u8 center_channels[] = { 50, 114 };
+	u8 center_channels[] = { 50, 114, 163 };
 	unsigned int i;
 
 	if (mode->mode != HOSTAPD_MODE_IEEE80211A)
@@ -3812,7 +3777,7 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 
 			/* Check for non-continuous jump in channel index
 			 * incrementation */
-			if ((o->op_class == 128 || o->op_class == 130) &&
+			if ((o->op_class >= 128 && o->op_class <= 130) &&
 			    ch < 149 && ch + o->inc > 149)
 				ch = 149;
 
@@ -5350,10 +5315,10 @@ static void wpas_p2p_join_scan_req(struct wpa_supplicant *wpa_s, int freq,
 	} else if (wpa_s->conf->p2p_6ghz_disable) {
 		wpa_printf(MSG_DEBUG,
 			   "P2P: 6 GHz disabled - update the scan frequency list");
-		wpas_p2p_add_scan_freq_list(wpa_s, HOSTAPD_MODE_IEEE80211G,
-					    &params);
-		wpas_p2p_add_scan_freq_list(wpa_s, HOSTAPD_MODE_IEEE80211A,
-					    &params);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, &params,
+					0);
+		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
+					0);
 	}
 
 	ielen = p2p_scan_ie_buf_len(wpa_s->global->p2p);
@@ -6061,8 +6026,31 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 		} else {
 			if (os_get_random((u8 *) &r, sizeof(r)) < 0)
 				return -1;
-			freq = 5180 + (r % 4) * 20;
-			if (!p2p_supported_freq_go(wpa_s->global->p2p, freq)) {
+
+			/*
+			 * most of 5G channels are DFS, only operating class 115 and 124
+			 * are available possibly, randomly pick a start to check them.
+			 */
+			int possible_5g_freqs[] = {
+				/* operating class 115 */
+				5180, 5200, 5220, 5240,
+				/* operating class 124 */
+				5745, 5765, 5785, 5805,
+			};
+			int possible_5g_freqs_num =
+			    sizeof(possible_5g_freqs)/sizeof(possible_5g_freqs[0]);
+
+			int i;
+			for (i = 0; i < possible_5g_freqs_num; i++, r++) {
+				if (p2p_supported_freq_go(
+				    wpa_s->global->p2p,
+				    possible_5g_freqs[r % possible_5g_freqs_num])) {
+					freq = possible_5g_freqs[r % possible_5g_freqs_num];
+					break;
+				}
+			}
+
+			if (i >= possible_5g_freqs_num) {
 				wpa_printf(MSG_DEBUG, "P2P: Could not select "
 					   "5 GHz channel for P2P group");
 				return -1;

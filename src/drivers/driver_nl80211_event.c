@@ -1907,7 +1907,7 @@ try_2_4_or_5:
 		return 2407 + 5 * chan;
 	if (chan == 14)
 		return 2484;
-	if (chan >= 36 && chan <= 169)
+	if (chan >= 36 && chan <= 177)
 		return 5000 + 5 * chan;
 
 	return 0;
@@ -2032,6 +2032,27 @@ static void qca_nl80211_key_mgmt_auth(struct wpa_driver_nl80211_data *drv,
 			   tb[QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_FILS_ERP_NEXT_SEQ_NUM],
 			   tb[QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_PMK],
 			   tb[QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_PMKID]);
+}
+
+
+static void
+qca_nl80211_key_mgmt_auth_handler(struct wpa_driver_nl80211_data *drv,
+				  const u8 *data, size_t len)
+{
+	if (!drv->roam_indication_done) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Pending roam indication, delay processing roam+auth vendor event");
+		os_get_reltime(&drv->pending_roam_ind_time);
+
+		os_free(drv->pending_roam_data);
+		drv->pending_roam_data = os_memdup(data, len);
+		if (!drv->pending_roam_data)
+			return;
+		drv->pending_roam_data_len = len;
+		return;
+	}
+	drv->roam_indication_done = false;
+	qca_nl80211_key_mgmt_auth(drv, data, len);
 }
 
 
@@ -2339,7 +2360,7 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 		qca_nl80211_avoid_freq(drv, data, len);
 		break;
 	case QCA_NL80211_VENDOR_SUBCMD_KEY_MGMT_ROAM_AUTH:
-		qca_nl80211_key_mgmt_auth(drv, data, len);
+		qca_nl80211_key_mgmt_auth_handler(drv, data, len);
 		break;
 	case QCA_NL80211_VENDOR_SUBCMD_DO_ACS:
 		qca_nl80211_acs_select_ch(drv, data, len);
@@ -2406,6 +2427,12 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 			   wiphy, wiphy_idx);
 		return;
 	}
+
+#ifdef ANDROID
+#ifdef ANDROID_LIB_EVENT
+       wpa_driver_nl80211_driver_event(drv, vendor_id, subcmd, data, len);
+#endif /* ANDROID_LIB_EVENT */
+#endif /* ANDROID */
 
 	switch (vendor_id) {
 	case OUI_QCA:
@@ -2711,25 +2738,41 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 	wpa_printf(MSG_DEBUG, "nl80211: Drv Event %d (%s) received for %s",
 		   cmd, nl80211_command_to_string(cmd), bss->ifname);
 
+#ifdef CONFIG_DRIVER_NL80211_QCA
 	if (cmd == NL80211_CMD_ROAM &&
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD)) {
+		if (drv->pending_roam_data) {
+			struct os_reltime now, age;
+
+			os_get_reltime(&now);
+			os_reltime_sub(&now, &drv->pending_roam_ind_time, &age);
+			if (age.sec == 0 && age.usec < 100000) {
+				wpa_printf(MSG_DEBUG,
+					   "nl80211: Process pending roam+auth vendor event");
+				qca_nl80211_key_mgmt_auth(
+					drv, drv->pending_roam_data,
+					drv->pending_roam_data_len);
+			}
+			os_free(drv->pending_roam_data);
+			drv->pending_roam_data = NULL;
+			return;
+		}
 		/*
 		 * Device will use roam+auth vendor event to indicate
 		 * roaming, so ignore the regular roam event.
 		 */
+		drv->roam_indication_done = true;
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Ignore roam event (cmd=%d), device will use vendor event roam+auth",
 			   cmd);
 		return;
 	}
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	if (drv->ap_scan_as_station != NL80211_IFTYPE_UNSPECIFIED &&
 	    (cmd == NL80211_CMD_NEW_SCAN_RESULTS ||
-	     cmd == NL80211_CMD_SCAN_ABORTED)) {
-		wpa_driver_nl80211_set_mode(drv->first_bss,
-					    drv->ap_scan_as_station);
-		drv->ap_scan_as_station = NL80211_IFTYPE_UNSPECIFIED;
-	}
+	     cmd == NL80211_CMD_SCAN_ABORTED))
+		nl80211_restore_ap_mode(bss);
 
 	switch (cmd) {
 	case NL80211_CMD_TRIGGER_SCAN:

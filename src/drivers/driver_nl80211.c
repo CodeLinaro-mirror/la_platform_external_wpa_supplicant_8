@@ -2907,6 +2907,9 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 		os_free(drv->iface_ext_capa[i].ext_capa_mask);
 	}
 	os_free(drv->first_bss);
+#ifdef CONFIG_DRIVER_NL80211_QCA
+	os_free(drv->pending_roam_data);
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 	os_free(drv);
 }
 
@@ -2928,7 +2931,7 @@ static u32 wpa_alg_to_cipher_suite(enum wpa_alg alg, size_t key_len)
 		return RSN_CIPHER_SUITE_CCMP_256;
 	case WPA_ALG_GCMP_256:
 		return RSN_CIPHER_SUITE_GCMP_256;
-	case WPA_ALG_IGTK:
+	case WPA_ALG_BIP_CMAC_128:
 		return RSN_CIPHER_SUITE_AES_128_CMAC;
 	case WPA_ALG_BIP_GMAC_128:
 		return RSN_CIPHER_SUITE_BIP_GMAC_128;
@@ -3285,10 +3288,7 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 		goto fail2;
 	if (!key_msg ||
 	    nla_put_u8(key_msg, NL80211_KEY_IDX, key_idx) ||
-	    nla_put_flag(key_msg, (alg == WPA_ALG_IGTK ||
-				   alg == WPA_ALG_BIP_GMAC_128 ||
-				   alg == WPA_ALG_BIP_GMAC_256 ||
-				   alg == WPA_ALG_BIP_CMAC_256) ?
+	    nla_put_flag(key_msg, wpa_alg_bip(alg) ?
 			 (key_idx == 6 || key_idx == 7 ?
 			  NL80211_KEY_DEFAULT_BEACON :
 			  NL80211_KEY_DEFAULT_MGMT) :
@@ -3357,7 +3357,7 @@ static int nl_add_key(struct nl_msg *msg, enum wpa_alg alg,
 	if (!suite)
 		return -1;
 
-	if (defkey && alg == WPA_ALG_IGTK) {
+	if (defkey && wpa_alg_bip(alg)) {
 		if (nla_put_flag(msg, NL80211_KEY_DEFAULT_MGMT))
 			return -1;
 	} else if (defkey) {
@@ -4333,7 +4333,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	num_suites = wpa_key_mgmt_to_suites(params->key_mgmt_suites,
 					    suites, ARRAY_SIZE(suites));
 	if (num_suites > NL80211_MAX_NR_AKM_SUITES)
-		wpa_printf(MSG_WARNING,
+		wpa_printf(MSG_DEBUG,
 			   "nl80211: Not enough room for all AKM suites (num_suites=%d > NL80211_MAX_NR_AKM_SUITES)",
 			   num_suites);
 	else if (num_suites &&
@@ -5697,13 +5697,13 @@ static int nl80211_put_fils_connect_params(struct wpa_driver_nl80211_data *drv,
 			return -1;
 	}
 
-	wpa_printf(MSG_DEBUG, "  * FILS ERP next seq %u",
-		   params->fils_erp_next_seq_num);
-	if (nla_put_u16(msg, NL80211_ATTR_FILS_ERP_NEXT_SEQ_NUM,
-			params->fils_erp_next_seq_num))
-		return -1;
-
 	if (params->fils_erp_rrk_len) {
+		wpa_printf(MSG_DEBUG, "  * FILS ERP next seq %u",
+			   params->fils_erp_next_seq_num);
+		if (nla_put_u16(msg, NL80211_ATTR_FILS_ERP_NEXT_SEQ_NUM,
+				params->fils_erp_next_seq_num))
+			return -1;
+
 		wpa_printf(MSG_DEBUG, "  * FILS ERP rRK (len=%lu)",
 			   (unsigned long) params->fils_erp_rrk_len);
 		if (nla_put(msg, NL80211_ATTR_FILS_ERP_RRK,
@@ -6058,6 +6058,9 @@ skip_auth_type:
 		wpa_printf(MSG_DEBUG, "nl80211: MLME connect failed: ret=%d "
 			   "(%s)", ret, strerror(-ret));
 	} else {
+#ifdef CONFIG_DRIVER_NL80211_QCA
+		drv->roam_indication_done = false;
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Connect request send successfully");
 	}
@@ -6275,6 +6278,20 @@ static int wpa_driver_nl80211_set_mode_impl(
 			}
 		}
 
+		if (i == 0 && was_ap && !is_ap_interface(nlmode) &&
+		    bss->brname[0] &&
+		    (bss->added_if_into_bridge || bss->already_in_bridge)) {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Remove AP interface %s temporarily from the bridge %s to allow its mode to be set to STATION",
+				   bss->ifname, bss->brname);
+			if (linux_br_del_if(drv->global->ioctl_sock,
+					    bss->brname, bss->ifname) < 0)
+				wpa_printf(MSG_INFO,
+					   "nl80211: Failed to remove interface %s from bridge %s: %s",
+					   bss->ifname, bss->brname,
+					   strerror(errno));
+		}
+
 		/* Try to set the mode again while the interface is down */
 		mode_switch_res = nl80211_set_mode(drv, drv->ifindex, nlmode);
 		if (mode_switch_res == -EBUSY) {
@@ -6344,6 +6361,29 @@ done:
 			   "frame processing - ignore for now");
 
 	return 0;
+}
+
+
+void nl80211_restore_ap_mode(struct i802_bss *bss)
+{
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	int was_ap = is_ap_interface(drv->nlmode);
+
+	wpa_driver_nl80211_set_mode(bss, drv->ap_scan_as_station);
+	if (!was_ap && is_ap_interface(drv->ap_scan_as_station) &&
+	    bss->brname[0] &&
+	    (bss->added_if_into_bridge || bss->already_in_bridge)) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Add AP interface %s back into the bridge %s",
+			   bss->ifname, bss->brname);
+		if (linux_br_add_if(drv->global->ioctl_sock, bss->brname,
+				    bss->ifname) < 0) {
+			wpa_printf(MSG_WARNING,
+				   "nl80211: Failed to add interface %s into bridge %s: %s",
+				   bss->ifname, bss->brname, strerror(errno));
+		}
+	}
+	drv->ap_scan_as_station = NL80211_IFTYPE_UNSPECIFIED;
 }
 
 
@@ -7756,7 +7796,8 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
 	struct ieee80211_hdr *hdr;
 	int offchanok = 1;
 
-	if (is_ap_interface(drv->nlmode) && (int) freq == bss->freq)
+	if (is_ap_interface(drv->nlmode) && (int) freq == bss->freq &&
+	    bss->beacon_set)
 		offchanok = 0;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Send Action frame (ifindex=%d, "
@@ -10591,38 +10632,49 @@ static int wpa_driver_do_acs(void *priv, struct drv_acs_params *params)
 }
 
 
-static int nl80211_set_band(void *priv, enum set_band band)
+static int nl80211_set_band(void *priv, u32 band_mask)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 	struct nl_msg *msg;
 	struct nlattr *data;
 	int ret;
-	enum qca_set_band qca_band;
+	enum qca_set_band qca_band_value;
+	u32 qca_band_mask = QCA_SETBAND_AUTO;
 
-	if (!drv->setband_vendor_cmd_avail)
+	if (!drv->setband_vendor_cmd_avail ||
+	    (band_mask > (WPA_SETBAND_2G | WPA_SETBAND_5G | WPA_SETBAND_6G)))
 		return -1;
 
-	switch (band) {
-	case WPA_SETBAND_AUTO:
-		qca_band = QCA_SETBAND_AUTO;
-		break;
-	case WPA_SETBAND_5G:
-		qca_band = QCA_SETBAND_5G;
-		break;
-	case WPA_SETBAND_2G:
-		qca_band = QCA_SETBAND_2G;
-		break;
-	default:
-		return -1;
-	}
+	if (band_mask & WPA_SETBAND_5G)
+		qca_band_mask |= QCA_SETBAND_5G;
+	if (band_mask & WPA_SETBAND_2G)
+		qca_band_mask |= QCA_SETBAND_2G;
+	if (band_mask & WPA_SETBAND_6G)
+		qca_band_mask |= QCA_SETBAND_6G;
+
+	/*
+	 * QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE is a legacy interface hence make
+	 * it suite to its values (AUTO/5G/2G) for backwards compatibility.
+	 */
+	qca_band_value = ((qca_band_mask & QCA_SETBAND_5G) &&
+			  (qca_band_mask & QCA_SETBAND_2G)) ?
+				QCA_SETBAND_AUTO :
+				qca_band_mask & ~QCA_SETBAND_6G;
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: QCA_BAND_MASK = 0x%x, QCA_BAND_VALUE = %d",
+		   qca_band_mask, qca_band_value);
 
 	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
 			QCA_NL80211_VENDOR_SUBCMD_SETBAND) ||
 	    !(data = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)) ||
-	    nla_put_u32(msg, QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE, qca_band)) {
+	    nla_put_u32(msg, QCA_WLAN_VENDOR_ATTR_SETBAND_VALUE,
+			qca_band_value) ||
+	    nla_put_u32(msg, QCA_WLAN_VENDOR_ATTR_SETBAND_MASK,
+			qca_band_mask)) {
 		nlmsg_free(msg);
 		return -ENOBUFS;
 	}

@@ -1553,8 +1553,9 @@ struct wpa_driver_set_key_params {
 	 * alg - Encryption algorithm
 	 *
 	 * (%WPA_ALG_NONE, %WPA_ALG_WEP, %WPA_ALG_TKIP, %WPA_ALG_CCMP,
-	 * %WPA_ALG_IGTK, %WPA_ALG_GCMP, %WPA_ALG_GCMP_256, %WPA_ALG_CCMP_256,
-	 * %WPA_ALG_BIP_GMAC_128, %WPA_ALG_BIP_GMAC_256, %WPA_ALG_BIP_CMAC_256);
+	 * %WPA_ALG_BIP_AES_CMAC_128, %WPA_ALG_GCMP, %WPA_ALG_GCMP_256,
+	 * %WPA_ALG_CCMP_256, %WPA_ALG_BIP_GMAC_128, %WPA_ALG_BIP_GMAC_256,
+	 * %WPA_ALG_BIP_CMAC_256);
 	 * %WPA_ALG_NONE clears the key. */
 	enum wpa_alg alg;
 
@@ -2095,6 +2096,7 @@ struct hostapd_sta_add_params {
 	u8 vht_opmode;
 	const struct ieee80211_he_capabilities *he_capab;
 	size_t he_capab_len;
+	const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab;
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	u32 flags_mask; /* unset bits in flags */
 #ifdef CONFIG_MESH
@@ -4257,12 +4259,12 @@ struct wpa_driver_ops {
 	int (*do_acs)(void *priv, struct drv_acs_params *params);
 
 	/**
-	 * set_band - Notify driver of band selection
+	 * set_band - Notify driver of band(s) selection
 	 * @priv: Private driver interface data
-	 * @band: The selected band(s)
+	 * @band_mask: The selected band(s) bit mask (from enum set_band)
 	 * Returns 0 on success, -1 on failure
 	 */
-	int (*set_band)(void *priv, enum set_band band);
+	int (*set_band)(void *priv, u32 band_mask);
 
 	/**
 	 * get_pref_freq_list - Get preferred frequency list for an interface
