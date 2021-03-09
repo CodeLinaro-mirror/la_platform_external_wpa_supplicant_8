@@ -770,6 +770,7 @@ HostapdStatus Hostapd::addConcurrentAccessPoints(
     const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
 	std::vector<int> band_masks;
+	std::vector<int> channels;
 
 	// Get Band Masks - bit 0-7 band 1 ... bit 24-31 band 4
 	for (int i = 0; i < 4 /* max bands */; i ++) {
@@ -777,6 +778,10 @@ HostapdStatus Hostapd::addConcurrentAccessPoints(
 		    (iface_params.channelParams.bandMask >> (i * 8)) & 0xff;
 		if (band_mask == 0) break;
 		band_masks.push_back(band_mask);
+
+		int channel =
+		    (iface_params.V1_1.V1_0.channelParams.channel >> (i * 8)) & 0xff;
+		channels.push_back(channel);
 	}
 
 #ifdef CONFIG_OWE
@@ -785,6 +790,7 @@ HostapdStatus Hostapd::addConcurrentAccessPoints(
 	if (isOweTransition && band_masks.size() == 1) {
 		// make it two same bands
 		band_masks.push_back(band_masks[0]);
+		channels.push_back(channels[0]);
 	}
 	if (isOweTransition && band_masks.size() != 2) {
 		return {HostapdStatusCode::FAILURE_UNKNOWN,
@@ -810,6 +816,7 @@ HostapdStatus Hostapd::addConcurrentAccessPoints(
 		IfaceParams iface_params_new = iface_params;
 		iface_params_new.V1_1.V1_0.ifaceName = managed_interfaces[i];
 		iface_params_new.channelParams.bandMask = band_masks[i];
+		iface_params_new.V1_1.V1_0.channelParams.channel = channels[i];
 
 		VendorParams vendor_params;
 		vendor_params.bridgeIfaceName = br_name;
