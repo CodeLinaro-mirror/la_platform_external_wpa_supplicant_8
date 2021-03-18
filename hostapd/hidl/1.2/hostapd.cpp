@@ -524,6 +524,7 @@ std::string CreateHostapdConfig(
 	    "%s\n"
 	    "ignore_broadcast_ssid=%d\n"
 	    "wowlan_triggers=any\n"
+	    "dtim_period=1\n"
 	    "%s\n"
 	    "%s\n",
 	    iface_params.V1_1.V1_0.ifaceName.c_str(), ssid_as_string.c_str(),
