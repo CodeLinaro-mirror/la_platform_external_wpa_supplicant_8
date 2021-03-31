@@ -223,10 +223,10 @@ static void wpa_supplicant_timeout(void *eloop_ctx, void *timeout_ctx)
 	wpa_msg(wpa_s, MSG_INFO, "Authentication with " MACSTR " timed out.",
 		MAC2STR(bssid));
 	wpa_blacklist_add(wpa_s, bssid);
+	wpas_notify_auth_timeout(wpa_s);
 	wpa_sm_notify_disassoc(wpa_s->wpa);
 	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 	wpa_s->reassociate = 1;
-	wpas_notify_auth_timeout(wpa_s);
 
 	/*
 	 * If we timed out, the AP or the local radio may be busy.
@@ -4075,6 +4075,9 @@ int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id)
 
 	if (wpa_config_remove_network(wpa_s->conf, id) < 0)
 		return -2;
+
+	if (wpa_s->current_ssid == ssid)
+		wpa_s->current_ssid = NULL;
 
 	if (!was_disabled && wpa_s->sched_scanning) {
 		wpa_printf(MSG_DEBUG,
