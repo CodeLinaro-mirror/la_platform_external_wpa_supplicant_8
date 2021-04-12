@@ -10,7 +10,6 @@
 #ifndef DPP_SUPPLICANT_H
 #define DPP_SUPPLICANT_H
 
-#include"dpp.h"
 
 enum dpp_status_error;
 
