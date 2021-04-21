@@ -223,10 +223,10 @@ static void wpa_supplicant_timeout(void *eloop_ctx, void *timeout_ctx)
 	wpa_msg(wpa_s, MSG_INFO, "Authentication with " MACSTR " timed out.",
 		MAC2STR(bssid));
 	wpa_blacklist_add(wpa_s, bssid);
+	wpas_notify_auth_timeout(wpa_s);
 	wpa_sm_notify_disassoc(wpa_s->wpa);
 	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 	wpa_s->reassociate = 1;
-	wpas_notify_auth_timeout(wpa_s);
 
 	/*
 	 * If we timed out, the AP or the local radio may be busy.
@@ -1137,8 +1137,8 @@ int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s)
 		    os_strcmp(conf->ctrl_interface,
 			      wpa_s->conf->ctrl_interface) != 0);
 
-	if (reconf_ctrl && wpa_s->ctrl_iface) {
-		wpa_supplicant_ctrl_iface_deinit(wpa_s->ctrl_iface);
+	if (reconf_ctrl) {
+		wpa_supplicant_ctrl_iface_deinit(wpa_s, wpa_s->ctrl_iface);
 		wpa_s->ctrl_iface = NULL;
 	}
 
@@ -6563,10 +6563,8 @@ static void wpa_supplicant_deinit_iface(struct wpa_supplicant *wpa_s,
 	if (terminate)
 		wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_TERMINATING);
 
-	if (wpa_s->ctrl_iface) {
-		wpa_supplicant_ctrl_iface_deinit(wpa_s->ctrl_iface);
-		wpa_s->ctrl_iface = NULL;
-	}
+	wpa_supplicant_ctrl_iface_deinit(wpa_s, wpa_s->ctrl_iface);
+	wpa_s->ctrl_iface = NULL;
 
 #ifdef CONFIG_MESH
 	if (wpa_s->ifmsh) {
