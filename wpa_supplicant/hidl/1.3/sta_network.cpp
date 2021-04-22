@@ -53,17 +53,13 @@ constexpr uint32_t kAllowedAuthAlgMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::LEAP) |
 	 static_cast<uint32_t>(ISupplicantStaNetworkV1_3::AuthAlgMask::SAE));
 constexpr uint32_t kAllowedGroupCipherMask =
-    (static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::WEP40) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::WEP104) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::TKIP) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) |
+    (static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_2::GroupCipherMask::GCMP_256) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_3::GroupCipherMask::SMS4));
 constexpr uint32_t kAllowedPairwisewCipherMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::NONE) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::TKIP) |
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetworkV1_2::PairwiseCipherMask::GCMP_256) |
