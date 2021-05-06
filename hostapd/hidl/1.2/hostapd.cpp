@@ -895,20 +895,35 @@ V1_0::HostapdStatus Hostapd::registerCallbackInternal(
 V1_2::HostapdStatus Hostapd::forceClientDisconnectInternal(const std::string& iface_name,
     const std::array<uint8_t, 6>& client_address, V1_2::Ieee80211ReasonCode reason_code)
 {
-	struct hostapd_data *hapd = hostapd_get_iface(interfaces_, iface_name.c_str());
-	struct sta_info *sta;
-	if (!hapd) {
-		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
-		return {V1_2::HostapdStatusCode::FAILURE_IFACE_UNKNOWN, ""};
+	std::vector<std::string> interfaces;
+	std::vector<struct hostapd_data *> hapd_vec;
+
+	auto it = br_interfaces_.find(iface_name);
+	if (it != br_interfaces_.end()) {
+		interfaces = it->second;
+	} else {
+		interfaces.push_back(iface_name);
 	}
-	for (sta = hapd->sta_list; sta; sta = sta->next) {
-		int res;
-		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
-		if (res == 0) {
-			wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect with reason: %d",
-			    MAC2STR(client_address.data()), (uint16_t) reason_code);
-			ap_sta_disconnect(hapd, sta, sta->addr, (uint16_t) reason_code);
-			return {V1_2::HostapdStatusCode::SUCCESS, ""};
+	for (auto& iface : interfaces) {
+		struct hostapd_data *hapd = hostapd_get_iface(interfaces_, iface.c_str());
+		if (!hapd) {
+			wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface.c_str());
+			return {V1_2::HostapdStatusCode::FAILURE_IFACE_UNKNOWN, ""};
+		}
+		hapd_vec.push_back(hapd);
+	}
+
+	struct sta_info *sta;
+	for (struct hostapd_data *hapd : hapd_vec) {
+		for (sta = hapd->sta_list; sta; sta = sta->next) {
+			int res;
+			res = memcmp(sta->addr, client_address.data(), ETH_ALEN);
+			if (res == 0) {
+				wpa_printf(MSG_INFO, "Force client:" MACSTR " disconnect, reason: %d",
+				   MAC2STR(client_address.data()), (uint16_t) reason_code);
+				ap_sta_disconnect(hapd, sta, sta->addr, (uint16_t) reason_code);
+				return {V1_2::HostapdStatusCode::SUCCESS, ""};
+			}
 		}
 	}
 	return {V1_2::HostapdStatusCode::FAILURE_CLIENT_UNKNOWN, ""};
