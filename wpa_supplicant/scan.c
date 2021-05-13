@@ -2199,6 +2199,76 @@ void scan_snr(struct wpa_scan_res *res)
 }
 
 
+/* Minimum SNR required to achieve a certain bitrate. */
+struct minsnr_bitrate_entry {
+	int minsnr;
+	unsigned int bitrate; /* in Mbps */
+};
+
+/* VHT needs to be enabled in order to achieve MCS8 and MCS9 rates. */
+static const int vht_mcs = 8;
+
+static const struct minsnr_bitrate_entry vht20_table[] = {
+	{ 0, 0 },
+	{ 2, 6500 },   /* HT20 MCS0 */
+	{ 5, 13000 },  /* HT20 MCS1 */
+	{ 9, 19500 },  /* HT20 MCS2 */
+	{ 11, 26000 }, /* HT20 MCS3 */
+	{ 15, 39000 }, /* HT20 MCS4 */
+	{ 18, 52000 }, /* HT20 MCS5 */
+	{ 20, 58500 }, /* HT20 MCS6 */
+	{ 25, 65000 }, /* HT20 MCS7 */
+	{ 29, 78000 }, /* VHT20 MCS8 */
+	{ -1, 78000 }  /* SNR > 29 */
+};
+
+static const struct minsnr_bitrate_entry vht40_table[] = {
+	{ 0, 0 },
+	{ 5, 13500 },   /* HT40 MCS0 */
+	{ 8, 27000 },   /* HT40 MCS1 */
+	{ 12, 40500 },  /* HT40 MCS2 */
+	{ 14, 54000 },  /* HT40 MCS3 */
+	{ 18, 81000 },  /* HT40 MCS4 */
+	{ 21, 108000 }, /* HT40 MCS5 */
+	{ 23, 121500 }, /* HT40 MCS6 */
+	{ 28, 135000 }, /* HT40 MCS7 */
+	{ 32, 162000 }, /* VHT40 MCS8 */
+	{ 34, 180000 }, /* VHT40 MCS9 */
+	{ -1, 180000 }  /* SNR > 34 */
+};
+
+static const struct minsnr_bitrate_entry vht80_table[] = {
+	{ 0, 0 },
+	{ 8, 29300 },   /* VHT80 MCS0 */
+	{ 11, 58500 },  /* VHT80 MCS1 */
+	{ 15, 87800 },  /* VHT80 MCS2 */
+	{ 17, 117000 }, /* VHT80 MCS3 */
+	{ 21, 175500 }, /* VHT80 MCS4 */
+	{ 24, 234000 }, /* VHT80 MCS5 */
+	{ 26, 263300 }, /* VHT80 MCS6 */
+	{ 31, 292500 }, /* VHT80 MCS7 */
+	{ 35, 351000 }, /* VHT80 MCS8 */
+	{ 37, 390000 }, /* VHT80 MCS9 */
+	{ -1, 390000 }  /* SNR > 37 */
+};
+
+
+static const struct minsnr_bitrate_entry vht160_table[] = {
+	{ 0, 0 },
+	{ 11, 58500 },  /* VHT160 MCS0 */
+	{ 14, 117000 }, /* VHT160 MCS1 */
+	{ 18, 175500 }, /* VHT160 MCS2 */
+	{ 20, 234000 }, /* VHT160 MCS3 */
+	{ 24, 351000 }, /* VHT160 MCS4 */
+	{ 27, 468000 }, /* VHT160 MCS5 */
+	{ 29, 526500 }, /* VHT160 MCS6 */
+	{ 34, 585000 }, /* VHT160 MCS7 */
+	{ 38, 702000 }, /* VHT160 MCS8 */
+	{ 40, 780000 }, /* VHT160 MCS9 */
+	{ -1, 780000 }  /* SNR > 37 */
+};
+
+
 static unsigned int interpolate_rate(int snr, int snr0, int snr1,
 				     int rate0, int rate1)
 {
@@ -2206,74 +2276,54 @@ static unsigned int interpolate_rate(int snr, int snr0, int snr1,
 }
 
 
-#define INTERPOLATE_RATE(snr0, snr1, rate0, rate1) \
-	if (snr < (snr1)) \
-		return interpolate_rate(snr, (snr0), (snr1), (rate0), (rate1))
+static unsigned int max_rate(const struct minsnr_bitrate_entry table[],
+			     int snr, int vht)
+{
+	const struct minsnr_bitrate_entry *prev, *entry = table;
+
+	while ((entry->minsnr != -1) &&
+	       (snr >= entry->minsnr) &&
+	       (vht || entry - table <= vht_mcs))
+		entry++;
+	if (entry == table)
+		return entry->bitrate;
+	prev = entry - 1;
+	if (entry->minsnr == -1 || (!vht && entry - table > vht_mcs))
+		return prev->bitrate;
+	return interpolate_rate(snr, prev->minsnr, entry->minsnr, prev->bitrate,
+				entry->bitrate);
+}
+
 
 static unsigned int max_ht20_rate(int snr, int vht)
 {
-	if (snr < 0)
-		return 0;
-	INTERPOLATE_RATE(0, 2, 0, 6500); /* HT20 MCS0 */
-	INTERPOLATE_RATE(2, 5, 6500, 13000); /* HT20 MCS1 */
-	INTERPOLATE_RATE(5, 9, 13000, 19500); /* HT20 MCS2 */
-	INTERPOLATE_RATE(9, 11, 19500, 26000); /* HT20 MCS3 */
-	INTERPOLATE_RATE(11, 15, 26000, 39000); /* HT20 MCS4 */
-	INTERPOLATE_RATE(15, 18, 39000, 52000); /* HT20 MCS5 */
-	INTERPOLATE_RATE(18, 20, 52000, 58500); /* HT20 MCS6 */
-	INTERPOLATE_RATE(20, 25, 58500, 65000); /* HT20 MCS7 */
-	if (!vht)
-		return 65000;
-	INTERPOLATE_RATE(25, 29, 65000, 78000); /* VHT20 MCS8 */
-	return 78000;
+	return max_rate(vht20_table, snr, vht);
 }
 
 
 static unsigned int max_ht40_rate(int snr, int vht)
 {
-	if (snr < 0)
-		return 0;
-	INTERPOLATE_RATE(0, 5, 0, 13500); /* HT40 MCS0 */
-	INTERPOLATE_RATE(5, 8, 13500, 27000); /* HT40 MCS1 */
-	INTERPOLATE_RATE(8, 12, 27000, 40500); /* HT40 MCS2 */
-	INTERPOLATE_RATE(12, 14, 40500, 54000); /* HT40 MCS3 */
-	INTERPOLATE_RATE(14, 18, 54000, 81000); /* HT40 MCS4 */
-	INTERPOLATE_RATE(18, 21, 81000, 108000); /* HT40 MCS5 */
-	INTERPOLATE_RATE(21, 23, 108000, 121500); /* HT40 MCS6 */
-	INTERPOLATE_RATE(23, 28, 121500, 135000); /* HT40 MCS7 */
-	if (!vht)
-		return 135000;
-	INTERPOLATE_RATE(28, 32, 135000, 162000); /* VHT40 MCS8 */
-	INTERPOLATE_RATE(32, 34, 162000, 180000); /* VHT40 MCS9 */
-	return 180000;
+	return max_rate(vht40_table, snr, vht);
 }
 
 
 static unsigned int max_vht80_rate(int snr)
 {
-	if (snr < 0)
-		return 0;
-	INTERPOLATE_RATE(0, 8, 0, 29300); /* VHT80 MCS0 */
-	INTERPOLATE_RATE(8, 11, 29300, 58500); /* VHT80 MCS1 */
-	INTERPOLATE_RATE(11, 15, 58500, 87800); /* VHT80 MCS2 */
-	INTERPOLATE_RATE(15, 17, 87800, 117000); /* VHT80 MCS3 */
-	INTERPOLATE_RATE(17, 21, 117000, 175500); /* VHT80 MCS4 */
-	INTERPOLATE_RATE(21, 24, 175500, 234000); /* VHT80 MCS5 */
-	INTERPOLATE_RATE(24, 26, 234000, 263300); /* VHT80 MCS6 */
-	INTERPOLATE_RATE(26, 31, 263300, 292500); /* VHT80 MCS7 */
-	INTERPOLATE_RATE(31, 35, 292500, 351000); /* VHT80 MCS8 */
-	INTERPOLATE_RATE(35, 37, 351000, 390000); /* VHT80 MCS9 */
-	return 390000;
+	return max_rate(vht80_table, snr, 1);
 }
 
-#undef INTERPOLATE_RATE
+
+static unsigned int max_vht160_rate(int snr)
+{
+	return max_rate(vht160_table, snr, 1);
+}
 
 
 unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 			      const u8 *ies, size_t ies_len, int rate,
-			      int snr)
+			      int snr, int freq)
 {
-	enum local_hw_capab capab = wpa_s->hw_capab;
+	struct hostapd_hw_modes *hw_mode;
 	unsigned int est, tmp;
 	const u8 *ie;
 
@@ -2318,7 +2368,10 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 		rate = 54 * 2;
 	est = rate * 500;
 
-	if (capab == CAPAB_HT || capab == CAPAB_HT40 || capab == CAPAB_VHT) {
+	hw_mode = get_mode_with_freq(wpa_s->hw.modes, wpa_s->hw.num_modes,
+				     freq);
+
+	if (hw_mode && hw_mode->ht_capab) {
 		ie = get_ie(ies, ies_len, WLAN_EID_HT_CAP);
 		if (ie) {
 			tmp = max_ht20_rate(snr, 0);
@@ -2327,7 +2380,8 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 		}
 	}
 
-	if (capab == CAPAB_HT40 || capab == CAPAB_VHT) {
+	if (hw_mode &&
+	    (hw_mode->ht_capab & HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET)) {
 		ie = get_ie(ies, ies_len, WLAN_EID_HT_OPERATION);
 		if (ie && ie[1] >= 2 &&
 		    (ie[3] & HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK)) {
@@ -2337,10 +2391,12 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 		}
 	}
 
-	if (capab == CAPAB_VHT) {
+	if (hw_mode && hw_mode->vht_capab) {
 		/* Use +1 to assume VHT is always faster than HT */
 		ie = get_ie(ies, ies_len, WLAN_EID_VHT_CAP);
 		if (ie) {
+			bool vht80 = false, vht160 = false;
+
 			tmp = max_ht20_rate(snr, 1) + 1;
 			if (tmp > est)
 				est = tmp;
@@ -2354,10 +2410,37 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
 					est = tmp;
 			}
 
+			/* Determine VHT BSS bandwidth based on IEEE Std
+			 * 802.11-2020, Table 11-23 (VHT BSs bandwidth) */
 			ie = get_ie(ies, ies_len, WLAN_EID_VHT_OPERATION);
-			if (ie && ie[1] >= 1 &&
-			    (ie[2] & VHT_OPMODE_CHANNEL_WIDTH_MASK)) {
+			if (ie && ie[1] >= 3) {
+				u8 cw = ie[2] & VHT_OPMODE_CHANNEL_WIDTH_MASK;
+				u8 seg0 = ie[3];
+				u8 seg1 = ie[4];
+
+				if (cw)
+					vht80 = true;
+				if (cw == 2 ||
+				    (cw == 3 &&
+				     (seg1 > 0 && abs(seg1 - seg0) == 16)))
+					vht160 = true;
+				if (cw == 1 &&
+				    ((seg1 > 0 && abs(seg1 - seg0) == 8) ||
+				     (seg1 > 0 && abs(seg1 - seg0) == 16)))
+					vht160 = true;
+			}
+
+			if (vht80) {
 				tmp = max_vht80_rate(snr) + 1;
+				if (tmp > est)
+					est = tmp;
+			}
+
+			if (vht160 &&
+			    (hw_mode->vht_capab &
+			     (VHT_CAP_SUPP_CHAN_WIDTH_160MHZ |
+			      VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ))) {
+				tmp = max_vht160_rate(snr) + 1;
 				if (tmp > est)
 					est = tmp;
 			}
@@ -2385,7 +2468,7 @@ void scan_est_throughput(struct wpa_supplicant *wpa_s,
 	if (!ie_len)
 		ie_len = res->beacon_ie_len;
 	res->est_throughput =
-		wpas_get_est_tpt(wpa_s, ies, ie_len, rate, snr);
+		wpas_get_est_tpt(wpa_s, ies, ie_len, rate, snr, res->freq);
 
 	/* TODO: channel utilization and AP load (e.g., from AP Beacon) */
 }

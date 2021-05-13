@@ -1769,7 +1769,7 @@ wpas_get_est_throughput_from_bss_snr(const struct wpa_supplicant *wpa_s,
 	const u8 *ies = (const void *) (bss + 1);
 	size_t ie_len = bss->ie_len ? bss->ie_len : bss->beacon_ie_len;
 
-	return wpas_get_est_tpt(wpa_s, ies, ie_len, rate, snr);
+	return wpas_get_est_tpt(wpa_s, ies, ie_len, rate, snr, bss->freq);
 }
 
 #endif /* CONFIG_NO_ROAMING */
@@ -4336,6 +4336,8 @@ static void wpa_supplicant_event_assoc_auth(struct wpa_supplicant *wpa_s,
 		wpa_s->wpa_state);
 
 	wpa_supplicant_event_port_authorized(wpa_s);
+
+	wpa_s->last_eapol_matches_bssid = 1;
 
 	wpa_sm_set_rx_replay_ctr(wpa_s->wpa, data->assoc_info.key_replay_ctr);
 	wpa_sm_set_ptk_kck_kek(wpa_s->wpa, data->assoc_info.ptk_kck,
