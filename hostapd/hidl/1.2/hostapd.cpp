@@ -555,7 +555,6 @@ std::string CreateHostapdConfig(
 	    "%s\n"
 	    "%s\n"
 	    "ignore_broadcast_ssid=%d\n"
-	    "wowlan_triggers=any\n"
 	    "dtim_period=1\n"
 	    "%s\n"
 	    "%s\n",
