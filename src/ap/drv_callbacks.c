@@ -778,7 +778,7 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	/* TODO: If OCV is enabled deauth STAs that don't perform a SA Query */
 
 #ifdef NEED_AP_MLME
-	int channel, chwidth, is_dfs;
+	int channel, chwidth, is_dfs0, is_dfs;
 	u8 seg0_idx = 0, seg1_idx = 0;
 	size_t i;
 
@@ -796,8 +796,10 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		return;
 	}
 
-	hapd->iface->freq = freq;
+	/* configured channel is dfs or not */
+	is_dfs0 = ieee80211_is_dfs(hapd->iface->freq, hapd->iface->hw_features, hapd->iface->num_hw_features);
 
+	hapd->iface->freq = freq;
 	channel = hostapd_hw_get_channel(hapd, freq);
 	if (!channel) {
 		hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
@@ -877,6 +879,13 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED
 			"freq=%d dfs=%d", freq, is_dfs);
 	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
+		/* Complete AP configuration for the first bring up. */
+		if (is_dfs0 && !is_dfs && hapd->iface->state != HAPD_IFACE_ENABLED) {
+			/* fake a CAC start bit to skip setting channel */
+			hapd->iface->cac_started = 1;
+			hostapd_setup_interface_complete(hapd->iface, 0);
+		}
+
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED
 			"freq=%d dfs=%d", freq, is_dfs);
 	}
