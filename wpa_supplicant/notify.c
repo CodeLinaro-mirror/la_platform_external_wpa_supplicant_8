@@ -693,11 +693,13 @@ void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
 	/* Notify a new peer has been detected*/
 	wpas_dbus_signal_peer_device_found(wpa_s, info->p2p_device_addr);
 
+#ifdef CONFIG_HIDL
 	wpas_hidl_notify_p2p_device_found(wpa_s, addr, info,
 					  peer_wfd_device_info,
 					  peer_wfd_device_info_len,
 					  peer_wfd_r2_device_info,
 					  peer_wfd_r2_device_info_len);
+#endif
 }
 
 
@@ -1098,8 +1100,9 @@ void wpas_notify_hs20_rx_terms_and_conditions_acceptance(
 #ifdef CONFIG_HS20
 	if (!wpa_s || !url)
 		return;
-
+#ifdef CONFIG_HIDL
 	wpas_hidl_notify_hs20_rx_terms_and_conditions_acceptance(wpa_s, url);
+#endif
 #endif /* CONFIG_HS20 */
 }
 
@@ -1348,7 +1351,9 @@ void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
 	if (!ssid)
 		return;
 
+#ifdef CONFIG_HIDL
 	wpas_hidl_notify_transition_disable(wpa_s, ssid, bitmap);
+#endif
 }
 
 void wpas_notify_network_not_found(struct wpa_supplicant *wpa_s)
@@ -1356,5 +1361,7 @@ void wpas_notify_network_not_found(struct wpa_supplicant *wpa_s)
 	if (!wpa_s)
 		return;
 
+#ifdef CONFIG_HIDL
 	wpas_hidl_notify_network_not_found(wpa_s);
+#endif
 }
