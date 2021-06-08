@@ -691,5 +691,6 @@ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
 void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 				struct fst_wpa_obj *iface_obj);
 #endif /* CONFIG_FST */
+int hostapd_set_acl(struct hostapd_data *hapd);
 
 #endif /* HOSTAPD_H */

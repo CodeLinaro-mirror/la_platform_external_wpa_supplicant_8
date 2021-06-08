@@ -6741,6 +6741,10 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		    wpa_s->extended_capa_len >= 3 &&
 		    wpa_s->extended_capa[2] & 0x40)
 			wpa_s->multi_bss_support = 1;
+
+#ifdef CONFIG_AP
+		wpa_s->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
+#endif
 	}
 	if (wpa_s->max_remain_on_chan == 0)
 		wpa_s->max_remain_on_chan = 1000;

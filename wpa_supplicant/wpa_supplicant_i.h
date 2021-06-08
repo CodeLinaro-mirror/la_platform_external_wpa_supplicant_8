@@ -1022,6 +1022,7 @@ struct wpa_supplicant {
 	void (*ap_configured_cb)(void *ctx, void *data);
 	void *ap_configured_cb_ctx;
 	void *ap_configured_cb_data;
+	unsigned int drv_max_acl_mac_addrs;
 #endif /* CONFIG_AP */
 
 	struct hostapd_iface *ifmsh;
