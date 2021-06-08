@@ -409,6 +409,8 @@ static void ieee802_11_rx_bss_trans_mgmt_query(struct hostapd_data *hapd,
 	u8 dialog_token, reason;
 	const u8 *pos, *end;
 	int enabled = hapd->conf->bss_transition;
+	char *hex;
+	size_t hex_len;
 
 #ifdef CONFIG_MBO
 	if (hapd->conf->mbo_enabled)
@@ -440,6 +442,21 @@ static void ieee802_11_rx_bss_trans_mgmt_query(struct hostapd_data *hapd,
 
 	wpa_hexdump(MSG_DEBUG, "WNM: BSS Transition Candidate List Entries",
 		    pos, end - pos);
+
+	hex_len = 2 * (end - pos) + 1;
+	if (hex_len > 1) {
+		hex = os_malloc(hex_len);
+		if (!hex)
+			return;
+		wpa_snprintf_hex(hex, hex_len, pos, end - pos);
+		wpa_msg(hapd->msg_ctx, MSG_INFO,
+			BSS_TM_QUERY MACSTR " reason=%u neighbor=%s",
+			MAC2STR(addr), reason, hex);
+		os_free(hex);
+	} else {
+		wpa_msg(hapd->msg_ctx, MSG_INFO, BSS_TM_QUERY MACSTR " reason=%u",
+			MAC2STR(addr), reason);
+	}
 
 	ieee802_11_send_bss_trans_mgmt_request(hapd, addr, dialog_token);
 }
