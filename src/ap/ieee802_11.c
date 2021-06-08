@@ -4123,8 +4123,8 @@ static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
 }
 
 
-static u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
-			   const u8 *ext_capab_ie, size_t ext_capab_ie_len)
+u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
+		    const u8 *ext_capab_ie, size_t ext_capab_ie_len)
 {
 #ifdef CONFIG_INTERWORKING
 	/* check for QoS Map support */
