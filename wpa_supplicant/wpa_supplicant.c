@@ -4249,7 +4249,6 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 	} else {
 		wpa_s->connect_without_scan = NULL;
 	}
-	wpa_supplicant_update_scan_results(wpa_s);
 
 	wpa_s->disconnected = 0;
 	wpa_s->reassociate = 1;
@@ -7960,6 +7959,22 @@ struct hostapd_hw_modes * get_mode(struct hostapd_hw_modes *modes,
 		if ((!is_6ghz && !is_6ghz_freq(modes[i].channels[0].freq)) ||
 		    (is_6ghz && is_6ghz_freq(modes[i].channels[0].freq)))
 			return &modes[i];
+	}
+
+	return NULL;
+}
+
+
+struct hostapd_hw_modes * get_mode_with_freq(struct hostapd_hw_modes *modes,
+					     u16 num_modes, int freq)
+{
+	int i, j;
+
+	for (i = 0; i < num_modes; i++) {
+		for (j = 0; j < modes[i].num_channels; j++) {
+			if (freq == modes[i].channels[j].freq)
+				return &modes[i];
+		}
 	}
 
 	return NULL;
