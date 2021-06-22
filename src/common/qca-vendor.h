@@ -19,6 +19,10 @@
 
 #define OUI_QCA 0x001374
 
+#ifndef BIT
+#define BIT(x) (1U << (x))
+#endif
+
 /**
  * enum qca_radiotap_vendor_ids - QCA radiotap vendor namespace IDs
  */
@@ -583,6 +587,9 @@ enum qca_radiotap_vendor_ids {
  *	binary blobs from application/service to firmware. The attributes
  *	defined in enum qca_wlan_vendor_attr_oem_data_params are used to deliver
  *	the parameters.
+ * @QCA_NL80211_VENDOR_SUBCMD_CONFIG_TWT: Vendor subcommand to configure TWT.
+ *	Uses attributes defined in enum qca_wlan_vendor_attr_config_twt.
+ *
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -754,6 +761,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_BEACON_REPORTING = 180,
 	QCA_NL80211_VENDOR_SUBCMD_INTEROP_ISSUES_AP = 181,
 	QCA_NL80211_VENDOR_SUBCMD_OEM_DATA = 182,
+	QCA_NL80211_VENDOR_SUBCMD_CONFIG_TWT = 191,
 };
 
 enum qca_wlan_vendor_attr {
@@ -1146,6 +1154,32 @@ enum qca_wlan_vendor_acs_hw_mode {
  * @QCA_WLAN_VENDOR_FEATURE_SELF_MANAGED_REGULATORY: Device supports self
  *	managed regulatory.
  * @QCA_WLAN_VENDOR_FEATURE_TWT: Device supports TWT (Target Wake Time).
+ * @QCA_WLAN_VENDOR_FEATURE_11AX: Device supports 802.11ax (HE)
+ * @QCA_WLAN_VENDOR_FEATURE_6GHZ_SUPPORT: Device supports 6 GHz band operation
+ * @QCA_WLAN_VENDOR_FEATURE_THERMAL_CONFIG: Device is capable of receiving
+ *	and applying thermal configuration through
+ *	%QCA_WLAN_VENDOR_ATTR_THERMAL_LEVEL and
+ *	%QCA_WLAN_VENDOR_ATTR_THERMAL_COMPLETION_WINDOW attributes from
+ *	userspace.
+ * @QCA_WLAN_VENDOR_FEATURE_ADAPTIVE_11R: Device supports Adaptive 11r.
+ *	With Adaptive 11r feature, access points advertise the vendor
+ *	specific IEs and MDE but do not include FT AKM in the RSNE.
+ *	The Adaptive 11r supported stations are expected to identify
+ *	such vendor specific IEs and connect to the AP in FT mode though
+ *	the profile is configured in non-FT mode.
+ *	The driver-based SME cases also need to have this support for
+ *	Adaptive 11r to handle the connection and roaming scenarios.
+ *	This flag indicates the support for the same to the user space.
+ * @QCA_WLAN_VENDOR_FEATURE_CONCURRENT_BAND_SESSIONS: Device supports
+ *	concurrent network sessions on different Wi-Fi bands. This feature
+ *	capability is attributed to the hardware's capability to support
+ *	the same (e.g., DBS).
+ * @QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT: Flag indicating whether the
+ *	responses for the respective TWT operations are asynchronous (separate
+ *	event message) from the driver. If not specified, the responses are
+ *	synchronous (in vendor command reply) to the request. Each TWT
+ *	operation is specifically mentioned (against its respective
+ *	documentation) to support either of these or both modes.
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits
  */
 enum qca_wlan_vendor_features {
@@ -1158,6 +1192,12 @@ enum qca_wlan_vendor_features {
 	QCA_WLAN_VENDOR_FEATURE_OCE_STA_CFON            = 6,
 	QCA_WLAN_VENDOR_FEATURE_SELF_MANAGED_REGULATORY = 7,
 	QCA_WLAN_VENDOR_FEATURE_TWT 			= 8,
+	QCA_WLAN_VENDOR_FEATURE_11AX			= 9,
+	QCA_WLAN_VENDOR_FEATURE_6GHZ_SUPPORT		= 10,
+	QCA_WLAN_VENDOR_FEATURE_THERMAL_CONFIG		= 11,
+	QCA_WLAN_VENDOR_FEATURE_ADAPTIVE_11R		= 12,
+	QCA_WLAN_VENDOR_FEATURE_CONCURRENT_BAND_SESSIONS = 13,
+	QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT	= 14,
 	NUM_QCA_WLAN_VENDOR_FEATURES /* keep last */
 };
 
@@ -6407,6 +6447,111 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 };
 
 /**
+ * enum qca_wlan_twt_operation - Operation of the config TWT request
+ * Values for %QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_OPERATION.
+ * The response for the respective operations can be either synchronous or
+ * asynchronous (wherever specified). If synchronous, the response to this
+ * operation is obtained in the corresponding vendor command reply to the user
+ * space. For the asynchronous case the response is obtained as an event with
+ * the same operation type.
+ *
+ * Drivers shall support either of these modes but not both simultaneously.
+ * This support for asynchronous mode is advertised through the flag
+ * QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT. If this flag is not advertised,
+ * the driver shall support synchronous mode.
+ *
+ * @QCA_WLAN_TWT_SET: Setup a TWT session. Required parameters are configured
+ * through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS. Refers the enum
+ * qca_wlan_vendor_attr_twt_setup. Depending upon the
+ * @QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT capability, this is either a
+ * synchronous or asynchronous operation.
+ *
+ * @QCA_WLAN_TWT_GET: Get the configured TWT parameters. Required parameters are
+ * obtained through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS. Refers the enum
+ * qca_wlan_vendor_attr_twt_setup. This is a synchronous operation.
+ *
+ * @QCA_WLAN_TWT_TERMINATE: Terminate the TWT session. Required parameters are
+ * obtained through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS. Refers the enum
+ * qca_wlan_vendor_attr_twt_setup. Valid only after the TWT session is setup.
+ * This terminate can either get triggered by the user space or can as well be
+ * a notification from the firmware if it initiates a terminate.
+ * Depending upon the @QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT capability,
+ * the request from user space can either be a synchronous or asynchronous
+ * operation.
+ *
+ * @QCA_WLAN_TWT_SUSPEND: Suspend the TWT session. Required parameters are
+ * obtained through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS. Refers the enum
+ * qca_wlan_vendor_attr_twt_setup. Valid only after the TWT session is setup.
+ * Depending upon the @QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT capability,
+ * this is either a synchronous or asynchronous operation.
+ *
+ * @QCA_WLAN_TWT_RESUME: Resume the TWT session. Required parameters are
+ * configured through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS. Refers the enum
+ * qca_wlan_vendor_attr_twt_resume. Valid only after the TWT session is setup.
+ * This can as well be a notification from the firmware on a QCA_WLAN_TWT_NUDGE
+ * request. Depending upon the @QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT
+ * capability, this is either a synchronous or asynchronous operation.
+ *
+ * @QCA_WLAN_TWT_NUDGE: Suspend and resume the TWT session. TWT nudge is a
+ * combination of suspend and resume in a single request. Required parameters
+ * are configured through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS. Refers the
+ * enum qca_wlan_vendor_attr_twt_nudge. Valid only after the TWT session is
+ * setup. Depending upon the @QCA_WLAN_VENDOR_FEATURE_TWT_ASYNC_SUPPORT
+ * capability, this is either a synchronous or asynchronous operation.
+ *
+ * @QCA_WLAN_TWT_GET_STATS: Get the TWT session traffic statistics information.
+ * Refers the enum qca_wlan_vendor_attr_twt_stats. Valid only after the TWT
+ * session is setup. It's a synchronous operation.
+ *
+ * @QCA_WLAN_TWT_CLEAR_STATS: Clear TWT session traffic statistics information.
+ * Valid only after the TWT session is setup. It's a synchronous operation.
+ *
+ * @QCA_WLAN_TWT_GET_CAPABILITIES: Get TWT capabilities of this device and its
+ * peer. Refers the enum qca_wlan_vendor_attr_twt_capability. It's a synchronous
+ * operation.
+ *
+ * @QCA_WLAN_TWT_SETUP_READY_NOTIFY: Notify userspace that the firmare is
+ * ready for a new TWT session setup after it issued a TWT teardown.
+ */
+enum qca_wlan_twt_operation {
+	QCA_WLAN_TWT_SET = 0,
+	QCA_WLAN_TWT_GET = 1,
+	QCA_WLAN_TWT_TERMINATE = 2,
+	QCA_WLAN_TWT_SUSPEND = 3,
+	QCA_WLAN_TWT_RESUME = 4,
+	QCA_WLAN_TWT_NUDGE = 5,
+	QCA_WLAN_TWT_GET_STATS = 6,
+	QCA_WLAN_TWT_CLEAR_STATS = 7,
+	QCA_WLAN_TWT_GET_CAPABILITIES = 8,
+	QCA_WLAN_TWT_SETUP_READY_NOTIFY = 9,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_config_twt: Defines attributes used by
+ * %QCA_NL80211_VENDOR_SUBCMD_CONFIG_TWT.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_OPERATION: u8 attribute. Specify the TWT
+ * operation of this request. Possible values are defined in enum
+ * qca_wlan_twt_operation. The parameters for the respective operation is
+ * specified through QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS: Nested attribute representing the
+ * parameters configured for TWT. These parameters are represented by
+ * enum qca_wlan_vendor_attr_twt_setup, enum qca_wlan_vendor_attr_twt_resume,
+ * or enum qca_wlan_vendor_attr_twt_stats based on the operation.
+ */
+enum qca_wlan_vendor_attr_config_twt {
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_OPERATION = 1,
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_PARAMS = 2,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_MAX =
+	QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_AFTER_LAST - 1,
+};
+
+/**
  * enum qca_wlan_vendor_attr_bss_filter - Used by the vendor command
  * QCA_NL80211_VENDOR_SUBCMD_BSS_FILTER.
  * The user can add/delete the filter by specifying the BSSID/STA MAC address in
@@ -6612,6 +6757,70 @@ enum qca_wlan_vendor_attr_nan_params {
  * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_INTVL_MANTISSA: Required (u32)
  * This attribute is used to configure wake interval mantissa.
  * The units are in TU.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_STATUS: Required (u8)
+ * This field is applicable for TWT response only.
+ * This contains status values in enum qca_wlan_vendor_twt_status
+ * and is passed to the userspace. This is used in TWT SET operation.
+ * This is a required parameter for
+ * 1. TWT SET Response
+ * 2. TWT TERMINATE Response
+ * 3. TWT SUSPEND Response
+ * 4. TWT RESUME Response
+ * 5. TWT NUDGE Response
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RESP_TYPE: Required (u8)
+ * This field is applicable for TWT response only.
+ * This field contains response type from the TWT responder and is
+ * passed to the userspace. The values for this field are defined in
+ * enum qca_wlan_vendor_twt_setup_resp_type. This is used in TWT SET
+ * response.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_TIME_TSF: Required (u64)
+ * This field is applicable for TWT response only.
+ * This field contains absolute TSF value of the wake time received
+ * from the TWT responder and is passed to the userspace.
+ * This is a required parameter for
+ * 1. TWT SET Response
+ * 2. TWT GET Response
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_TWT_INFO_ENABLED: Flag attribute.
+ * Enable (flag attribute present) - Indicates that the TWT responder
+ * supports reception of TWT information frame from the TWT requestor.
+ * Disable (flag attribute not present) - Indicates that the responder
+ * doesn't support reception of TWT information frame from requestor.
+ * This is used in
+ * 1. TWT SET Response
+ * 2. TWT GET Response
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAC_ADDR: 6-byte MAC address
+ * Represents the MAC address of the peer for which the TWT session
+ * is being configured. This is used in AP mode to represent the respective
+ * client. In AP mode, this is an optional parameter for response and is
+ * a required parameter for
+ * 1. TWT SET Request
+ * 2. TWT GET Request
+ * 3. TWT TERMINATE Request
+ * 4. TWT SUSPEND Request
+ * In STA mode, this is an optional parameter in request and response for
+ * the above four TWT operations.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MIN_WAKE_INTVL: Optional (u32)
+ * Minimum tolerance limit of wake interval parameter in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAX_WAKE_INTVL: Optional (u32)
+ * Maximum tolerance limit of wake interval parameter in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MIN_WAKE_DURATION: Optional (u32)
+ * Minimum tolerance limit of wake duration parameter in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAX_WAKE_DURATION: Optional (u32)
+ * Maximum tolerance limit of wake duration parameter in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_STATE: Optional (u32)
+ * TWT state for the given dialog id. The values for this are represented
+ * by enum qca_wlan_twt_setup_state.
+ * This is obtained through TWT GET operation.
  */
 enum qca_wlan_vendor_attr_twt_setup {
 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_INVALID = 0,
@@ -6626,10 +6835,77 @@ enum qca_wlan_vendor_attr_twt_setup {
 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_DURATION = 9,
 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_INTVL_MANTISSA = 10,
 
+	/* TWT Response only attributes */
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_STATUS = 11,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RESP_TYPE = 12,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_WAKE_TIME_TSF = 13,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_TWT_INFO_ENABLED = 14,
+
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAC_ADDR = 15,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MIN_WAKE_INTVL = 16,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAX_WAKE_INTVL = 17,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MIN_WAKE_DURATION = 18,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAX_WAKE_DURATION = 19,
+	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_STATE = 20,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_MAX =
 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_twt_status - Represents the status of the requested
+ * TWT operation
+ *
+ * @QCA_WLAN_VENDOR_TWT_STATUS_OK: TWT request successfully completed
+ * @QCA_WLAN_VENDOR_TWT_STATUS_TWT_NOT_ENABLED: TWT not enabled
+ * @QCA_WLAN_VENDOR_TWT_STATUS_USED_DIALOG_ID: TWT dialog ID is already used
+ * @QCA_WLAN_VENDOR_TWT_STATUS_SESSION_BUSY: TWT session is busy
+ * @QCA_WLAN_VENDOR_TWT_STATUS_SESSION_NOT_EXIST: TWT session does not exist
+ * @QCA_WLAN_VENDOR_TWT_STATUS_NOT_SUSPENDED: TWT session not in suspend state
+ * @QCA_WLAN_VENDOR_TWT_STATUS_INVALID_PARAM: Invalid parameters
+ * @QCA_WLAN_VENDOR_TWT_STATUS_NOT_READY: FW not ready
+ * @QCA_WLAN_VENDOR_TWT_STATUS_NO_RESOURCE: FW resource exhausted
+ * @QCA_WLAN_VENDOR_TWT_STATUS_NO_ACK: Peer AP/STA did not ACK the
+ * request/response frame
+ * @QCA_WLAN_VENDOR_TWT_STATUS_NO_RESPONSE: Peer AP did not send the response
+ * frame
+ * @QCA_WLAN_VENDOR_TWT_STATUS_DENIED: AP did not accept the request
+ * @QCA_WLAN_VENDOR_TWT_STATUS_UNKNOWN_ERROR: Adding TWT dialog failed due to an
+ * unknown reason
+ * @QCA_WLAN_VENDOR_TWT_STATUS_ALREADY_SUSPENDED: TWT session already in
+ * suspend state
+ * @QCA_WLAN_VENDOR_TWT_STATUS_IE_INVALID: FW has dropped the frame due to
+ * invalid IE in the received TWT frame
+ * @QCA_WLAN_VENDOR_TWT_STATUS_PARAMS_NOT_IN_RANGE: Parameters received from
+ * the responder are not in the specified range
+ * @QCA_WLAN_VENDOR_TWT_STATUS_PEER_INITIATED_TERMINATE: FW terminated the TWT
+ * session due to request from the responder. Used on the TWT_TERMINATE
+ * notification from the firmware.
+ * @QCA_WLAN_VENDOR_TWT_STATUS_ROAM_INITIATED_TERMINATE: FW terminated the TWT
+ * session due to roaming. Used on the TWT_TERMINATE notification from the
+ * firmware.
+ */
+enum qca_wlan_vendor_twt_status {
+	QCA_WLAN_VENDOR_TWT_STATUS_OK = 0,
+	QCA_WLAN_VENDOR_TWT_STATUS_TWT_NOT_ENABLED = 1,
+	QCA_WLAN_VENDOR_TWT_STATUS_USED_DIALOG_ID = 2,
+	QCA_WLAN_VENDOR_TWT_STATUS_SESSION_BUSY = 3,
+	QCA_WLAN_VENDOR_TWT_STATUS_SESSION_NOT_EXIST = 4,
+	QCA_WLAN_VENDOR_TWT_STATUS_NOT_SUSPENDED = 5,
+	QCA_WLAN_VENDOR_TWT_STATUS_INVALID_PARAM = 6,
+	QCA_WLAN_VENDOR_TWT_STATUS_NOT_READY = 7,
+	QCA_WLAN_VENDOR_TWT_STATUS_NO_RESOURCE = 8,
+	QCA_WLAN_VENDOR_TWT_STATUS_NO_ACK = 9,
+	QCA_WLAN_VENDOR_TWT_STATUS_NO_RESPONSE = 10,
+	QCA_WLAN_VENDOR_TWT_STATUS_DENIED = 11,
+	QCA_WLAN_VENDOR_TWT_STATUS_UNKNOWN_ERROR = 12,
+	QCA_WLAN_VENDOR_TWT_STATUS_ALREADY_SUSPENDED = 13,
+	QCA_WLAN_VENDOR_TWT_STATUS_IE_INVALID = 14,
+	QCA_WLAN_VENDOR_TWT_STATUS_PARAMS_NOT_IN_RANGE = 15,
+	QCA_WLAN_VENDOR_TWT_STATUS_PEER_INITIATED_TERMINATE = 16,
+	QCA_WLAN_VENDOR_TWT_STATUS_ROAM_INITIATED_TERMINATE = 17,
 };
 
 /**
@@ -6646,16 +6922,258 @@ enum qca_wlan_vendor_attr_twt_setup {
  *
  * @QCA_WLAN_VENDOR_ATTR_TWT_RESUME_NEXT_TWT_SIZE: Required (u32)
  * This attribute represents the next TWT subfield size.
+ * @QCA_WLAN_VENDOR_ATTR_TWT_RESUME_FLOW_ID: Required (u8).
+ * Flow ID is the unique identifier for each TWT session. This attribute
+ * represents the respective TWT session to resume.
+ * Flow ID values from 0 to 254 represent a single TWT session
+ * Flow ID value of 255 represents all TWT sessions.
+ * If an invalid dialog id is provided, status
+ * QCA_WLAN_VENDOR_TWT_STATUS_SESSION_NOT_EXIST will be returned.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_RESUME_MAC_ADDR: 6-byte MAC address
+ * Represents the MAC address of the peer to which TWT Resume is
+ * being sent. This is used in AP mode to represent the respective
+ * client and is a required parameter. In STA mode, this is an optional
+ * parameter
  */
 enum qca_wlan_vendor_attr_twt_resume {
 	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_INVALID = 0,
 	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_NEXT_TWT = 1,
 	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_NEXT_TWT_SIZE = 2,
+	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_FLOW_ID = 3,
+	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_NEXT2_TWT = 4,
+	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_MAC_ADDR = 5,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_MAX =
 	QCA_WLAN_VENDOR_ATTR_TWT_RESUME_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_twt_nudge - Represents attributes for
+ * TWT (Target Wake Time) nudge request. TWT nudge is a combination of suspend
+ * and resume in a single request. These attributes are sent as part of
+ * %QCA_NL80211_VENDOR_SUBCMD_CONFIG_TWT.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_FLOW_ID: Required (u8)
+ * Flow ID is the unique identifier for each TWT session. This attribute
+ * represents the respective TWT session to suspend and resume.
+ * Flow ID values from 0 to 254 represent a single TWT session
+ * Flow ID value of 255 represents all TWT sessions in TWT NUDGE request
+ * and response.
+ * If an invalid dialog id is provided, status
+ * QCA_WLAN_VENDOR_TWT_STATUS_SESSION_NOT_EXIST will be returned.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_WAKE_TIME: Required (u32)
+ * This attribute is used as the SP offset which is the offset from
+ * TSF after which the wake happens. The units are in microseconds.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_NEXT_TWT_SIZE: Required (u32)
+ * This attribute represents the next TWT subfield size.
+ * Value 0 represents 0 bits, 1 represents 32 bits, 2 for 48 bits,
+ * and 4 for 64 bits.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_MAC_ADDR: 6-byte MAC address
+ * Represents the MAC address of the peer to which TWT Suspend and Resume is
+ * being sent. This is used in AP mode to represent the respective
+ * client and is a required parameter. In STA mode, this is an optional
+ * parameter.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_WAKE_TIME_TSF: Optional (u64)
+ * This field contains absolute TSF value of the time at which the TWT
+ * session will be resumed.
+ */
+enum qca_wlan_vendor_attr_twt_nudge {
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_FLOW_ID = 1,
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_WAKE_TIME = 2,
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_NEXT_TWT_SIZE = 3,
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_MAC_ADDR = 4,
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_WAKE_TIME_TSF = 5,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_MAX =
+	QCA_WLAN_VENDOR_ATTR_TWT_NUDGE_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_twt_stats: Represents attributes for
+ * TWT (Target Wake Time) get statistics and clear statistics request.
+ * These attributes are sent as part of
+ * %QCA_NL80211_VENDOR_SUBCMD_CONFIG_TWT.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_FLOW_ID: Required (u8)
+ * Flow ID is the unique identifier for each TWT session. This attribute
+ * represents the respective TWT session for get and clear TWT statistics.
+ * Flow ID values from 0 to 254 represent a single TWT session
+ * Flow ID value of 255 represents all TWT sessions in
+ * 1) TWT GET STATISTICS request and response
+ * 2) TWT CLEAR STATISTICS request
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_MAC_ADDR: 6-byte MAC address
+ * Represents the MAC address of the peer for which TWT Statistics
+ * is required.
+ * In AP mode this is used to represent the respective
+ * client and is a required parameter for
+ * 1) TWT GET STATISTICS request and response
+ * 2) TWT CLEAR STATISTICS request and response
+ * In STA mode, this is an optional parameter.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_SESSION_WAKE_DURATION: Required (u32)
+ * This is the duration of the service period in microseconds.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVG_WAKE_DURATION: Required (u32)
+ * Average of the actual wake duration observed so far. Unit is microseconds.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS: Required (u32)
+ * The number of TWT service periods elapsed so far.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_MIN_WAKE_DURATION: Required (u32)
+ * This is the minimum value of the wake duration observed across
+ * QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS. Unit is
+ * microseconds.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_MAX_WAKE_DURATION: Required (u32)
+ * This is the maximum value of wake duration observed across
+ * QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS. Unit is
+ * microseconds.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_TX_MPDU: Required (u32)
+ * Average number of MPDUs transmitted successfully across
+ * QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_RX_MPDU: Required (u32)
+ * Average number of MPDUs received successfully across
+ * QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_TX_PACKET_SIZE: Required (u32)
+ * Average number of bytes transmitted successfully across
+ * QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_RX_PACKET_SIZE: Required (u32)
+ * Average number of bytes received successfully across
+ * QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS.
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_STATS_STATUS: Required (u32)
+ * Status of the TWT GET STATISTICS request.
+ * This contains status values in enum qca_wlan_vendor_twt_status
+ * Obtained in the QCA_WLAN_TWT_GET_STATS response from the firmware.
+ */
+enum qca_wlan_vendor_attr_twt_stats {
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_FLOW_ID = 1,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_MAC_ADDR = 2,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_SESSION_WAKE_DURATION = 3,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVG_WAKE_DURATION = 4,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_NUM_SP_ITERATIONS = 5,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_MIN_WAKE_DURATION = 6,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_MAX_WAKE_DURATION = 7,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_TX_MPDU = 8,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_RX_MPDU = 9,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_TX_PACKET_SIZE = 10,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AVERAGE_RX_PACKET_SIZE = 11,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_STATUS = 12,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_MAX =
+	QCA_WLAN_VENDOR_ATTR_TWT_STATS_AFTER_LAST - 1,
+};
+
+/**
+ * qca_wlan_twt_get_capa  - Represents the bitmap of TWT capabilities
+ * supported by the device and the peer.
+ * Values for %QCA_WLAN_VENDOR_ATTR_CONFIG_TWT_GET_CAPABILITIES
+ *
+ * @QCA_WLAN_TWT_CAPA_REQUESTOR: TWT requestor support is advertised by
+ * TWT non-scheduling STA. This capability is advertised in the HE
+ * Capability/Extended Capabilities information element in the
+ * Association Request frame by the device.
+ *
+ * @QCA_WLAN_TWT_CAPA_RESPONDER: TWT responder support is advertised by
+ * the TWT scheduling AP. This capability is advertised in the Extended
+ * Capabilities/HE Capabilities information element.
+ *
+ * @QCA_WLAN_TWT_CAPA_BROADCAST: On the requestor side, this indicates support
+ * for the broadcast TWT functionality. On the responder side, this indicates
+ * support for the role of broadcast TWT scheduling functionality. This
+ * capability is advertised in the HE Capabilities information element.
+ *
+ * @QCA_WLAN_TWT_CAPA_TWT_FLEXIBLE: The device supports flexible TWT schedule.
+ * This capability is advertised in the HE Capabilities information element.
+ *
+ * @QCA_WLAN_TWT_CAPA_REQUIRED: The TWT Required is advertised by AP to indicate
+ * that it mandates the associated HE STAs to support TWT. This capability is
+ * advertised by AP in the HE Operation Parameters field of the HE Operation
+ * information element.
+ */
+enum qca_wlan_twt_capa {
+	QCA_WLAN_TWT_CAPA_REQUESTOR = BIT(0),
+	QCA_WLAN_TWT_CAPA_RESPONDER = BIT(1),
+	QCA_WLAN_TWT_CAPA_BROADCAST = BIT(2),
+	QCA_WLAN_TWT_CAPA_FLEXIBLE =  BIT(3),
+	QCA_WLAN_TWT_CAPA_REQUIRED =  BIT(4),
+};
+
+/**
+ * enum qca_wlan_vendor_attr_twt_capability  - Represents attributes for TWT
+ * get capabilities request type. Used by QCA_WLAN_TWT_GET_CAPABILITIES TWT
+ * operation.
+ * @QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_MAC_ADDR: 6-byte MAC address
+ * Represents the MAC address of the peer for which the TWT capabilities
+ * are being queried. This is used in AP mode to represent the respective
+ * client. In STA mode, this is an optional parameter.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_SELF: (u16).
+ * Self TWT capabilities. Carries a bitmap of TWT capabilities specified in
+ * enum qca_wlan_twt_capa.
+ * @QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_PEER: (u16).
+ * Peer TWT capabilities. Carries a bitmap of TWT capabilities specified in
+ * enum qca_wlan_twt_capa.
+ */
+enum qca_wlan_vendor_attr_twt_capability {
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_MAC_ADDR = 1,
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_SELF = 2,
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_PEER = 3,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_MAX =
+	QCA_WLAN_VENDOR_ATTR_TWT_CAPABILITIES_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_twt_setup_resp_type - Represents the response type by
+ * the TWT responder
+ *
+ * @QCA_WLAN_VENDOR_TWT_RESP_ALTERNATE: TWT responder suggests TWT
+ * parameters that are different from TWT requesting STA suggested
+ * or demanded TWT parameters
+ * @QCA_WLAN_VENDOR_TWT_RESP_DICTATE: TWT responder demands TWT
+ * parameters that are different from TWT requesting STA TWT suggested
+ * or demanded parameters
+ * @QCA_WLAN_VENDOR_TWT_RESP_REJECT: TWT responder rejects TWT
+ * setup
+ * @QCA_WLAN_VENDOR_TWT_RESP_ACCEPT: TWT responder accepts the TWT
+ * setup.
+ */
+enum qca_wlan_vendor_twt_setup_resp_type {
+	QCA_WLAN_VENDOR_TWT_RESP_ALTERNATE = 1,
+	QCA_WLAN_VENDOR_TWT_RESP_DICTATE = 2,
+	QCA_WLAN_VENDOR_TWT_RESP_REJECT = 3,
+	QCA_WLAN_VENDOR_TWT_RESP_ACCEPT = 4,
 };
 
 /**
