@@ -207,8 +207,8 @@ static int validate_qmi_cb_data(struct qmi_cb_data *cb_data) {
 
 static struct qmi_cb_data* eap_proxy_prepare_qmi_cb_data(
                  qmi_client_type user_handle, unsigned int msg_id,
-                 void *ind_buf_ptr, unsigned int ind_buf_len,
-                 void *ind_cb_data) {
+                 void *ind_buf_ptr, unsigned int ind_buf_len, void *ind_cb_data,
+                 eloop_timeout_handler handler) {
 
         struct qmi_cb_data *cb_data;
 
@@ -232,6 +232,7 @@ static struct qmi_cb_data* eap_proxy_prepare_qmi_cb_data(
         cb_data->msg_id = msg_id;
         cb_data->buflen = ind_buf_len;
         cb_data->userdata = ind_cb_data;
+        cb_data->handler = handler;
 
         return cb_data;
 }
@@ -335,14 +336,15 @@ static void wpa_qmi_client_indication_cb
         pthread_mutex_lock(&eloop_lock);       // Lock
         wpa_printf(MSG_ERROR, "eap_proxy: %s eap_proxy=%p", __func__, eap_proxy);
         cb_data = eap_proxy_prepare_qmi_cb_data(user_handle, msg_id, ind_buf_ptr,
-                                                ind_buf_len, ind_cb_data);
+                                                ind_buf_len, ind_cb_data,
+                                                __wpa_qmi_client_indication_cb);
         if (cb_data == NULL) {
                 pthread_mutex_unlock(&eloop_lock);      // Unlock
                 return;
         }
 
         dl_list_add(&eap_proxy->callback, &cb_data->list);
-        eloop_register_timeout(0, 0, __wpa_qmi_client_indication_cb, cb_data, NULL);
+        eloop_register_timeout(0, 0, cb_data->handler, cb_data, NULL);
         pthread_mutex_unlock(&eloop_lock);      // Unlock
 
 }
@@ -843,7 +845,8 @@ void eap_proxy_notifier_cb
             wpa_printf(MSG_DEBUG, "eap_proxy: %s Handle QMI_CLIENT_SERVICE_COUNT_INC event",
                        __func__);
             pthread_mutex_lock(&eloop_lock);       // Lock
-            cb_data = eap_proxy_prepare_qmi_cb_data(user_handle, 0, notify_cb_data, 0, NULL);
+            cb_data = eap_proxy_prepare_qmi_cb_data(user_handle, 0, notify_cb_data, 0, NULL,
+                                                    __eap_proxy_notifier_cb);
 
             if (cb_data == NULL) {
                     wpa_printf(MSG_ERROR, "eap_proxy: failed to allocate memory");
@@ -852,7 +855,7 @@ void eap_proxy_notifier_cb
             }
 
             dl_list_add(&eap_proxy->callback, &cb_data->list);
-            eloop_register_timeout(0, 0, __eap_proxy_notifier_cb, cb_data, NULL);
+            eloop_register_timeout(0, 0, cb_data->handler, cb_data, NULL);
             pthread_mutex_unlock(&eloop_lock);      // Unlock
             break;
 
@@ -954,10 +957,19 @@ static void eap_proxy_post_init(struct eap_proxy_sm *eap_proxy)
         int index;
         Boolean flag = FALSE;
         int ret = 0;
-        wpa_uim_struct_type *wpa_uim = eap_proxy->wpa_uim;
+        wpa_uim_struct_type *wpa_uim;
 #ifdef CONFIG_EAP_PROXY_MDM_DETECT
         struct dev_info mdm_detect_info;
+#endif
 
+        if (!valid_eap_proxy(eap_proxy)) {
+            wpa_printf(MSG_ERROR, "eap_proxy: invalid eap proxy for post init");
+            return;
+        }
+
+        wpa_uim = eap_proxy->wpa_uim;
+
+#ifdef CONFIG_EAP_PROXY_MDM_DETECT
         /* Call ESOC API to get the number of modems.
          * If the number of modems is not zero, only then proceed
          * with the eap_proxy intialization.
@@ -1141,6 +1153,26 @@ int eap_auth_end_eap_session(qmi_client_type qmi_auth_svc_client_ptr)
         return 0;
 }
 
+static void eap_proxy_schedule_thread(void *eloop_ctx, void *timeout_ctx)
+{
+        struct eap_proxy_sm *eap_proxy = eloop_ctx;
+        int ret = -1;
+
+        if (!valid_eap_proxy(eap_proxy)) {
+            wpa_printf(MSG_ERROR, "eap_proxy: invalid eap proxy for schedule thread");
+            return;
+        }
+
+        // Make note of new thread creation, so that we can take care of joining.
+        eap_proxy->qmi_thread_joined = FALSE;
+
+        ret = pthread_create(&eap_proxy->thread_id, NULL, eap_proxy_post_init, eap_proxy);
+        if(ret < 0) {
+            wpa_printf(MSG_ERROR, "eap_proxy: starting thread is failed %d\n", ret);
+            eap_proxy->initialized = FALSE;
+        }
+}
+
 struct eap_proxy_sm *
 eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
                void *msg_ctx)
@@ -1167,22 +1199,10 @@ eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
         /* delay the qmi client initialization after the eloop_run starts,
         * in order to avoid the case of daemonize enabled, which exits the
         * parent process that created the qmi client context.
-        * NOTE: Spawn a new thread to allow eap_proxy initialization.
         */
 
-        // Make note of new thread creation, so that we can take care of joining.
-        eap_proxy->qmi_thread_joined = FALSE;
-
-        ret = pthread_create(&eap_proxy->thread_id, NULL, eap_proxy_post_init, eap_proxy);
-        if(ret < 0) {
-               wpa_printf(MSG_ERROR, "eap_proxy: starting thread is failed %d\n", ret);
-               goto fail;
-        }
-
+        eloop_register_timeout(0, 0, eap_proxy_schedule_thread, eap_proxy, NULL);
         return eap_proxy;
-fail:
-        eap_proxy->initialized = FALSE;
-        return NULL;
 }
 
 
@@ -1274,6 +1294,7 @@ static void eap_proxy_clear_callbacks(struct eap_proxy_sm *eap_proxy)
         struct qmi_cb_data *tmp, *prev;
         dl_list_for_each_safe(tmp, prev, &eap_proxy->callback,
                               struct qmi_cb_data, list) {
+                eloop_cancel_timeout(tmp->handler, tmp, NULL);
                 eap_proxy_clear_qmi_cb_data(tmp);
         }
 }
@@ -1387,7 +1408,8 @@ static void handle_qmi_eap_ind(qmi_client_type user_handle,
         wpa_printf(MSG_ERROR, "eap_proxy: %s eap_proxy=%p", __func__, eap_proxy);
 
         cb_data = eap_proxy_prepare_qmi_cb_data(user_handle, msg_id, ind_buf,
-                                                ind_buf_len, ind_cb_data);
+                                                ind_buf_len, ind_cb_data,
+                                                __handle_qmi_eap_ind);
         if (cb_data == NULL) {
                 pthread_mutex_unlock(&eloop_lock);      // Unlock
                 return;
@@ -1399,7 +1421,7 @@ static void handle_qmi_eap_ind(qmi_client_type user_handle,
         if (eap_proxy != NULL && eap_proxy->qmi_state == QMI_STATE_RESP_PENDING)
              __handle_qmi_eap_ind(cb_data, NULL);
         else
-            eloop_register_timeout(0, 0, __handle_qmi_eap_ind, cb_data, NULL);
+            eloop_register_timeout(0, 0, cb_data->handler, cb_data, NULL);
 
         pthread_mutex_unlock(&eloop_lock);      // Unlock
 }
