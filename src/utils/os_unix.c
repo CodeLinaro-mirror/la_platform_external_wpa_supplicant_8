@@ -41,7 +41,7 @@ static struct dl_list alloc_list = DL_LIST_HEAD_INIT(alloc_list);
 
 struct os_alloc_trace {
 	unsigned int magic;
-	struct dl_list list;
+	struct dl_list list __attribute__((aligned(16)));
 	size_t len;
 	WPA_TRACE_INFO
 } __attribute__((aligned(16)));
@@ -339,6 +339,8 @@ char * os_rel2abs_path(const char *rel_path)
 
 int os_program_init(void)
 {
+	unsigned int seed;
+
 #ifdef ANDROID
 	struct __user_cap_header_struct header;
 	struct __user_cap_data_struct cap;
@@ -390,6 +392,9 @@ int os_program_init(void)
 	cap.inheritable = 0;
 	capset(&header, &cap);
 #endif /* ANDROID */
+
+	if (os_get_random((unsigned char *) &seed, sizeof(seed)) == 0)
+		srandom(seed);
 
 	return 0;
 }

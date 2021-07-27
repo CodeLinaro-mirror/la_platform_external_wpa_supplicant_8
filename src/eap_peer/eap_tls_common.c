@@ -269,16 +269,16 @@ static int eap_tls_init_connection(struct eap_sm *sm,
 		os_free(config->cert.pin);
 		config->cert.pin = NULL;
 		eap_sm_request_pin(sm);
-		sm->ignore = TRUE;
+		sm->ignore = true;
 	} else if (res == TLS_SET_PARAMS_ENGINE_PRV_INIT_FAILED) {
 		wpa_printf(MSG_INFO, "TLS: Failed to initialize engine");
 	} else if (res == TLS_SET_PARAMS_ENGINE_PRV_VERIFY_FAILED) {
 		wpa_printf(MSG_INFO, "TLS: Failed to load private key");
-		sm->ignore = TRUE;
+		sm->ignore = true;
 	}
 	if (res) {
 		wpa_printf(MSG_INFO, "TLS: Failed to set TLS connection "
-			   "parameters");
+			   "parameters, error code: %d", res);
 		tls_connection_deinit(data->ssl_ctx, data->conn);
 		data->conn = NULL;
 		return -1;
@@ -413,9 +413,9 @@ u8 * eap_peer_tls_derive_session_id(struct eap_sm *sm,
 	struct tls_random keys;
 	u8 *out;
 
-	if (eap_type == EAP_TYPE_TLS && data->tls_v13) {
+	if (data->tls_v13) {
 		u8 *id, *method_id;
-		const u8 context[] = { EAP_TYPE_TLS };
+		const u8 context[] = { eap_type };
 
 		/* Session-Id = <EAP-Type> || Method-Id
 		 * Method-Id = TLS-Exporter("EXPORTER_EAP_TLS_Method-Id",
@@ -913,7 +913,7 @@ const u8 * eap_peer_tls_process_init(struct eap_sm *sm,
 
 	if (tls_get_errors(data->ssl_ctx)) {
 		wpa_printf(MSG_INFO, "SSL: TLS errors detected");
-		ret->ignore = TRUE;
+		ret->ignore = true;
 		return NULL;
 	}
 
@@ -929,14 +929,14 @@ const u8 * eap_peer_tls_process_init(struct eap_sm *sm,
 		pos = eap_hdr_validate(EAP_VENDOR_IETF, eap_type, reqData,
 				       &left);
 	if (pos == NULL) {
-		ret->ignore = TRUE;
+		ret->ignore = true;
 		return NULL;
 	}
 	if (left == 0) {
 		wpa_printf(MSG_DEBUG, "SSL: Invalid TLS message: no Flags "
 			   "octet included");
 		if (!sm->workaround) {
-			ret->ignore = TRUE;
+			ret->ignore = true;
 			return NULL;
 		}
 
@@ -954,7 +954,7 @@ const u8 * eap_peer_tls_process_init(struct eap_sm *sm,
 		if (left < 4) {
 			wpa_printf(MSG_INFO, "SSL: Short frame with TLS "
 				   "length");
-			ret->ignore = TRUE;
+			ret->ignore = true;
 			return NULL;
 		}
 		tls_msg_len = WPA_GET_BE32(pos);
@@ -973,15 +973,15 @@ const u8 * eap_peer_tls_process_init(struct eap_sm *sm,
 			wpa_printf(MSG_INFO, "SSL: TLS Message Length (%d "
 				   "bytes) smaller than this fragment (%d "
 				   "bytes)", (int) tls_msg_len, (int) left);
-			ret->ignore = TRUE;
+			ret->ignore = true;
 			return NULL;
 		}
 	}
 
-	ret->ignore = FALSE;
+	ret->ignore = false;
 	ret->methodState = METHOD_MAY_CONT;
 	ret->decision = DECISION_FAIL;
-	ret->allowNotifications = TRUE;
+	ret->allowNotifications = true;
 
 	*len = left;
 	return pos;

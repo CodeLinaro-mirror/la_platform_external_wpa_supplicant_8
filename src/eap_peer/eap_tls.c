@@ -62,12 +62,12 @@ static void * eap_tls_init(struct eap_sm *sm)
 			wpa_printf(MSG_DEBUG, "EAP-TLS: Requesting Smartcard "
 				   "PIN");
 			eap_sm_request_pin(sm);
-			sm->ignore = TRUE;
+			sm->ignore = true;
 		} else if (cert->private_key && !cert->private_key_passwd) {
 			wpa_printf(MSG_DEBUG, "EAP-TLS: Requesting private "
 				   "key passphrase");
 			eap_sm_request_passphrase(sm);
-			sm->ignore = TRUE;
+			sm->ignore = true;
 		}
 		return NULL;
 	}
@@ -302,15 +302,11 @@ static struct wpabuf * eap_tls_process(struct eap_sm *sm, void *priv,
 		return NULL;
 	}
 
-	if (res == 2) {
-		/* Application data included in the handshake message (used by
-		 * EAP-TLS 1.3 to indicate conclusion of the exchange). */
-		wpa_hexdump_buf(MSG_DEBUG, "EAP-TLS: Received Application Data",
-				resp);
-		wpa_hexdump_buf(MSG_DEBUG, "EAP-TLS: Remaining tls_out data",
-				data->ssl.tls_out);
+	/* draft-ietf-emu-eap-tls13-13 Section 2.5 */
+	if (res == 2 && data->ssl.tls_v13 && wpabuf_len(resp) == 1 &&
+	    *wpabuf_head_u8(resp) == 0) {
+		wpa_printf(MSG_DEBUG, "EAP-TLS: ACKing Commitment Message");
 		eap_peer_tls_reset_output(&data->ssl);
-		/* Send an ACK to allow the server to complete exchange */
 		res = 1;
 	}
 
@@ -326,7 +322,7 @@ static struct wpabuf * eap_tls_process(struct eap_sm *sm, void *priv,
 }
 
 
-static Boolean eap_tls_has_reauth_data(struct eap_sm *sm, void *priv)
+static bool eap_tls_has_reauth_data(struct eap_sm *sm, void *priv)
 {
 	struct eap_tls_data *data = priv;
 	return tls_connection_established(data->ssl_ctx, data->ssl.conn);
@@ -364,7 +360,7 @@ static int eap_tls_get_status(struct eap_sm *sm, void *priv, char *buf,
 }
 
 
-static Boolean eap_tls_isKeyAvailable(struct eap_sm *sm, void *priv)
+static bool eap_tls_isKeyAvailable(struct eap_sm *sm, void *priv)
 {
 	struct eap_tls_data *data = priv;
 	return data->key_data != NULL;
