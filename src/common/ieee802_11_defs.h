@@ -476,6 +476,8 @@
 #define WLAN_EID_EXT_HE_6GHZ_BAND_CAP 59
 #define WLAN_EID_EXT_EDMG_CAPABILITIES 61
 #define WLAN_EID_EXT_EDMG_OPERATION 62
+#define WLAN_EID_EXT_MSCS_DESCRIPTOR 88
+#define WLAN_EID_EXT_TCLAS_MASK 89
 #define WLAN_EID_EXT_REJECTED_GROUPS 92
 #define WLAN_EID_EXT_ANTI_CLOGGING_TOKEN 93
 
@@ -560,6 +562,7 @@
 #define WLAN_EXT_CAPAB_SAE_PW_ID 81
 #define WLAN_EXT_CAPAB_SAE_PW_ID_EXCLUSIVELY 82
 #define WLAN_EXT_CAPAB_BEACON_PROTECTION 84
+#define WLAN_EXT_CAPAB_MSCS 85
 
 /* Extended RSN Capabilities */
 /* bits 0-3: Field length (n-1) */
@@ -1624,6 +1627,7 @@ enum p2p_attr_id {
 #define P2P_DEV_CAPAB_INFRA_MANAGED BIT(3)
 #define P2P_DEV_CAPAB_DEVICE_LIMIT BIT(4)
 #define P2P_DEV_CAPAB_INVITATION_PROCEDURE BIT(5)
+#define P2P_DEV_CAPAB_6GHZ_BAND_CAPABLE BIT(6)
 
 /* P2P Capability - Group Capability bitmap */
 #define P2P_GROUP_CAPAB_GROUP_OWNER BIT(0)
@@ -2162,6 +2166,7 @@ struct ieee80211_he_operation {
 	 * Max Co-Hosted BSSID Indicator subfield (1 octet), and/or 6 GHz
 	 * Operation Information subfield (5 octets). */
 } STRUCT_PACKED;
+#define IEEE80211_HE_CAPAB_MIN_LEN (6 + 11)
 
 /* IEEE P802.11ax/D6.0, Figure 9-787k - 6 GHz Operation Information field */
 struct ieee80211_he_6ghz_oper_info {
@@ -2356,5 +2361,26 @@ enum edmg_bw_config {
 
 /* DPP Public Action frame identifiers - OUI_WFA */
 #define DPP_OUI_TYPE 0x1A
+
+/* Robust AV streaming Action field values */
+enum robust_av_streaming_action {
+	ROBUST_AV_SCS_REQ = 0,
+	ROBUST_AV_SCS_RESP = 1,
+	ROBUST_AV_GROUP_MEMBERSHIP_REQ = 2,
+	ROBUST_AV_GROUP_MEMBERSHIP_RESP = 3,
+	ROBUST_AV_MSCS_REQ = 4,
+	ROBUST_AV_MSCS_RESP = 5,
+};
+
+enum scs_request_type {
+	SCS_REQ_ADD = 0,
+	SCS_REQ_REMOVE = 1,
+	SCS_REQ_CHANGE = 2,
+};
+
+/* Optional subelement IDs for MSCS Descriptor element */
+enum mscs_description_subelem {
+	MCSC_SUBELEM_STATUS = 1,
+};
 
 #endif /* IEEE802_11_DEFS_H */

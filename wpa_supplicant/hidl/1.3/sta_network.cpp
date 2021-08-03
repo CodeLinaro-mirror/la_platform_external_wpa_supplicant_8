@@ -15,6 +15,7 @@
 extern "C"
 {
 #include "wps_supplicant.h"
+#include "scan.h"
 }
 
 namespace {
@@ -1887,6 +1888,7 @@ SupplicantStatus StaNetwork::selectInternal()
 		wpa_ssid->beacon_prot = 1;
 	wpa_s->scan_min_time.sec = 0;
 	wpa_s->scan_min_time.usec = 0;
+	wpa_supplicant_update_scan_results(wpa_s);
 	wpa_supplicant_select_network(wpa_s, wpa_ssid);
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
@@ -2188,6 +2190,7 @@ SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& ser
 	ss.write((char *) serializedEntry.data(), std::streamsize(serializedEntry.size()));
 	misc_utils::deserializePmkCacheEntry(ss, new_entry);
 	new_entry->network_ctx = wpa_ssid;
+	new_entry->external = true;
 	wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, new_entry);
 
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -2200,8 +2203,11 @@ SupplicantStatus StaNetwork::setKeyMgmt_1_3Internal(uint32_t key_mgmt_mask)
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
 	setFastTransitionKeyMgmt(key_mgmt_mask);
-	if (key_mgmt_mask & WPA_KEY_MGMT_OWE)
-		wpa_ssid->owe_ptk_workaround = 1;
+
+	if (key_mgmt_mask & WPA_KEY_MGMT_OWE) {
+		// Do not allow to connect to Open network when OWE is selected
+		wpa_ssid->owe_only = 1;
+	}
 	wpa_ssid->key_mgmt = key_mgmt_mask;
 	wpa_printf(MSG_MSGDUMP, "key_mgmt: 0x%x", wpa_ssid->key_mgmt);
 	resetInternalStateAfterParamsUpdate();
