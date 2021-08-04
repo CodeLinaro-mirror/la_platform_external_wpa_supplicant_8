@@ -410,9 +410,12 @@ std::string CreateHostapdConfig(
 		channel_config_as_string = StringPrintf(
 		    "channel=0\n"
 		    "acs_exclude_dfs=%d\n"
-		    "freqlist=%s",
+		    "freqlist=%s\n"
+		    "%s",
 		    iface_params.V1_2.V1_1.V1_0.channelParams.acsShouldExcludeDfs,
-		    freqList_as_string.c_str());
+		    freqList_as_string.c_str(),
+		    (band & IHostapd::BandMask::BAND_6_GHZ) ? "op_class=134" : "");
+
 	} else {
 		int op_class = getOpClassForChannel(
 		    channelParams.channel,
@@ -937,7 +940,7 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 	iface_hapd->setup_complete_cb_ctx = iface_hapd;
 	iface_hapd->sta_authorized_cb = onAsyncStaAuthorizedCb;
 	iface_hapd->sta_authorized_cb_ctx = iface_hapd;
-	wpa_msg_register_cb(onAsyncWpaEventCb);
+	wpa_msg_register_hidl_cb(onAsyncWpaEventCb);
 
 	if (hostapd_enable_iface(iface_hapd->iface) < 0) {
 		wpa_printf(

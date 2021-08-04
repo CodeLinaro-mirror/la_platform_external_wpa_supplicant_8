@@ -26,7 +26,12 @@ extern "C"
 }
 
 #define P2P_MAX_JOIN_SCAN_ATTEMPTS 3
-#define P2P_JOIN_SCAN_INTERVAL_USECS 1000000
+// Wait time before triggering the single channel scan to discover Auto GO.
+// Use a shorter wait time when the given frequency is GO operating frequency.
+// The idea is to quickly finish scans and return the status to application.
+#define P2P_JOIN_SINGLE_CHANNEL_SCAN_INTERVAL_USECS 200000
+// Wait time before triggering the multiple channel scan to discover Auto GO.
+#define P2P_JOIN_MULTIPLE_CHANNEL_SCAN_INTERVAL_USECS 1000000
 
 namespace {
 const char kConfigMethodStrPbc[] = "pbc";
@@ -178,6 +183,19 @@ static int setP2pCliOptimizedScanFreqsList(struct wpa_supplicant *wpa_s,
 		}
 	}
 	return 0;
+}
+
+/**
+ * getP2pJoinScanInterval - Get the delay in triggering the scan to discover
+ * Auto GO.
+ */
+static int getP2pJoinScanIntervalUsecs(int freq)
+{
+	if (freq == 5 || freq == 2 || freq == 0) {
+		return P2P_JOIN_MULTIPLE_CHANNEL_SCAN_INTERVAL_USECS;
+	} else {
+		return P2P_JOIN_SINGLE_CHANNEL_SCAN_INTERVAL_USECS;
+	}
 }
 
 /*
@@ -392,7 +410,7 @@ int joinGroup(
 
 	if (wpas_p2p_group_add_persistent(
 		wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
-		CHANWIDTH_USE_HT, he, edmg, NULL, 0, 0)) {
+		CHANWIDTH_USE_HT, he, edmg, NULL, 0, 0, 0)) {
 		ret = -1;
 	}
 
@@ -1084,7 +1102,7 @@ SupplicantStatus P2pIface::findInternal(uint32_t timeout_in_sec)
 	uint32_t search_delay = wpas_p2p_search_delay(wpa_s);
 	if (wpas_p2p_find(
 		wpa_s, timeout_in_sec, P2P_FIND_START_WITH_FULL, 0, nullptr,
-		nullptr, search_delay, 0, nullptr, 0)) {
+		nullptr, search_delay, 0, nullptr, 0, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1152,7 +1170,7 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 	int new_pin = wpas_p2p_connect(
 	    wpa_s, peer_address.data(), pin, wps_method, persistent, auto_join,
 	    join_existing_group, false, go_intent_signed, 0, 0, -1, false, ht40,
-	    vht, CHANWIDTH_USE_HT, he, edmg, nullptr, 0);
+	    vht, CHANWIDTH_USE_HT, he, edmg, nullptr, 0, 0);
 	if (new_pin < 0) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
@@ -1217,7 +1235,7 @@ SupplicantStatus P2pIface::addGroupInternal(
 	if (ssid == NULL) {
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, 0, 0, ht40, vht,
-			CHANWIDTH_USE_HT, he, edmg)) {
+			CHANWIDTH_USE_HT, he, edmg, 0)) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		} else {
 			return {SupplicantStatusCode::SUCCESS, ""};
@@ -1225,7 +1243,7 @@ SupplicantStatus P2pIface::addGroupInternal(
 	} else if (ssid->disabled == 2) {
 		if (wpas_p2p_group_add_persistent(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
-			CHANWIDTH_USE_HT, he, edmg, NULL, 0, 0)) {
+			CHANWIDTH_USE_HT, he, edmg, NULL, 0, 0, 0)) {
 			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN,
 				""};
 		} else {
@@ -1242,6 +1260,7 @@ SupplicantStatus P2pIface::removeGroupInternal(const std::string& group_ifname)
 	if (!wpa_group_s) {
 		return {SupplicantStatusCode::FAILURE_IFACE_UNKNOWN, ""};
 	}
+	wpa_group_s->global->p2p_go_found_external_scan = 0;
 	if (wpas_p2p_group_remove(wpa_group_s, group_ifname.c_str())) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1269,7 +1288,7 @@ SupplicantStatus P2pIface::inviteInternal(
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	if (wpas_p2p_invite_group(
 		wpa_s, group_ifname.c_str(), peer_address.data(),
-		go_device_address.data())) {
+		go_device_address.data(), 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1291,7 +1310,7 @@ SupplicantStatus P2pIface::reinvokeInternal(
 	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
-		CHANWIDTH_USE_HT, 0, he, edmg)) {
+		CHANWIDTH_USE_HT, 0, he, edmg, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1749,7 +1768,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 
 		if (wpas_p2p_group_add(
 		    wpa_s, persistent, freq, 0, ht40, vht,
-		    CHANWIDTH_USE_HT, he, edmg)) {
+		    CHANWIDTH_USE_HT, he, edmg, 0)) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		}
 		return {SupplicantStatusCode::SUCCESS, ""};
@@ -1799,7 +1818,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		}
 	};
 
-	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, this]() {
+	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, freq, this]() {
 		if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 			return;
 		}
@@ -1809,8 +1828,10 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		struct wpa_bss *bss = findBssBySsid(
 		    wpa_s, peer_address.data(), ssid.data(), ssid.size());
 		if (bss) {
+			wpa_s->global->p2p_go_found_external_scan = 1;
 			if (0 != joinGroup(wpa_s, bss->bssid, ssid, passphrase)) {
 				wpa_printf(MSG_ERROR, "P2P: Failed to join a group.");
+				wpa_s->global->p2p_go_found_external_scan = 0;
 			}
 			// no need to notify group join failure here,
 			// it will be handled by wpas_p2p_group_add_persistent
@@ -1822,7 +1843,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 		eloop_cancel_timeout(joinScanWrapper, wpa_s, NULL);
 		if (wpa_s->p2p_join_scan_count < P2P_MAX_JOIN_SCAN_ATTEMPTS) {
 			wpa_printf(MSG_DEBUG, "P2P: Try join again later.");
-			eloop_register_timeout(0, P2P_JOIN_SCAN_INTERVAL_USECS,
+			eloop_register_timeout(0, getP2pJoinScanIntervalUsecs(freq),
 			    joinScanWrapper, wpa_s, this);
 			return;
 		}
