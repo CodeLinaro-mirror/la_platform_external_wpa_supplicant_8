@@ -27,6 +27,11 @@
 #include "sta_network.h"
 #include "supplicant.h"
 
+#ifdef SUPPLICANT_VENDOR_HIDL
+#include "vendorsta_iface.h"
+#include "supplicantvendor.h"
+#endif
+
 extern "C"
 {
 #include "utils/common.h"
@@ -67,6 +72,11 @@ using V1_0::ISupplicantStaIface;
 using V1_0::ISupplicantStaIfaceCallback;
 using V1_0::P2pGroupCapabilityMask;
 using V1_0::WpsConfigMethods;
+#ifdef SUPPLICANT_VENDOR_HIDL
+using namespace vendor::qti::hardware::wifi::supplicantvendor::V2_3::Implementation;
+using vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIface;
+using vendor::qti::hardware::wifi::supplicant::V2_3::ISupplicantVendorStaIfaceCallback;
+#endif
 
 /**
  * HidlManager is responsible for managing the lifetime of all
@@ -206,6 +216,16 @@ public:
 	int addStaNetworkCallbackHidlObject(
 	    const std::string &ifname, int network_id,
 	    const android::sp<ISupplicantStaNetworkCallback> &callback);
+#ifdef SUPPLICANT_VENDOR_HIDL
+	//method for qti.hardware.wifi.supplicant@2.X
+	int registerVendorHidlService(struct wpa_global *global);
+	int getVendorStaIfaceHidlObjectByIfname(
+	    const std::string &ifname,
+	    android::sp<ISupplicantVendorStaIface> *iface_object);
+	int addVendorStaIfaceCallbackHidlObject(
+	    const std::string &ifname,
+	    const android::sp<ISupplicantVendorStaIfaceCallback> &callback);
+#endif
 
 private:
 	HidlManager() = default;
@@ -275,6 +295,16 @@ private:
 	    const std::string &ifname, int network_id,
 	    const std::function<android::hardware::Return<void>(
 		android::sp<ISupplicantStaNetworkCallback>)> &method);
+#ifdef SUPPLICANT_VENDOR_HIDL
+	void removeVendorStaIfaceCallbackHidlObject(
+	    const std::string &ifname,
+	    const android::sp<ISupplicantVendorStaIfaceCallback> &callback);
+	bool checkForVendorStaIfaceCallback(const std::string &ifname);
+	void callWithEachVendorStaIfaceCallback(
+	    const std::string &ifname,
+	    const std::function<android::hardware::Return<void>(
+		android::sp<ISupplicantVendorStaIfaceCallback>)> &method);
+#endif
 	template <class CallbackTypeDerived>
 	void callWithEachStaNetworkCallbackDerived(
 	    const std::string &ifname, int network_id,
@@ -340,6 +370,22 @@ private:
 	    const std::string,
 	    std::vector<android::sp<ISupplicantStaNetworkCallback>>>
 	    sta_network_callbacks_map_;
+#ifdef SUPPLICANT_VENDOR_HIDL
+	// The main vendor hidl service object.
+	android::sp<SupplicantVendor> supplicantvendor_object_;
+	// Map of all the Vendor STA interface specific hidl objects controlled by
+	// wpa_supplicant. This map is keyed in by the corresponding
+	// |ifname|.
+	std::map<const std::string, android::sp<VendorStaIface>>
+	    vendor_sta_iface_object_map_;
+	// Map of all the vendor callbacks registered for STA interface specific
+	// hidl objects controlled by wpa_supplicant.  This map is keyed in by
+	// the corresponding |ifname|.
+	std::map<
+	    const std::string,
+	    std::vector<android::sp<ISupplicantVendorStaIfaceCallback>>>
+	    vendor_sta_iface_callbacks_map_;
+#endif
 };
 
 // The hidl interface uses some values which are the same as internal ones to
