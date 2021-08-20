@@ -1,3 +1,4 @@
+-include .config
 BINALL=wpa_supplicant wpa_cli
 
 ifndef CONFIG_NO_WPA_PASSPHRASE
