@@ -1020,6 +1020,12 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 				getGeneration(iface_hapd->iface->current_mode),
 				iface_hapd->own_addr);
 		    }
+		} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0) {
+			// Invoke the failure callback on all registered clients.
+			for (const auto& callback : callbacks_) {
+				callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+									iface_hapd->conf->bridge : iface_hapd->conf->iface);
+			}
 		}
 	    };
 
