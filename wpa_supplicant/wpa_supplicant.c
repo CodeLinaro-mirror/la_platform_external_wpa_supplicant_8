@@ -6493,8 +6493,12 @@ static void wpa_supplicant_deinit_iface(struct wpa_supplicant *wpa_s,
 
 	wpa_s->disconnected = 1;
 	if (wpa_s->drv_priv) {
-		/* Don't deauthenticate if WoWLAN is enabled */
-		if (!wpa_drv_get_wowlan(wpa_s)) {
+		/*
+		 * Don't deauthenticate if WoWLAN is enabled and not explicitly
+		 * been configured to disconnect.
+		 */
+		if (!wpa_drv_get_wowlan(wpa_s) ||
+		    wpa_s->conf->wowlan_disconnect_on_deinit) {
 			wpa_supplicant_deauthenticate(
 				wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 
@@ -8028,8 +8032,14 @@ int wpa_is_bss_tmp_disallowed(struct wpa_supplicant *wpa_s,
 		return 0;
 
 	if (disallowed->rssi_threshold != 0 &&
-	    bss->level > disallowed->rssi_threshold)
+	    bss->level > disallowed->rssi_threshold) {
+		eloop_cancel_timeout(wpa_bss_tmp_disallow_timeout,
+				     wpa_s, disallowed);
+		dl_list_del(&disallowed->list);
+		os_free(disallowed);
+		wpa_set_driver_tmp_disallow_list(wpa_s);
 		return 0;
+	}
 
 	return 1;
 }
