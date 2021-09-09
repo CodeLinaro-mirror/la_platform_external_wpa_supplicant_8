@@ -1336,6 +1336,7 @@ struct wpa_supplicant {
 	unsigned int multi_ap_backhaul:1;
 	unsigned int multi_ap_fronthaul:1;
 	struct robust_av_data robust_av;
+	bool mscs_setup_done;
 };
 
 
@@ -1660,5 +1661,10 @@ void wpas_clear_driver_signal_override(struct wpa_supplicant *wpa_s);
 int wpas_send_mscs_req(struct wpa_supplicant *wpa_s);
 void wpas_populate_mscs_descriptor_ie(struct robust_av_data *robust_av,
 				      struct wpabuf *buf);
+void wpas_handle_robust_av_recv_action(struct wpa_supplicant *wpa_s,
+				       const u8 *src, const u8 *buf,
+				       size_t len);
+void wpas_handle_assoc_resp_mscs(struct wpa_supplicant *wpa_s, const u8 *bssid,
+				 const u8 *ies, size_t ies_len);
 
 #endif /* WPA_SUPPLICANT_I_H */
