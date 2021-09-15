@@ -53,19 +53,21 @@ constexpr uint32_t kAllowedAuthAlgMask =
      static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::SHARED) |
      static_cast<uint32_t>(ISupplicantStaNetwork::AuthAlgMask::LEAP) |
 	 static_cast<uint32_t>(ISupplicantStaNetworkV1_3::AuthAlgMask::SAE));
-constexpr uint32_t kAllowedGroupCipherMask =
+constexpr uint32_t kStripObsoleteGroupCipher =
     (static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::WEP40) |
      static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::WEP104) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::TKIP) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) |
+     static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::TKIP));
+constexpr uint32_t kAllowedGroupCipherMask =
+    (static_cast<uint32_t>(ISupplicantStaNetwork::GroupCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetwork::GroupCipherMask::GTK_NOT_USED) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_2::GroupCipherMask::GCMP_256) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_3::GroupCipherMask::SMS4) |
      static_cast<uint32_t>(ISupplicantStaNetworkV1_4::GroupCipherMask::GCMP_128));
+constexpr uint32_t kStripObsoletePairwisewCipher =
+    static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::TKIP);
 constexpr uint32_t kAllowedPairwisewCipherMask =
     (static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::NONE) |
-     static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::TKIP) |
      static_cast<uint32_t>(ISupplicantStaNetwork::PairwiseCipherMask::CCMP) |
      static_cast<uint32_t>(
 	 ISupplicantStaNetworkV1_2::PairwiseCipherMask::GCMP_256) |
@@ -2334,7 +2336,12 @@ std::pair<SupplicantStatus, uint32_t> StaNetwork::getPairwiseCipher_1_3Internal(
 V1_4::SupplicantStatus StaNetwork::setGroupCipher_1_4Internal(uint32_t group_cipher_mask)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (group_cipher_mask & ~kAllowedGroupCipherMask) {
+	group_cipher_mask &= ~kStripObsoleteGroupCipher;
+	if (group_cipher_mask) {
+		if (group_cipher_mask & ~kAllowedGroupCipherMask) {
+			return {V1_4::SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+		}
+	} else {
 		return {V1_4::SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
 	wpa_ssid->group_cipher = group_cipher_mask;
@@ -2354,7 +2361,12 @@ V1_4::SupplicantStatus StaNetwork::setPairwiseCipher_1_4Internal(
     uint32_t pairwise_cipher_mask)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (pairwise_cipher_mask & ~kAllowedPairwisewCipherMask) {
+	pairwise_cipher_mask &= ~kStripObsoletePairwisewCipher;
+	if (pairwise_cipher_mask) {
+		if (pairwise_cipher_mask & ~kAllowedPairwisewCipherMask) {
+			return {V1_4::SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
+		}
+	} else {
 		return {V1_4::SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
 	wpa_ssid->pairwise_cipher = pairwise_cipher_mask;
