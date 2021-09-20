@@ -15,6 +15,7 @@
 extern "C"
 {
 #include "wps_supplicant.h"
+#include "scan.h"
 }
 
 namespace {
@@ -1978,6 +1979,7 @@ SupplicantStatus StaNetwork::selectInternal()
 		wpa_ssid->beacon_prot = 1;
 	wpa_s->scan_min_time.sec = 0;
 	wpa_s->scan_min_time.usec = 0;
+        wpa_supplicant_update_scan_results(wpa_s);
 	wpa_supplicant_select_network(wpa_s, wpa_ssid);
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
@@ -2279,6 +2281,7 @@ SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& ser
 	ss.write((char *) serializedEntry.data(), std::streamsize(serializedEntry.size()));
 	misc_utils::deserializePmkCacheEntry(ss, new_entry);
 	new_entry->network_ctx = wpa_ssid;
+	new_entry->external = true;
 	wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, new_entry);
 
 	return {SupplicantStatusCode::SUCCESS, ""};
