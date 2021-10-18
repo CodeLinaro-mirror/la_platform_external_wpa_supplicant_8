@@ -397,6 +397,7 @@ std::string CreateHostapdConfig(
 		    "rsn_pairwise=CCMP\n"
 		    "wpa_key_mgmt=WPA-PSK SAE\n"
 		    "ieee80211w=1\n"
+		    "transition_disable=1\n"
 		    "sae_require_mfp=1\n"
 		    "wpa_passphrase=%s\n"
 		    "sae_password=%s",
@@ -412,6 +413,7 @@ std::string CreateHostapdConfig(
 		    "rsn_pairwise=CCMP\n"
 		    "wpa_key_mgmt=SAE\n"
 		    "ieee80211w=2\n"
+		    "transition_disable=1\n"
 		    "sae_require_mfp=2\n"
 		    "sae_password=%s",
 		    nw_params.passphrase.c_str());
@@ -427,7 +429,8 @@ std::string CreateHostapdConfig(
 		    "wpa=2\n"
 		    "rsn_pairwise=CCMP\n"
 		    "wpa_key_mgmt=OWE\n"
-		    "ieee80211w=2\n%s",
+		    "ieee80211w=2\n"
+		    "transition_disable=8\n%s",
 		    owe_trans_iface_as_string.c_str());
 		break;
 #endif
