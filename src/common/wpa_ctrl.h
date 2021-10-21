@@ -128,6 +128,8 @@ extern "C" {
 #define WPA_EVENT_AVOID_FREQ "CTRL-EVENT-AVOID-FREQ "
 /** Result of MSCS setup */
 #define WPA_EVENT_MSCS_RESULT "CTRL-EVENT-MSCS-RESULT "
+/** Thermal state changed */
+#define WPA_EVENT_THERMAL_CHANGE "CTRL-EVENT-THERMAL-CHANGED "
 /** WPS overlap detected in PBC mode */
 #define WPS_EVENT_OVERLAP "WPS-OVERLAP-DETECTED "
 /** Available WPS AP with active PBC found in scan results */

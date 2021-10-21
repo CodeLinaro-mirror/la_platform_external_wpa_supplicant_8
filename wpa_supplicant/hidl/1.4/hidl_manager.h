@@ -184,6 +184,7 @@ public:
 			struct wpa_ssid *ssid,
 			u8 bitmap);
 	void notifyNetworkNotFound(struct wpa_supplicant *wpa_s);
+	void notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char* msg);
 
 	// Methods called from hidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);

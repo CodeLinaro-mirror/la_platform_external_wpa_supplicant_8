@@ -4759,6 +4759,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
+	char thermal_msg[1024] = {0};
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED &&
 	    event != EVENT_INTERFACE_ENABLED &&
@@ -5588,6 +5589,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		break;
 	case EVENT_UNPROT_BEACON:
 		wpas_event_unprot_beacon(wpa_s, &data->unprot_beacon);
+		break;
+	case EVENT_THERMAL_CHANGED:
+		snprintf(thermal_msg, sizeof(thermal_msg),
+			WPA_EVENT_THERMAL_CHANGE "level=%d", data->thermal_info.level);
+		wpa_msg(wpa_s, MSG_INFO, "%s", thermal_msg);
+		wpas_notify_vendor_ctrl_event(wpa_s, thermal_msg);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);

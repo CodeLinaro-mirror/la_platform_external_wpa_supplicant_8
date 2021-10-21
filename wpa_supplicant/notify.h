@@ -201,5 +201,5 @@ void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
 				    struct wpa_ssid *ssid,
 				    u8 bitmap);
 void wpas_notify_network_not_found(struct wpa_supplicant *wpa_s);
-
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
 #endif /* NOTIFY_H */
