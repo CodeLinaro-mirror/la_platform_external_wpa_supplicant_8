@@ -398,6 +398,7 @@ std::string CreateHostapdConfig(
 		    "wpa_key_mgmt=WPA-PSK SAE\n"
 		    "ieee80211w=1\n"
 		    "sae_require_mfp=1\n"
+		    "sae_pwe=2\n"
 		    "wpa_passphrase=%s\n"
 		    "sae_password=%s",
 		    nw_params.passphrase.c_str(),
@@ -413,6 +414,7 @@ std::string CreateHostapdConfig(
 		    "wpa_key_mgmt=SAE\n"
 		    "ieee80211w=2\n"
 		    "sae_require_mfp=2\n"
+		    "sae_pwe=2\n"
 		    "sae_password=%s",
 		    nw_params.passphrase.c_str());
 		break;
