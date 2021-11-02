@@ -1084,10 +1084,54 @@ const u8 * hostapd_get_psk(const struct hostapd_bss_config *conf,
 }
 
 
+static Boolean hostapd_config_check_bss_6g(struct hostapd_bss_config *bss)
+{
+	if (bss->wpa != WPA_PROTO_RSN) {
+		wpa_printf(MSG_ERROR,
+			   "Pre-RSNA security methods are not allowed in 6 GHz");
+		return FALSE;
+	}
+
+	if (bss->ieee80211w != MGMT_FRAME_PROTECTION_REQUIRED) {
+		wpa_printf(MSG_ERROR,
+			   "Management frame protection is required in 6 GHz");
+		return FALSE;
+	}
+
+	if (bss->wpa_key_mgmt & (WPA_KEY_MGMT_PSK |
+				 WPA_KEY_MGMT_FT_PSK |
+				 WPA_KEY_MGMT_PSK_SHA256)) {
+		wpa_printf(MSG_ERROR, "Invalid AKM suite for 6 GHz");
+		return FALSE;
+	}
+
+	if (bss->rsn_pairwise & (WPA_CIPHER_WEP40 |
+				 WPA_CIPHER_WEP104 |
+				 WPA_CIPHER_TKIP)) {
+		wpa_printf(MSG_ERROR,
+			   "Invalid pairwise cipher suite for 6 GHz");
+		return FALSE;
+	}
+
+	if (bss->wpa_group & (WPA_CIPHER_WEP40 |
+			      WPA_CIPHER_WEP104 |
+			      WPA_CIPHER_TKIP)) {
+		wpa_printf(MSG_ERROR, "Invalid group cipher suite for 6 GHz");
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
 static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 				    struct hostapd_config *conf,
 				    int full_config)
 {
+	if (full_config && is_6ghz_op_class(conf->op_class) &&
+	    !hostapd_config_check_bss_6g(bss))
+		return -1;
+
 	if (full_config && bss->ieee802_1x && !bss->eap_server &&
 	    !bss->radius->auth_servers) {
 		wpa_printf(MSG_ERROR, "Invalid IEEE 802.1X configuration (no "
