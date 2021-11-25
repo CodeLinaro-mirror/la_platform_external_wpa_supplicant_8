@@ -739,6 +739,7 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	wpas_pasn_auth_stop(wpa_s);
 #endif /* CONFIG_PASN */
 	wpas_scs_deinit(wpa_s);
+	wpas_dscp_deinit(wpa_s);
 }
 
 
@@ -1294,6 +1295,47 @@ static int matching_ciphers(struct wpa_ssid *ssid, struct wpa_ie_data *ie,
 }
 
 
+void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
+				struct wpa_ssid *ssid, struct wpa_ie_data *ie)
+{
+	int sel;
+
+	sel = ie->mgmt_group_cipher;
+	if (ssid->group_mgmt_cipher)
+		sel &= ssid->group_mgmt_cipher;
+	if (wpas_get_ssid_pmf(wpa_s, ssid) == NO_MGMT_FRAME_PROTECTION ||
+	    !(ie->capabilities & WPA_CAPABILITY_MFPC))
+		sel = 0;
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"WPA: AP mgmt_group_cipher 0x%x network profile mgmt_group_cipher 0x%x; available mgmt_group_cipher 0x%x",
+		ie->mgmt_group_cipher, ssid->group_mgmt_cipher, sel);
+	if (sel & WPA_CIPHER_AES_128_CMAC) {
+		wpa_s->mgmt_group_cipher = WPA_CIPHER_AES_128_CMAC;
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"WPA: using MGMT group cipher AES-128-CMAC");
+	} else if (sel & WPA_CIPHER_BIP_GMAC_128) {
+		wpa_s->mgmt_group_cipher = WPA_CIPHER_BIP_GMAC_128;
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"WPA: using MGMT group cipher BIP-GMAC-128");
+	} else if (sel & WPA_CIPHER_BIP_GMAC_256) {
+		wpa_s->mgmt_group_cipher = WPA_CIPHER_BIP_GMAC_256;
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"WPA: using MGMT group cipher BIP-GMAC-256");
+	} else if (sel & WPA_CIPHER_BIP_CMAC_256) {
+		wpa_s->mgmt_group_cipher = WPA_CIPHER_BIP_CMAC_256;
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"WPA: using MGMT group cipher BIP-CMAC-256");
+	} else {
+		wpa_s->mgmt_group_cipher = 0;
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: not using MGMT group cipher");
+	}
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_MGMT_GROUP,
+			 wpa_s->mgmt_group_cipher);
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_MFP,
+			 wpas_get_ssid_pmf(wpa_s, ssid));
+}
+
+
 /**
  * wpa_supplicant_set_suites - Set authentication and encryption parameters
  * @wpa_s: Pointer to wpa_supplicant data
@@ -1653,39 +1695,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	sel = ie.mgmt_group_cipher;
-	if (ssid->group_mgmt_cipher)
-		sel &= ssid->group_mgmt_cipher;
-	if (wpas_get_ssid_pmf(wpa_s, ssid) == NO_MGMT_FRAME_PROTECTION ||
-	    !(ie.capabilities & WPA_CAPABILITY_MFPC))
-		sel = 0;
-	wpa_dbg(wpa_s, MSG_DEBUG,
-		"WPA: AP mgmt_group_cipher 0x%x network profile mgmt_group_cipher 0x%x; available mgmt_group_cipher 0x%x",
-		ie.mgmt_group_cipher, ssid->group_mgmt_cipher, sel);
-	if (sel & WPA_CIPHER_AES_128_CMAC) {
-		wpa_s->mgmt_group_cipher = WPA_CIPHER_AES_128_CMAC;
-		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using MGMT group cipher "
-			"AES-128-CMAC");
-	} else if (sel & WPA_CIPHER_BIP_GMAC_128) {
-		wpa_s->mgmt_group_cipher = WPA_CIPHER_BIP_GMAC_128;
-		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using MGMT group cipher "
-			"BIP-GMAC-128");
-	} else if (sel & WPA_CIPHER_BIP_GMAC_256) {
-		wpa_s->mgmt_group_cipher = WPA_CIPHER_BIP_GMAC_256;
-		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using MGMT group cipher "
-			"BIP-GMAC-256");
-	} else if (sel & WPA_CIPHER_BIP_CMAC_256) {
-		wpa_s->mgmt_group_cipher = WPA_CIPHER_BIP_CMAC_256;
-		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using MGMT group cipher "
-			"BIP-CMAC-256");
-	} else {
-		wpa_s->mgmt_group_cipher = 0;
-		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: not using MGMT group cipher");
-	}
-	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_MGMT_GROUP,
-			 wpa_s->mgmt_group_cipher);
-	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_MFP,
-			 wpas_get_ssid_pmf(wpa_s, ssid));
+	wpas_set_mgmt_group_cipher(wpa_s, ssid, &ie);
 #ifdef CONFIG_OCV
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) ||
 	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OCV))
@@ -2836,6 +2846,54 @@ int wpa_is_fils_sk_pfs_supported(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_FILS */
 
 
+static int wpas_populate_wfa_capa(struct wpa_supplicant *wpa_s,
+				  struct wpa_bss *bss,
+				  u8 *wpa_ie, size_t wpa_ie_len,
+				  size_t max_wpa_ie_len)
+{
+	struct wpabuf *wfa_ie = NULL;
+	u8 wfa_capa[1];
+	size_t wfa_ie_len, buf_len;
+
+	os_memset(wfa_capa, 0, sizeof(wfa_capa));
+	if (wpa_s->enable_dscp_policy_capa)
+		wfa_capa[0] |= WFA_CAPA_QM_DSCP_POLICY;
+
+	if (!wfa_capa[0])
+		return wpa_ie_len;
+
+	/* Wi-Fi Alliance element */
+	buf_len = 1 +	/* Element ID */
+		  1 +	/* Length */
+		  3 +	/* OUI */
+		  1 +	/* OUI Type */
+		  1 +	/* Capabilities Length */
+		  sizeof(wfa_capa);	/* Capabilities */
+	wfa_ie = wpabuf_alloc(buf_len);
+	if (!wfa_ie)
+		return wpa_ie_len;
+
+	wpabuf_put_u8(wfa_ie, WLAN_EID_VENDOR_SPECIFIC);
+	wpabuf_put_u8(wfa_ie, buf_len - 2);
+	wpabuf_put_be24(wfa_ie, OUI_WFA);
+	wpabuf_put_u8(wfa_ie, WFA_CAPA_OUI_TYPE);
+	wpabuf_put_u8(wfa_ie, sizeof(wfa_capa));
+	wpabuf_put_data(wfa_ie, wfa_capa, sizeof(wfa_capa));
+
+	wfa_ie_len = wpabuf_len(wfa_ie);
+	if (wpa_ie_len + wfa_ie_len <= max_wpa_ie_len) {
+		wpa_hexdump_buf(MSG_MSGDUMP, "WFA Capabilities element",
+				wfa_ie);
+		os_memcpy(wpa_ie + wpa_ie_len, wpabuf_head(wfa_ie),
+			  wfa_ie_len);
+		wpa_ie_len += wfa_ie_len;
+	}
+
+	wpabuf_free(wfa_ie);
+	return wpa_ie_len;
+}
+
+
 static u8 * wpas_populate_assoc_ies(
 	struct wpa_supplicant *wpa_s,
 	struct wpa_bss *bss, struct wpa_ssid *ssid,
@@ -3311,6 +3369,9 @@ pfs_fail:
 		wpabuf_free(mscs_ie);
 	}
 mscs_end:
+
+	wpa_ie_len = wpas_populate_wfa_capa(wpa_s, bss, wpa_ie, wpa_ie_len,
+					    max_wpa_ie_len);
 
 	if (ssid->multi_ap_backhaul_sta) {
 		size_t multi_ap_ie_len;
@@ -4019,6 +4080,7 @@ static void wpa_supplicant_clear_connection(struct wpa_supplicant *wpa_s,
 		wpas_notify_network_changed(wpa_s);
 
 	wpas_scs_deinit(wpa_s);
+	wpas_dscp_deinit(wpa_s);
 	eloop_cancel_timeout(wpa_supplicant_timeout, wpa_s, NULL);
 }
 
@@ -7890,6 +7952,16 @@ int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 	}
 
 	return ssid->ieee80211w;
+}
+
+
+int pmf_in_use(struct wpa_supplicant *wpa_s, const u8 *addr)
+{
+	if (wpa_s->current_ssid == NULL ||
+	    wpa_s->wpa_state < WPA_4WAY_HANDSHAKE ||
+	    os_memcmp(addr, wpa_s->bssid, ETH_ALEN) != 0)
+		return 0;
+	return wpa_sm_pmf_enabled(wpa_s->wpa);
 }
 
 
