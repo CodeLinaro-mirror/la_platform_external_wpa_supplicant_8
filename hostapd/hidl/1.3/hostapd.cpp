@@ -401,6 +401,7 @@ std::string CreateHostapdConfig(
 		    "wpa_key_mgmt=WPA-PSK SAE\n"
 		    "ieee80211w=1\n"
 		    "sae_require_mfp=1\n"
+		    "sae_pwe=2\n"
 		    "wpa_passphrase=%s\n"
 		    "sae_password=%s",
 		    is_60Ghz_band_only ? "GCMP" : "CCMP",
