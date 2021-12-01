@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <set>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <linux/if_bridge.h>
@@ -28,6 +29,8 @@ extern "C"
 
 #define ENCRYPTION_TYPE_OWE              7
 #define ENCRYPTION_TYPE_OWE_TRANSITION   8
+
+#define MAX_HE80_ALLOWED_PRI_CHANNEL     157
 }
 
 // The HIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -42,6 +45,9 @@ using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 using android::hardware::wifi::hostapd::V1_2::IHostapd;
+
+std::set<int> allowed_ht40_first_channel_list = { 36, 44, 52, 60, 100, 108, 116,
+					124, 132, 140, 149, 157, 165, 184, 192 };
 
 #ifdef CONFIG_OWE
 extern "C" int linux_get_ifhwaddr(int sock, const char *ifname, u8 *addr);
@@ -505,8 +511,29 @@ std::string CreateHostapdConfig(
 		if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=a";
-			ht_cap_vht_oper_chwidth_as_string =
-			    "ht_capab=[HT40+][HT40-]\n"
+			// "[HT40+][HT40-]" is only for acs case.
+			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
+				ht_cap_vht_oper_chwidth_as_string =
+					"ht_capab=[HT40+][HT40-]\n";
+			} else {
+				if (allowed_ht40_first_channel_list.end()
+						== allowed_ht40_first_channel_list.find(
+						iface_params.V1_1.V1_0.channelParams.channel)) {
+					// channels not in allowed list.
+					ht_cap_vht_oper_chwidth_as_string =
+					"ht_capab=[HT40-]\n";
+				} else {
+					// First channel > 157 not allowed in HE80. Override to 157
+					if (iface_params.V1_1.V1_0.channelParams.channel >
+						MAX_HE80_ALLOWED_PRI_CHANNEL) {
+						channel_config_as_string.replace(8, 3,
+						    std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
+					}
+					ht_cap_vht_oper_chwidth_as_string =
+					"ht_capab=[HT40+]\n";
+				}
+			}
+			ht_cap_vht_oper_chwidth_as_string +=
 #ifdef CONFIG_IEEE80211AX
 			    "he_oper_chwidth=1\n"
 #endif
