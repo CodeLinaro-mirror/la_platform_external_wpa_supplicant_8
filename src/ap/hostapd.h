@@ -373,6 +373,11 @@ struct hostapd_data {
 
 	int dhcp_sock; /* UDP socket used with the DHCP server */
 
+	/* mock thermal */
+	u8 fake_thermal_enabled;
+	int fake_thermal_tsp[3];
+	int fake_thermal_temp;
+
 #ifdef CONFIG_DPP
 	int dpp_init_done;
 	struct dpp_authentication *dpp_auth;

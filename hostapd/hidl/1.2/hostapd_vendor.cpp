@@ -332,6 +332,25 @@ HostapdVendor::hostapdCmdInternal(const std::string& iface_name, const std::stri
 	std::string str_reply(reply);
 	os_free(reply);
 
+	std::string thermal_cmd = cmd.substr(0, 23);
+	std::string expected_cmd = "DRIVER GET_THERMAL_INFO";
+	if (iface_hapd->fake_thermal_enabled && thermal_cmd == expected_cmd) {
+		wpa_printf(MSG_INFO, "real thermal and level: %s", str_reply.c_str());
+		str_reply = std::to_string(iface_hapd->fake_thermal_temp);
+		if (iface_hapd->fake_thermal_temp <= iface_hapd->fake_thermal_tsp[0]) {
+			str_reply += " 0";
+		} else if (iface_hapd->fake_thermal_temp > iface_hapd->fake_thermal_tsp[0]
+			&& iface_hapd->fake_thermal_temp <= iface_hapd->fake_thermal_tsp[1]) {
+			str_reply += " 2";
+		} else if (iface_hapd->fake_thermal_temp > iface_hapd->fake_thermal_tsp[1]
+			&& iface_hapd->fake_thermal_temp <= iface_hapd->fake_thermal_tsp[2]) {
+			str_reply += " 4";
+		} else {
+			str_reply += " 5";
+		}
+		wpa_printf(MSG_INFO, "get fake thermal info: %s", str_reply.c_str());
+	}
+
 	return {{HostapdStatusCode::SUCCESS, ""}, str_reply};
 }
 

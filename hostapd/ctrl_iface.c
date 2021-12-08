@@ -1609,6 +1609,64 @@ static int hostapd_ctrl_iface_reload_wpa_psk(struct hostapd_data *hapd)
 	return 0;
 }
 
+static int hostapd_ctrl_iface_fake_thermal_tsp(struct hostapd_data *hapd,
+				char *cmd)
+{
+	char *endptr = NULL;
+	if (strncmp("enable ", cmd, 7)) {
+		if (!strncmp("disable", cmd, 7)) {
+			hapd->fake_thermal_enabled = 0;
+			wpa_printf(MSG_INFO, "fake thermal disabled");
+			return 0;
+		}
+		wpa_printf(MSG_ERROR, "fake thermal: invalid args");
+		return -1;
+	}
+
+	endptr = cmd + 7;
+	int tsp[3];
+	if ((!(*endptr) || (tsp[0] = strtol(endptr, &endptr, 10)) < 0) ||
+	    (!(*endptr) || (tsp[1] = strtol(endptr, &endptr, 10)) <= tsp[0]) ||
+	    (!(*endptr) || (tsp[2] = strtol(endptr, &endptr, 10)) <= tsp[1])) {
+		wpa_printf(MSG_ERROR, "fake thermal: invalid TSP values");
+		return -1;
+	}
+
+	hapd->fake_thermal_enabled = 1;
+	hapd->fake_thermal_tsp[0] = tsp[0];
+	hapd->fake_thermal_tsp[1] = tsp[1];
+	hapd->fake_thermal_tsp[2] = tsp[2];
+	wpa_printf(MSG_INFO, "fake thermal enabled, tsp = %d %d %d",
+			hapd->fake_thermal_tsp[0], hapd->fake_thermal_tsp[1],
+			hapd->fake_thermal_tsp[2]);
+	return 0;
+}
+
+static int hostapd_ctrl_iface_fake_thermal_temp(struct hostapd_data *hapd,
+				const char *cmd)
+{
+	if (hapd->fake_thermal_enabled) {
+		hapd->fake_thermal_temp = atoi(cmd);
+		union wpa_event_data event;
+		if (hapd->fake_thermal_temp <= hapd->fake_thermal_tsp[0]) {
+			event.thermal_info.level = 0;
+		} else if (hapd->fake_thermal_temp > hapd->fake_thermal_tsp[0]
+			&& hapd->fake_thermal_temp <= hapd->fake_thermal_tsp[1]) {
+			event.thermal_info.level = 2;
+		} else if (hapd->fake_thermal_temp > hapd->fake_thermal_tsp[1]
+			&& hapd->fake_thermal_temp <= hapd->fake_thermal_tsp[2]) {
+			event.thermal_info.level = 4;
+		} else {
+			event.thermal_info.level = 5;
+		}
+		wpa_supplicant_event(hapd, EVENT_THERMAL_CHANGED, &event);
+		wpa_printf(MSG_INFO, "fake thermal: temp = %d", hapd->fake_thermal_temp);
+	} else {
+		wpa_printf(MSG_ERROR, "please enable fake thermal first");
+		return -1;
+	}
+	return 0;
+}
 
 #ifdef CONFIG_TESTING_OPTIONS
 
@@ -3532,6 +3590,12 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 			reply_len = -1;
 	} else if (os_strcmp(buf, "UPDATE_BEACON") == 0) {
 		if (ieee802_11_set_beacon(hapd))
+			reply_len = -1;
+	} else if (os_strncmp(buf, "FAKE_THERMAL_TSP ", 17) == 0) {
+		if (hostapd_ctrl_iface_fake_thermal_tsp(hapd, buf + 17))
+			reply_len = -1;
+	} else if (os_strncmp(buf, "FAKE_THERMAL_TEMP ", 18) == 0) {
+		if (hostapd_ctrl_iface_fake_thermal_temp(hapd, buf + 18))
 			reply_len = -1;
 #ifdef CONFIG_TESTING_OPTIONS
 	} else if (os_strncmp(buf, "RADAR ", 6) == 0) {
