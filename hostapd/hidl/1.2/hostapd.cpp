@@ -366,7 +366,9 @@ std::string CreateHostapdConfig(
 			hw_mode_as_string = "hw_mode=any";
 			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
 				ht_cap_vht_oper_chwidth_as_string =
+#ifndef CONFIG_ATHERTON_SLATE
 				    "ht_capab=[HT40+]\n"
+#endif
 				    "vht_oper_chwidth=1";
 			}
 		} else {
@@ -378,7 +380,9 @@ std::string CreateHostapdConfig(
 			hw_mode_as_string = "hw_mode=a";
 			if (iface_params.V1_1.V1_0.channelParams.enableAcs) {
 				ht_cap_vht_oper_chwidth_as_string =
+#ifndef CONFIG_ATHERTON_SLATE
 				    "ht_capab=[HT40+]\n"
+#endif
 				    "vht_oper_chwidth=1";
 			}
 		} else {
