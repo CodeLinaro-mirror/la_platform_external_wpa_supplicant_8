@@ -403,7 +403,9 @@ std::string CreateHostapdConfig(
 		channel_config_as_string = StringPrintf(
 		    "channel=0\n"
 		    "acs_exclude_dfs=%d\n"
+#ifndef CONFIG_BW_HT20_ONLY
 		    "ht_capab=[HT40+]\n"
+#endif
 		    "vht_oper_chwidth=1\n"
 		    "he_oper_chwidth=1\n"
 		    "freqlist=%s",
@@ -415,7 +417,9 @@ std::string CreateHostapdConfig(
 			channel_config_as_string = StringPrintf(
 			    "channel=0\n"
 			    "acs_exclude_dfs=%d\n"
+#ifndef CONFIG_BW_HT20_ONLY
 			    "ht_capab=[HT40+]\n"
+#endif
 			    "vht_oper_chwidth=1\n"
 			    "he_oper_chwidth=1\n"
 			    "freqlist=%s\n"
