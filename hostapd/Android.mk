@@ -1106,6 +1106,11 @@ ifdef CONFIG_ANDROID_LOG
 L_CFLAGS += -DCONFIG_ANDROID_LOG
 endif
 
+ifeq ($(TARGET_SUPPORTS_WEAR_AON), true)
+$(warning "Target supports WEAR AON  $(TARGET_BOARD_PLATFORM)")
+L_CFLAGS += -DCONFIG_BW_HT20_ONLY
+endif
+
 OBJS_c = hostapd_cli.c
 OBJS_c += src/common/wpa_ctrl.c
 OBJS_c += src/utils/os_$(CONFIG_OS).c
