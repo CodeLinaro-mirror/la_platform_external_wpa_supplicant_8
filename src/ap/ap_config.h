@@ -98,6 +98,7 @@ struct hostapd_ssid {
 	struct hostapd_wpa_psk *wpa_psk;
 	char *wpa_passphrase;
 	char *wpa_psk_file;
+	struct sae_pt *pt;
 
 	struct hostapd_wep_keys wep;
 
@@ -250,6 +251,7 @@ struct sae_password_entry {
 	char *identifier;
 	u8 peer_addr[ETH_ALEN];
 	int vlan_id;
+	struct sae_pt *pt;
 };
 
 /**
@@ -630,6 +632,8 @@ struct hostapd_bss_config {
 	unsigned int sae_anti_clogging_threshold;
 	unsigned int sae_sync;
 	int sae_require_mfp;
+	int sae_confirm_immediate;
+	int sae_pwe;
 	int *sae_groups;
 	struct sae_password_entry *sae_passwords;
 
@@ -641,6 +645,7 @@ struct hostapd_bss_config {
 	struct wpabuf *own_ie_override;
 	int sae_reflection_attack;
 	struct wpabuf *sae_commit_override;
+	struct wpabuf *rsnxe_override_eapol;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #define MESH_ENABLED BIT(0)
@@ -705,6 +710,8 @@ struct hostapd_bss_config {
 	int coloc_intf_reporting;
 
 	u8 send_probe_response;
+
+	u8 transition_disable;
 
 #define BACKHAUL_BSS 1
 #define FRONTHAUL_BSS 2
@@ -902,5 +909,6 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config);
 void hostapd_set_security_params(struct hostapd_bss_config *bss,
 				 int full_config);
 int hostapd_sae_pw_id_in_use(struct hostapd_bss_config *conf);
+int hostapd_setup_sae_pt(struct hostapd_bss_config *conf);
 
 #endif /* HOSTAPD_CONFIG_H */

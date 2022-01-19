@@ -12,6 +12,7 @@
 #include "utils/uuid.h"
 #include "utils/ip_addr.h"
 #include "common/ieee802_1x_defs.h"
+#include "common/sae.h"
 #include "crypto/sha1.h"
 #include "rsn_supp/wpa.h"
 #include "eap_peer/eap.h"
@@ -2407,6 +2408,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(owe_group, 0, 65535) },
 	{ INT_RANGE(owe_only, 0, 1) },
 	{ INT_RANGE(multi_ap_backhaul_sta, 0, 1) },
+	{ INT_RANGE(transition_disable, 0, 255) },
 };
 
 #undef OFFSET
@@ -2608,6 +2610,9 @@ void wpa_config_free_ssid(struct wpa_ssid *ssid)
 		dl_list_del(&psk->list);
 		bin_clear_free(psk, sizeof(*psk));
 	}
+#ifdef CONFIG_SAE
+	sae_deinit_pt(ssid->pt);
+#endif /* CONFIG_SAE */
 	bin_clear_free(ssid, sizeof(*ssid));
 }
 
@@ -2947,6 +2952,15 @@ int wpa_config_set(struct wpa_ssid *ssid, const char *var, const char *value,
 			}
 			ret = -1;
 		}
+#ifdef CONFIG_SAE
+		if (os_strcmp(var, "ssid") == 0 ||
+		    os_strcmp(var, "psk") == 0 ||
+		    os_strcmp(var, "sae_password") == 0 ||
+		    os_strcmp(var, "sae_password_id") == 0) {
+			sae_deinit_pt(ssid->pt);
+			ssid->pt = NULL;
+		}
+#endif /* CONFIG_SAE */
 		break;
 	}
 	if (i == NUM_SSID_FIELDS) {
@@ -4826,6 +4840,8 @@ static const struct global_parse_data global_fields[] = {
 	{ INT(okc), 0 },
 	{ INT(pmf), 0 },
 	{ FUNC(sae_groups), 0 },
+	{ INT_RANGE(sae_pwe, 0, 3), 0 },
+	{ INT_RANGE(sae_pmkid_in_assoc, 0, 1), 0 },
 	{ INT(dtim_period), 0 },
 	{ INT(beacon_int), 0 },
 	{ FUNC(ap_vendor_elements), 0 },
