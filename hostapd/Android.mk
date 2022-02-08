@@ -16,14 +16,6 @@ ifeq ($(WPA_BUILD_HOSTAPD),true)
 
 include $(LOCAL_PATH)/android.config
 
-ifeq ($(call is-board-platform-in-list,msm8909 msm8937 msm8953 msm8996 msm8998 sdm660 sdm710 sdm845 $(MSMSTEPPE) $(TRINKET) msmnile lito atoll bengal),true)
-  $(warning "Disabling WPA3 support in hostapd for $(TARGET_BOARD_PLATFORM)")
-  CONFIG_OWE=n
-  CONFIG_DPP=n
-  CONFIG_SAE=n
-  CONFIG_SUITEB192=n
-endif
-
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
 
@@ -32,19 +24,8 @@ L_CFLAGS += -DVERSION_STR_POSTFIX=\"-$(PLATFORM_VERSION)\"
 # Set Android log name
 L_CFLAGS += -DANDROID_LOG_NAME=\"hostapd\"
 
-L_CFLAGS += -Wall -Werror
-
-# TODO: move off readdir_r upstream, pull fix back (http://b/72326431).
-L_CFLAGS += -Wno-error-deprecated-declarations
-
 # Disable unused parameter warnings
 L_CFLAGS += -Wno-unused-parameter
-
-# Disable unused variable warnings
-L_CFLAGS += -Wno-unused-variable
-
-# Disable macro redefined warnings
-L_CFLAGS += -Wno-macro-redefined
 
 # Set Android extended P2P functionality
 L_CFLAGS += -DANDROID_P2P
@@ -53,17 +34,20 @@ ifeq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 L_CFLAGS += -DANDROID_LIB_STUB
 endif
 
+ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB_EVENT),)
+L_CFLAGS += -DANDROID_LIB_EVENT
+endif
+
 # Use Android specific directory for control interface sockets
-L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/hostapd/sockets\"
-L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/hostapd/ctrl\"
+L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/misc/wifi/sockets\"
+L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/system/hostapd\"
 
 # Use Android specific directory for hostapd_cli command completion history
-L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/vendor/wifi/hostapd\"
+L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/misc/wifi\"
 
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
-L_CFLAGS += -DARCH_ARM_32
 endif
 
 INCLUDES = $(LOCAL_PATH)
@@ -243,7 +227,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-ifeq ($(CONFIG_SUITEB192),y)
+ifdef CONFIG_SUITEB192
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -267,15 +251,20 @@ L_CFLAGS += -DCONFIG_ETH_P_OUI
 OBJS += src/ap/eth_p_oui.c
 endif
 
-ifeq ($(CONFIG_SAE),y)
+ifdef CONFIG_SAE
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
+ifdef CONFIG_SAE_PK
+L_CFLAGS += -DCONFIG_SAE_PK
+OBJS += src/common/sae_pk.c
+endif
 NEED_ECC=y
 NEED_DH_GROUPS=y
+NEED_HMAC_SHA256_KDF=y
 NEED_DRAGONFLY=y
 endif
 
-ifeq ($(CONFIG_OWE),y)
+ifdef CONFIG_OWE
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -299,10 +288,6 @@ endif
 ifdef CONFIG_WNM
 L_CFLAGS += -DCONFIG_WNM -DCONFIG_WNM_AP
 OBJS += src/ap/wnm_ap.c
-endif
-
-ifdef CONFIG_IEEE80211N
-L_CFLAGS += -DCONFIG_IEEE80211N
 endif
 
 ifdef CONFIG_IEEE80211AC
@@ -331,6 +316,14 @@ endif
 ifndef CONFIG_NO_CTRL_IFACE
 OBJS += src/fst/fst_ctrl_iface.c
 endif
+endif
+
+ifdef CONFIG_WEP
+L_CFLAGS += -DCONFIG_WEP
+endif
+
+ifdef CONFIG_NO_TKIP
+L_CFLAGS += -DCONFIG_NO_TKIP
 endif
 
 
@@ -425,7 +418,7 @@ endif
 ifdef CONFIG_EAP_SIM_COMMON
 OBJS += src/eap_common/eap_sim_common.c
 # Example EAP-SIM/AKA interface for GSM/UMTS authentication. This can be
-# replaced with another file implementating the interface specified in
+# replaced with another file implementing the interface specified in
 # eap_sim_db.h.
 OBJS += src/eap_server/eap_sim_db.c
 NEED_FIPS186_2_PRF=y
@@ -549,9 +542,15 @@ endif
 
 endif
 
-ifeq ($(CONFIG_DPP),y)
+ifdef CONFIG_DPP
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
+OBJS += src/common/dpp_auth.c
+OBJS += src/common/dpp_backup.c
+OBJS += src/common/dpp_crypto.c
+OBJS += src/common/dpp_pkex.c
+OBJS += src/common/dpp_reconfig.c
+OBJS += src/common/dpp_tcp.c
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AES_SIV=y
@@ -568,6 +567,16 @@ NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
 endif
+endif
+
+ifdef CONFIG_PASN
+L_CFLAGS += -DCONFIG_PASN
+L_CFLAGS += -DCONFIG_PTKSA_CACHE
+NEED_HMAC_SHA256_KDF=y
+NEED_HMAC_SHA384_KDF=y
+NEED_SHA256=y
+NEED_SHA384=y
+OBJS += src/common/ptksa_cache.c
 endif
 
 ifdef CONFIG_EAP_IKEV2
@@ -1019,9 +1028,7 @@ OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
 L_CFLAGS += -DNEED_AP_MLME
 endif
-ifdef CONFIG_IEEE80211N
 OBJS += src/ap/ieee802_11_ht.c
-endif
 
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
@@ -1105,21 +1112,11 @@ else
 OBJS_c += src/utils/edit_simple.c
 endif
 
-ifeq ($(filter gce_x86 gce_x86_64 calypso, $(TARGET_DEVICE)),)
-ifdef CONFIG_CTRL_IFACE_HIDL
-HOSTAPD_USE_HIDL=y
-L_CFLAGS += -DCONFIG_CTRL_IFACE_HIDL
-ifdef HOSTAPD_USE_VENDOR_HIDL
-L_CFLAGS += -DCONFIG_USE_VENDOR_HIDL
-endif
-L_CPPFLAGS = -Wall -Werror
-endif
-endif
-
 ########################
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd_cli
+LOCAL_MODULE_TAGS := debug
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1132,7 +1129,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
-LOCAL_MODULE_RELATIVE_PATH := hw
 ifdef CONFIG_DRIVER_CUSTOM
 LOCAL_STATIC_LIBRARIES := libCustomWifi
 endif
@@ -1145,17 +1141,6 @@ ifneq ($(wildcard external/libnl),)
 LOCAL_SHARED_LIBRARIES += libnl
 else
 LOCAL_STATIC_LIBRARIES += libnl_2
-endif
-endif
-ifeq ($(HOSTAPD_USE_HIDL), y)
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.0
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.1
-LOCAL_SHARED_LIBRARIES += libbase libhidlbase libhidltransport libhwbinder libutils
-LOCAL_STATIC_LIBRARIES += libhostapd_hidl
-ifdef HOSTAPD_USE_VENDOR_HIDL
-LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.0 \
-    vendor.qti.hardware.wifi.hostapd@1.1 \
-    libqsap_sdk
 endif
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1164,73 +1149,4 @@ LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_INIT_RC := hostapd.android.rc
 include $(BUILD_EXECUTABLE)
 
-########################
-include $(CLEAR_VARS)
-LOCAL_MODULE := hostapd_nohidl
-LOCAL_MODULE_TAGS := optional
-LOCAL_PROPRIETARY_MODULE := true
-ifdef CONFIG_DRIVER_CUSTOM
-LOCAL_STATIC_LIBRARIES := libCustomWifi
-endif
-ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
-LOCAL_STATIC_LIBRARIES += $(BOARD_HOSTAPD_PRIVATE_LIB)
-endif
-LOCAL_SHARED_LIBRARIES := libc libcutils liblog libcrypto libssl
-ifdef CONFIG_DRIVER_NL80211
-ifneq ($(wildcard external/libnl),)
-LOCAL_SHARED_LIBRARIES += libnl
-else
-LOCAL_STATIC_LIBRARIES += libnl_2
-endif
-endif
-LOCAL_CFLAGS := $(patsubst -DCONFIG_CTRL_IFACE_HIDL,,$(L_CFLAGS))
-LOCAL_SRC_FILES := $(OBJS)
-LOCAL_C_INCLUDES := $(INCLUDES)
-include $(BUILD_EXECUTABLE)
-
-ifeq ($(HOSTAPD_USE_HIDL), y)
-### Hidl service library ###
-########################
-include $(CLEAR_VARS)
-LOCAL_MODULE := libhostapd_hidl
-LOCAL_VENDOR_MODULE := true
-LOCAL_CPPFLAGS := $(L_CPPFLAGS)
-LOCAL_CFLAGS := $(L_CFLAGS)
-LOCAL_C_INCLUDES := $(INCLUDES)
-HIDL_INTERFACE_VERSION = 1.1
-LOCAL_SRC_FILES := \
-    hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/hostapd.cpp
-LOCAL_SHARED_LIBRARIES := \
-    android.hardware.wifi.hostapd@1.0 \
-    android.hardware.wifi.hostapd@1.1 \
-    libbase \
-    libhidlbase \
-    libhidltransport \
-    libhwbinder \
-    libutils \
-    liblog
-LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
-
-ifdef HOSTAPD_USE_VENDOR_HIDL
-VENDOR_HIDL_INTERFACE_VERSION = 1.1
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)
-ifeq ($(BOARD_HAS_QCOM_WLAN), true)
-LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/sdk/softap/include
-endif
-
-LOCAL_SRC_FILES += \
-    hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/qsap_handler.cpp \
-    hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/hostapd_vendor.cpp
-LOCAL_SHARED_LIBRARIES += \
-    vendor.qti.hardware.wifi.hostapd@1.0 \
-    vendor.qti.hardware.wifi.hostapd@1.1 \
-    libqsap_sdk
-LOCAL_HEADER_LIBRARIES := libqsap_headers
-endif
-
-include $(BUILD_STATIC_LIBRARY)
-endif # HOSTAPD_USE_HIDL == y
 endif # ifeq ($(WPA_BUILD_HOSTAPD),true)
