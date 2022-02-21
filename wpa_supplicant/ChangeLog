@@ -1,5 +1,103 @@
 ChangeLog for wpa_supplicant
 
+2019-08-07 - v2.9
+	* SAE changes
+	  - disable use of groups using Brainpool curves
+	  - improved protection against side channel attacks
+	  [https://w1.fi/security/2019-6/]
+	* EAP-pwd changes
+	  - disable use of groups using Brainpool curves
+	  - allow the set of groups to be configured (eap_pwd_groups)
+	  - improved protection against side channel attacks
+	  [https://w1.fi/security/2019-6/]
+	* fixed FT-EAP initial mobility domain association using PMKSA caching
+	  (disabled by default for backwards compatibility; can be enabled
+	  with ft_eap_pmksa_caching=1)
+	* fixed a regression in OpenSSL 1.1+ engine loading
+	* added validation of RSNE in (Re)Association Response frames
+	* fixed DPP bootstrapping URI parser of channel list
+	* extended EAP-SIM/AKA fast re-authentication to allow use with FILS
+	* extended ca_cert_blob to support PEM format
+	* improved robustness of P2P Action frame scheduling
+	* added support for EAP-SIM/AKA using anonymous@realm identity
+	* fixed Hotspot 2.0 credential selection based on roaming consortium
+	  to ignore credentials without a specific EAP method
+	* added experimental support for EAP-TEAP peer (RFC 7170)
+	* added experimental support for EAP-TLS peer with TLS v1.3
+	* fixed a regression in WMM parameter configuration for a TDLS peer
+	* fixed a regression in operation with drivers that offload 802.1X
+	  4-way handshake
+	* fixed an ECDH operation corner case with OpenSSL
+
+2019-04-21 - v2.8
+	* SAE changes
+	  - added support for SAE Password Identifier
+	  - changed default configuration to enable only groups 19, 20, 21
+	    (i.e., disable groups 25 and 26) and disable all unsuitable groups
+	    completely based on REVmd changes
+	  - do not regenerate PWE unnecessarily when the AP uses the
+	    anti-clogging token mechanisms
+	  - fixed some association cases where both SAE and FT-SAE were enabled
+	    on both the station and the selected AP
+	  - started to prefer FT-SAE over SAE AKM if both are enabled
+	  - started to prefer FT-SAE over FT-PSK if both are enabled
+	  - fixed FT-SAE when SAE PMKSA caching is used
+	  - reject use of unsuitable groups based on new implementation guidance
+	    in REVmd (allow only FFC groups with prime >= 3072 bits and ECC
+	    groups with prime >= 256)
+	  - minimize timing and memory use differences in PWE derivation
+	    [https://w1.fi/security/2019-1/] (CVE-2019-9494)
+	* EAP-pwd changes
+	  - minimize timing and memory use differences in PWE derivation
+	    [https://w1.fi/security/2019-2/] (CVE-2019-9495)
+	  - verify server scalar/element
+	    [https://w1.fi/security/2019-4/] (CVE-2019-9499)
+	  - fix message reassembly issue with unexpected fragment
+	    [https://w1.fi/security/2019-5/]
+	  - enforce rand,mask generation rules more strictly
+	  - fix a memory leak in PWE derivation
+	  - disallow ECC groups with a prime under 256 bits (groups 25, 26, and
+	    27)
+	* fixed CONFIG_IEEE80211R=y (FT) build without CONFIG_FILS=y
+	* Hotspot 2.0 changes
+	  - do not indicate release number that is higher than the one
+	    AP supports
+	  - added support for release number 3
+	  - enable PMF automatically for network profiles created from
+	    credentials
+	* fixed OWE network profile saving
+	* fixed DPP network profile saving
+	* added support for RSN operating channel validation
+	  (CONFIG_OCV=y and network profile parameter ocv=1)
+	* added Multi-AP backhaul STA support
+	* fixed build with LibreSSL
+	* number of MKA/MACsec fixes and extensions
+	* extended domain_match and domain_suffix_match to allow list of values
+	* fixed dNSName matching in domain_match and domain_suffix_match when
+	  using wolfSSL
+	* started to prefer FT-EAP-SHA384 over WPA-EAP-SUITE-B-192 AKM if both
+	  are enabled
+	* extended nl80211 Connect and external authentication to support
+	  SAE, FT-SAE, FT-EAP-SHA384
+	* fixed KEK2 derivation for FILS+FT
+	* extended client_cert file to allow loading of a chain of PEM
+	  encoded certificates
+	* extended beacon reporting functionality
+	* extended D-Bus interface with number of new properties
+	* fixed a regression in FT-over-DS with mac80211-based drivers
+	* OpenSSL: allow systemwide policies to be overridden
+	* extended driver flags indication for separate 802.1X and PSK
+	  4-way handshake offload capability
+	* added support for random P2P Device/Interface Address use
+	* extended PEAP to derive EMSK to enable use with ERP/FILS
+	* extended WPS to allow SAE configuration to be added automatically
+	  for PSK (wps_cred_add_sae=1)
+	* removed support for the old D-Bus interface (CONFIG_CTRL_IFACE_DBUS)
+	* extended domain_match and domain_suffix_match to allow list of values
+	* added a RSN workaround for misbehaving PMF APs that advertise
+	  IGTK/BIP KeyID using incorrect byte order
+	* fixed PTK rekeying with FILS and FT
+
 2018-12-02 - v2.7
 	* fixed WPA packet number reuse with replayed messages and key
 	  reinstallation
@@ -435,7 +533,7 @@ ChangeLog for wpa_supplicant
 	* fixed MSCHAP UTF-8 to UCS-2 conversion for three-byte encoding;
 	  this fixes password with include UTF-8 characters that use
 	  three-byte encoding EAP methods that use NtPasswordHash
-	* fixed couple of sequencies where radio work items could get stuck,
+	* fixed couple of sequences where radio work items could get stuck,
 	  e.g., when rfkill blocking happens during scanning or when
 	  scan-for-auth workaround is used
 	* P2P enhancements/fixes
@@ -529,7 +627,7 @@ ChangeLog for wpa_supplicant
 	* added 'dup_network <id_s> <id_d> <name>' command; this can be used to
 	  clone the psk field without having toextract it from wpa_supplicant
 	* fixed GSM authentication on USIM
-	* added support for usin epoll in eloop (CONFIG_ELOOP_EPOLL=y)
+	* added support for using epoll in eloop (CONFIG_ELOOP_EPOLL=y)
 	* fixed some concurrent virtual interface cases with dedicated P2P
 	  management interface to not catch events from removed interface (this
 	  could result in the management interface getting disabled)
@@ -1015,7 +1113,7 @@ ChangeLog for wpa_supplicant
 	    workarounds.
 	  - Add support for AuthorizedMACs attribute.
 	* TDLS:
-	  - Propogate TDLS related nl80211 capability flags from kernel and
+	  - Propagate TDLS related nl80211 capability flags from kernel and
 	    add them as driver capability flags. If the driver doesn't support
 	    capabilities, assume TDLS is supported internally. When TDLS is
 	    explicitly not supported, disable all user facing TDLS operations.
@@ -1766,7 +1864,8 @@ ChangeLog for wpa_supplicant
 	  generate, e.g., man pages
 	* l2_packet_linux: use socket type SOCK_DGRAM instead of SOCK_RAW for
 	  PF_PACKET in order to prepare for network devices that do not use
-	  Ethernet headers (e.g., network stack with native IEEE 802.11 frames)
+	  Ethernet headers (e.g., network stack that includes IEEE 802.11
+	  header in the frames)
 	* use receipt of EAPOL-Key frame as a lower layer success indication
 	  for EAP state machine to allow recovery from dropped EAP-Success
 	  frame
@@ -2123,7 +2222,7 @@ ChangeLog for wpa_supplicant
 	* added support for EAP-SIM pseudonyms and fast re-authentication
 	* added support for EAP-TLS/PEAP/TTLS fast re-authentication (TLS
 	  session resumption)
-	* added support for EAP-SIM with two challanges
+	* added support for EAP-SIM with two challenges
 	  (phase1="sim_min_num_chal=3" can be used to require three challenges)
 	* added support for configuring DH/DSA parameters for an ephemeral DH
 	  key exchange (EAP-TLS/PEAP/TTLS) using new configuration parameters
@@ -2234,7 +2333,7 @@ ChangeLog for wpa_supplicant
 	  ctrl_interface_group can be used to select which group gets access to
 	  the control interface;
 	  wpa_cli: by default, try to connect to the first interface available
-	  in /var/run/wpa_supplicant; this path can be overriden with -p option
+	  in /var/run/wpa_supplicant; this path can be overridden with -p option
 	  and an interface can be selected with -i option (i.e., in most common
 	  cases, wpa_cli does not need to get any arguments)
 	* added support for LEAP

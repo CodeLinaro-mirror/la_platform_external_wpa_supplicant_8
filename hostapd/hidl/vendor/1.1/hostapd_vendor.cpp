@@ -49,6 +49,9 @@
 extern "C"
 {
 #include "utils/eloop.h"
+
+extern int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
+			    const char *txtaddr);
 }
 
 // This HIDL implementation for hostapd add or update a hostapd.conf dynamically
@@ -155,9 +158,18 @@ std::string AddOrUpdateHostapdConfig(
 	std::string dual_str;
 	std::string file_path;
 
+	const int wigigOpClass = (180 << 16);
+	bool isWigig = ((channelParams.channel & 0xFF0000) == wigigOpClass);
+	channelParams.channel &= 0xFFFF;
+
 	if (v_iface_params.VendorV1_0.bridgeIfaceName.empty()) {
-		file_path = StringPrintf(kConfFileNameFmt, "");
-		dual_str = "";
+		if (isWigig) {
+			file_path = StringPrintf(kConfFileNameFmt, "_60g");
+			dual_str = " 60g";
+		} else {
+			file_path = StringPrintf(kConfFileNameFmt, "");
+			dual_str = "";
+		}
 #ifdef CONFIG_OWE
 	} else if (!v_iface_params.oweTransIfaceName.empty()) {
 		// QSAP can't clear owe_transition_ifname and bridge fields
@@ -189,16 +201,21 @@ std::string AddOrUpdateHostapdConfig(
 	case IHostapdVendor::VendorEncryptionType::NONE:
 		// no security params
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "security_mode", "0"));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ieee80211w", "0"));
 		break;
 	case IHostapdVendor::VendorEncryptionType::WPA:
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "security_mode", "4"));
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "wpa_key_mgmt", "WPA-PSK"));
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "wpa_passphrase", nw_params.pskPassphrase.c_str()));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "wpa_pairwise", isWigig ? "GCMP" : "TKIP CCMP"));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ieee80211w", "0"));
 		break;
 	case IHostapdVendor::VendorEncryptionType::WPA2:
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "security_mode", "3"));
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "wpa_key_mgmt", "WPA-PSK"));
 		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "wpa_passphrase", nw_params.pskPassphrase.c_str()));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "rsn_pairwise", isWigig ? "GCMP" : "CCMP"));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ieee80211w", "0"));
 		break;
 #ifdef CONFIG_SAE
 	case IHostapdVendor::VendorEncryptionType::SAE:
@@ -257,8 +274,10 @@ std::string AddOrUpdateHostapdConfig(
 	}
 
 	// reset fields to default
-	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ht_capab", "[SHORT-GI-20] [GF] [DSSS_CCK-40] [LSIG-TXOP-PROT]"));
-	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "vht_oper_chwidth", "0"));
+	if (!isWigig) {
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ht_capab", "[SHORT-GI-20] [GF] [DSSS_CCK-40] [LSIG-TXOP-PROT]"));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "vht_oper_chwidth", "0"));
+	}
 
 	switch (channelParams.band) {
 	case IHostapd::Band::BAND_2_4_GHZ:
@@ -272,7 +291,7 @@ std::string AddOrUpdateHostapdConfig(
 		}
 		break;
 	case IHostapd::Band::BAND_ANY:
-		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "hw_mode", "any"));
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "hw_mode", isWigig ? "ad" : "any"));
 		if (channelParams.enableAcs) {
 			qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ht_capab", "[HT40+]"));
 			qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "vht_oper_chwidth", "1"));
@@ -288,6 +307,8 @@ std::string AddOrUpdateHostapdConfig(
 	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ctrl_interface", "/data/vendor/wifi/hostapd/ctrl"));
 	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ieee80211n", iface_params.hwModeParams.enable80211N ? "1" : "0"));
 	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ieee80211ac", iface_params.hwModeParams.enable80211AC ? "1" : "0"));
+	if (isWigig)
+		qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ieee80211ax", "0"));
 	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "ignore_broadcast_ssid", nw_params.isHidden ? "1" : "0"));
 	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "wowlan_triggers", "any"));
 	qsap_cmd(StringPrintf(kQsapSetFmt, dual_mode_str, "accept_mac_file", "/data/vendor/wifi/hostapd/hostapd.accept"));
@@ -581,6 +602,18 @@ HostapdStatus HostapdVendor::removeVendorAccessPointInternal(const std::string& 
 
 HostapdStatus HostapdVendor::setHostapdParamsInternal(const std::string& cmd)
 {
+	wpa_printf(MSG_INFO, "setHostapdParams - cmd=%s", cmd.c_str());
+
+	if (cmd == "deauth_all") {
+		if (!interfaces_ || !interfaces_->iface)
+			return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
+
+		for (int i = 0; i < interfaces_->count; i++) {
+			hostapd_ctrl_iface_deauthenticate(
+				interfaces_->iface[i]->bss[0], "ff:ff:ff:ff:ff:ff");
+		}
+		return {HostapdStatusCode::SUCCESS, ""};
+	}
 	if (qsap_cmd(cmd))
 		return {HostapdStatusCode::FAILURE_UNKNOWN, ""};
 

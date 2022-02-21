@@ -10,11 +10,11 @@
 #define NOTIFY_H
 
 #include "p2p/p2p.h"
-#include "bss.h"
 
 struct wps_credential;
 struct wps_event_m2d;
 struct wps_event_fail;
+struct tls_cert_data;
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global);
 void wpas_notify_supplicant_deinitialized(struct wpa_global *global);
@@ -26,7 +26,6 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 void wpas_notify_disconnect_reason(struct wpa_supplicant *wpa_s);
 void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s);
 void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s);
-void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s);
 void wpas_notify_roam_time(struct wpa_supplicant *wpa_s);
 void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s);
 void wpas_notify_session_length(struct wpa_supplicant *wpa_s);
@@ -95,10 +94,7 @@ void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
 				const u8 *p2p_dev_addr);
 void wpas_notify_p2p_find_stopped(struct wpa_supplicant *wpa_s);
 void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
-				 const u8 *addr, const struct p2p_peer_info *info,
-				 const u8* peer_wfd_device_info, u8 peer_wfd_device_info_len,
-				 const u8* peer_wfd_r2_device_info, u8 peer_wfd_r2_device_info_len,
-				 int new_device);
+				  const u8 *dev_addr, int new_device);
 void wpas_notify_p2p_device_lost(struct wpa_supplicant *wpa_s,
 				 const u8 *dev_addr);
 void wpas_notify_p2p_group_removed(struct wpa_supplicant *wpa_s,
@@ -135,10 +131,9 @@ void wpas_notify_persistent_group_removed(struct wpa_supplicant *wpa_s,
 void wpas_notify_p2p_wps_failed(struct wpa_supplicant *wpa_s,
 				struct wps_event_fail *fail);
 
-void wpas_notify_certification(struct wpa_supplicant *wpa_s, int depth,
-			       const char *subject, const char *altsubject[],
-			       int num_altsubject, const char *cert_hash,
-			       const struct wpabuf *cert);
+void wpas_notify_certification(struct wpa_supplicant *wpa_s,
+			       struct tls_cert_data *cert,
+			       const char *cert_hash);
 void wpas_notify_preq(struct wpa_supplicant *wpa_s,
 		      const u8 *addr, const u8 *dst, const u8 *bssid,
 		      const u8 *ie, size_t ie_len, u32 ssi_signal);
@@ -156,40 +151,10 @@ void wpas_notify_mesh_group_started(struct wpa_supplicant *wpa_s,
 				    struct wpa_ssid *ssid);
 void wpas_notify_mesh_group_removed(struct wpa_supplicant *wpa_s,
 				    const u8 *meshid, u8 meshid_len,
-				    int reason_code);
+				    u16 reason_code);
 void wpas_notify_mesh_peer_connected(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_addr);
 void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
-					const u8 *peer_addr, int reason_code);
-void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
-				 const char* result,
-				 const struct wpa_bss_anqp *anqp);
-void wpas_notify_hs20_icon_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
-				      const char* file_name, const u8* image,
-				      u32 image_length);
-void wpas_notify_hs20_rx_subscription_remediation(struct wpa_supplicant *wpa_s,
-						  const char* url,
-						  u8 osu_method);
-void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
-						u8 code, u16 reauth_delay,
-						const char *url);
-void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
-	    struct wpa_ssid *ssid);
-void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_missing_auth(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_configuration_failure(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_timeout(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s);
-void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s);
-
-//Vendor dpp notification
-void wpas_notify_dpp_conf(void *msg_ctx, u8 type, u8* ssid,
-			  u8 ssid_len, const char *connector,
-			  struct wpabuf *c_sign, struct wpabuf *net_access,
-			  uint32_t net_access_expiry, const char *passphrase,
-			  uint32_t psk_set, u8 *psk);
+					const u8 *peer_addr, u16 reason_code);
 
 #endif /* NOTIFY_H */
