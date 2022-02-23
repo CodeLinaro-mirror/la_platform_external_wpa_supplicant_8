@@ -13,8 +13,7 @@ import time
 import hwsim_utils
 import hostapd
 from p2p_utils import *
-from test_ap_ht import clear_scan_cache
-from utils import HwsimSkip
+from utils import *
 
 @remote_compatible
 def test_concurrent_autogo(dev, apdev):
@@ -103,7 +102,7 @@ def test_concurrent_autogo_crossconnect(dev, apdev):
 
     dev[0].global_request("SET p2p_no_group_iface 0")
     dev[0].p2p_start_go(no_event_clear=True)
-    ev = dev[0].wait_global_event("P2P-CROSS-CONNECT-ENABLE", timeout=10)
+    ev = dev[0].wait_global_event(["P2P-CROSS-CONNECT-ENABLE"], timeout=10)
     if ev is None:
         raise Exception("Timeout on cross connection enabled event")
     if dev[0].group_ifname + " " + dev[0].ifname not in ev:
@@ -111,7 +110,7 @@ def test_concurrent_autogo_crossconnect(dev, apdev):
     dev[0].dump_monitor()
 
     dev[0].global_request("P2P_SET cross_connect 0")
-    ev = dev[0].wait_global_event("P2P-CROSS-CONNECT-DISABLE", timeout=10)
+    ev = dev[0].wait_global_event(["P2P-CROSS-CONNECT-DISABLE"], timeout=10)
     if ev is None:
         raise Exception("Timeout on cross connection disabled event")
     if dev[0].group_ifname + " " + dev[0].ifname not in ev:
@@ -120,14 +119,14 @@ def test_concurrent_autogo_crossconnect(dev, apdev):
 
     dev[0].global_request("P2P_SET cross_connect 1")
     dev[0].p2p_start_go(no_event_clear=True)
-    ev = dev[0].wait_global_event("P2P-CROSS-CONNECT-ENABLE", timeout=10)
+    ev = dev[0].wait_global_event(["P2P-CROSS-CONNECT-ENABLE"], timeout=10)
     if ev is None:
         raise Exception("Timeout on cross connection enabled event")
     if dev[0].group_ifname + " " + dev[0].ifname not in ev:
         raise Exception("Unexpected interfaces: " + ev)
     dev[0].dump_monitor()
     dev[0].remove_group()
-    ev = dev[0].wait_global_event("P2P-CROSS-CONNECT-DISABLE", timeout=10)
+    ev = dev[0].wait_global_event(["P2P-CROSS-CONNECT-DISABLE"], timeout=10)
     if ev is None:
         raise Exception("Timeout on cross connection disabled event")
     dev[0].global_request("P2P_SET cross_connect 0")

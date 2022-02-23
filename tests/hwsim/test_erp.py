@@ -11,14 +11,9 @@ import os
 import time
 
 import hostapd
-from utils import HwsimSkip, alloc_fail, fail_test, wait_fail_trigger
+from utils import *
 from test_ap_eap import int_eap_server_params
 from test_ap_psk import find_wpas_process, read_process_memory, verify_not_present, get_key_locations
-
-def check_erp_capa(dev):
-    capab = dev.get_capability("erp")
-    if not capab or 'ERP' not in capab:
-        raise HwsimSkip("ERP not supported in the build")
 
 def test_erp_initiate_reauth_start(dev, apdev):
     """Authenticator sending EAP-Initiate/Re-auth-Start, but ERP disabled on peer"""
@@ -310,6 +305,9 @@ def test_erp_radius_eap_methods(dev, apdev):
         erp_test(dev[0], hapd, eap="PEAP", identity="erp-peap@example.com",
                  password="password", ca_cert="auth_serv/ca.pem",
                  phase2="auth=MSCHAPV2")
+        erp_test(dev[0], hapd, eap="TEAP", identity="erp-teap@example.com",
+                 password="password", ca_cert="auth_serv/ca.pem",
+                 phase2="auth=MSCHAPV2", pac_file="blob://teap_pac")
     erp_test(dev[0], hapd, eap="PSK", identity="erp-psk@example.com",
              password_hex="0123456789abcdef0123456789abcdef")
     if "PWD" in eap_methods:

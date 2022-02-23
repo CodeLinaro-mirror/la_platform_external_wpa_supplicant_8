@@ -1,5 +1,29 @@
 ChangeLog for hostapd
 
+2019-08-07 - v2.9
+	* SAE changes
+	  - disable use of groups using Brainpool curves
+	  - improved protection against side channel attacks
+	  [https://w1.fi/security/2019-6/]
+	* EAP-pwd changes
+	  - disable use of groups using Brainpool curves
+	  - improved protection against side channel attacks
+	  [https://w1.fi/security/2019-6/]
+	* fixed FT-EAP initial mobility domain association using PMKSA caching
+	* added configuration of airtime policy
+	* fixed FILS to and RSNE into (Re)Association Response frames
+	* fixed DPP bootstrapping URI parser of channel list
+	* added support for regulatory WMM limitation (for ETSI)
+	* added support for MACsec Key Agreement using IEEE 802.1X/PSK
+	* added experimental support for EAP-TEAP server (RFC 7170)
+	* added experimental support for EAP-TLS server with TLS v1.3
+	* added support for two server certificates/keys (RSA/ECC)
+	* added AKMSuiteSelector into "STA <addr>" control interface data to
+	  determine with AKM was used for an association
+	* added eap_sim_id parameter to allow EAP-SIM/AKA server pseudonym and
+	  fast reauthentication use to be disabled
+	* fixed an ECDH operation corner case with OpenSSL
+
 2019-04-21 - v2.8
 	* SAE changes
 	  - added support for SAE Password Identifier
@@ -338,7 +362,7 @@ ChangeLog for hostapd
 	* RADIUS server functionality
 	  - add minimal RADIUS accounting server support (hostapd-as-server);
 	    this is mainly to enable testing coverage with hwsim scripts
-	  - allow authentication log to be written into SQLite databse
+	  - allow authentication log to be written into SQLite database
 	  - added option for TLS protocol testing of an EAP peer by simulating
 	    various misbehaviors/known attacks
 	  - MAC ACL support for testing purposes
@@ -644,7 +668,7 @@ ChangeLog for hostapd
 	* fixed HT Capabilities IE with nl80211 drivers
 	* moved generic AP functionality code into src/ap
 	* WPS: handle Selected Registrar as union of info from all Registrars
-	* remove obsolte Prism54.org driver wrapper
+	* remove obsolete Prism54.org driver wrapper
 	* added internal debugging mechanism with backtrace support and memory
 	  allocation/freeing validation, etc. tests (CONFIG_WPA_TRACE=y)
 	* EAP-FAST server: piggyback Phase 2 start with the end of Phase 1

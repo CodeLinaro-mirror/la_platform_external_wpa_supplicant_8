@@ -1,5 +1,34 @@
 ChangeLog for wpa_supplicant
 
+2019-08-07 - v2.9
+	* SAE changes
+	  - disable use of groups using Brainpool curves
+	  - improved protection against side channel attacks
+	  [https://w1.fi/security/2019-6/]
+	* EAP-pwd changes
+	  - disable use of groups using Brainpool curves
+	  - allow the set of groups to be configured (eap_pwd_groups)
+	  - improved protection against side channel attacks
+	  [https://w1.fi/security/2019-6/]
+	* fixed FT-EAP initial mobility domain association using PMKSA caching
+	  (disabled by default for backwards compatibility; can be enabled
+	  with ft_eap_pmksa_caching=1)
+	* fixed a regression in OpenSSL 1.1+ engine loading
+	* added validation of RSNE in (Re)Association Response frames
+	* fixed DPP bootstrapping URI parser of channel list
+	* extended EAP-SIM/AKA fast re-authentication to allow use with FILS
+	* extended ca_cert_blob to support PEM format
+	* improved robustness of P2P Action frame scheduling
+	* added support for EAP-SIM/AKA using anonymous@realm identity
+	* fixed Hotspot 2.0 credential selection based on roaming consortium
+	  to ignore credentials without a specific EAP method
+	* added experimental support for EAP-TEAP peer (RFC 7170)
+	* added experimental support for EAP-TLS peer with TLS v1.3
+	* fixed a regression in WMM parameter configuration for a TDLS peer
+	* fixed a regression in operation with drivers that offload 802.1X
+	  4-way handshake
+	* fixed an ECDH operation corner case with OpenSSL
+
 2019-04-21 - v2.8
 	* SAE changes
 	  - added support for SAE Password Identifier
@@ -504,7 +533,7 @@ ChangeLog for wpa_supplicant
 	* fixed MSCHAP UTF-8 to UCS-2 conversion for three-byte encoding;
 	  this fixes password with include UTF-8 characters that use
 	  three-byte encoding EAP methods that use NtPasswordHash
-	* fixed couple of sequencies where radio work items could get stuck,
+	* fixed couple of sequences where radio work items could get stuck,
 	  e.g., when rfkill blocking happens during scanning or when
 	  scan-for-auth workaround is used
 	* P2P enhancements/fixes
@@ -598,7 +627,7 @@ ChangeLog for wpa_supplicant
 	* added 'dup_network <id_s> <id_d> <name>' command; this can be used to
 	  clone the psk field without having toextract it from wpa_supplicant
 	* fixed GSM authentication on USIM
-	* added support for usin epoll in eloop (CONFIG_ELOOP_EPOLL=y)
+	* added support for using epoll in eloop (CONFIG_ELOOP_EPOLL=y)
 	* fixed some concurrent virtual interface cases with dedicated P2P
 	  management interface to not catch events from removed interface (this
 	  could result in the management interface getting disabled)
@@ -1084,7 +1113,7 @@ ChangeLog for wpa_supplicant
 	    workarounds.
 	  - Add support for AuthorizedMACs attribute.
 	* TDLS:
-	  - Propogate TDLS related nl80211 capability flags from kernel and
+	  - Propagate TDLS related nl80211 capability flags from kernel and
 	    add them as driver capability flags. If the driver doesn't support
 	    capabilities, assume TDLS is supported internally. When TDLS is
 	    explicitly not supported, disable all user facing TDLS operations.
@@ -1835,7 +1864,8 @@ ChangeLog for wpa_supplicant
 	  generate, e.g., man pages
 	* l2_packet_linux: use socket type SOCK_DGRAM instead of SOCK_RAW for
 	  PF_PACKET in order to prepare for network devices that do not use
-	  Ethernet headers (e.g., network stack with native IEEE 802.11 frames)
+	  Ethernet headers (e.g., network stack that includes IEEE 802.11
+	  header in the frames)
 	* use receipt of EAPOL-Key frame as a lower layer success indication
 	  for EAP state machine to allow recovery from dropped EAP-Success
 	  frame
@@ -2192,7 +2222,7 @@ ChangeLog for wpa_supplicant
 	* added support for EAP-SIM pseudonyms and fast re-authentication
 	* added support for EAP-TLS/PEAP/TTLS fast re-authentication (TLS
 	  session resumption)
-	* added support for EAP-SIM with two challanges
+	* added support for EAP-SIM with two challenges
 	  (phase1="sim_min_num_chal=3" can be used to require three challenges)
 	* added support for configuring DH/DSA parameters for an ephemeral DH
 	  key exchange (EAP-TLS/PEAP/TTLS) using new configuration parameters
@@ -2303,7 +2333,7 @@ ChangeLog for wpa_supplicant
 	  ctrl_interface_group can be used to select which group gets access to
 	  the control interface;
 	  wpa_cli: by default, try to connect to the first interface available
-	  in /var/run/wpa_supplicant; this path can be overriden with -p option
+	  in /var/run/wpa_supplicant; this path can be overridden with -p option
 	  and an interface can be selected with -i option (i.e., in most common
 	  cases, wpa_cli does not need to get any arguments)
 	* added support for LEAP

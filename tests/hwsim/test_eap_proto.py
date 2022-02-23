@@ -16,9 +16,8 @@ import threading
 import time
 
 import hostapd
-from utils import HwsimSkip, alloc_fail, fail_test, wait_fail_trigger
+from utils import *
 from test_ap_eap import check_eap_capa, check_hlr_auc_gw_support, int_eap_server_params
-from test_erp import check_erp_capa
 
 try:
     import OpenSSL
@@ -106,7 +105,7 @@ def start_radius_server(eap_handler):
                 logger.info("No EAP request available")
             reply.code = pyrad.packet.AccessChallenge
 
-            hmac_obj = hmac.new(reply.secret)
+            hmac_obj = hmac.new(reply.secret, digestmod=hashlib.md5)
             hmac_obj.update(struct.pack("B", reply.code))
             hmac_obj.update(struct.pack("B", reply.id))
 
@@ -144,6 +143,9 @@ def start_radius_server(eap_handler):
                             logger.info("pyrad server received invalid packet: " + str(err))
                     else:
                         logger.error("Unexpected event in pyrad server main loop")
+
+            for fd in self.authfds + self.acctfds:
+                fd.close()
 
     srv = TestServer(dict=pyrad.dictionary.Dictionary("dictionary.radius"),
                      authport=18138, acctport=18139)
@@ -821,7 +823,12 @@ def test_eap_proto_sake_errors(dev, apdev):
             dev[0].dump_monitor()
 
     tests = [(1, "os_get_random;eap_sake_process_challenge"),
-             (1, "eap_sake_derive_keys;eap_sake_process_challenge")]
+             (1, "eap_sake_derive_keys;eap_sake_process_challenge"),
+             (2, "eap_sake_derive_keys;eap_sake_process_challenge"),
+             (3, "eap_sake_derive_keys;eap_sake_process_challenge"),
+             (4, "eap_sake_derive_keys;eap_sake_process_challenge"),
+             (5, "eap_sake_derive_keys;eap_sake_process_challenge"),
+             (6, "eap_sake_derive_keys;eap_sake_process_challenge")]
     for count, func in tests:
         with fail_test(dev[0], count, func):
             dev[0].connect("eap-test", key_mgmt="WPA-EAP", scan_freq="2412",
@@ -976,7 +983,7 @@ def test_eap_proto_sake_server(dev, apdev):
     # Unknown session
     # --> EAP-SAKE: Session ID mismatch
     sess, = struct.unpack('B', binascii.unhexlify(resp[20:22]))
-    sess = binascii.hexlify(struct.pack('B', sess + 1)).decode()
+    sess = binascii.hexlify(struct.pack('B', (sess + 1) % 256)).decode()
     msg = resp[0:4] + "0008" + resp[8:12] + "0008" + "3002" + sess + "00"
     tx_msg(dev[0], hapd, msg)
     # Unknown subtype
@@ -1727,7 +1734,7 @@ def test_eap_proto_otp(dev, apdev):
             raise Exception("Request for password timed out")
         id = ev.split(':')[0].split('-')[-1]
         dev[0].request("CTRL-RSP-OTP-" + id + ":password")
-        ev = dev[0].wait_event("CTRL-EVENT-EAP-SUCCESS")
+        ev = dev[0].wait_event(["CTRL-EVENT-EAP-SUCCESS"])
         if ev is None:
             raise Exception("Success not reported")
     finally:
@@ -2862,10 +2869,10 @@ def test_eap_proto_eke_errors(dev, apdev):
              (1, "os_get_random;eap_eke_dhcomp", None),
              (1, "aes_128_cbc_encrypt;eap_eke_dhcomp", None),
              (1, "aes_128_cbc_decrypt;eap_eke_shared_secret", None),
-             (1, "eap_eke_prf;eap_eke_shared_secret", None),
-             (1, "eap_eke_prfplus;eap_eke_derive_ke_ki", None),
-             (1, "eap_eke_prfplus;eap_eke_derive_ka", None),
-             (1, "eap_eke_prfplus;eap_eke_derive_msk", None),
+             (1, "hmac_sha256_vector;eap_eke_shared_secret", None),
+             (1, "eap_eke_prf_hmac_sha256;eap_eke_derive_ke_ki", None),
+             (1, "eap_eke_prf_hmac_sha256;eap_eke_derive_ka", None),
+             (1, "eap_eke_prf_hmac_sha256;eap_eke_derive_msk", None),
              (1, "os_get_random;eap_eke_prot", None),
              (1, "aes_128_cbc_decrypt;eap_eke_decrypt_prot", None),
              (1, "eap_eke_derive_key;eap_eke_process_commit", None),
@@ -2881,6 +2888,8 @@ def test_eap_proto_eke_errors(dev, apdev):
              (1, "eap_eke_auth;eap_eke_process_confirm", None),
              (2, "eap_eke_auth;eap_eke_process_confirm", None),
              (1, "eap_eke_prot;eap_eke_process_confirm", None),
+             (1, "aes_128_cbc_encrypt;eap_eke_prot;eap_eke_process_confirm", None),
+             (1, "hmac_sha256;eap_eke_prot;eap_eke_process_confirm", None),
              (1, "eap_eke_derive_msk;eap_eke_process_confirm", None)]
     for count, func, phase1 in tests:
         with fail_test(dev[0], count, func):
@@ -5619,8 +5628,7 @@ def test_eap_proto_aka_errors(dev, apdev):
     tests = [(1, "=eap_aka_learn_ids"),
              (2, "=eap_aka_learn_ids"),
              (1, "eap_sim_parse_encr;eap_aka_process_challenge"),
-             (1, "wpabuf_dup;eap_aka_add_id_msg"),
-             (1, "wpabuf_resize;eap_aka_add_id_msg"),
+             (1, "wpabuf_alloc;eap_aka_add_id_msg"),
              (1, "eap_aka_getKey"),
              (1, "eap_aka_get_emsk"),
              (1, "eap_aka_get_session_id")]
@@ -8937,10 +8945,15 @@ def test_eap_proto_ttls_errors(dev, apdev):
               "user", "autheap=MSCHAPV2"),
              (1, "eap_msg_alloc;eap_peer_tls_build_ack",
               "user", "autheap=MSCHAPV2"),
-             (1, "tls_connection_decrypt;eap_peer_tls_decrypt",
-              "user", "autheap=MSCHAPV2"),
              (1, "eap_peer_tls_phase2_nak;eap_ttls_phase2_request_eap_method",
               "cert user", "autheap=MSCHAPV2")]
+    tls = dev[0].request("GET tls_library")
+    if tls.startswith("internal"):
+        tests += [(1, "tlsv1_client_decrypt;eap_peer_tls_decrypt",
+                   "user", "autheap=MSCHAPV2")]
+    else:
+        tests += [(1, "tls_connection_decrypt;eap_peer_tls_decrypt",
+                   "user", "autheap=MSCHAPV2")]
     for count, func, identity, phase2 in tests:
         with alloc_fail(dev[0], count, func):
             dev[0].connect("eap-test", key_mgmt="WPA-EAP", scan_freq="2412",

@@ -68,6 +68,7 @@ def test_suite_b(dev, apdev):
                    client_cert="auth_serv/ec-user.pem",
                    private_key="auth_serv/ec-user.key",
                    pairwise="GCMP", group="GCMP", scan_freq="2412")
+    hapd.wait_sta()
     tls_cipher = dev[0].get_status_field("EAP TLS cipher")
     if tls_cipher != "ECDHE-ECDSA-AES128-GCM-SHA256" and \
        tls_cipher != "ECDHE-ECDSA-AES-128-GCM-AEAD":
@@ -94,6 +95,7 @@ def test_suite_b(dev, apdev):
     if conf['key_mgmt'] != 'WPA-EAP-SUITE-B':
         raise Exception("Unexpected config key_mgmt: " + conf['key_mgmt'])
 
+    hapd.wait_sta()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected(timeout=20)
     dev[0].dump_monitor()
@@ -201,6 +203,7 @@ def test_suite_b_192(dev, apdev):
     if "[WPA2-EAP-SUITE-B-192-GCMP-256]" not in bss['flags']:
         raise Exception("Unexpected BSS flags: " + bss['flags'])
 
+    hapd.wait_sta()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected(timeout=20)
     dev[0].dump_monitor()
@@ -216,6 +219,7 @@ def test_suite_b_192(dev, apdev):
     if conf['key_mgmt'] != 'WPA-EAP-SUITE-B-192':
         raise Exception("Unexpected config key_mgmt: " + conf['key_mgmt'])
 
+    hapd.wait_sta()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected(timeout=20)
     dev[0].dump_monitor()
@@ -437,6 +441,7 @@ def run_suite_b_192_rsa(dev, apdev, no_ecdh=False, no_dhe=False):
     if "[WPA2-EAP-SUITE-B-192-GCMP-256]" not in bss['flags']:
         raise Exception("Unexpected BSS flags: " + bss['flags'])
 
+    hapd.wait_sta()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected(timeout=20)
     dev[0].dump_monitor()
@@ -667,3 +672,68 @@ def test_openssl_ecdh_curves(dev, apdev):
         raise Exception("EAP failure not reported")
     dev[0].request("REMOVE_NETWORK all")
     dev[0].wait_disconnected()
+
+def test_suite_b_192_pmksa_caching_roam(dev, apdev):
+    """WPA2/GCMP-256 connection at Suite B 192-bit level using PMKSA caching and roaming"""
+    check_suite_b_192_capa(dev)
+    dev[0].flush_scan_cache()
+    params = suite_b_192_ap_params()
+    hapd = hostapd.add_ap(apdev[0], params)
+    bssid = hapd.own_addr()
+
+    dev[0].connect("test-suite-b", key_mgmt="WPA-EAP-SUITE-B-192",
+                   ieee80211w="2",
+                   openssl_ciphers="SUITEB192",
+                   eap="TLS", identity="tls user",
+                   ca_cert="auth_serv/ec2-ca.pem",
+                   client_cert="auth_serv/ec2-user.pem",
+                   private_key="auth_serv/ec2-user.key",
+                   pairwise="GCMP-256", group="GCMP-256", scan_freq="2412")
+    ev = dev[0].wait_event(["PMKSA-CACHE-ADDED"], timeout=5)
+    if ev is None:
+        raise Exception("PMKSA cache entry not added for AP1")
+    hapd.wait_sta()
+    dev[0].dump_monitor()
+
+    hapd2 = hostapd.add_ap(apdev[1], params)
+    bssid2 = hapd2.own_addr()
+    dev[0].scan_for_bss(bssid2, freq=2412)
+    dev[0].request("ROAM " + bssid2)
+    ev = dev[0].wait_event(["CTRL-EVENT-EAP-STARTED",
+                            "CTRL-EVENT-CONNECTED"], timeout=20)
+    if ev is None:
+        raise Exception("Roaming with the AP timed out")
+    if "CTRL-EVENT-EAP-STARTED" not in ev:
+        raise Exception("EAP exchange not seen")
+    ev = dev[0].wait_connected()
+    if bssid2 not in ev:
+        raise Exception("Roam to AP2 connected back to AP1")
+    ev = dev[0].wait_event(["PMKSA-CACHE-ADDED"], timeout=5)
+    if ev is None:
+        raise Exception("PMKSA cache entry not added for AP2")
+    hapd2.wait_sta()
+    dev[0].dump_monitor()
+
+    dev[0].request("ROAM " + bssid)
+    ev = dev[0].wait_event(["CTRL-EVENT-EAP-STARTED",
+                            "CTRL-EVENT-CONNECTED"], timeout=20)
+    if ev is None:
+        raise Exception("Roaming with the AP timed out")
+    if "CTRL-EVENT-EAP-STARTED" in ev:
+        raise Exception("Unexpected EAP exchange")
+    if bssid not in ev:
+        raise Exception("Roam to AP1 connected back to AP2")
+    hapd.wait_sta()
+    dev[0].dump_monitor()
+
+    dev[0].request("ROAM " + bssid2)
+    ev = dev[0].wait_event(["CTRL-EVENT-EAP-STARTED",
+                            "CTRL-EVENT-CONNECTED"], timeout=20)
+    if ev is None:
+        raise Exception("Roaming with the AP timed out")
+    if "CTRL-EVENT-EAP-STARTED" in ev:
+        raise Exception("Unexpected EAP exchange")
+    if bssid2 not in ev:
+        raise Exception("Second roam to AP2 connected back to AP1")
+    hapd2.wait_sta()
+    dev[0].dump_monitor()
