@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <set>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <linux/if_bridge.h>
@@ -29,6 +30,8 @@ extern "C"
 
 #define ENCRYPTION_TYPE_OWE              7
 #define ENCRYPTION_TYPE_OWE_TRANSITION   8
+
+#define MAX_HE80_ALLOWED_PRI_CHANNEL     157
 }
 
 // The HIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -45,6 +48,9 @@ using android::base::WriteStringToFile;
 using android::hardware::wifi::hostapd::V1_3::IHostapd;
 using android::hardware::wifi::hostapd::V1_3::Generation;
 using android::hardware::wifi::hostapd::V1_3::Bandwidth;
+
+std::set<int> allowed_ht40_first_channel_list = { 36, 44, 52, 60, 100, 108, 116,
+					124, 132, 140, 149, 157, 165, 184, 192 };
 
 #ifdef CONFIG_OWE
 extern "C" int linux_get_ifhwaddr(int sock, const char *ifname, u8 *addr);
@@ -147,6 +153,23 @@ std::string WriteHostapdConfig(
 	return "";
 }
 
+static int hostapd_get_center_80mhz(int channel)
+{
+	int center_channels[] = { 42, 58, 106, 122, 138, 155 };
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(center_channels); i++)
+		/*
+		 * In 80 MHz, the bandwidth "spans" 12 channels (e.g., 36-48),
+		 * so the center channel is 6 channels away from the start/end.
+		 */
+		if (channel >= center_channels[i] - 6 &&
+				channel <= center_channels[i] + 6)
+			return center_channels[i];
+
+	return 0;
+}
+
 /*
  * Get the op_class for a channel/band
  * The logic here is based on Table E-4 in the 802.11 Specification
@@ -176,7 +199,8 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 	// 5GHz Band
 	if ((band & IHostapd::BandMask::BAND_5_GHZ) != 0) {
 		if (support11ac) {
-			switch (channel) {
+			int center_channel = hostapd_get_center_80mhz(channel);
+			switch (center_channel) {
 				case 42:
 				case 58:
 				case 106:
@@ -185,10 +209,13 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 				case 155:
 					// 80MHz channel
 					return 128;
+#if 0
+// 160Mhz to be supported
 				case 50:
 				case 114:
 					// 160MHz channel
 					return 129;
+#endif
 			}
 		}
 
@@ -472,11 +499,17 @@ std::string CreateHostapdConfig(
 		    iface_params.V1_2.V1_1.V1_0.channelParams.acsShouldExcludeDfs,
 		    freqList_as_string.c_str());
 	} else {
+		bool support11ac = iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211AC;
+#ifdef CONFIG_IEEE80211AX
+		if (!support11ac) {
+			support11ac = iface_params.V1_2.hwModeParams.enable80211AX;
+		}
+#endif
 		int op_class = getOpClassForChannel(
 		    channelParams.channel,
 		    band,
 		    iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211N,
-		    iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211AC);
+		    support11ac);
 		channel_config_as_string = StringPrintf(
 		    "channel=%d\n"
 		    "op_class=%d",
@@ -503,19 +536,69 @@ std::string CreateHostapdConfig(
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=any";
 			if (iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211AC) {
-				ht_cap_vht_oper_chwidth_as_string =
-				    "ht_capab=[HT40+]\n"
+				if (channelParams.enableAcs) {
+					ht_cap_vht_oper_chwidth_as_string =
+						"ht_capab=[HT40+][HT40-]\n";
+				} else {
+					if (allowed_ht40_first_channel_list.end()
+						== allowed_ht40_first_channel_list.find(
+								iface_params.V1_2.V1_1.V1_0.channelParams.channel)) {
+						// channels not in allowed list.
+						ht_cap_vht_oper_chwidth_as_string =
+							"ht_capab=[HT40-]\n";
+					} else {
+						// First channel > 157 not allowed in HE80. Override to 157
+						if (iface_params.V1_2.V1_1.V1_0.channelParams.channel >
+								MAX_HE80_ALLOWED_PRI_CHANNEL) {
+							channel_config_as_string.replace(8, 3,
+									std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
+						}
+						ht_cap_vht_oper_chwidth_as_string =
+							"ht_capab=[HT40+]\n";
+					}
+				}
+
+				ht_cap_vht_oper_chwidth_as_string +=
+#ifdef CONFIG_IEEE80211AX
+				    "he_oper_chwidth=1\n"
+#endif
 				    "vht_oper_chwidth=1";
 			}
 		} else {
 			hw_mode_as_string = "hw_mode=g";
+			ht_cap_vht_oper_chwidth_as_string =
+				"ht_capab=[HT40+][HT40-]";
 		}
 	} else if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
 			hw_mode_as_string = "hw_mode=a";
 		if (iface_params.V1_2.V1_1.V1_0.hwModeParams.enable80211AC) {
-			ht_cap_vht_oper_chwidth_as_string =
-			    "ht_capab=[HT40+]\n"
+			if (channelParams.enableAcs) {
+				ht_cap_vht_oper_chwidth_as_string =
+					"ht_capab=[HT40+][HT40-]\n";
+			} else {
+				if (allowed_ht40_first_channel_list.end()
+					== allowed_ht40_first_channel_list.find(
+							iface_params.V1_2.V1_1.V1_0.channelParams.channel)) {
+					// channels not in allowed list.
+					ht_cap_vht_oper_chwidth_as_string =
+						"ht_capab=[HT40-]\n";
+				} else {
+					// First channel > 157 not allowed in HE80. Override to 157
+					if (iface_params.V1_2.V1_1.V1_0.channelParams.channel >
+							MAX_HE80_ALLOWED_PRI_CHANNEL) {
+						channel_config_as_string.replace(8, 3,
+								std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
+					}
+					ht_cap_vht_oper_chwidth_as_string =
+						"ht_capab=[HT40+]\n";
+				}
+			}
+
+			ht_cap_vht_oper_chwidth_as_string +=
+#ifdef CONFIG_IEEE80211AX
+			    "he_oper_chwidth=1\n"
+#endif
 			    "vht_oper_chwidth=1";
 		}
 	} else {
@@ -528,7 +611,6 @@ std::string CreateHostapdConfig(
 	if (iface_params.V1_2.hwModeParams.enable80211AX && !is_60Ghz_used) {
 		he_params_as_string = StringPrintf(
 		    "ieee80211ax=1\n"
-		    "he_oper_chwidth=1\n"
 		    "he_su_beamformer=%d\n"
 		    "he_su_beamformee=%d\n"
 		    "he_mu_beamformer=%d\n"
