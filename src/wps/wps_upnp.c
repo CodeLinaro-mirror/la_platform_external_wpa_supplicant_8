@@ -320,9 +320,14 @@ static void subscr_addr_add_url(struct subscription *s, const char *url,
 	int rerr;
 	size_t host_len, path_len;
 
-	/* url MUST begin with http: */
-	if (url_len < 7 || os_strncasecmp(url, "http://", 7))
+	/* URL MUST begin with HTTP scheme. In addition, limit the length of
+	 * the URL to 700 characters which is around the limit that was
+	 * implicitly enforced for more than 10 years due to a bug in
+	 * generating the event messages. */
+	if (url_len < 7 || os_strncasecmp(url, "http://", 7) || url_len > 700) {
+		wpa_printf(MSG_DEBUG, "WPS UPnP: Reject an unacceptable URL");
 		goto fail;
+	}
 	url += 7;
 	url_len -= 7;
 
@@ -519,8 +524,9 @@ static void upnp_wps_device_send_event(struct upnp_wps_device_sm *sm)
 
 	dl_list_for_each_safe(s, tmp, &sm->subscriptions, struct subscription,
 			      list) {
-		event_add(s, buf,
-			  sm->wlanevent_type == UPNP_WPS_WLANEVENT_TYPE_PROBE);
+		wps_upnp_event_add(
+			s, buf,
+			sm->wlanevent_type == UPNP_WPS_WLANEVENT_TYPE_PROBE);
 	}
 
 	wpabuf_free(buf);
@@ -541,7 +547,7 @@ void subscription_destroy(struct subscription *s)
 	struct upnp_wps_device_interface *iface;
 	wpa_printf(MSG_DEBUG, "WPS UPnP: Destroy subscription %p", s);
 	subscr_addr_free_all(s);
-	event_delete_all(s);
+	wps_upnp_event_delete_all(s);
 	dl_list_for_each(iface, &s->sm->interfaces,
 			 struct upnp_wps_device_interface, list)
 		upnp_er_remove_notification(iface->wps->registrar, s);
@@ -647,7 +653,7 @@ static int subscription_first_event(struct subscription *s)
 			   "initial WLANEvent");
 		msg = build_fake_wsc_ack();
 		if (msg) {
-			s->sm->wlanevent = (char *)
+			s->sm->wlanevent =
 				base64_encode(wpabuf_head(msg),
 					      wpabuf_len(msg), NULL);
 			wpabuf_free(msg);
@@ -672,7 +678,7 @@ static int subscription_first_event(struct subscription *s)
 		wpabuf_put_property(buf, "WLANEvent", wlan_event);
 	wpabuf_put_str(buf, tail);
 
-	ret = event_add(s, buf, 0);
+	ret = wps_upnp_event_add(s, buf, 0);
 	if (ret) {
 		wpabuf_free(buf);
 		return ret;
@@ -749,7 +755,7 @@ struct subscription * subscription_start(struct upnp_wps_device_sm *sm,
 		   "WPS UPnP: Subscription %p (SID %s) started with %s",
 		   s, str, callback_urls);
 	/* Schedule sending this */
-	event_send_all_later(sm);
+	wps_upnp_event_send_all_later(sm);
 	return s;
 }
 
@@ -822,7 +828,7 @@ int upnp_wps_device_send_wlan_event(struct upnp_wps_device_sm *sm,
 	}
 	raw_len = pos;
 
-	val = (char *) base64_encode(raw, raw_len, &val_len);
+	val = base64_encode(raw, raw_len, &val_len);
 	if (val == NULL)
 		goto fail;
 
@@ -987,7 +993,7 @@ static void upnp_wps_device_stop(struct upnp_wps_device_sm *sm)
 
 	advertisement_state_machine_stop(sm, 1);
 
-	event_send_stop_all(sm);
+	wps_upnp_event_send_stop_all(sm);
 	os_free(sm->wlanevent);
 	sm->wlanevent = NULL;
 	os_free(sm->ip_addr_text);
