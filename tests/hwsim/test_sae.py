@@ -17,12 +17,8 @@ import subprocess
 import hwsim_utils
 import hostapd
 from wpasupplicant import WpaSupplicant
-from utils import HwsimSkip, alloc_fail, fail_test, wait_fail_trigger, start_monitor, stop_monitor, radiotap_build
+from utils import *
 from test_ap_psk import find_wpas_process, read_process_memory, verify_not_present, get_key_locations
-
-def check_sae_capab(dev):
-    if "SAE" not in dev.get_capability("auth_alg"):
-        raise HwsimSkip("SAE not supported")
 
 @remote_compatible
 def test_sae(dev, apdev):
@@ -56,6 +52,15 @@ def test_sae(dev, apdev):
     pmk_w = dev[0].get_pmk(id)
     if pmk_h != pmk_w:
         raise Exception("Fetched PMK does not match: hostapd %s, wpa_supplicant %s" % (pmk_h, pmk_w))
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    pmk_h2 = hapd.request("GET_PMK " + dev[0].own_addr())
+    if pmk_h != pmk_h2:
+        raise Exception("Fetched PMK from PMKSA cache does not match: %s, %s" % (pmk_h, pmk_h2))
+    if "FAIL" not in hapd.request("GET_PMK foo"):
+        raise Exception("Invalid GET_PMK did not return failure")
+    if "FAIL" not in hapd.request("GET_PMK 02:ff:ff:ff:ff:ff"):
+        raise Exception("GET_PMK for unknown STA did not return failure")
 
 @remote_compatible
 def test_sae_password_ecc(dev, apdev):
@@ -229,7 +234,7 @@ def test_sae_group_nego(dev, apdev):
     params['sae_groups'] = '19'
     hostapd.add_ap(apdev[0], params)
 
-    dev[0].request("SET sae_groups 25 26 20 19")
+    dev[0].request("SET sae_groups 25 20 19")
     dev[0].connect("test-sae-group-nego", psk="12345678", key_mgmt="SAE",
                    scan_freq="2412")
     if dev[0].get_status_field('sae_group') != '19':
@@ -330,6 +335,61 @@ def test_sae_and_psk2(dev, apdev):
     dev[0].request("SET sae_groups ")
     dev[0].connect("test-psk", psk="12345678", key_mgmt="SAE WPA-PSK",
                    scan_freq="2412")
+
+def test_sae_wpa3_roam(dev, apdev):
+    """SAE and WPA3-Personal transition mode roaming"""
+    check_sae_capab(dev[0])
+
+    # WPA3-Personal only AP
+    params = hostapd.wpa2_params(ssid="test", passphrase="12345678")
+    params['ieee80211w'] = '2'
+    params['wpa_key_mgmt'] = 'SAE'
+    hapd0 = hostapd.add_ap(apdev[0], params)
+
+    # WPA2-Personal only AP
+    params = hostapd.wpa2_params(ssid="test", passphrase="12345678")
+    hapd1 = hostapd.add_ap(apdev[1], params)
+
+    dev[0].set("sae_groups", "")
+    dev[0].connect("test", psk="12345678", key_mgmt="SAE WPA-PSK",
+                   ieee80211w="1", scan_freq="2412")
+    bssid = dev[0].get_status_field('bssid')
+
+    # Disable the current AP to force roam to the other one
+    if bssid == apdev[0]['bssid']:
+        hapd0.disable()
+    else:
+        hapd1.disable()
+    dev[0].wait_connected()
+
+    # Disable the current AP to force roam to the other (previous) one
+    if bssid == apdev[0]['bssid']:
+        hapd0.enable()
+        hapd1.disable()
+    else:
+        hapd1.enable()
+        hapd0.disable()
+    dev[0].wait_connected()
+
+    # Force roam to an AP in WPA3-Personal transition mode
+    if bssid == apdev[0]['bssid']:
+        hapd1.set("ieee80211w", "1")
+        hapd1.set("sae_require_mfp", "1")
+        hapd1.set("wpa_key_mgmt", "SAE WPA-PSK")
+        hapd1.enable()
+        hapd0.disable()
+    else:
+        hapd0.set("ieee80211w", "1")
+        hapd0.set("sae_require_mfp", "1")
+        hapd0.set("wpa_key_mgmt", "SAE WPA-PSK")
+        hapd0.enable()
+        hapd1.disable()
+    dev[0].wait_connected()
+    status = dev[0].get_status()
+    if status['key_mgmt'] != "SAE":
+        raise Exception("Did not use SAE with WPA3-Personal transition mode AP")
+    if status['pmf'] != "1":
+        raise Exception("Did not use PMF with WPA3-Personal transition mode AP")
 
 def test_sae_mixed_mfp(dev, apdev):
     """Mixed SAE and non-SAE network and MFP required with SAE"""
@@ -1080,6 +1140,47 @@ def test_sae_proto_hostapd_ffc(dev, apdev):
     # Unexpected continuation of the connection attempt with confirm
     hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + hdr + "030002000000" + "0000" + "fd7b081ff4e8676f03612a4140eedcd3c179ab3a13b93863c6f7ca451340b9ae")
 
+def sae_start_ap(apdev, sae_pwe):
+    params = hostapd.wpa2_params(ssid="test-sae", passphrase="foofoofoo")
+    params['wpa_key_mgmt'] = 'SAE'
+    params['sae_groups'] = "19"
+    params['sae_pwe'] = str(sae_pwe)
+    return hostapd.add_ap(apdev, params)
+
+def check_commit_status(hapd, use_status, expect_status):
+    hapd.set("ext_mgmt_frame_handling", "1")
+    bssid = hapd.own_addr().replace(':', '')
+    addr = "020000000000"
+    addr2 = "020000000001"
+    hdr = "b0003a01" + bssid + addr + bssid + "1000"
+    hdr2 = "b0003a01" + bssid + addr2 + bssid + "1000"
+    group = "1300"
+    scalar = "033d3635b39666ed427fd4a3e7d37acec2810afeaf1687f746a14163ff0e6d03"
+    element_x = "559cb8928db4ce4e3cbd6555e837591995e5ebe503ef36b503d9ca519d63728d"
+    element_y = "d3c7c676b8e8081831b6bc3a64bdf136061a7de175e17d1965bfa41983ed02f8"
+    status = binascii.hexlify(struct.pack('<H', use_status)).decode()
+    hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + hdr + "03000100" + status + group + scalar + element_x + element_y)
+    ev = hapd.wait_event(["MGMT-TX-STATUS"], timeout=5)
+    if ev is None:
+        raise Exception("MGMT-TX-STATUS not seen")
+    msg = ev.split(' ')[3].split('=')[1]
+    body = msg[2 * 24:]
+    status, = struct.unpack('<H', binascii.unhexlify(body[8:12]))
+    if status != expect_status:
+        raise Exception("Unexpected status code: %d" % status)
+
+def test_sae_proto_hostapd_status_126(dev, apdev):
+    """SAE protocol testing with hostapd (status code 126)"""
+    hapd = sae_start_ap(apdev[0], 0)
+    check_commit_status(hapd, 126, 1)
+    check_commit_status(hapd, 0, 0)
+
+def test_sae_proto_hostapd_status_127(dev, apdev):
+    """SAE protocol testing with hostapd (status code 127)"""
+    hapd = sae_start_ap(apdev[0], 2)
+    check_commit_status(hapd, 127, 1)
+    check_commit_status(hapd, 0, 0)
+
 @remote_compatible
 def test_sae_no_ffc_by_default(dev, apdev):
     """SAE and default groups rejecting FFC"""
@@ -1673,7 +1774,7 @@ def test_sae_password_id_only(dev, apdev):
                    key_mgmt="SAE", scan_freq="2412")
 
 def test_sae_password_id_pwe_looping(dev, apdev):
-    """SAE and password identifier with forced PWE looping)"""
+    """SAE and password identifier with forced PWE looping"""
     check_sae_capab(dev[0])
     params = hostapd.wpa2_params(ssid="test-sae")
     params['wpa_key_mgmt'] = 'SAE'
@@ -1691,7 +1792,7 @@ def test_sae_password_id_pwe_looping(dev, apdev):
         dev[0].set("sae_pwe", "0")
 
 def test_sae_password_id_pwe_check_ap(dev, apdev):
-    """SAE and password identifier with STA using unexpected PWE derivation)"""
+    """SAE and password identifier with STA using unexpected PWE derivation"""
     check_sae_capab(dev[0])
     params = hostapd.wpa2_params(ssid="test-sae")
     params['wpa_key_mgmt'] = 'SAE'
@@ -1712,7 +1813,7 @@ def test_sae_password_id_pwe_check_ap(dev, apdev):
         dev[0].set("sae_pwe", "0")
 
 def test_sae_password_id_pwe_check_sta(dev, apdev):
-    """SAE and password identifier with AP using unexpected PWE derivation)"""
+    """SAE and password identifier with AP using unexpected PWE derivation"""
     check_sae_capab(dev[0])
     params = hostapd.wpa2_params(ssid="test-sae")
     params['wpa_key_mgmt'] = 'SAE'
@@ -1792,8 +1893,10 @@ def build_sae_commit(bssid, addr, group=21, token=None):
 
 def sae_rx_commit_token_req(sock, radiotap, send_two=False):
     msg = sock.recv(1500)
-    ver, pad, len, present = struct.unpack('<BBHL', msg[0:8])
-    frame = msg[len:]
+    ver, pad, length, present = struct.unpack('<BBHL', msg[0:8])
+    frame = msg[length:]
+    if len(frame) < 4:
+        return False
     fc, duration = struct.unpack('<HH', frame[0:4])
     if fc != 0xb0:
         return False
@@ -2013,7 +2116,7 @@ def run_sae_pwe_group(dev, apdev, group):
     check_sae_capab(dev[0])
     tls = dev[0].request("GET tls_library")
     if group in [27, 28, 29, 30]:
-        if tls.startswith("OpenSSL") and "run=OpenSSL 1." in tls:
+        if tls.startswith("OpenSSL") and ("run=OpenSSL 1." in tls or "run=OpenSSL 3." in tls):
             logger.info("Add Brainpool EC groups since OpenSSL is new enough")
         else:
             raise HwsimSkip("Brainpool curve not supported")
@@ -2485,7 +2588,7 @@ def test_sae_okc_pmk_lifetime(dev, apdev):
         raise Exception("SAE authentication not used during roam to AP2 after reauth threshold")
 
 def test_sae_pmk_lifetime(dev, apdev):
-    """SAE and opportunistic key caching and PMK lifetime"""
+    """SAE and PMK lifetime"""
     check_sae_capab(dev[0])
     params = hostapd.wpa2_params(ssid="test-sae", passphrase="12345678")
     params['wpa_key_mgmt'] = 'SAE'
@@ -2529,19 +2632,8 @@ def test_sae_pmk_lifetime(dev, apdev):
     ev = dev[0].wait_event(["PMKSA-CACHE-REMOVED"], 11)
     if ev is None:
         raise Exception("PMKSA cache entry did not expire")
-    if bssid2 not in ev:
-        ev = dev[0].wait_event(["PMKSA-CACHE-REMOVED"], 11)
-        if ev is None:
-            raise Exception("PMKSA cache entry did not expire")
-        if bssid2 not in ev:
-            raise Exception("PMKSA cache entry for the current AP did not expire")
-    ev = dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], 1)
-    if ev is None:
-        raise Exception("Disconnection not reported after PMKSA cache entry expiration")
-
-    dev[0].wait_connected()
-    if "sae_group" not in dev[0].get_status():
-        raise Exception("SAE authentication not used after PMKSA cache entry expiration")
+    if bssid2 in ev:
+        raise Exception("Unexpected expiration of the current SAE PMKSA cache entry")
 
 def test_sae_and_psk_multiple_passwords(dev, apdev, params):
     """SAE and PSK with multiple passwords/passphrases"""
@@ -2606,4 +2698,85 @@ def test_sae_pmf_roam(dev, apdev):
     hapd2.wait_sta()
 
     dev[0].roam(bssid)
+    dev[0].dump_monitor()
+
+def test_sae_ocv_pmk(dev, apdev):
+    """SAE with OCV and fetching PMK (successful 4-way handshake)"""
+    check_sae_capab(dev[0])
+    params = hostapd.wpa2_params(ssid="test-sae",
+                                 passphrase="12345678")
+    params['wpa_key_mgmt'] = 'SAE'
+    params['ieee80211w'] = '2'
+    params['ocv'] = '1'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].set("sae_groups", "")
+    id = dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE", ocv="1",
+                        ieee80211w="2", scan_freq="2412")
+    hapd.wait_sta()
+
+    pmk_h = hapd.request("GET_PMK " + dev[0].own_addr())
+    if "FAIL" in pmk_h or len(pmk_h) == 0:
+        raise Exception("Failed to fetch PMK from hostapd during a successful authentication")
+
+    pmk_w = dev[0].get_pmk(id)
+    if pmk_h != pmk_w:
+        raise Exception("Fetched PMK does not match: hostapd %s, wpa_supplicant %s" % (pmk_h, pmk_w))
+
+def test_sae_ocv_pmk_failure(dev, apdev):
+    """SAE with OCV and fetching PMK (failed 4-way handshake)"""
+    check_sae_capab(dev[0])
+    params = hostapd.wpa2_params(ssid="test-sae",
+                                 passphrase="12345678")
+    params['wpa_key_mgmt'] = 'SAE'
+    params['ieee80211w'] = '2'
+    params['ocv'] = '1'
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].set("sae_groups", "")
+    dev[0].set("oci_freq_override_eapol", "2462")
+    id = dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE", ocv="1",
+                        ieee80211w="2", scan_freq="2412", wait_connect=False)
+    ev = dev[0].wait_event(["CTRL-EVENT-CONNECTED",
+                            "CTRL-EVENT-DISCONNECTED"], timeout=15)
+    if ev is None:
+        raise Exception("No connection result reported")
+    if "CTRL-EVENT-CONNECTED" in ev:
+        raise Exception("Unexpected connection")
+
+    pmk_h = hapd.request("GET_PMK " + dev[0].own_addr())
+    if "FAIL" in pmk_h or len(pmk_h) == 0:
+        raise Exception("Failed to fetch PMK from hostapd during a successful authentication")
+
+    res = dev[0].request("PMKSA_GET %d" % id)
+    if not res.startswith(hapd.own_addr()):
+        raise Exception("PMKSA from wpa_supplicant does not have matching BSSID")
+    pmk_w = res.split(' ')[2]
+    if pmk_h != pmk_w:
+        raise Exception("Fetched PMK does not match: hostapd %s, wpa_supplicant %s" % (pmk_h, pmk_w))
+
+    dev[0].request("DISCONNECT")
+    time.sleep(0.1)
+    pmk_h2 = hapd.request("GET_PMK " + dev[0].own_addr())
+    res = dev[0].request("PMKSA_GET %d" % id)
+    pmk_w2 = res.split(' ')[2]
+    if pmk_h2 != pmk_h:
+        raise Exception("hostapd did not report correct PMK after disconnection")
+    if pmk_w2 != pmk_w:
+        raise Exception("wpa_supplicant did not report correct PMK after disconnection")
+
+def test_sae_reject(dev, apdev):
+    """SAE and AP rejecting connection"""
+    check_sae_capab(dev[0])
+    params = hostapd.wpa2_params(ssid="test-sae",
+                                 passphrase="12345678")
+    params['wpa_key_mgmt'] = 'SAE'
+    params['max_num_sta'] = '0'
+    hapd = hostapd.add_ap(apdev[0], params)
+    dev[0].set("sae_groups", "")
+    id = dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE",
+                        scan_freq="2412", wait_connect=False)
+    if not dev[0].wait_event(["CTRL-EVENT-AUTH-REJECT"], timeout=10):
+        raise Exception("Authentication rejection not reported")
+    dev[0].request("REMOVE_NETWORK all")
     dev[0].dump_monitor()

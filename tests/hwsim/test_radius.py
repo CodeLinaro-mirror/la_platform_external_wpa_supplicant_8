@@ -18,10 +18,9 @@ import threading
 import time
 
 import hostapd
-from utils import HwsimSkip, require_under_vm, skip_with_fips, alloc_fail, fail_test, wait_fail_trigger
+from utils import *
 from test_ap_hs20 import build_dhcp_ack
 from test_ap_ft import ft_params1
-from test_wep import check_wep_capa
 
 def connect(dev, ssid, wait_connect=True):
     dev.connect(ssid, key_mgmt="WPA-EAP", scan_freq="2412",
@@ -314,6 +313,20 @@ def test_radius_acct_interim(dev, apdev):
     req_e = int(as_mib_end['radiusAccServTotalRequests'])
     if req_e < req_s + 3:
         raise Exception("Unexpected RADIUS server acct MIB value (req_e=%d req_s=%d)" % (req_e, req_s))
+    # Disable Accounting server and wait for interim update retries to fail and
+    # expire.
+    as_hapd.disable()
+    time.sleep(15)
+    as_hapd.enable()
+    ok = False
+    for i in range(10):
+        time.sleep(1)
+        as_mib = as_hapd.get_mib(param="radius_server")
+        if int(as_mib['radiusAccServTotalRequests']) > 0:
+            ok = True
+            break
+    if not ok:
+        raise Exception("Accounting updates did not seen after server restart")
 
 def test_radius_acct_interim_unreachable(dev, apdev):
     """RADIUS Accounting interim update with unreachable server"""
@@ -761,7 +774,7 @@ def test_radius_das_disconnect(dev, apdev):
 
 def add_message_auth_req(req):
     req.authenticator = req.CreateAuthenticator()
-    hmac_obj = hmac.new(req.secret)
+    hmac_obj = hmac.new(req.secret, digestmod=hashlib.md5)
     hmac_obj.update(struct.pack("B", req.code))
     hmac_obj.update(struct.pack("B", req.id))
 
@@ -1047,7 +1060,7 @@ def test_radius_protocol(dev, apdev):
                     pw = b"incorrect"
                 else:
                     pw = reply.secret
-                hmac_obj = hmac.new(pw)
+                hmac_obj = hmac.new(pw, digestmod=hashlib.md5)
                 hmac_obj.update(struct.pack("B", reply.code))
                 hmac_obj.update(struct.pack("B", reply.id))
 
@@ -1373,6 +1386,13 @@ def test_radius_auth_force_client_addr(dev, apdev):
     hapd = hostapd.add_ap(apdev[0], params)
     connect(dev[0], "radius-auth")
 
+def test_radius_auth_force_client_dev(dev, apdev):
+    """RADIUS client device specified"""
+    params = hostapd.wpa2_eap_params(ssid="radius-auth")
+    params['radius_client_dev'] = "lo"
+    hapd = hostapd.add_ap(apdev[0], params)
+    connect(dev[0], "radius-auth")
+
 @remote_compatible
 def test_radius_auth_force_invalid_client_addr(dev, apdev):
     """RADIUS client address specified and invalid address"""
@@ -1390,7 +1410,7 @@ def test_radius_auth_force_invalid_client_addr(dev, apdev):
 
 def add_message_auth(req):
     req.authenticator = req.CreateAuthenticator()
-    hmac_obj = hmac.new(req.secret)
+    hmac_obj = hmac.new(req.secret, digestmod=hashlib.md5)
     hmac_obj.update(struct.pack("B", req.code))
     hmac_obj.update(struct.pack("B", req.id))
 
