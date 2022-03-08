@@ -380,8 +380,13 @@ static struct wpabuf * eap_eke_buildReq(struct eap_sm *sm, void *priv, u8 id)
 }
 
 
+<<<<<<< HEAD
 static Boolean eap_eke_check(struct eap_sm *sm, void *priv,
 			     struct wpabuf *respData)
+=======
+static bool eap_eke_check(struct eap_sm *sm, void *priv,
+			  struct wpabuf *respData)
+>>>>>>> origin/caf/upstream/master
 {
 	struct eap_eke_data *data = priv;
 	size_t len;
@@ -391,13 +396,18 @@ static Boolean eap_eke_check(struct eap_sm *sm, void *priv,
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_EKE, respData, &len);
 	if (pos == NULL || len < 1) {
 		wpa_printf(MSG_INFO, "EAP-EKE: Invalid frame");
+<<<<<<< HEAD
 		return TRUE;
+=======
+		return true;
+>>>>>>> origin/caf/upstream/master
 	}
 
 	eke_exch = *pos;
 	wpa_printf(MSG_DEBUG, "EAP-EKE: Received frame: EKE-Exch=%d", eke_exch);
 
 	if (data->state == IDENTITY && eke_exch == EAP_EKE_ID)
+<<<<<<< HEAD
 		return FALSE;
 
 	if (data->state == COMMIT && eke_exch == EAP_EKE_COMMIT)
@@ -408,11 +418,27 @@ static Boolean eap_eke_check(struct eap_sm *sm, void *priv,
 
 	if (eke_exch == EAP_EKE_FAILURE)
 		return FALSE;
+=======
+		return false;
+
+	if (data->state == COMMIT && eke_exch == EAP_EKE_COMMIT)
+		return false;
+
+	if (data->state == CONFIRM && eke_exch == EAP_EKE_CONFIRM)
+		return false;
+
+	if (eke_exch == EAP_EKE_FAILURE)
+		return false;
+>>>>>>> origin/caf/upstream/master
 
 	wpa_printf(MSG_INFO, "EAP-EKE: Unexpected EKE-Exch=%d in state=%d",
 		   eke_exch, data->state);
 
+<<<<<<< HEAD
 	return TRUE;
+=======
+	return true;
+>>>>>>> origin/caf/upstream/master
 }
 
 
@@ -716,7 +742,11 @@ static void eap_eke_process(struct eap_sm *sm, void *priv,
 }
 
 
+<<<<<<< HEAD
 static Boolean eap_eke_isDone(struct eap_sm *sm, void *priv)
+=======
+static bool eap_eke_isDone(struct eap_sm *sm, void *priv)
+>>>>>>> origin/caf/upstream/master
 {
 	struct eap_eke_data *data = priv;
 	return data->state == SUCCESS || data->state == FAILURE;
@@ -757,7 +787,11 @@ static u8 * eap_eke_get_emsk(struct eap_sm *sm, void *priv, size_t *len)
 }
 
 
+<<<<<<< HEAD
 static Boolean eap_eke_isSuccess(struct eap_sm *sm, void *priv)
+=======
+static bool eap_eke_isSuccess(struct eap_sm *sm, void *priv)
+>>>>>>> origin/caf/upstream/master
 {
 	struct eap_eke_data *data = priv;
 	return data->state == SUCCESS;
