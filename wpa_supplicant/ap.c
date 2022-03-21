@@ -1102,7 +1102,8 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_WNM_AP
-		hapd_iface->bss[i]->conf->bss_transition = 1;
+		if (ssid->mode == WPAS_MODE_AP)
+			hapd_iface->bss[i]->conf->bss_transition = 1;
 #endif
 	}
 
