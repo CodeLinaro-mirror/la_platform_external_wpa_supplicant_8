@@ -929,8 +929,13 @@ static struct wpabuf * eap_fast_buildReq(struct eap_sm *sm, void *priv, u8 id)
 }
 
 
+<<<<<<< HEAD
 static Boolean eap_fast_check(struct eap_sm *sm, void *priv,
 			      struct wpabuf *respData)
+=======
+static bool eap_fast_check(struct eap_sm *sm, void *priv,
+			   struct wpabuf *respData)
+>>>>>>> origin/caf/upstream/master
 {
 	const u8 *pos;
 	size_t len;
@@ -938,10 +943,17 @@ static Boolean eap_fast_check(struct eap_sm *sm, void *priv,
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_FAST, respData, &len);
 	if (pos == NULL || len < 1) {
 		wpa_printf(MSG_INFO, "EAP-FAST: Invalid frame");
+<<<<<<< HEAD
 		return TRUE;
 	}
 
 	return FALSE;
+=======
+		return true;
+	}
+
+	return false;
+>>>>>>> origin/caf/upstream/master
 }
 
 
@@ -1563,7 +1575,11 @@ static void eap_fast_process(struct eap_sm *sm, void *priv,
 }
 
 
+<<<<<<< HEAD
 static Boolean eap_fast_isDone(struct eap_sm *sm, void *priv)
+=======
+static bool eap_fast_isDone(struct eap_sm *sm, void *priv)
+>>>>>>> origin/caf/upstream/master
 {
 	struct eap_fast_data *data = priv;
 	return data->state == SUCCESS || data->state == FAILURE;
@@ -1614,7 +1630,11 @@ static u8 * eap_fast_get_emsk(struct eap_sm *sm, void *priv, size_t *len)
 }
 
 
+<<<<<<< HEAD
 static Boolean eap_fast_isSuccess(struct eap_sm *sm, void *priv)
+=======
+static bool eap_fast_isSuccess(struct eap_sm *sm, void *priv)
+>>>>>>> origin/caf/upstream/master
 {
 	struct eap_fast_data *data = priv;
 	return data->state == SUCCESS;
