@@ -13,7 +13,7 @@ import os
 
 import hwsim_utils
 import hostapd
-from utils import alloc_fail, require_under_vm, get_phy
+from utils import *
 from test_ap_acs import force_prev_ap_on_24g
 
 @remote_compatible
@@ -36,6 +36,55 @@ def test_ap_change_ssid(dev, apdev):
 
     dev[0].set_network_quoted(id, "ssid", "test-wpa2-psk-new")
     dev[0].connect_network(id)
+
+def test_ap_change_ssid_wps(dev, apdev):
+    """Dynamic SSID change with hostapd and WPA2-PSK using WPS"""
+    params = hostapd.wpa2_params(ssid="test-wpa2-psk-start",
+                                 passphrase="12345678")
+    # Use a PSK and not the passphrase, because the PSK will have to be computed
+    # again if we use a passphrase.
+    del params["wpa_passphrase"]
+    params["wpa_psk"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    params.update({"wps_state": "2", "eap_server": "1"})
+    bssid = apdev[0]['bssid']
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    new_ssid = "test-wpa2-psk-new"
+    logger.info("Change SSID dynamically (WPS)")
+    res = hapd.request("SET ssid " + new_ssid)
+    if "OK" not in res:
+        raise Exception("SET command failed")
+    res = hapd.request("RELOAD")
+    if "OK" not in res:
+        raise Exception("RELOAD command failed")
+
+    # Connect to the new ssid using wps:
+    hapd.request("WPS_PBC")
+    if "PBC Status: Active" not in hapd.request("WPS_GET_STATUS"):
+        raise Exception("PBC status not shown correctly")
+
+    dev[0].scan_for_bss(apdev[0]['bssid'], freq="2412", force_scan=True)
+    dev[0].request("WPS_PBC")
+    dev[0].wait_connected(timeout=20)
+    status = dev[0].get_status()
+    if status['wpa_state'] != 'COMPLETED' or status['bssid'] != bssid:
+        raise Exception("Not fully connected")
+    if status['ssid'] != new_ssid:
+        raise Exception("Unexpected SSID %s != %s" % (status['ssid'], new_ssid))
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+
+def test_ap_reload_invalid(dev, apdev):
+    """hostapd RELOAD with invalid configuration"""
+    params = hostapd.wpa2_params(ssid="test-wpa2-psk-start",
+                                 passphrase="12345678")
+    hapd = hostapd.add_ap(apdev[0], params)
+    # Enable IEEE 802.11d without specifying country code
+    hapd.set("ieee80211d", "1")
+    if "FAIL" not in hapd.request("RELOAD"):
+        raise Exception("RELOAD command succeeded")
+    dev[0].connect("test-wpa2-psk-start", psk="12345678", scan_freq="2412")
 
 def multi_check(apdev, dev, check, scan_opt=True):
     id = []
@@ -502,8 +551,8 @@ def test_ap_duplicate_bssid(dev, apdev):
 
 def test_ap_bss_config_file(dev, apdev, params):
     """hostapd BSS config file"""
-    pidfile = os.path.join(params['logdir'], "ap_bss_config_file-hostapd.pid")
-    logfile = os.path.join(params['logdir'], "ap_bss_config_file-hostapd-log")
+    pidfile = params['prefix'] + ".hostapd.pid"
+    logfile = params['prefix'] + ".hostapd-log"
     prg = os.path.join(params['logdir'], 'alt-hostapd/hostapd/hostapd')
     if not os.path.exists(prg):
         prg = '../../hostapd/hostapd'

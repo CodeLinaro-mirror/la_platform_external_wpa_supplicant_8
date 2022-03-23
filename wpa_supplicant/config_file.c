@@ -23,105 +23,7 @@
 #include "p2p/p2p.h"
 #include "eap_peer/eap_methods.h"
 #include "eap_peer/eap.h"
-
-
-static int newline_terminated(const char *buf, size_t buflen)
-{
-	size_t len = os_strlen(buf);
-	if (len == 0)
-		return 0;
-	if (len == buflen - 1 && buf[buflen - 1] != '\r' &&
-	    buf[len - 1] != '\n')
-		return 0;
-	return 1;
-}
-
-
-static void skip_line_end(FILE *stream)
-{
-	char buf[100];
-	while (fgets(buf, sizeof(buf), stream)) {
-		buf[sizeof(buf) - 1] = '\0';
-		if (newline_terminated(buf, sizeof(buf)))
-			return;
-	}
-}
-
-
-/**
- * wpa_config_get_line - Read the next configuration file line
- * @s: Buffer for the line
- * @size: The buffer length
- * @stream: File stream to read from
- * @line: Pointer to a variable storing the file line number
- * @_pos: Buffer for the pointer to the beginning of data on the text line or
- * %NULL if not needed (returned value used instead)
- * Returns: Pointer to the beginning of data on the text line or %NULL if no
- * more text lines are available.
- *
- * This function reads the next non-empty line from the configuration file and
- * removes comments. The returned string is guaranteed to be null-terminated.
- */
-static char * wpa_config_get_line(char *s, int size, FILE *stream, int *line,
-				  char **_pos)
-{
-	char *pos, *end, *sstart;
-
-	while (fgets(s, size, stream)) {
-		(*line)++;
-		s[size - 1] = '\0';
-		if (!newline_terminated(s, size)) {
-			/*
-			 * The line was truncated - skip rest of it to avoid
-			 * confusing error messages.
-			 */
-			wpa_printf(MSG_INFO, "Long line in configuration file "
-				   "truncated");
-			skip_line_end(stream);
-		}
-		pos = s;
-
-		/* Skip white space from the beginning of line. */
-		while (*pos == ' ' || *pos == '\t' || *pos == '\r')
-			pos++;
-
-		/* Skip comment lines and empty lines */
-		if (*pos == '#' || *pos == '\n' || *pos == '\0')
-			continue;
-
-		/*
-		 * Remove # comments unless they are within a double quoted
-		 * string.
-		 */
-		sstart = os_strchr(pos, '"');
-		if (sstart)
-			sstart = os_strrchr(sstart + 1, '"');
-		if (!sstart)
-			sstart = pos;
-		end = os_strchr(sstart, '#');
-		if (end)
-			*end-- = '\0';
-		else
-			end = pos + os_strlen(pos) - 1;
-
-		/* Remove trailing white space. */
-		while (end > pos &&
-		       (*end == '\n' || *end == ' ' || *end == '\t' ||
-			*end == '\r'))
-			*end-- = '\0';
-
-		if (*pos == '\0')
-			continue;
-
-		if (_pos)
-			*_pos = pos;
-		return pos;
-	}
-
-	if (_pos)
-		*_pos = NULL;
-	return NULL;
-}
+#include "utils/config.h"
 
 
 static int wpa_config_validate_network(struct wpa_ssid *ssid, int line)
@@ -767,12 +669,13 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(scan_ssid);
 	write_bssid(f, ssid);
 	write_bssid_hint(f, ssid);
-	write_str(f, "bssid_blacklist", ssid);
-	write_str(f, "bssid_whitelist", ssid);
+	write_str(f, "bssid_ignore", ssid);
+	write_str(f, "bssid_accept", ssid);
 	write_psk(f, ssid);
 	INT(mem_only_psk);
 	STR(sae_password);
 	STR(sae_password_id);
+	write_int(f, "sae_pwe", ssid->sae_pwe, DEFAULT_SAE_PWE);
 	write_proto(f, ssid);
 	write_key_mgmt(f, ssid);
 	INT_DEF(bg_scan_period, DEFAULT_BG_SCAN_PERIOD);
@@ -866,6 +769,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #endif /* IEEE8021X_EAPOL */
 	INT(mode);
 	INT(no_auto_peer);
+	INT(mesh_fwding);
 	INT(frequency);
 	INT(enable_edmg);
 	INT(edmg_channel);
@@ -876,9 +780,10 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	write_int(f, "proactive_key_caching", ssid->proactive_key_caching, -1);
 	INT(disabled);
 	INT(mixed_cell);
-	INT(vht);
+	INT_DEF(vht, 1);
 	INT_DEF(ht, 1);
 	INT(ht40);
+	INT_DEF(he, 1);
 	INT_DEF(max_oper_chwidth, DEFAULT_MAX_OPER_CHWIDTH);
 	INT(vht_center_freq1);
 	INT(vht_center_freq2);
@@ -928,6 +833,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(dpp_netaccesskey);
 	INT(dpp_netaccesskey_expiry);
 	STR(dpp_csign);
+	STR(dpp_pp_key);
 	INT(dpp_pfs);
 #endif /* CONFIG_DPP */
 	INT(owe_group);
@@ -937,6 +843,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(ft_eap_pmksa_caching);
 	INT(beacon_prot);
 	INT(transition_disable);
+	INT(sae_pk);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
@@ -1120,6 +1027,17 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 
 	if (cred->sim_num != DEFAULT_USER_SELECTED_SIM)
 		fprintf(f, "\tsim_num=%d\n", cred->sim_num);
+
+	if (cred->engine)
+		fprintf(f, "\tengine=%d\n", cred->engine);
+	if (cred->engine_id)
+		fprintf(f, "\tengine_id=\"%s\"\n", cred->engine_id);
+	if (cred->key_id)
+		fprintf(f, "\tkey_id=\"%s\"\n", cred->key_id);
+	if (cred->cert_id)
+		fprintf(f, "\tcert_id=\"%s\"\n", cred->cert_id);
+	if (cred->ca_cert_id)
+		fprintf(f, "\tca_cert_id=\"%s\"\n", cred->ca_cert_id);
 }
 
 
@@ -1332,6 +1250,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_go_freq_change_policy != DEFAULT_P2P_GO_FREQ_MOVE)
 		fprintf(f, "p2p_go_freq_change_policy=%u\n",
 			config->p2p_go_freq_change_policy);
+
+	if (config->p2p_6ghz_disable)
+		fprintf(f, "p2p_6ghz_disable=%d\n", config->p2p_6ghz_disable);
+
 	if (WPA_GET_BE32(config->ip_addr_go))
 		fprintf(f, "ip_addr_go=%u.%u.%u.%u\n",
 			config->ip_addr_go[0], config->ip_addr_go[1],
@@ -1480,8 +1402,22 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		}
 		fprintf(f, "\n");
 	}
+	if (config->initial_freq_list && config->initial_freq_list[0]) {
+		int i;
+		fprintf(f, "initial_freq_list=");
+		for (i = 0; config->initial_freq_list[i]; i++) {
+			fprintf(f, "%s%d", i > 0 ? " " : "",
+				config->initial_freq_list[i]);
+		}
+		fprintf(f, "\n");
+	}
 	if (config->scan_cur_freq != DEFAULT_SCAN_CUR_FREQ)
 		fprintf(f, "scan_cur_freq=%d\n", config->scan_cur_freq);
+
+	if (config->scan_res_valid_for_connect !=
+	    DEFAULT_SCAN_RES_VALID_FOR_CONNECT)
+		fprintf(f, "scan_res_valid_for_connect=%d\n",
+			config->scan_res_valid_for_connect);
 
 	if (config->sched_scan_interval)
 		fprintf(f, "sched_scan_interval=%u\n",
@@ -1537,6 +1473,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->mesh_max_inactivity != DEFAULT_MESH_MAX_INACTIVITY)
 		fprintf(f, "mesh_max_inactivity=%d\n",
 			config->mesh_max_inactivity);
+
+	if (config->mesh_fwding != DEFAULT_MESH_FWDING)
+		fprintf(f, "mesh_fwding=%d\n", config->mesh_fwding);
 
 	if (config->dot11RSNASAERetransPeriod !=
 	    DEFAULT_DOT11_RSNA_SAE_RETRANS_PERIOD)
@@ -1616,6 +1555,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->extended_key_id != DEFAULT_EXTENDED_KEY_ID)
 		fprintf(f, "extended_key_id=%d\n",
 			config->extended_key_id);
+	if (config->wowlan_disconnect_on_deinit)
+		fprintf(f, "wowlan_disconnect_on_deinit=%d\n",
+			config->wowlan_disconnect_on_deinit);
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */

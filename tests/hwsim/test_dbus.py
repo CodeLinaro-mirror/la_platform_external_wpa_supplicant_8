@@ -9,6 +9,7 @@ import logging
 logger = logging.getLogger()
 import subprocess
 import time
+import shutil
 import struct
 import sys
 
@@ -1379,6 +1380,106 @@ def test_dbus_connect(dev, apdev):
         if not t.success():
             raise Exception("Expected signals not seen")
 
+def test_dbus_remove_connected(dev, apdev):
+    """D-Bus RemoveAllNetworks while connected"""
+    (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    ssid = "test-open"
+    hapd = hostapd.add_ap(apdev[0], {"ssid": ssid})
+
+    class TestDbusConnect(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.network_added = False
+            self.network_selected = False
+            self.network_removed = False
+            self.state = 0
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_connect)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.networkAdded, WPAS_DBUS_IFACE, "NetworkAdded")
+            self.add_signal(self.networkRemoved, WPAS_DBUS_IFACE,
+                            "NetworkRemoved")
+            self.add_signal(self.networkSelected, WPAS_DBUS_IFACE,
+                            "NetworkSelected")
+            self.add_signal(self.propertiesChanged, WPAS_DBUS_IFACE,
+                            "PropertiesChanged")
+            self.loop.run()
+            return self
+
+        def networkAdded(self, network, properties):
+            logger.debug("networkAdded: %s" % str(network))
+            logger.debug(str(properties))
+            self.network_added = True
+
+        def networkRemoved(self, network):
+            logger.debug("networkRemoved: %s" % str(network))
+            self.network_removed = True
+
+        def networkSelected(self, network):
+            logger.debug("networkSelected: %s" % str(network))
+            self.network_selected = True
+
+        def propertiesChanged(self, properties):
+            logger.debug("propertiesChanged: %s" % str(properties))
+            if 'State' in properties and properties['State'] == "completed":
+                if self.state == 0:
+                    self.state = 1
+                    iface.Disconnect()
+                elif self.state == 2:
+                    self.state = 3
+                    iface.Disconnect()
+                elif self.state == 4:
+                    self.state = 5
+                    iface.Reattach()
+                elif self.state == 5:
+                    self.state = 6
+                    iface.Disconnect()
+                elif self.state == 7:
+                    self.state = 8
+                    res = iface.SignalPoll()
+                    logger.debug("SignalPoll: " + str(res))
+                    if 'frequency' not in res or res['frequency'] != 2412:
+                        self.state = -1
+                        logger.info("Unexpected SignalPoll result")
+                    iface.RemoveAllNetworks()
+            if 'State' in properties and properties['State'] == "disconnected":
+                if self.state == 1:
+                    self.state = 2
+                    iface.SelectNetwork(self.netw)
+                elif self.state == 3:
+                    self.state = 4
+                    iface.Reassociate()
+                elif self.state == 6:
+                    self.state = 7
+                    iface.Reconnect()
+                elif self.state == 8:
+                    self.state = 9
+                    self.loop.quit()
+
+        def run_connect(self, *args):
+            logger.debug("run_connect")
+            args = dbus.Dictionary({'ssid': ssid,
+                                    'key_mgmt': 'NONE',
+                                    'scan_freq': 2412},
+                                   signature='sv')
+            self.netw = iface.AddNetwork(args)
+            iface.SelectNetwork(self.netw)
+            return False
+
+        def success(self):
+            if not self.network_added or \
+               not self.network_removed or \
+               not self.network_selected:
+                return False
+            return self.state == 9
+
+    with TestDbusConnect(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
+
 def test_dbus_connect_psk_mem(dev, apdev):
     """D-Bus AddNetwork and connect with memory-only PSK"""
     (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
@@ -1812,8 +1913,7 @@ def test_dbus_network(dev, apdev):
     tests = [dbus.Dictionary({'psk': "1234567"}, signature='sv'),
              dbus.Dictionary({'identity': dbus.ByteArray()},
                              signature='sv'),
-             dbus.Dictionary({'identity': dbus.Byte(1)}, signature='sv'),
-             dbus.Dictionary({'identity': ""}, signature='sv')]
+             dbus.Dictionary({'identity': dbus.Byte(1)}, signature='sv')]
     for args in tests:
         try:
             iface.AddNetwork(args)
@@ -5355,6 +5455,8 @@ def test_dbus_introspect(dev, apdev):
             raise Exception("Unexpected Introspect response")
 
 def run_busctl(service, obj):
+    if not shutil.which("busctl"):
+        raise HwsimSkip("No busctl available")
     logger.info("busctl introspect %s %s" % (service, obj))
     cmd = subprocess.Popen(['busctl', 'introspect', service, obj],
                            stdout=subprocess.PIPE,
@@ -5919,5 +6021,184 @@ def test_dbus_mesh(dev, apdev):
             return self.done
 
     with TestDbusMesh(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
+
+def test_dbus_roam(dev, apdev):
+    """D-Bus Roam"""
+    (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    ssid = "test-wpa2-psk"
+    passphrase = 'qwertyuiop'
+    params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
+    hapd = hostapd.add_ap(apdev[0], params)
+    hapd2 = hostapd.add_ap(apdev[1], params)
+    bssid = apdev[0]['bssid']
+    dev[0].scan_for_bss(bssid, freq=2412)
+    bssid2 = apdev[1]['bssid']
+    dev[0].scan_for_bss(bssid2, freq=2412)
+
+    class TestDbusConnect(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.state = 0
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_connect)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.propertiesChanged, WPAS_DBUS_IFACE,
+                            "PropertiesChanged")
+            self.loop.run()
+            return self
+
+        def propertiesChanged(self, properties):
+            logger.debug("propertiesChanged: %s" % str(properties))
+            if 'State' in properties and properties['State'] == "completed":
+                if self.state == 0:
+                    self.state = 1
+                    cur = properties["CurrentBSS"]
+                    bss_obj = bus.get_object(WPAS_DBUS_SERVICE, cur)
+                    res = bss_obj.Get(WPAS_DBUS_BSS, 'BSSID',
+                                      dbus_interface=dbus.PROPERTIES_IFACE)
+                    bssid_str = ''
+                    for item in res:
+                        if len(bssid_str) > 0:
+                            bssid_str += ':'
+                        bssid_str += '%02x' % item
+                    dst = bssid if bssid_str == bssid2 else bssid2
+                    iface.Roam(dst)
+                elif self.state == 1:
+                    if "RoamComplete" in properties and \
+                       properties["RoamComplete"]:
+                        self.state = 2
+                        self.loop.quit()
+
+        def run_connect(self, *args):
+            logger.debug("run_connect")
+            args = dbus.Dictionary({'ssid': ssid,
+                                    'key_mgmt': 'WPA-PSK',
+                                    'psk': passphrase,
+                                    'scan_freq': 2412},
+                                   signature='sv')
+            self.netw = iface.AddNetwork(args)
+            iface.SelectNetwork(self.netw)
+            return False
+
+        def success(self):
+            return self.state == 2
+
+    with TestDbusConnect(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
+
+def test_dbus_creds(dev, apdev):
+    "D-Bus interworking credentials"
+    (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    args = {'domain': 'server.w1.fi',
+            'realm': 'server.w1.fi',
+            'roaming_consortium': '50a9bf',
+            'required_roaming_consortium': '23bf50',
+            'eap': 'TTLS',
+            'phase2': 'auth=MSCHAPV2',
+            'username': 'user',
+            'password': 'password',
+            'domain_suffix_match': 'server.w1.fi',
+            'ca_cert': 'auth_serv/ca.pem'}
+
+    path = iface.AddCred(dbus.Dictionary(args, signature='sv'))
+    for k, v in args.items():
+        if k == 'password':
+            continue
+        prop = dev[0].get_cred(0, k)
+        if prop != v:
+            raise Exception('Credential add failed: %s does not match %s' % (prop, v))
+
+    iface.RemoveCred(path)
+    if not "FAIL" in dev[0].get_cred(0, 'domain'):
+        raise Exception("Credential remove failed")
+
+    # Removal of multiple credentials
+    cred1 = {'domain': 'server1.w1.fi','realm': 'server1.w1.fi','eap': 'TTLS'}
+    iface.AddCred(dbus.Dictionary(cred1, signature='sv'))
+    if "FAIL" in dev[0].get_cred(0, 'domain'):
+        raise Exception("Failed to add credential")
+
+    cred2 = {'domain': 'server2.w1.fi','realm': 'server2.w1.fi','eap': 'TTLS'}
+    iface.AddCred(dbus.Dictionary(cred2, signature='sv'))
+    if "FAIL" in dev[0].get_cred(1, 'domain'):
+        raise Exception("Failed to add credential")
+
+    iface.RemoveAllCreds()
+    if not "FAIL" in dev[0].get_cred(0, 'domain'):
+        raise Exception("Credential remove failed")
+    if not "FAIL" in dev[0].get_cred(1, 'domain'):
+        raise Exception("Credential remove failed")
+
+def test_dbus_interworking(dev, apdev):
+    "D-Bus interworking selection"
+    (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    params = {"ssid": "test-interworking", "wpa": "2",
+              "wpa_key_mgmt": "WPA-EAP", "rsn_pairwise": "CCMP",
+              "ieee8021x": "1", "eapol_version": "2",
+              "eap_server": "1", "eap_user_file": "auth_serv/eap_user.conf",
+              "ca_cert": "auth_serv/ca.pem",
+              "server_cert": "auth_serv/server.pem",
+              "private_key": "auth_serv/server.key",
+              "interworking": "1",
+              "domain_name": "server.w1.fi",
+              "nai_realm": "0,server.w1.fi,21[2:4][5:7]",
+              "roaming_consortium": "2233445566",
+              "hs20": "1", "anqp_domain_id": "1234"}
+
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    class TestDbusInterworking(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.interworking_ap_seen = False
+            self.interworking_select_done = False
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_select)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.interworkingAPAdded, WPAS_DBUS_IFACE,
+                            "InterworkingAPAdded")
+            self.add_signal(self.interworkingSelectDone, WPAS_DBUS_IFACE,
+                            "InterworkingSelectDone")
+            self.loop.run()
+            return self
+
+        def interworkingAPAdded(self, bss, cred, properties):
+            logger.debug("interworkingAPAdded: bss=%s cred=%s %s" % (bss, cred, str(properties)))
+            if self.cred == cred:
+                self.interworking_ap_seen = True
+
+        def interworkingSelectDone(self):
+            logger.debug("interworkingSelectDone")
+            self.interworking_select_done = True
+            self.loop.quit()
+
+        def run_select(self, *args):
+            args = {"domain": "server.w1.fi",
+                    "realm": "server.w1.fi",
+                    "eap": "TTLS",
+                    "phase2": "auth=MSCHAPV2",
+                    "username": "user",
+                    "password": "password",
+                    "domain_suffix_match": "server.w1.fi",
+                    "ca_cert": "auth_serv/ca.pem"}
+            self.cred = iface.AddCred(dbus.Dictionary(args, signature='sv'))
+            iface.InterworkingSelect()
+            return False
+
+        def success(self):
+            return self.interworking_ap_seen and self.interworking_select_done
+
+    with TestDbusInterworking(bus) as t:
         if not t.success():
             raise Exception("Expected signals not seen")
