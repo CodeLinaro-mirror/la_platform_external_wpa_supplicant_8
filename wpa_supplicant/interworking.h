@@ -11,8 +11,9 @@
 
 enum gas_query_result;
 
-int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst,
-		  u16 info_ids[], size_t num_ids, u32 subtypes);
+int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst, int freq,
+		  u16 info_ids[], size_t num_ids, u32 subtypes,
+		  u32 mbo_subtypes);
 void anqp_resp_cb(void *ctx, const u8 *dst, u8 dialog_token,
 		  enum gas_query_result result,
 		  const struct wpabuf *adv_proto,
