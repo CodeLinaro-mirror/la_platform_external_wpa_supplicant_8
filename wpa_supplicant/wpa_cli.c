@@ -1,6 +1,6 @@
 /*
  * WPA Supplicant - command line interface for wpa_supplicant daemon
- * Copyright (c) 2004-2019, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2004-2022, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -29,7 +29,7 @@
 
 static const char *const wpa_cli_version =
 "wpa_cli v" VERSION_STR "\n"
-"Copyright (c) 2004-2019, Jouni Malinen <j@w1.fi> and contributors";
+"Copyright (c) 2004-2022, Jouni Malinen <j@w1.fi> and contributors";
 
 #define VENDOR_ELEM_FRAME_ID \
 	"  0: Probe Req (P2P), 1: Probe Resp (P2P) , 2: Probe Resp (GO), " \
@@ -2046,16 +2046,18 @@ static int wpa_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
 	return wpa_ctrl_command(ctrl, "UPDATE_BEACON");
 }
 
+
+static int wpa_cli_cmd_accept_macacl(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "ACCEPT_ACL", 1, argc, argv);
+}
+
+
 static int wpa_cli_cmd_deny_macacl(struct wpa_ctrl *ctrl, int argc,
 				   char *argv[])
 {
 	return wpa_cli_cmd(ctrl, "DENY_ACL", 1, argc, argv);
-}
-
-static int wpa_cli_cmd_allow_macacl(struct wpa_ctrl *ctrl, int argc,
-				    char *argv[])
-{
-	return wpa_cli_cmd(ctrl, "ACCEPT_ACL", 1, argc, argv);
 }
 
 #endif /* CONFIG_AP */
@@ -2927,7 +2929,8 @@ static int wpa_cli_cmd_bss_tm_req(struct wpa_ctrl *ctrl, int argc,
 {
 	return wpa_cli_cmd(ctrl, "BSS_TM_REQ", 1, argc, argv);
 }
-#endif
+
+#endif /* CONFIG_WNM_AP */
 
 
 static int wpa_cli_cmd_raw(struct wpa_ctrl *ctrl, int argc, char *argv[])
@@ -3635,10 +3638,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "update_beacon", wpa_cli_cmd_update_beacon, NULL,
 	  cli_cmd_flag_none,
 	  "= update Beacon frame contents"},
+	{ "accept_acl", wpa_cli_cmd_accept_macacl, NULL, cli_cmd_flag_none,
+	  "=Add/Delete/Show/Clear allow MAC ACL" },
 	{ "deny_acl", wpa_cli_cmd_deny_macacl, NULL, cli_cmd_flag_none,
 	  "=Add/Delete/Show/Clear deny MAC ACL" },
-	{ "accept_acl", wpa_cli_cmd_allow_macacl, NULL, cli_cmd_flag_none,
-	  "=Add/Delete/Show/Clear allow MAC ACL" },
 #endif /* CONFIG_AP */
 	{ "suspend", wpa_cli_cmd_suspend, NULL, cli_cmd_flag_none,
 	  "= notification of suspend/hibernate" },
@@ -3892,7 +3895,7 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  "= send ESS Dissassociation Imminent notification" },
 	{ "bss_tm_req", wpa_cli_cmd_bss_tm_req, NULL, cli_cmd_flag_none,
 	  "= send BSS Transition Management Request" },
-#endif
+#endif /* CONFIG_WNM_AP */
 	{ "raw", wpa_cli_cmd_raw, NULL, cli_cmd_flag_sensitive,
 	  "<params..> = Sent unprocessed command" },
 	{ "flush", wpa_cli_cmd_flush, NULL, cli_cmd_flag_none,
