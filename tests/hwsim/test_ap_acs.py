@@ -9,10 +9,8 @@ logger = logging.getLogger()
 import time
 
 import hostapd
-from utils import skip_with_fips, alloc_fail, fail_test, HwsimSkip, clear_regdom
-from test_ap_ht import clear_scan_cache
+from utils import *
 from test_dfs import wait_dfs_event
-from test_sae import check_sae_capab
 
 def force_prev_ap_on_24g(ap):
     # For now, make sure the last operating channel was on 2.4 GHz band to get
@@ -39,7 +37,7 @@ def wait_acs(hapd, return_after_acs=False):
 
     state = hapd.get_status_field("state")
     if state != "ACS":
-        raise Exception("Unexpected interface state")
+        raise Exception("Unexpected interface state %s (expected ACS)" % state)
 
     ev = hapd.wait_event(["ACS-COMPLETED", "ACS-FAILED", "AP-ENABLED",
                           "AP-DISABLED"], timeout=20)
@@ -59,7 +57,7 @@ def wait_acs(hapd, return_after_acs=False):
 
     state = hapd.get_status_field("state")
     if state != "ENABLED":
-        raise Exception("Unexpected interface state")
+        raise Exception("Unexpected interface state %s (expected ENABLED)" % state)
 
 def test_ap_acs(dev, apdev):
     """Automatic channel selection"""
@@ -92,16 +90,23 @@ def test_ap_acs_chanlist(dev, apdev):
 
 def test_ap_acs_freqlist(dev, apdev):
     """Automatic channel selection with freqlist set"""
+    run_ap_acs_freqlist(dev, apdev, [2412, 2437, 2462])
+
+def test_ap_acs_freqlist2(dev, apdev):
+    """Automatic channel selection with freqlist set"""
+    run_ap_acs_freqlist(dev, apdev, [2417, 2432, 2457])
+
+def run_ap_acs_freqlist(dev, apdev, freqlist):
     force_prev_ap_on_24g(apdev[0])
     params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
     params['channel'] = '0'
-    params['freqlist'] = '2412 2437 2462'
+    params['freqlist'] = ','.join([str(x) for x in freqlist])
     hapd = hostapd.add_ap(apdev[0], params, wait_enabled=False)
     wait_acs(hapd)
 
     freq = int(hapd.get_status_field("freq"))
-    if freq not in [2412, 2437, 2462]:
-        raise Exception("Unexpected frequency: " + freq)
+    if freq not in freqlist:
+        raise Exception("Unexpected frequency: %d" % freq)
 
     dev[0].connect("test-acs", psk="12345678", scan_freq=str(freq))
 
@@ -279,6 +284,30 @@ def test_ap_acs_vht40(dev, apdev):
     finally:
         clear_regdom(hapd, dev)
 
+def test_ap_acs_vht80p80(dev, apdev):
+    """Automatic channel selection for VHT 80+80"""
+    try:
+        hapd = None
+        force_prev_ap_on_5g(apdev[0])
+        params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
+        params['hw_mode'] = 'a'
+        params['channel'] = '0'
+        params['ht_capab'] = '[HT40+]'
+        params['country_code'] = 'US'
+        params['ieee80211ac'] = '1'
+        params['vht_oper_chwidth'] = '3'
+        hapd = hostapd.add_ap(apdev[0], params, wait_enabled=False)
+        ev = hapd.wait_event(["ACS-COMPLETED"], timeout=20)
+        if ev is None:
+            raise Exception("ACS did not complete")
+        # ACS for 80+80 is not yet supported, so the AP setup itself will fail.
+        # Do not try to connection before this gets fully supported.
+        ev = hapd.wait_event(["AP-ENABLED", "AP-DISABLED"], timeout=10)
+        if ev is None:
+            raise Exception("AP enabled/disabled not reported")
+    finally:
+        clear_regdom(hapd, dev)
+
 def test_ap_acs_vht160(dev, apdev):
     """Automatic channel selection for VHT160"""
     try:
@@ -390,10 +419,9 @@ def test_ap_acs_errors(dev, apdev):
         if not ev:
             raise Exception("ACS start timed out")
 
-def test_ap_acs_dfs(dev, apdev, params):
-    """Automatic channel selection, HT scan, and DFS [long]"""
-    if not params['long']:
-        raise HwsimSkip("Skip test case with long duration due to --long not specified")
+@long_duration_test
+def test_ap_acs_dfs(dev, apdev):
+    """Automatic channel selection, HT scan, and DFS"""
     try:
         hapd = None
         force_prev_ap_on_5g(apdev[0])
@@ -472,10 +500,9 @@ def test_ap_acs_exclude_dfs(dev, apdev, params):
         dev[0].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=0.5)
         dev[0].flush_scan_cache()
 
-def test_ap_acs_vht160_dfs(dev, apdev, params):
-    """Automatic channel selection 160 MHz, HT scan, and DFS [long]"""
-    if not params['long']:
-        raise HwsimSkip("Skip test case with long duration due to --long not specified")
+@long_duration_test
+def test_ap_acs_vht160_dfs(dev, apdev):
+    """Automatic channel selection 160 MHz, HT scan, and DFS"""
     try:
         hapd = None
         force_prev_ap_on_5g(apdev[0])
@@ -577,3 +604,85 @@ def test_ap_acs_with_fallback_to_20(dev, apdev):
     logger.info("SIGNAL_POLL: " + str(sig))
     if "WIDTH=20 MHz" not in sig:
         raise Exception("Station did not report 20 MHz bandwidth")
+
+def test_ap_acs_rx_during(dev, apdev):
+    """Automatic channel selection and RX during ACS"""
+    force_prev_ap_on_24g(apdev[0])
+    params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
+    params['channel'] = '0'
+    params['chanlist'] = '1 6 11'
+    hapd = hostapd.add_ap(apdev[0], params, wait_enabled=False)
+
+    time.sleep(0.1)
+    hapd.set("ext_mgmt_frame_handling", "1")
+    bssid = hapd.own_addr().replace(':', '')
+    addr = "020304050607"
+    broadcast = 6*"ff"
+
+    probereq = "40000000" + broadcast + addr + broadcast + "1000"
+    probereq += "0000" + "010802040b160c121824" + "32043048606c" + "030100"
+    if "OK" not in hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % probereq):
+        raise Exception("MGMT_RX_PROCESS failed")
+
+    probereq = "40000000" + broadcast + addr + broadcast + "1000"
+    probereq += "0000" + "010102"
+    if "OK" not in hapd.request("MGMT_RX_PROCESS freq=2437 datarate=0 ssi_signal=-30 frame=%s" % probereq):
+        raise Exception("MGMT_RX_PROCESS failed")
+
+    auth = "b0003a01" + bssid + addr + bssid + '1000000001000000'
+    if "OK" not in hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % auth):
+        raise Exception("MGMT_RX_PROCESS failed")
+    hapd.set("ext_mgmt_frame_handling", "0")
+
+    time.sleep(0.2)
+    try:
+        for i in range(3):
+            dev[i].request("SCAN_INTERVAL 1")
+            dev[i].connect("test-acs", psk="12345678",
+                           scan_freq="2412 2437 2462", wait_connect=False)
+        wait_acs(hapd)
+        for i in range(3):
+            dev[i].wait_connected()
+    finally:
+        for i in range(3):
+            dev[i].request("SCAN_INTERVAL 5")
+
+def test_ap_acs_he_24g(dev, apdev):
+    """Automatic channel selection on 2.4 GHz with HE"""
+    clear_scan_cache(apdev[0])
+    force_prev_ap_on_24g(apdev[0])
+
+    params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
+    params['channel'] = '0'
+    params['ieee80211ax'] = '1'
+    params['ht_capab'] = '[HT40+]'
+    hapd = hostapd.add_ap(apdev[0], params, wait_enabled=False)
+    wait_acs(hapd)
+
+    freq = hapd.get_status_field("freq")
+    if int(freq) < 2400:
+        raise Exception("Unexpected frequency")
+
+    dev[0].connect("test-acs", psk="12345678", scan_freq=freq)
+
+def test_ap_acs_he_24g_overlap(dev, apdev):
+    """Automatic channel selection on 2.4 GHz with HE (overlap)"""
+    clear_scan_cache(apdev[0])
+    force_prev_ap_on_24g(apdev[0])
+
+    params = {"ssid": "overlapping",
+              "channel": "6", "ieee80211n": "1"}
+    hostapd.add_ap(apdev[1], params)
+
+    params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
+    params['channel'] = '0'
+    params['ieee80211ax'] = '1'
+    params['ht_capab'] = '[HT40+]'
+    hapd = hostapd.add_ap(apdev[0], params, wait_enabled=False)
+    wait_acs(hapd)
+
+    freq = hapd.get_status_field("freq")
+    if int(freq) < 2400:
+        raise Exception("Unexpected frequency")
+
+    dev[0].connect("test-acs", psk="12345678", scan_freq=freq)
