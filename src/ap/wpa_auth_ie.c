@@ -378,6 +378,26 @@ int wpa_write_rsn_ie(struct wpa_auth_config *conf, u8 *buf, size_t len,
 }
 
 
+int wpa_write_rsnxe(struct wpa_auth_config *conf, u8 *buf, size_t len)
+{
+	u8 *pos = buf;
+
+	if (conf->sae_pwe != 1 && conf->sae_pwe != 2)
+		return 0; /* no supported extended RSN capabilities */
+
+	if (len < 3)
+		return -1;
+
+	*pos++ = WLAN_EID_RSNX;
+	*pos++ = 1;
+	/* bits 0-3 = 0 since only one octet of Extended RSN Capabilities is
+	 * used for now */
+	*pos++ = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+
+	return pos - buf;
+}
+
+
 static u8 * wpa_write_osen(struct wpa_auth_config *conf, u8 *eid)
 {
 	u8 *len;
@@ -464,6 +484,11 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
 		if (res < 0)
 			return res;
 		pos += res;
+		res = wpa_write_rsnxe(&wpa_auth->conf, pos,
+				      buf + sizeof(buf) - pos);
+		if (res < 0)
+			return res;
+		pos += res;
 	}
 #ifdef CONFIG_IEEE80211R_AP
 	if (wpa_key_mgmt_ft(wpa_auth->conf.wpa_key_mgmt)) {
@@ -532,6 +557,7 @@ static int wpa_auth_okc_iter(struct wpa_authenticator *a, void *ctx)
 int wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 			struct wpa_state_machine *sm, int freq,
 			const u8 *wpa_ie, size_t wpa_ie_len,
+			const u8 *rsnxe, size_t rsnxe_len,
 			const u8 *mdie, size_t mdie_len,
 			const u8 *owe_dh, size_t owe_dh_len)
 {
@@ -941,6 +967,21 @@ int wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 	os_memcpy(sm->wpa_ie, wpa_ie, wpa_ie_len);
 	sm->wpa_ie_len = wpa_ie_len;
 
+	if (rsnxe && rsnxe_len) {
+		if (!sm->rsnxe || sm->rsnxe_len < rsnxe_len) {
+			os_free(sm->rsnxe);
+			sm->rsnxe = os_malloc(rsnxe_len);
+			if (!sm->rsnxe)
+				return WPA_ALLOC_FAIL;
+		}
+		os_memcpy(sm->rsnxe, rsnxe, rsnxe_len);
+		sm->rsnxe_len = rsnxe_len;
+	} else {
+		os_free(sm->rsnxe);
+		sm->rsnxe = NULL;
+		sm->rsnxe_len = 0;
+	}
+
 	return WPA_IE_OK;
 }
 
@@ -973,154 +1014,6 @@ int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
 }
 
 #endif /* CONFIG_HS20 */
-
-
-/**
- * wpa_parse_generic - Parse EAPOL-Key Key Data Generic IEs
- * @pos: Pointer to the IE header
- * @end: Pointer to the end of the Key Data buffer
- * @ie: Pointer to parsed IE data
- * Returns: 0 on success, 1 if end mark is found, -1 on failure
- */
-static int wpa_parse_generic(const u8 *pos, const u8 *end,
-			     struct wpa_eapol_ie_parse *ie)
-{
-	if (pos[1] == 0)
-		return 1;
-
-	if (pos[1] >= 6 &&
-	    RSN_SELECTOR_GET(pos + 2) == WPA_OUI_TYPE &&
-	    pos[2 + WPA_SELECTOR_LEN] == 1 &&
-	    pos[2 + WPA_SELECTOR_LEN + 1] == 0) {
-		ie->wpa_ie = pos;
-		ie->wpa_ie_len = pos[1] + 2;
-		return 0;
-	}
-
-	if (pos[1] >= 4 && WPA_GET_BE32(pos + 2) == OSEN_IE_VENDOR_TYPE) {
-		ie->osen = pos;
-		ie->osen_len = pos[1] + 2;
-		return 0;
-	}
-
-	if (1 + RSN_SELECTOR_LEN < end - pos &&
-	    pos[1] >= RSN_SELECTOR_LEN + PMKID_LEN &&
-	    RSN_SELECTOR_GET(pos + 2) == RSN_KEY_DATA_PMKID) {
-		ie->pmkid = pos + 2 + RSN_SELECTOR_LEN;
-		return 0;
-	}
-
-	if (pos[1] > RSN_SELECTOR_LEN + 2 &&
-	    RSN_SELECTOR_GET(pos + 2) == RSN_KEY_DATA_GROUPKEY) {
-		ie->gtk = pos + 2 + RSN_SELECTOR_LEN;
-		ie->gtk_len = pos[1] - RSN_SELECTOR_LEN;
-		return 0;
-	}
-
-	if (pos[1] > RSN_SELECTOR_LEN + 2 &&
-	    RSN_SELECTOR_GET(pos + 2) == RSN_KEY_DATA_MAC_ADDR) {
-		ie->mac_addr = pos + 2 + RSN_SELECTOR_LEN;
-		ie->mac_addr_len = pos[1] - RSN_SELECTOR_LEN;
-		return 0;
-	}
-
-#ifdef CONFIG_IEEE80211W
-	if (pos[1] > RSN_SELECTOR_LEN + 2 &&
-	    RSN_SELECTOR_GET(pos + 2) == RSN_KEY_DATA_IGTK) {
-		ie->igtk = pos + 2 + RSN_SELECTOR_LEN;
-		ie->igtk_len = pos[1] - RSN_SELECTOR_LEN;
-		return 0;
-	}
-#endif /* CONFIG_IEEE80211W */
-
-#ifdef CONFIG_P2P
-	if (pos[1] >= RSN_SELECTOR_LEN + 1 &&
-	    RSN_SELECTOR_GET(pos + 2) == WFA_KEY_DATA_IP_ADDR_REQ) {
-		ie->ip_addr_req = pos + 2 + RSN_SELECTOR_LEN;
-		wpa_hexdump(MSG_DEBUG, "WPA: IP Address Request in EAPOL-Key",
-			    ie->ip_addr_req, pos[1] - RSN_SELECTOR_LEN);
-		return 0;
-	}
-
-	if (pos[1] >= RSN_SELECTOR_LEN + 3 * 4 &&
-	    RSN_SELECTOR_GET(pos + 2) == WFA_KEY_DATA_IP_ADDR_ALLOC) {
-		ie->ip_addr_alloc = pos + 2 + RSN_SELECTOR_LEN;
-		wpa_hexdump(MSG_DEBUG,
-			    "WPA: IP Address Allocation in EAPOL-Key",
-			    ie->ip_addr_alloc, pos[1] - RSN_SELECTOR_LEN);
-		return 0;
-	}
-#endif /* CONFIG_P2P */
-
-#ifdef CONFIG_OCV
-	if (pos[1] > RSN_SELECTOR_LEN + 2 &&
-	    RSN_SELECTOR_GET(pos + 2) == RSN_KEY_DATA_OCI) {
-		ie->oci = pos + 2 + RSN_SELECTOR_LEN;
-		ie->oci_len = pos[1] - RSN_SELECTOR_LEN;
-		return 0;
-	}
-#endif /* CONFIG_OCV */
-
-	return 0;
-}
-
-
-/**
- * wpa_parse_kde_ies - Parse EAPOL-Key Key Data IEs
- * @buf: Pointer to the Key Data buffer
- * @len: Key Data Length
- * @ie: Pointer to parsed IE data
- * Returns: 0 on success, -1 on failure
- */
-int wpa_parse_kde_ies(const u8 *buf, size_t len, struct wpa_eapol_ie_parse *ie)
-{
-	const u8 *pos, *end;
-	int ret = 0;
-
-	os_memset(ie, 0, sizeof(*ie));
-	for (pos = buf, end = pos + len; end - pos > 1; pos += 2 + pos[1]) {
-		if (pos[0] == 0xdd &&
-		    ((pos == buf + len - 1) || pos[1] == 0)) {
-			/* Ignore padding */
-			break;
-		}
-		if (2 + pos[1] > end - pos) {
-			wpa_printf(MSG_DEBUG, "WPA: EAPOL-Key Key Data "
-				   "underflow (ie=%d len=%d pos=%d)",
-				   pos[0], pos[1], (int) (pos - buf));
-			wpa_hexdump_key(MSG_DEBUG, "WPA: Key Data",
-					buf, len);
-			ret = -1;
-			break;
-		}
-		if (*pos == WLAN_EID_RSN) {
-			ie->rsn_ie = pos;
-			ie->rsn_ie_len = pos[1] + 2;
-#ifdef CONFIG_IEEE80211R_AP
-		} else if (*pos == WLAN_EID_MOBILITY_DOMAIN) {
-			ie->mdie = pos;
-			ie->mdie_len = pos[1] + 2;
-		} else if (*pos == WLAN_EID_FAST_BSS_TRANSITION) {
-			ie->ftie = pos;
-			ie->ftie_len = pos[1] + 2;
-#endif /* CONFIG_IEEE80211R_AP */
-		} else if (*pos == WLAN_EID_VENDOR_SPECIFIC) {
-			ret = wpa_parse_generic(pos, end, ie);
-			if (ret < 0)
-				break;
-			if (ret > 0) {
-				ret = 0;
-				break;
-			}
-		} else {
-			wpa_hexdump(MSG_DEBUG, "WPA: Unrecognized EAPOL-Key "
-				    "Key Data IE", pos, 2 + pos[1]);
-		}
-	}
-
-	return ret;
-}
-
 
 int wpa_auth_uses_mfp(struct wpa_state_machine *sm)
 {
