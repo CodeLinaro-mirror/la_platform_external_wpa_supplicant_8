@@ -372,6 +372,9 @@ extern "C" {
 #define WDS_STA_INTERFACE_ADDED "WDS-STA-INTERFACE-ADDED "
 #define WDS_STA_INTERFACE_REMOVED "WDS-STA-INTERFACE-REMOVED "
 
+/* Transition mode disabled indication - followed by bitmap */
+#define TRANSITION_DISABLE "TRANSITION-DISABLE "
+
 /* BSS command information masks */
 
 #define WPA_BSS_MASK_ALL		0xFFFDFFFF

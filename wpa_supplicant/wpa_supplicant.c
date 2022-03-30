@@ -399,7 +399,10 @@ void wpa_supplicant_set_non_wpa_policy(struct wpa_supplicant *wpa_s,
 		wpa_s->key_mgmt = WPA_KEY_MGMT_NONE;
 	wpa_sm_set_ap_wpa_ie(wpa_s->wpa, NULL, 0);
 	wpa_sm_set_ap_rsn_ie(wpa_s->wpa, NULL, 0);
+	wpa_sm_set_ap_rsnxe(wpa_s->wpa, NULL, 0);
 	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+	wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
+	wpa_s->rsnxe_len = 0;
 	wpa_s->pairwise_cipher = WPA_CIPHER_NONE;
 	wpa_s->group_cipher = WPA_CIPHER_NONE;
 	wpa_s->mgmt_group_cipher = 0;
@@ -495,6 +498,12 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	wpa_s->get_pref_freq_list_override = NULL;
 	wpabuf_free(wpa_s->last_assoc_req_wpa_ie);
 	wpa_s->last_assoc_req_wpa_ie = NULL;
+	os_free(wpa_s->extra_sae_rejected_groups);
+	wpa_s->extra_sae_rejected_groups = NULL;
+	wpabuf_free(wpa_s->rsnxe_override_assoc);
+	wpa_s->rsnxe_override_assoc = NULL;
+	wpabuf_free(wpa_s->rsnxe_override_eapol);
+	wpa_s->rsnxe_override_eapol = NULL;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	if (wpa_s->conf != NULL) {
@@ -1224,15 +1233,17 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      u8 *wpa_ie, size_t *wpa_ie_len)
 {
 	struct wpa_ie_data ie;
-	int sel, proto;
-	const u8 *bss_wpa, *bss_rsn, *bss_osen;
+	int sel, proto, sae_pwe;
+	const u8 *bss_wpa, *bss_rsn, *bss_rsnx, *bss_osen;
 
 	if (bss) {
 		bss_wpa = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		bss_rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+		bss_rsnx = wpa_bss_get_ie(bss, WLAN_EID_RSNX);
 		bss_osen = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
-	} else
-		bss_wpa = bss_rsn = bss_osen = NULL;
+	} else {
+		bss_wpa = bss_rsn = bss_rsnx = bss_osen = NULL;
+	}
 
 	if (bss_rsn && (ssid->proto & WPA_PROTO_RSN) &&
 	    wpa_parse_wpa_ie(bss_rsn, 2 + bss_rsn[1], &ie) == 0 &&
@@ -1367,7 +1378,9 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		if (wpa_sm_set_ap_wpa_ie(wpa_s->wpa, bss_wpa,
 					 bss_wpa ? 2 + bss_wpa[1] : 0) ||
 		    wpa_sm_set_ap_rsn_ie(wpa_s->wpa, bss_rsn,
-					 bss_rsn ? 2 + bss_rsn[1] : 0))
+					 bss_rsn ? 2 + bss_rsn[1] : 0) ||
+		    wpa_sm_set_ap_rsnxe(wpa_s->wpa, bss_rsnx,
+					bss_rsnx ? 2 + bss_rsnx[1] : 0))
 			return -1;
 	}
 
@@ -1562,9 +1575,20 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_OCV
 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_OCV, ssid->ocv);
 #endif /* CONFIG_OCV */
+	sae_pwe = wpa_s->conf->sae_pwe;
+	if (ssid->sae_password_id && sae_pwe != 3)
+		sae_pwe = 1;
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_SAE_PWE, sae_pwe);
 
 	if (wpa_sm_set_assoc_wpa_ie_default(wpa_s->wpa, wpa_ie, wpa_ie_len)) {
 		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to generate WPA IE");
+		return -1;
+	}
+
+	wpa_s->rsnxe_len = sizeof(wpa_s->rsnxe);
+	if (wpa_sm_set_assoc_rsnxe_default(wpa_s->wpa, wpa_s->rsnxe,
+					   &wpa_s->rsnxe_len)) {
+		wpa_msg(wpa_s, MSG_WARNING, "RSN: Failed to generate RSNXE");
 		return -1;
 	}
 
@@ -1916,6 +1940,59 @@ int wpas_update_random_addr_disassoc(struct wpa_supplicant *wpa_s)
 }
 
 
+static void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid)
+{
+#ifdef CONFIG_SAE
+	int *groups = conf->sae_groups;
+	int default_groups[] = { 19, 20, 21, 0 };
+	const char *password;
+
+	if (!groups || groups[0] <= 0)
+		groups = default_groups;
+
+	password = ssid->sae_password;
+	if (!password)
+		password = ssid->passphrase;
+
+	if ((conf->sae_pwe == 0 && !ssid->sae_password_id) || !password ||
+	    conf->sae_pwe == 3) {
+		/* PT derivation not needed */
+		sae_deinit_pt(ssid->pt);
+		ssid->pt = NULL;
+		return;
+	}
+
+	if (ssid->pt)
+		return; /* PT already derived */
+	ssid->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
+				 (const u8 *) password, os_strlen(password),
+				 ssid->sae_password_id);
+#endif /* CONFIG_SAE */
+}
+
+
+static void wpa_s_clear_sae_rejected(struct wpa_supplicant *wpa_s)
+{
+#if defined(CONFIG_SAE) && defined(CONFIG_SME)
+	os_free(wpa_s->sme.sae_rejected_groups);
+	wpa_s->sme.sae_rejected_groups = NULL;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->extra_sae_rejected_groups) {
+		int i, *groups = wpa_s->extra_sae_rejected_groups;
+
+		for (i = 0; groups[i]; i++) {
+			wpa_printf(MSG_DEBUG,
+				   "TESTING: Indicate rejection of an extra SAE group %d",
+				   groups[i]);
+			int_array_add_unique(&wpa_s->sme.sae_rejected_groups,
+					     groups[i]);
+		}
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_SAE && CONFIG_SME */
+}
+
+
 static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit);
 
 /**
@@ -1962,6 +2039,11 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 		} else if (wpa_s->current_bss && wpa_s->current_bss != bss) {
 			os_get_reltime(&wpa_s->roam_start);
 		}
+	} else {
+#ifdef CONFIG_SAE
+		wpa_s_clear_sae_rejected(wpa_s);
+		wpa_s_setup_sae_pt(wpa_s->conf, ssid);
+#endif /* CONFIG_SAE */
 	}
 
 	if (rand_style > 0 && !wpa_s->reassoc_same_ess) {
@@ -2927,6 +3009,23 @@ pfs_fail:
 	}
 #endif /* CONFIG_IEEE80211R */
 
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->rsnxe_override_assoc &&
+	    wpabuf_len(wpa_s->rsnxe_override_assoc) <=
+	    max_wpa_ie_len - wpa_ie_len) {
+		wpa_printf(MSG_DEBUG, "TESTING: RSNXE AssocReq override");
+		os_memcpy(wpa_ie + wpa_ie_len,
+			  wpabuf_head(wpa_s->rsnxe_override_assoc),
+			  wpabuf_len(wpa_s->rsnxe_override_assoc));
+		wpa_ie_len += wpabuf_len(wpa_s->rsnxe_override_assoc);
+	} else
+#endif /* CONFIG_TESTING_OPTIONS */
+	if (wpa_s->rsnxe_len > 0 &&
+	    wpa_s->rsnxe_len <= max_wpa_ie_len - wpa_ie_len) {
+		os_memcpy(wpa_ie + wpa_ie_len, wpa_s->rsnxe, wpa_s->rsnxe_len);
+		wpa_ie_len += wpa_s->rsnxe_len;
+	}
+
 	if (ssid->multi_ap_backhaul_sta) {
 		size_t multi_ap_ie_len;
 
@@ -3107,6 +3206,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	/* Starting new association, so clear the possibly used WPA IE from the
 	 * previous association. */
 	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+	wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
+	wpa_s->rsnxe_len = 0;
 
 	wpa_ie = wpas_populate_assoc_ies(wpa_s, bss, ssid, &params, NULL);
 	if (!wpa_ie) {
@@ -3759,9 +3860,12 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 
 	wpa_s->disconnected = 0;
 	wpa_s->reassociate = 1;
+	wpa_s_clear_sae_rejected(wpa_s);
 	wpa_s->last_owe_group = 0;
-	if (ssid)
+	if (ssid) {
 		ssid->owe_transition_bss_select_count = 0;
+		wpa_s_setup_sae_pt(wpa_s->conf, ssid);
+	}
 
 	if (wpa_s->connect_without_scan ||
 	    wpa_supplicant_fast_associate(wpa_s) != 1) {

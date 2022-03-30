@@ -366,7 +366,8 @@ static int sae_tests(void)
 		goto fail;
 
 	/* Check that output matches the test vector */
-	sae_write_commit(&sae, buf, NULL, pwid);
+	if (sae_write_commit(&sae, buf, NULL, pwid) < 0)
+		goto fail;
 	wpa_hexdump_buf(MSG_DEBUG, "SAE: Commit message", buf);
 
 	if (wpabuf_len(buf) != sizeof(local_commit) ||
@@ -377,7 +378,7 @@ static int sae_tests(void)
 	}
 
 	if (sae_parse_commit(&sae, peer_commit, sizeof(peer_commit), NULL, NULL,
-		    NULL) != 0 ||
+			     NULL, 0) != 0 ||
 	    sae_process_commit(&sae) < 0)
 		goto fail;
 

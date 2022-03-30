@@ -614,6 +614,9 @@ struct wpa_supplicant {
 	int eapol_received; /* number of EAPOL packets received after the
 			     * previous association event */
 
+	u8 rsnxe[20];
+	size_t rsnxe_len;
+
 	struct scard_data *scard;
 	char imsi[20];
 	int mnc_len;
@@ -806,6 +809,7 @@ struct wpa_supplicant {
 		u8 ext_auth_bssid[ETH_ALEN];
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
+		int *sae_rejected_groups;
 #endif /* CONFIG_SAE */
 	} sme;
 #endif /* CONFIG_SME */
@@ -1110,6 +1114,7 @@ struct wpa_supplicant {
 	unsigned int ignore_auth_resp:1;
 	unsigned int ignore_assoc_disallow:1;
 	unsigned int testing_resend_assoc:1;
+	unsigned int ignore_sae_h2e_only:1;
 	struct wpabuf *sae_commit_override;
 	enum wpa_alg last_tk_alg;
 	u8 last_tk_addr[ETH_ALEN];
@@ -1117,6 +1122,9 @@ struct wpa_supplicant {
 	u8 last_tk[WPA_TK_MAX_LEN];
 	size_t last_tk_len;
 	struct wpabuf *last_assoc_req_wpa_ie;
+	int *extra_sae_rejected_groups;
+	struct wpabuf *rsnxe_override_assoc;
+	struct wpabuf *rsnxe_override_eapol;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;
