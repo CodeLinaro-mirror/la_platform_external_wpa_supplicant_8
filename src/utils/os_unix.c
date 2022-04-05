@@ -12,11 +12,9 @@
 #include <sys/wait.h>
 
 #ifdef ANDROID
-#include <grp.h>
-#include <pwd.h>
 #include <sys/capability.h>
 #include <sys/prctl.h>
-#include <sys/types.h>
+#include <private/android_filesystem_config.h>
 #endif /* ANDROID */
 
 #ifdef __MACH__
@@ -41,7 +39,7 @@ static struct dl_list alloc_list = DL_LIST_HEAD_INIT(alloc_list);
 
 struct os_alloc_trace {
 	unsigned int magic;
-	struct dl_list list;
+	struct dl_list list __attribute__((aligned(16)));
 	size_t len;
 	WPA_TRACE_INFO
 } __attribute__((aligned(16)));
@@ -339,49 +337,27 @@ char * os_rel2abs_path(const char *rel_path)
 
 int os_program_init(void)
 {
-#ifdef ANDROID
-	struct __user_cap_header_struct header;
-	struct __user_cap_data_struct cap;
-	struct group *grp = getgrnam("wifi");
-	gid_t gid_wifi = grp ? grp->gr_gid : 0;
-	struct passwd *pwd = getpwnam("wifi");
-	uid_t uid_wifi = pwd ? pwd->pw_uid : 0;
+	unsigned int seed;
 
+#ifdef ANDROID
 	/*
 	 * We ignore errors here since errors are normal if we
 	 * are already running as non-root.
 	 */
 #ifdef ANDROID_SETGROUPS_OVERRIDE
 	gid_t groups[] = { ANDROID_SETGROUPS_OVERRIDE };
-
-	if (!gid_wifi || !uid_wifi) return -1;
-	setgroups(ARRAY_SIZE(groups), groups);
 #else /* ANDROID_SETGROUPS_OVERRIDE */
-	gid_t groups[4];
-	int group_idx = 0;
-
-	if (!gid_wifi || !uid_wifi) return -1;
-	groups[group_idx] = gid_wifi;
-
-	grp = getgrnam("inet");
-	groups[++group_idx] = grp ? grp->gr_gid : 0;
-	if (!groups[group_idx]) return -1;
-
-	grp = getgrnam("keystore");
-	groups[++group_idx] = grp ? grp->gr_gid : 0;
-	if (!groups[group_idx]) return -1;
-
-	grp = getgrnam("log");
-	groups[++group_idx] = grp ? grp->gr_gid : 0;
-	if (!groups[group_idx]) group_idx--;
-
-	setgroups(group_idx + 1, groups);
+	gid_t groups[] = { AID_INET, AID_WIFI, AID_KEYSTORE };
 #endif /* ANDROID_SETGROUPS_OVERRIDE */
+	struct __user_cap_header_struct header;
+	struct __user_cap_data_struct cap;
+
+	setgroups(ARRAY_SIZE(groups), groups);
 
 	prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
 
-	setgid(gid_wifi);
-	setuid(uid_wifi);
+	setgid(AID_WIFI);
+	setuid(AID_WIFI);
 
 	header.version = _LINUX_CAPABILITY_VERSION;
 	header.pid = 0;
@@ -390,6 +366,9 @@ int os_program_init(void)
 	cap.inheritable = 0;
 	capset(&header, &cap);
 #endif /* ANDROID */
+
+	if (os_get_random((unsigned char *) &seed, sizeof(seed)) == 0)
+		srandom(seed);
 
 	return 0;
 }
@@ -485,9 +464,9 @@ int os_file_exists(const char *fname)
 int os_fdatasync(FILE *stream)
 {
 	if (!fflush(stream)) {
-#ifdef __linux__
+#if defined __FreeBSD__ || defined __linux__
 		return fdatasync(fileno(stream));
-#else /* !__linux__ */
+#else /* !__linux__ && !__FreeBSD__ */
 #ifdef F_FULLFSYNC
 		/* OS X does not implement fdatasync(). */
 		return fcntl(fileno(stream), F_FULLFSYNC);
