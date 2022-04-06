@@ -268,7 +268,7 @@ const char * driver_flag_to_string(u64 flag)
 	DF2S(P2P_CAPABLE);
 	DF2S(AP_TEARDOWN_SUPPORT);
 	DF2S(P2P_MGMT_AND_NON_P2P);
-	DF2S(SANE_ERROR_CODES);
+	DF2S(VALID_ERROR_CODES);
 	DF2S(OFFCHANNEL_TX);
 	DF2S(EAPOL_TX_STATUS);
 	DF2S(DEAUTH_TX_STATUS);
@@ -317,6 +317,18 @@ const char * driver_flag_to_string(u64 flag)
 	DF2S(SAFE_PTK0_REKEYS);
 	DF2S(BEACON_PROTECTION);
 	DF2S(EXTENDED_KEY_ID);
+	}
+	return "UNKNOWN";
+#undef DF2S
+}
+
+
+const char * driver_flag2_to_string(u64 flag2)
+{
+#define DF2S(x) case WPA_DRIVER_FLAGS2_ ## x: return #x
+	switch (flag2) {
+	DF2S(CONTROL_PORT_RX);
+	DF2S(CONTROL_PORT_TX_STATUS);
 	}
 	return "UNKNOWN";
 #undef DF2S

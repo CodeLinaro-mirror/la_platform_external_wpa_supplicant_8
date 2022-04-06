@@ -719,12 +719,14 @@ static inline int wpa_drv_wowlan(struct wpa_supplicant *wpa_s,
 
 static inline int wpa_drv_vendor_cmd(struct wpa_supplicant *wpa_s,
 				     int vendor_id, int subcmd, const u8 *data,
-				     size_t data_len, struct wpabuf *buf)
+				     size_t data_len,
+				     enum nested_attr nested_attr_flag,
+				     struct wpabuf *buf)
 {
 	if (!wpa_s->driver->vendor_cmd)
 		return -1;
 	return wpa_s->driver->vendor_cmd(wpa_s->drv_priv, vendor_id, subcmd,
-					 data, data_len, buf);
+					 data, data_len, nested_attr_flag, buf);
 }
 
 static inline int wpa_drv_roaming(struct wpa_supplicant *wpa_s, int allowed,
@@ -778,7 +780,7 @@ static inline int wpa_drv_macsec_get_capability(struct wpa_supplicant *wpa_s,
 }
 
 static inline int wpa_drv_enable_protect_frames(struct wpa_supplicant *wpa_s,
-						Boolean enabled)
+						bool enabled)
 {
 	if (!wpa_s->driver->enable_protect_frames)
 		return -1;
@@ -786,7 +788,7 @@ static inline int wpa_drv_enable_protect_frames(struct wpa_supplicant *wpa_s,
 }
 
 static inline int wpa_drv_enable_encrypt(struct wpa_supplicant *wpa_s,
-						Boolean enabled)
+						bool enabled)
 {
 	if (!wpa_s->driver->enable_encrypt)
 		return -1;
@@ -794,7 +796,7 @@ static inline int wpa_drv_enable_encrypt(struct wpa_supplicant *wpa_s,
 }
 
 static inline int wpa_drv_set_replay_protect(struct wpa_supplicant *wpa_s,
-					     Boolean enabled, u32 window)
+					     bool enabled, u32 window)
 {
 	if (!wpa_s->driver->set_replay_protect)
 		return -1;
@@ -811,7 +813,7 @@ static inline int wpa_drv_set_current_cipher_suite(struct wpa_supplicant *wpa_s,
 }
 
 static inline int wpa_drv_enable_controlled_port(struct wpa_supplicant *wpa_s,
-						 Boolean enabled)
+						 bool enabled)
 {
 	if (!wpa_s->driver->enable_controlled_port)
 		return -1;
@@ -952,11 +954,11 @@ static inline int wpa_drv_disable_transmit_sa(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_MACSEC */
 
 static inline int wpa_drv_setband(struct wpa_supplicant *wpa_s,
-				  enum set_band band)
+				  u32 band_mask)
 {
 	if (!wpa_s->driver->set_band)
 		return -1;
-	return wpa_s->driver->set_band(wpa_s->drv_priv, band);
+	return wpa_s->driver->set_band(wpa_s->drv_priv, band_mask);
 }
 
 static inline int wpa_drv_get_pref_freq_list(struct wpa_supplicant *wpa_s,
@@ -1069,14 +1071,14 @@ static inline int wpa_drv_ignore_assoc_disallow(struct wpa_supplicant *wpa_s,
 	return wpa_s->driver->ignore_assoc_disallow(wpa_s->drv_priv, val);
 }
 
-static inline int wpa_drv_set_bssid_blacklist(struct wpa_supplicant *wpa_s,
-					      unsigned int num_bssid,
-					      const u8 *bssids)
+static inline int wpa_drv_set_bssid_tmp_disallow(struct wpa_supplicant *wpa_s,
+						 unsigned int num_bssid,
+						 const u8 *bssids)
 {
-	if (!wpa_s->driver->set_bssid_blacklist)
+	if (!wpa_s->driver->set_bssid_tmp_disallow)
 		return -1;
-	return wpa_s->driver->set_bssid_blacklist(wpa_s->drv_priv, num_bssid,
-						  bssids);
+	return wpa_s->driver->set_bssid_tmp_disallow(wpa_s->drv_priv, num_bssid,
+						     bssids);
 }
 
 static inline int wpa_drv_update_connect_params(
@@ -1106,6 +1108,13 @@ static inline int wpa_drv_set_4addr_mode(struct wpa_supplicant *wpa_s, int val)
 		return -1;
 	return wpa_s->driver->set_4addr_mode(wpa_s->drv_priv,
 					     wpa_s->bridge_ifname, val);
+}
+
+static inline int wpa_drv_dpp_listen(struct wpa_supplicant *wpa_s, bool enable)
+{
+	if (!wpa_s->driver->dpp_listen)
+		return 0;
+	return wpa_s->driver->dpp_listen(wpa_s->drv_priv, enable);
 }
 
 #endif /* DRIVER_I_H */

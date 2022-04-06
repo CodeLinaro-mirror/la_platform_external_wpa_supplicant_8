@@ -265,6 +265,7 @@ struct tls_connection {
 	X509 *peer_cert;
 	X509 *peer_issuer;
 	X509 *peer_issuer_issuer;
+	char *peer_subject; /* peer subject info for authenticated peer */
 
 	unsigned char client_random[SSL3_RANDOM_SIZE];
 	unsigned char server_random[SSL3_RANDOM_SIZE];
@@ -956,6 +957,10 @@ void * tls_init(const struct tls_config *conf)
 	const char *ciphers;
 
 	if (tls_openssl_ref_count == 0) {
+		void openssl_load_legacy_provider(void);
+
+		openssl_load_legacy_provider();
+
 		tls_global = context = tls_context_new(conf);
 		if (context == NULL)
 			return NULL;
@@ -1043,6 +1048,8 @@ void * tls_init(const struct tls_config *conf)
 
 	SSL_CTX_set_options(ssl, SSL_OP_NO_SSLv2);
 	SSL_CTX_set_options(ssl, SSL_OP_NO_SSLv3);
+
+	SSL_CTX_set_mode(ssl, SSL_MODE_AUTO_RETRY);
 
 #ifdef SSL_MODE_NO_AUTO_CHAIN
 	/* Number of deployed use cases assume the default OpenSSL behavior of
@@ -1629,6 +1636,7 @@ void tls_connection_deinit(void *ssl_ctx, struct tls_connection *conn)
 	os_free(conn->domain_match);
 	os_free(conn->check_cert_subject);
 	os_free(conn->session_ticket);
+	os_free(conn->peer_subject);
 	os_free(conn);
 }
 
@@ -2579,6 +2587,11 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 		context->event_cb(context->cb_ctx,
 				  TLS_CERT_CHAIN_SUCCESS, NULL);
 
+	if (depth == 0 && preverify_ok) {
+		os_free(conn->peer_subject);
+		conn->peer_subject = os_strdup(buf);
+	}
+
 	return preverify_ok;
 }
 
@@ -2988,16 +3001,12 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 
 		/* Explicit request to enable TLS versions even if needing to
 		 * override systemwide policies. */
-		if (flags & TLS_CONN_ENABLE_TLSv1_0) {
+		if (flags & TLS_CONN_ENABLE_TLSv1_0)
 			version = TLS1_VERSION;
-		} else if (flags & TLS_CONN_ENABLE_TLSv1_1) {
-			if (!(flags & TLS_CONN_DISABLE_TLSv1_0))
-				version = TLS1_1_VERSION;
-		} else if (flags & TLS_CONN_ENABLE_TLSv1_2) {
-			if (!(flags & (TLS_CONN_DISABLE_TLSv1_0 |
-				       TLS_CONN_DISABLE_TLSv1_1)))
-				version = TLS1_2_VERSION;
-		}
+		else if (flags & TLS_CONN_ENABLE_TLSv1_1)
+			version = TLS1_1_VERSION;
+		else if (flags & TLS_CONN_ENABLE_TLSv1_2)
+			version = TLS1_2_VERSION;
 		if (!version) {
 			wpa_printf(MSG_DEBUG,
 				   "OpenSSL: Invalid TLS version configuration");
@@ -3011,6 +3020,28 @@ static int tls_set_conn_flags(struct tls_connection *conn, unsigned int flags,
 		}
 	}
 #endif /* >= 1.1.0 */
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+	!defined(LIBRESSL_VERSION_NUMBER) && \
+	!defined(OPENSSL_IS_BORINGSSL)
+	{
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+		int need_level = 0;
+#else
+		int need_level = 1;
+#endif
+
+		if ((flags &
+		     (TLS_CONN_ENABLE_TLSv1_0 | TLS_CONN_ENABLE_TLSv1_1)) &&
+		    SSL_get_security_level(ssl) > need_level) {
+			/*
+			 * Need to drop to security level 1 (or 0  with OpenSSL
+			 * 3.0) to allow TLS versions older than 1.2 to be used
+			 * when explicitly enabled in configuration.
+			 */
+			SSL_set_security_level(conn->ssl, need_level);
+		}
+	}
+#endif
 
 #ifdef CONFIG_SUITEB
 #ifdef OPENSSL_IS_BORINGSSL
@@ -3180,7 +3211,11 @@ int tls_connection_set_verify(void *ssl_ctx, struct tls_connection *conn,
 	if (conn == NULL)
 		return -1;
 
-	if (verify_peer) {
+	if (verify_peer == 2) {
+		conn->ca_cert_verify = 1;
+		SSL_set_verify(conn->ssl, SSL_VERIFY_PEER |
+			       SSL_VERIFY_CLIENT_ONCE, tls_verify_cb);
+	} else if (verify_peer) {
 		conn->ca_cert_verify = 1;
 		SSL_set_verify(conn->ssl, SSL_VERIFY_PEER |
 			       SSL_VERIFY_FAIL_IF_NO_PEER_CERT |
@@ -3241,8 +3276,36 @@ static int tls_connection_client_cert(struct tls_connection *conn,
 			   "OK");
 		return 0;
 	} else if (client_cert_blob) {
+#if defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x20901000L
 		tls_show_errors(MSG_DEBUG, __func__,
 				"SSL_use_certificate_ASN1 failed");
+#else
+		BIO *bio;
+		X509 *x509;
+
+		tls_show_errors(MSG_DEBUG, __func__,
+				"SSL_use_certificate_ASN1 failed");
+		bio = BIO_new(BIO_s_mem());
+		if (!bio)
+			return -1;
+		BIO_write(bio, client_cert_blob, client_cert_blob_len);
+		x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+		if (!x509 || SSL_use_certificate(conn->ssl, x509) != 1) {
+			X509_free(x509);
+			BIO_free(bio);
+			return -1;
+		}
+		X509_free(x509);
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: Found PEM encoded certificate from blob");
+		while ((x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL))) {
+			wpa_printf(MSG_DEBUG,
+				   "OpenSSL: Added an additional certificate into the chain");
+			SSL_add0_chain_cert(conn->ssl, x509);
+		}
+		BIO_free(bio);
+		return 0;
+#endif
 	}
 
 	if (client_cert == NULL)
@@ -3724,6 +3787,7 @@ static int tls_connection_private_key(struct tls_data *data,
 				      const u8 *private_key_blob,
 				      size_t private_key_blob_len)
 {
+	BIO *bio;
 	int ok;
 
 	if (private_key == NULL && private_key_blob == NULL)
@@ -3749,6 +3813,17 @@ static int tls_connection_private_key(struct tls_data *data,
 			break;
 		}
 
+#ifndef OPENSSL_NO_EC
+		if (SSL_use_PrivateKey_ASN1(EVP_PKEY_EC, conn->ssl,
+					    (u8 *) private_key_blob,
+					    private_key_blob_len) == 1) {
+			wpa_printf(MSG_DEBUG,
+				   "OpenSSL: SSL_use_PrivateKey_ASN1(EVP_PKEY_EC) --> OK");
+			ok = 1;
+			break;
+		}
+#endif /* OPENSSL_NO_EC */
+
 		if (SSL_use_RSAPrivateKey_ASN1(conn->ssl,
 					       (u8 *) private_key_blob,
 					       private_key_blob_len) == 1) {
@@ -3756,6 +3831,28 @@ static int tls_connection_private_key(struct tls_data *data,
 				   "SSL_use_RSAPrivateKey_ASN1 --> OK");
 			ok = 1;
 			break;
+		}
+
+		bio = BIO_new_mem_buf((u8 *) private_key_blob,
+				      private_key_blob_len);
+		if (bio) {
+			EVP_PKEY *pkey;
+
+			pkey = PEM_read_bio_PrivateKey(
+				bio, NULL, tls_passwd_cb,
+				(void *) private_key_passwd);
+			if (pkey) {
+				if (SSL_use_PrivateKey(conn->ssl, pkey) == 1) {
+					wpa_printf(MSG_DEBUG,
+						   "OpenSSL: SSL_use_PrivateKey --> OK");
+					ok = 1;
+					EVP_PKEY_free(pkey);
+					BIO_free(bio);
+					break;
+				}
+				EVP_PKEY_free(pkey);
+			}
+			BIO_free(bio);
 		}
 
 		if (tls_read_pkcs12_blob(data, conn->ssl, private_key_blob,
@@ -4485,10 +4582,18 @@ struct wpabuf * tls_connection_decrypt(void *tls_ctx,
 		return NULL;
 	res = SSL_read(conn->ssl, wpabuf_mhead(buf), wpabuf_size(buf));
 	if (res < 0) {
-		tls_show_errors(MSG_INFO, __func__,
-				"Decryption failed - SSL_read");
-		wpabuf_free(buf);
-		return NULL;
+		int err = SSL_get_error(conn->ssl, res);
+
+		if (err == SSL_ERROR_WANT_READ) {
+			wpa_printf(MSG_DEBUG,
+				   "SSL: SSL_connect - want more data");
+			res = 0;
+		} else {
+			tls_show_errors(MSG_INFO, __func__,
+					"Decryption failed - SSL_read");
+			wpabuf_free(buf);
+			return NULL;
+		}
 	}
 	wpabuf_put(buf, res);
 
@@ -5265,6 +5370,9 @@ static void openssl_debug_dump_certificate(int i, X509 *cert)
 	ASN1_INTEGER *ser;
 	char serial_num[128];
 
+	if (!cert)
+		return;
+
 	X509_NAME_oneline(X509_get_subject_name(cert), buf, sizeof(buf));
 
 	ser = X509_get_serialNumber(cert);
@@ -5648,4 +5756,20 @@ u16 tls_connection_get_cipher_suite(struct tls_connection *conn)
 #else
 	return SSL_CIPHER_get_id(cipher) & 0xFFFF;
 #endif
+}
+
+
+const char * tls_connection_get_peer_subject(struct tls_connection *conn)
+{
+	if (conn)
+		return conn->peer_subject;
+	return NULL;
+}
+
+
+bool tls_connection_get_own_cert_used(struct tls_connection *conn)
+{
+	if (conn)
+		return SSL_get_certificate(conn->ssl) != NULL;
+	return false;
 }

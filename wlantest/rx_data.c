@@ -99,14 +99,45 @@ static void rx_data_eth(struct wlantest *wt, const u8 *bssid,
 }
 
 
-static void rx_data_process(struct wlantest *wt, const u8 *bssid,
+static void rx_data_process(struct wlantest *wt, struct wlantest_bss *bss,
+			    const u8 *bssid,
 			    const u8 *sta_addr,
 			    const u8 *dst, const u8 *src,
 			    const u8 *data, size_t len, int prot,
-			    const u8 *peer_addr)
+			    const u8 *peer_addr, const u8 *qos)
 {
 	if (len == 0)
 		return;
+
+	if (bss && bss->mesh && qos && !(qos[0] & BIT(7)) &&
+	    (qos[1] & BIT(0))) {
+		u8 addr_ext_mode;
+		size_t mesh_control_len = 6;
+
+		/* Skip Mesh Control field if this is not an A-MSDU */
+		if (len < mesh_control_len) {
+			wpa_printf(MSG_DEBUG,
+				   "Not enough room for Mesh Control field");
+			return;
+		}
+
+		addr_ext_mode = data[0] & 0x03;
+		if (addr_ext_mode == 3) {
+			wpa_printf(MSG_DEBUG,
+				   "Reserved Mesh Control :: Address Extension Mode");
+			return;
+		}
+
+		mesh_control_len += addr_ext_mode * ETH_ALEN;
+		if (len < mesh_control_len) {
+			wpa_printf(MSG_DEBUG,
+				   "Not enough room for Mesh Address Extension");
+			return;
+		}
+
+		len -= mesh_control_len;
+		data += mesh_control_len;
+	}
 
 	if (len >= 8 && os_memcmp(data, "\xaa\xaa\x03\x00\x00\x00", 6) == 0) {
 		rx_data_eth(wt, bssid, sta_addr, dst, src,
@@ -119,21 +150,8 @@ static void rx_data_process(struct wlantest *wt, const u8 *bssid,
 }
 
 
-static void write_decrypted_note(struct wlantest *wt, const u8 *decrypted,
-				 const u8 *tk, size_t tk_len, int keyid)
-{
-	char tk_hex[65];
-
-	if (!decrypted)
-		return;
-
-	wpa_snprintf_hex(tk_hex, sizeof(tk_hex), tk, tk_len);
-	add_note(wt, MSG_EXCESSIVE, "TK[%d] %s", keyid, tk_hex);
-}
-
-
-static u8 * try_ptk(int pairwise_cipher, struct wpa_ptk *ptk,
-		    const struct ieee80211_hdr *hdr,
+static u8 * try_ptk(struct wlantest *wt, int pairwise_cipher,
+		    struct wpa_ptk *ptk, const struct ieee80211_hdr *hdr,
 		    const u8 *data, size_t data_len, size_t *decrypted_len)
 {
 	u8 *decrypted;
@@ -156,8 +174,15 @@ static u8 * try_ptk(int pairwise_cipher, struct wpa_ptk *ptk,
 					 data, data_len, decrypted_len);
 	} else if ((pairwise_cipher == WPA_CIPHER_TKIP ||
 		    pairwise_cipher == 0) && tk_len == 32) {
+		enum michael_mic_result mic_res;
+
 		decrypted = tkip_decrypt(ptk->tk, hdr, data, data_len,
-					 decrypted_len);
+					 decrypted_len, &mic_res,
+					 &wt->tkip_frag);
+		if (decrypted && mic_res == MICHAEL_MIC_INCORRECT)
+			add_note(wt, MSG_INFO, "Invalid Michael MIC");
+		else if (decrypted && mic_res == MICHAEL_MIC_NOT_VERIFIED)
+			add_note(wt, MSG_DEBUG, "Michael MIC not verified");
 	}
 
 	return decrypted;
@@ -174,7 +199,7 @@ static u8 * try_all_ptk(struct wlantest *wt, int pairwise_cipher,
 
 	wpa_debug_level = MSG_WARNING;
 	dl_list_for_each(ptk, &wt->ptk, struct wlantest_ptk, list) {
-		decrypted = try_ptk(pairwise_cipher, &ptk->ptk, hdr,
+		decrypted = try_ptk(wt, pairwise_cipher, &ptk->ptk, hdr,
 				    data, data_len, decrypted_len);
 		if (decrypted) {
 			wpa_debug_level = prev_level;
@@ -263,8 +288,13 @@ static void rx_data_bss_prot_group(struct wlantest *wt,
 	if (bss->gtk_len[keyid] == 0 &&
 	    (bss->group_cipher != WPA_CIPHER_WEP40 ||
 	     dl_list_empty(&wt->wep))) {
-		add_note(wt, MSG_MSGDUMP, "No GTK known to decrypt the frame "
-			 "(A2=" MACSTR " KeyID=%d)",
+		decrypted = try_all_ptk(wt, bss->group_cipher, hdr, keyid,
+					data, len, &dlen);
+		if (decrypted)
+			goto process;
+		add_note(wt, MSG_MSGDUMP,
+			 "No GTK known to decrypt the frame (A2=" MACSTR
+			 " KeyID=%d)",
 			 MAC2STR(hdr->addr2), keyid);
 		return;
 	}
@@ -295,21 +325,28 @@ static void rx_data_bss_prot_group(struct wlantest *wt,
 	}
 
 skip_replay_det:
-	if (bss->group_cipher == WPA_CIPHER_TKIP)
+	if (bss->group_cipher == WPA_CIPHER_TKIP) {
+		enum michael_mic_result mic_res;
+
 		decrypted = tkip_decrypt(bss->gtk[keyid], hdr, data, len,
-					 &dlen);
-	else if (bss->group_cipher == WPA_CIPHER_WEP40)
+					 &dlen, &mic_res, &wt->tkip_frag);
+		if (decrypted && mic_res == MICHAEL_MIC_INCORRECT)
+			add_note(wt, MSG_INFO, "Invalid Michael MIC");
+		else if (decrypted && mic_res == MICHAEL_MIC_NOT_VERIFIED)
+			add_note(wt, MSG_DEBUG, "Michael MIC not verified");
+	} else if (bss->group_cipher == WPA_CIPHER_WEP40) {
 		decrypted = wep_decrypt(wt, hdr, data, len, &dlen);
-	else if (bss->group_cipher == WPA_CIPHER_CCMP)
+	} else if (bss->group_cipher == WPA_CIPHER_CCMP) {
 		decrypted = ccmp_decrypt(bss->gtk[keyid], hdr, data, len,
 					 &dlen);
-	else if (bss->group_cipher == WPA_CIPHER_CCMP_256)
+	} else if (bss->group_cipher == WPA_CIPHER_CCMP_256) {
 		decrypted = ccmp_256_decrypt(bss->gtk[keyid], hdr, data, len,
 					     &dlen);
-	else if (bss->group_cipher == WPA_CIPHER_GCMP ||
-		 bss->group_cipher == WPA_CIPHER_GCMP_256)
+	} else if (bss->group_cipher == WPA_CIPHER_GCMP ||
+		   bss->group_cipher == WPA_CIPHER_GCMP_256) {
 		decrypted = gcmp_decrypt(bss->gtk[keyid], bss->gtk_len[keyid],
 					 hdr, data, len, &dlen);
+	}
 
 	if (decrypted) {
 		char gtk[65];
@@ -317,8 +354,9 @@ skip_replay_det:
 		wpa_snprintf_hex(gtk, sizeof(gtk), bss->gtk[keyid],
 				 bss->gtk_len[keyid]);
 		add_note(wt, MSG_EXCESSIVE, "GTK[%d] %s", keyid, gtk);
-		rx_data_process(wt, bss->bssid, NULL, dst, src, decrypted,
-				dlen, 1, NULL);
+	process:
+		rx_data_process(wt, bss, bss->bssid, NULL, dst, src, decrypted,
+				dlen, 1, NULL, qos);
 		if (!replay)
 			os_memcpy(bss->rsc[keyid], pn, 6);
 		write_pcap_decrypted(wt, (const u8 *) hdr, hdrlen,
@@ -579,7 +617,14 @@ skip_replay_det:
 			write_decrypted_note(wt, decrypted, tk, 16, keyid);
 		}
 	} else if (sta->pairwise_cipher == WPA_CIPHER_TKIP) {
-		decrypted = tkip_decrypt(sta->ptk.tk, hdr, data, len, &dlen);
+		enum michael_mic_result mic_res;
+
+		decrypted = tkip_decrypt(sta->ptk.tk, hdr, data, len, &dlen,
+					 &mic_res, &wt->tkip_frag);
+		if (decrypted && mic_res == MICHAEL_MIC_INCORRECT)
+			add_note(wt, MSG_INFO, "Invalid Michael MIC");
+		else if (decrypted && mic_res == MICHAEL_MIC_NOT_VERIFIED)
+			add_note(wt, MSG_DEBUG, "Michael MIC not verified");
 		write_decrypted_note(wt, decrypted, sta->ptk.tk, 32, keyid);
 	} else if (sta->pairwise_cipher == WPA_CIPHER_WEP40) {
 		decrypted = wep_decrypt(wt, hdr, data, len, &dlen);
@@ -607,7 +652,7 @@ check_zero_tk:
 		os_memset(&zero_ptk, 0, sizeof(zero_ptk));
 		zero_ptk.tk_len = wpa_cipher_key_len(sta->pairwise_cipher);
 		wpa_debug_level = MSG_ERROR;
-		decrypted = try_ptk(sta->pairwise_cipher, &zero_ptk, hdr,
+		decrypted = try_ptk(wt, sta->pairwise_cipher, &zero_ptk, hdr,
 				    data, len, &dlen);
 		wpa_debug_level = old_debug_level;
 		if (decrypted) {
@@ -629,8 +674,8 @@ check_zero_tk:
 			peer_addr = hdr->addr1;
 		if (!replay && rsc)
 			os_memcpy(rsc, pn, 6);
-		rx_data_process(wt, bss->bssid, sta->addr, dst, src, decrypted,
-				dlen, 1, peer_addr);
+		rx_data_process(wt, bss, bss->bssid, sta->addr, dst, src,
+				decrypted, dlen, 1, peer_addr, qos);
 		write_pcap_decrypted(wt, (const u8 *) hdr, hdrlen,
 				     decrypted, dlen);
 	} else if (sta->tptk_set) {
@@ -733,8 +778,8 @@ static void rx_data_bss(struct wlantest *wt, const struct ieee80211_hdr *hdr,
 			}
 		}
 
-		rx_data_process(wt, bssid, sta_addr, dst, src, data, len, 0,
-				peer_addr);
+		rx_data_process(wt, bss, bssid, sta_addr, dst, src, data, len,
+				0, peer_addr, qos);
 	}
 }
 
@@ -823,6 +868,8 @@ void rx_data(struct wlantest *wt, const u8 *data, size_t len)
 		qos = data + hdrlen;
 		hdrlen += 2;
 	}
+	if ((fc & WLAN_FC_HTC) && (stype & 0x08))
+		hdrlen += 4; /* HT Control field */
 	if (len < hdrlen)
 		return;
 	wt->rx_data++;
