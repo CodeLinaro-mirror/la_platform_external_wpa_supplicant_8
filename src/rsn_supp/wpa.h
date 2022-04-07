@@ -43,7 +43,7 @@ struct wpa_sm_ctx {
 	int (*add_pmkid)(void *ctx, void *network_ctx, const u8 *bssid,
 			 const u8 *pmkid, const u8 *fils_cache_id,
 			 const u8 *pmk, size_t pmk_len, u32 pmk_lifetime,
-			 u8 pmk_reauth_threshold);
+			 u8 pmk_reauth_threshold, int akmp);
 	int (*remove_pmkid)(void *ctx, void *network_ctx, const u8 *bssid,
 			    const u8 *pmkid, const u8 *fils_cache_id);
 	void (*set_config_blob)(void *ctx, struct wpa_config_blob *blob);
@@ -69,6 +69,9 @@ struct wpa_sm_ctx {
 				size_t supp_rates_len,
 				const struct ieee80211_ht_capabilities *ht_capab,
 				const struct ieee80211_vht_capabilities *vht_capab,
+				const struct ieee80211_he_capabilities *he_capab,
+				size_t he_capab_len,
+				const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
 				u8 qosinfo, int wmm, const u8 *ext_capab,
 				size_t ext_capab_len, const u8 *supp_channels,
 				size_t supp_channels_len,
@@ -87,6 +90,8 @@ struct wpa_sm_ctx {
 			    const u8 *pkt, size_t pkt_len);
 	int (*channel_info)(void *ctx, struct wpa_channel_info *ci);
 	void (*transition_disable)(void *ctx, u8 bitmap);
+	void (*store_ptk)(void *ctx, u8 *addr, int cipher,
+			  u32 life_time, const struct wpa_ptk *ptk);
 };
 
 
@@ -103,10 +108,16 @@ enum wpa_sm_conf_params {
 	WPA_PARAM_MFP,
 	WPA_PARAM_OCV,
 	WPA_PARAM_SAE_PWE,
+	WPA_PARAM_SAE_PK,
 	WPA_PARAM_DENY_PTK0_REKEY,
 	WPA_PARAM_EXT_KEY_ID,
 	WPA_PARAM_USE_EXT_KEY_ID,
 	WPA_PARAM_FT_RSNXE_USED,
+	WPA_PARAM_DPP_PFS,
+	WPA_PARAM_OCI_FREQ_EAPOL,
+	WPA_PARAM_OCI_FREQ_EAPOL_G2,
+	WPA_PARAM_OCI_FREQ_FT_ASSOC,
+	WPA_PARAM_OCI_FREQ_FILS_ASSOC,
 };
 
 struct rsn_supp_config {
@@ -124,6 +135,7 @@ struct rsn_supp_config {
 	int owe_ptk_workaround;
 	const u8 *fils_cache_id;
 	int beacon_prot;
+	bool force_kdk_derivation;
 };
 
 #ifndef CONFIG_NO_WPA
@@ -169,6 +181,7 @@ int wpa_parse_wpa_ie(const u8 *wpa_ie, size_t wpa_ie_len,
 		     struct wpa_ie_data *data);
 
 void wpa_sm_aborted_cached(struct wpa_sm *sm);
+void wpa_sm_aborted_external_cached(struct wpa_sm *sm);
 int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 		    const u8 *buf, size_t len);
 int wpa_sm_parse_own_wpa_ie(struct wpa_sm *sm, struct wpa_ie_data *data);
@@ -183,12 +196,18 @@ void wpa_sm_pmksa_cache_add(struct wpa_sm *sm, const u8 *pmk, size_t pmk_len,
 int wpa_sm_pmksa_exists(struct wpa_sm *sm, const u8 *bssid,
 			const void *network_ctx);
 void wpa_sm_drop_sa(struct wpa_sm *sm);
+struct rsn_pmksa_cache_entry * wpa_sm_pmksa_cache_get(struct wpa_sm *sm,
+						      const u8 *aa,
+						      const u8 *pmkid,
+						      const void *network_ctx,
+						      int akmp);
 int wpa_sm_has_ptk(struct wpa_sm *sm);
 int wpa_sm_has_ptk_installed(struct wpa_sm *sm);
 
 void wpa_sm_update_replay_ctr(struct wpa_sm *sm, const u8 *replay_ctr);
 
 void wpa_sm_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx);
+void wpa_sm_external_pmksa_cache_flush(struct wpa_sm *sm, void *network_ctx);
 
 int wpa_sm_get_p2p_ip_addr(struct wpa_sm *sm, u8 *buf);
 
@@ -197,6 +216,7 @@ void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm,
 			    const u8 *ptk_kck, size_t ptk_kck_len,
 			    const u8 *ptk_kek, size_t ptk_kek_len);
 int wpa_fils_is_completed(struct wpa_sm *sm);
+void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm);
 
 #else /* CONFIG_NO_WPA */
 
@@ -337,6 +357,10 @@ static inline void wpa_sm_aborted_cached(struct wpa_sm *sm)
 {
 }
 
+static inline void wpa_sm_aborted_external_cached(struct wpa_sm *sm)
+{
+}
+
 static inline int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 				  const u8 *buf, size_t len)
 {
@@ -359,6 +383,13 @@ static inline void wpa_sm_drop_sa(struct wpa_sm *sm)
 {
 }
 
+static inline struct rsn_pmksa_cache_entry *
+wpa_sm_pmksa_cache_get(struct wpa_sm *sm, const u8 *aa, const u8 *pmkid,
+		       const void *network_ctx, int akmp)
+{
+	return NULL;
+}
+
 static inline int wpa_sm_has_ptk(struct wpa_sm *sm)
 {
 	return 0;
@@ -366,6 +397,11 @@ static inline int wpa_sm_has_ptk(struct wpa_sm *sm)
 
 static inline void wpa_sm_update_replay_ctr(struct wpa_sm *sm,
 					    const u8 *replay_ctr)
+{
+}
+
+static inline void wpa_sm_external_pmksa_cache_flush(struct wpa_sm *sm,
+						     void *network_ctx)
 {
 }
 
@@ -390,6 +426,10 @@ static inline int wpa_fils_is_completed(struct wpa_sm *sm)
 	return 0;
 }
 
+static inline void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm)
+{
+}
+
 #endif /* CONFIG_NO_WPA */
 
 #ifdef CONFIG_IEEE80211R
@@ -408,6 +448,13 @@ int wpa_ft_validate_reassoc_resp(struct wpa_sm *sm, const u8 *ies,
 				 size_t ies_len, const u8 *src_addr);
 int wpa_ft_start_over_ds(struct wpa_sm *sm, const u8 *target_ap,
 			 const u8 *mdie);
+
+#ifdef CONFIG_PASN
+
+int wpa_pasn_ft_derive_pmk_r1(struct wpa_sm *sm, int akmp, const u8 *r1kh_id,
+			      u8 *pmk_r1, size_t *pmk_r1_len, u8 *pmk_r1_name);
+
+#endif /* CONFIG_PASN */
 
 #else /* CONFIG_IEEE80211R */
 
@@ -451,6 +498,16 @@ wpa_ft_validate_reassoc_resp(struct wpa_sm *sm, const u8 *ies, size_t ies_len,
 {
 	return -1;
 }
+
+#ifdef CONFIG_PASN
+
+int wpa_pasn_ft_derive_pmk_r1(struct wpa_sm *sm, int akmp, const u8 *r1kh_id,
+			      u8 *pmk_r1, size_t *pmk_r1_len, u8 *pmk_r1_name)
+{
+	return -1;
+}
+
+#endif /* CONFIG_PASN */
 
 #endif /* CONFIG_IEEE80211R */
 
@@ -500,5 +557,7 @@ int owe_process_assoc_resp(struct wpa_sm *sm, const u8 *bssid,
 void wpa_sm_set_reset_fils_completed(struct wpa_sm *sm, int set);
 void wpa_sm_set_fils_cache_id(struct wpa_sm *sm, const u8 *fils_cache_id);
 void wpa_sm_set_dpp_z(struct wpa_sm *sm, const struct wpabuf *z);
+void wpa_pasn_pmksa_cache_add(struct wpa_sm *sm, const u8 *pmk, size_t pmk_len,
+			      const u8 *pmkid, const u8 *bssid, int key_mgmt);
 
 #endif /* WPA_H */

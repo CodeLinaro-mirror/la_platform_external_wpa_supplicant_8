@@ -13,6 +13,7 @@ import time
 import remotehost
 import logging
 logger = logging.getLogger()
+import hostapd
 
 def get_ifnames():
     ifnames = []
@@ -29,6 +30,10 @@ class HwsimSkip(Exception):
         self.reason = reason
     def __str__(self):
         return self.reason
+
+def long_duration_test(func):
+    func.long_duration_test = True
+    return func
 
 class alloc_fail(object):
     def __init__(self, dev, count, funcs):
@@ -99,6 +104,53 @@ def skip_without_tkip(dev):
     if "TKIP" not in dev.get_capability("pairwise") or \
        "TKIP" not in dev.get_capability("group"):
         raise HwsimSkip("Cipher TKIP not supported")
+
+def check_wep_capa(dev):
+    if "WEP40" not in dev.get_capability("group"):
+        raise HwsimSkip("WEP not supported")
+
+def check_sae_capab(dev):
+    if "SAE" not in dev.get_capability("auth_alg"):
+        raise HwsimSkip("SAE not supported")
+
+def check_sae_pk_capab(dev):
+    capab = dev.get_capability("sae")
+    if capab is None or "PK" not in capab:
+        raise HwsimSkip("SAE-PK not supported")
+
+def check_erp_capa(dev):
+    capab = dev.get_capability("erp")
+    if not capab or 'ERP' not in capab:
+        raise HwsimSkip("ERP not supported in the build")
+
+def check_fils_capa(dev):
+    capa = dev.get_capability("fils")
+    if capa is None or "FILS" not in capa:
+        raise HwsimSkip("FILS not supported")
+
+def check_fils_sk_pfs_capa(dev):
+    capa = dev.get_capability("fils")
+    if capa is None or "FILS-SK-PFS" not in capa:
+        raise HwsimSkip("FILS-SK-PFS not supported")
+
+def check_tls_tod(dev):
+    tls = dev.request("GET tls_library")
+    if not tls.startswith("OpenSSL") and not tls.startswith("internal"):
+        raise HwsimSkip("TLS TOD-TOFU/STRICT not supported with this TLS library: " + tls)
+
+def vht_supported():
+    cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+    reg = cmd.stdout.read()
+    if "@ 80)" in reg or "@ 160)" in reg:
+        return True
+    return False
+
+# This function checks whether the provided dev, which may be either
+# WpaSupplicant or Hostapd supports CSA.
+def csa_supported(dev):
+    res = dev.get_driver_status()
+    if (int(res['capa.flags'], 0) & 0x80000000) == 0:
+        raise HwsimSkip("CSA not supported")
 
 def get_phy(ap, ifname=None):
     phy = "phy3"
@@ -205,3 +257,58 @@ def start_monitor(ifname, freq=2412):
 def stop_monitor(ifname):
     subprocess.call(["ip", "link", "set", "dev", ifname, "down"])
     subprocess.call(["iw", ifname, "set", "type", "managed"])
+
+def clear_scan_cache(apdev):
+    ifname = apdev['ifname']
+    hostapd.cmd_execute(apdev, ['ifconfig', ifname, 'up'])
+    hostapd.cmd_execute(apdev, ['iw', ifname, 'scan', 'trigger', 'freq', '2412',
+                                'flush'])
+    time.sleep(0.1)
+    hostapd.cmd_execute(apdev, ['ifconfig', ifname, 'down'])
+
+def set_world_reg(apdev0=None, apdev1=None, dev0=None):
+    if apdev0:
+        hostapd.cmd_execute(apdev0, ['iw', 'reg', 'set', '00'])
+    if apdev1:
+        hostapd.cmd_execute(apdev1, ['iw', 'reg', 'set', '00'])
+    if dev0:
+        dev0.cmd_execute(['iw', 'reg', 'set', '00'])
+    time.sleep(0.1)
+
+def sysctl_write(val):
+    subprocess.call(['sysctl', '-w', val], stdout=open('/dev/null', 'w'))
+
+def var_arg_call(fn, dev, apdev, params):
+    if fn.__code__.co_argcount > 2:
+        return fn(dev, apdev, params)
+    elif fn.__code__.co_argcount > 1:
+        return fn(dev, apdev)
+    return fn(dev)
+
+def cloned_wrapper(wrapper, fn):
+    # we need the name set right for selecting / printing etc.
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    # reparent to the right module for module filtering
+    wrapper.__module__ = fn.__module__
+    return wrapper
+
+def disable_ipv6(fn):
+    def wrapper(dev, apdev, params):
+        require_under_vm()
+        try:
+            sysctl_write('net.ipv6.conf.all.disable_ipv6=1')
+            sysctl_write('net.ipv6.conf.default.disable_ipv6=1')
+            var_arg_call(fn, dev, apdev, params)
+        finally:
+            sysctl_write('net.ipv6.conf.all.disable_ipv6=0')
+            sysctl_write('net.ipv6.conf.default.disable_ipv6=0')
+    return cloned_wrapper(wrapper, fn)
+
+def reset_ignore_old_scan_res(fn):
+    def wrapper(dev, apdev, params):
+        try:
+            var_arg_call(fn, dev, apdev, params)
+        finally:
+            dev[0].set("ignore_old_scan_res", "0")
+    return cloned_wrapper(wrapper, fn)
