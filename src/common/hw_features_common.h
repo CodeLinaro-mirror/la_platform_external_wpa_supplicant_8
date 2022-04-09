@@ -15,6 +15,9 @@
 struct hostapd_channel_data * hw_get_channel_chan(struct hostapd_hw_modes *mode,
 						  int chan, int *freq);
 struct hostapd_channel_data *
+hw_mode_get_channel(struct hostapd_hw_modes *mode, int freq, int *chan);
+
+struct hostapd_channel_data *
 hw_get_channel_freq(enum hostapd_hw_mode mode, int freq, int *chan,
 		    struct hostapd_hw_modes *hw_features, int num_hw_features);
 
@@ -36,11 +39,12 @@ int check_40mhz_2g4(struct hostapd_hw_modes *mode,
 int hostapd_set_freq_params(struct hostapd_freq_params *data,
 			    enum hostapd_hw_mode mode,
 			    int freq, int channel, int edmg, u8 edmg_channel,
-			    int ht_enabled, int vht_enabled,
-			    int he_enabled,
-			    int sec_channel_offset, int oper_chwidth,
-			    int center_segment0, int center_segment1,
-			    u32 vht_caps, struct he_capabilities *he_caps);
+			    int ht_enabled,
+			    int vht_enabled, int he_enabled,
+			    int sec_channel_offset,
+			    int oper_chwidth, int center_segment0,
+			    int center_segment1, u32 vht_caps,
+			    struct he_capabilities *he_caps);
 void set_disable_ht40(struct ieee80211_ht_capabilities *htcaps,
 		      int disabled);
 int ieee80211ac_cap_check(u32 hw, u32 conf);
