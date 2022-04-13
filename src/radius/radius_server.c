@@ -35,11 +35,6 @@
  */
 #define RADIUS_MAX_SESSION 1000
 
-/**
- * RADIUS_MAX_MSG_LEN - Maximum message length for incoming RADIUS messages
- */
-#define RADIUS_MAX_MSG_LEN 3000
-
 static const struct eapol_callbacks radius_server_eapol_cb;
 
 struct radius_client;
@@ -230,7 +225,7 @@ struct radius_server_data {
 	sqlite3 *db;
 #endif /* CONFIG_SQLITE */
 
-	struct eap_config *eap_cfg;
+	const struct eap_config *eap_cfg;
 };
 
 
@@ -657,8 +652,8 @@ radius_server_get_new_session(struct radius_server_data *data,
 		return NULL;
 	}
 	sess->eap_if = eap_get_interface(sess->eap);
-	sess->eap_if->eapRestart = TRUE;
-	sess->eap_if->portEnabled = TRUE;
+	sess->eap_if->eapRestart = true;
+	sess->eap_if->portEnabled = true;
 
 	RADIUS_DEBUG("New session 0x%x initialized", sess->sess_id);
 
@@ -909,13 +904,13 @@ radius_server_encapsulate_eap(struct radius_server_data *data,
 	u16 reason = WLAN_REASON_IEEE_802_1X_AUTH_FAILED;
 
 	if (sess->eap_if->eapFail) {
-		sess->eap_if->eapFail = FALSE;
+		sess->eap_if->eapFail = false;
 		code = RADIUS_CODE_ACCESS_REJECT;
 	} else if (sess->eap_if->eapSuccess) {
-		sess->eap_if->eapSuccess = FALSE;
+		sess->eap_if->eapSuccess = false;
 		code = RADIUS_CODE_ACCESS_ACCEPT;
 	} else {
-		sess->eap_if->eapReq = FALSE;
+		sess->eap_if->eapReq = false;
 		code = RADIUS_CODE_ACCESS_CHALLENGE;
 	}
 
@@ -1443,7 +1438,7 @@ static int radius_server_request(struct radius_server_data *data,
 
 	wpabuf_free(sess->eap_if->eapRespData);
 	sess->eap_if->eapRespData = eap;
-	sess->eap_if->eapResp = TRUE;
+	sess->eap_if->eapResp = true;
 	eap_server_sm_step(sess->eap);
 
 	if ((sess->eap_if->eapReq || sess->eap_if->eapSuccess ||
@@ -2189,7 +2184,6 @@ struct radius_server_data *
 radius_server_init(struct radius_server_conf *conf)
 {
 	struct radius_server_data *data;
-	struct eap_config *eap_cfg;
 
 #ifndef CONFIG_IPV6
 	if (conf->ipv6) {
@@ -2202,88 +2196,52 @@ radius_server_init(struct radius_server_conf *conf)
 	if (data == NULL)
 		return NULL;
 
-	eap_cfg = data->eap_cfg = os_zalloc(sizeof(*eap_cfg));
-	if (!eap_cfg) {
-		os_free(data);
-		return NULL;
-	}
+	data->eap_cfg = conf->eap_cfg;
 	data->auth_sock = -1;
 	data->acct_sock = -1;
 	dl_list_init(&data->erp_keys);
 	os_get_reltime(&data->start_time);
 	data->conf_ctx = conf->conf_ctx;
-	eap_cfg->backend_auth = TRUE;
-	eap_cfg->eap_server = 1;
-	eap_cfg->eap_sim_db_priv = conf->eap_sim_db_priv;
-	eap_cfg->ssl_ctx = conf->ssl_ctx;
-	eap_cfg->msg_ctx = conf->msg_ctx;
+	conf->eap_cfg->backend_auth = true;
+	conf->eap_cfg->eap_server = 1;
 	data->ipv6 = conf->ipv6;
-	if (conf->pac_opaque_encr_key) {
-		eap_cfg->pac_opaque_encr_key = os_malloc(16);
-		if (eap_cfg->pac_opaque_encr_key) {
-			os_memcpy(eap_cfg->pac_opaque_encr_key,
-				  conf->pac_opaque_encr_key, 16);
-		}
-	}
-	if (conf->eap_fast_a_id) {
-		eap_cfg->eap_fast_a_id = os_malloc(conf->eap_fast_a_id_len);
-		if (eap_cfg->eap_fast_a_id) {
-			os_memcpy(eap_cfg->eap_fast_a_id, conf->eap_fast_a_id,
-				  conf->eap_fast_a_id_len);
-			eap_cfg->eap_fast_a_id_len = conf->eap_fast_a_id_len;
-		}
-	}
-	if (conf->eap_fast_a_id_info)
-		eap_cfg->eap_fast_a_id_info =
-			os_strdup(conf->eap_fast_a_id_info);
-	eap_cfg->eap_fast_prov = conf->eap_fast_prov;
-	eap_cfg->pac_key_lifetime = conf->pac_key_lifetime;
-	eap_cfg->pac_key_refresh_time = conf->pac_key_refresh_time;
-	eap_cfg->eap_teap_auth = conf->eap_teap_auth;
-	eap_cfg->eap_teap_pac_no_inner = conf->eap_teap_pac_no_inner;
-	eap_cfg->eap_teap_separate_result = conf->eap_teap_separate_result;
 	data->get_eap_user = conf->get_eap_user;
-	eap_cfg->eap_sim_aka_result_ind = conf->eap_sim_aka_result_ind;
-	eap_cfg->eap_sim_id = conf->eap_sim_id;
-	eap_cfg->tnc = conf->tnc;
-	eap_cfg->wps = conf->wps;
-	eap_cfg->pwd_group = conf->pwd_group;
-	if (conf->server_id) {
-		eap_cfg->server_id = (u8 *) os_strdup(conf->server_id);
-		eap_cfg->server_id_len = os_strlen(conf->server_id);
-	}
 	if (conf->eap_req_id_text) {
 		data->eap_req_id_text = os_malloc(conf->eap_req_id_text_len);
-		if (data->eap_req_id_text) {
-			os_memcpy(data->eap_req_id_text, conf->eap_req_id_text,
-				  conf->eap_req_id_text_len);
-			data->eap_req_id_text_len = conf->eap_req_id_text_len;
-		}
+		if (!data->eap_req_id_text)
+			goto fail;
+		os_memcpy(data->eap_req_id_text, conf->eap_req_id_text,
+			  conf->eap_req_id_text_len);
+		data->eap_req_id_text_len = conf->eap_req_id_text_len;
 	}
-	eap_cfg->erp = conf->erp;
 	data->erp_domain = conf->erp_domain;
-	eap_cfg->tls_session_lifetime = conf->tls_session_lifetime;
-	eap_cfg->tls_flags = conf->tls_flags;
 
 	if (conf->subscr_remediation_url) {
 		data->subscr_remediation_url =
 			os_strdup(conf->subscr_remediation_url);
+		if (!data->subscr_remediation_url)
+			goto fail;
 	}
 	data->subscr_remediation_method = conf->subscr_remediation_method;
-	if (conf->hs20_sim_provisioning_url)
+	if (conf->hs20_sim_provisioning_url) {
 		data->hs20_sim_provisioning_url =
 			os_strdup(conf->hs20_sim_provisioning_url);
+		if (!data->hs20_sim_provisioning_url)
+			goto fail;
+	}
 
-	if (conf->t_c_server_url)
+	if (conf->t_c_server_url) {
 		data->t_c_server_url = os_strdup(conf->t_c_server_url);
+		if (!data->t_c_server_url)
+			goto fail;
+	}
 
 #ifdef CONFIG_SQLITE
 	if (conf->sqlite_file) {
 		if (sqlite3_open(conf->sqlite_file, &data->db)) {
 			RADIUS_ERROR("Could not open SQLite file '%s'",
 				     conf->sqlite_file);
-			radius_server_deinit(data);
-			return NULL;
+			goto fail;
 		}
 	}
 #endif /* CONFIG_SQLITE */
@@ -2297,8 +2255,7 @@ radius_server_init(struct radius_server_conf *conf)
 						   conf->ipv6);
 	if (data->clients == NULL) {
 		wpa_printf(MSG_ERROR, "No RADIUS clients configured");
-		radius_server_deinit(data);
-		return NULL;
+		goto fail;
 	}
 
 #ifdef CONFIG_IPV6
@@ -2309,14 +2266,12 @@ radius_server_init(struct radius_server_conf *conf)
 	data->auth_sock = radius_server_open_socket(conf->auth_port);
 	if (data->auth_sock < 0) {
 		wpa_printf(MSG_ERROR, "Failed to open UDP socket for RADIUS authentication server");
-		radius_server_deinit(data);
-		return NULL;
+		goto fail;
 	}
 	if (eloop_register_read_sock(data->auth_sock,
 				     radius_server_receive_auth,
 				     data, NULL)) {
-		radius_server_deinit(data);
-		return NULL;
+		goto fail;
 	}
 
 	if (conf->acct_port) {
@@ -2329,20 +2284,20 @@ radius_server_init(struct radius_server_conf *conf)
 		data->acct_sock = radius_server_open_socket(conf->acct_port);
 		if (data->acct_sock < 0) {
 			wpa_printf(MSG_ERROR, "Failed to open UDP socket for RADIUS accounting server");
-			radius_server_deinit(data);
-			return NULL;
+			goto fail;
 		}
 		if (eloop_register_read_sock(data->acct_sock,
 					     radius_server_receive_acct,
-					     data, NULL)) {
-			radius_server_deinit(data);
-			return NULL;
-		}
+					     data, NULL))
+			goto fail;
 	} else {
 		data->acct_sock = -1;
 	}
 
 	return data;
+fail:
+	radius_server_deinit(data);
+	return NULL;
 }
 
 
@@ -2399,7 +2354,6 @@ void radius_server_deinit(struct radius_server_data *data)
 #endif /* CONFIG_SQLITE */
 
 	radius_server_erp_flush(data);
-	eap_server_config_free(data->eap_cfg);
 
 	os_free(data);
 }

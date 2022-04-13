@@ -92,7 +92,7 @@ struct eap_ssl_data {
  /* could be up to 128 bytes, but only the first 64 bytes are used */
 #define EAP_TLS_KEY_LEN 64
 
-/* dummy type used as a flag for UNAUTH-TLS */
+/* stub type used as a flag for UNAUTH-TLS */
 #define EAP_UNAUTH_TLS_TYPE 255
 #define EAP_WFA_UNAUTH_TLS_TYPE 254
 
@@ -133,7 +133,7 @@ int eap_peer_tls_encrypt(struct eap_sm *sm, struct eap_ssl_data *data,
 int eap_peer_select_phase2_methods(struct eap_peer_config *config,
 				   const char *prefix,
 				   struct eap_method_type **types,
-				   size_t *num_types);
+				   size_t *num_types, int use_machine_cred);
 int eap_peer_tls_phase2_nak(struct eap_method_type *types, size_t num_types,
 			    struct eap_hdr *hdr, struct wpabuf **resp);
 

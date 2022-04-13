@@ -45,43 +45,43 @@ struct eap_user {
 
 struct eap_eapol_interface {
 	/* Lower layer to full authenticator variables */
-	Boolean eapResp; /* shared with EAPOL Backend Authentication */
+	bool eapResp; /* shared with EAPOL Backend Authentication */
 	struct wpabuf *eapRespData;
-	Boolean portEnabled;
+	bool portEnabled;
 	int retransWhile;
-	Boolean eapRestart; /* shared with EAPOL Authenticator PAE */
+	bool eapRestart; /* shared with EAPOL Authenticator PAE */
 	int eapSRTT;
 	int eapRTTVAR;
 
 	/* Full authenticator to lower layer variables */
-	Boolean eapReq; /* shared with EAPOL Backend Authentication */
-	Boolean eapNoReq; /* shared with EAPOL Backend Authentication */
-	Boolean eapSuccess;
-	Boolean eapFail;
-	Boolean eapTimeout;
+	bool eapReq; /* shared with EAPOL Backend Authentication */
+	bool eapNoReq; /* shared with EAPOL Backend Authentication */
+	bool eapSuccess;
+	bool eapFail;
+	bool eapTimeout;
 	struct wpabuf *eapReqData;
 	u8 *eapKeyData;
 	size_t eapKeyDataLen;
 	u8 *eapSessionId;
 	size_t eapSessionIdLen;
-	Boolean eapKeyAvailable; /* called keyAvailable in IEEE 802.1X-2004 */
+	bool eapKeyAvailable; /* called keyAvailable in IEEE 802.1X-2004 */
 
 	/* AAA interface to full authenticator variables */
-	Boolean aaaEapReq;
-	Boolean aaaEapNoReq;
-	Boolean aaaSuccess;
-	Boolean aaaFail;
+	bool aaaEapReq;
+	bool aaaEapNoReq;
+	bool aaaSuccess;
+	bool aaaFail;
 	struct wpabuf *aaaEapReqData;
 	u8 *aaaEapKeyData;
 	size_t aaaEapKeyDataLen;
-	Boolean aaaEapKeyAvailable;
+	bool aaaEapKeyAvailable;
 	int aaaMethodTimeout;
 
 	/* Full authenticator to AAA interface variables */
-	Boolean aaaEapResp;
+	bool aaaEapResp;
 	struct wpabuf *aaaEapRespData;
 	/* aaaIdentity -> eap_get_identity() */
-	Boolean aaaTimeout;
+	bool aaaTimeout;
 };
 
 struct eap_server_erp_key {
@@ -124,7 +124,7 @@ struct eap_config {
 	 * callback context.
 	 */
 	void *eap_sim_db_priv;
-	Boolean backend_auth;
+	bool backend_auth;
 	int eap_server;
 
 	/**
@@ -198,6 +198,14 @@ struct eap_config {
 	int eap_teap_auth;
 	int eap_teap_pac_no_inner;
 	int eap_teap_separate_result;
+	enum eap_teap_id {
+		EAP_TEAP_ID_ALLOW_ANY = 0,
+		EAP_TEAP_ID_REQUIRE_USER = 1,
+		EAP_TEAP_ID_REQUIRE_MACHINE = 2,
+		EAP_TEAP_ID_REQUEST_USER_ACCEPT_MACHINE = 3,
+		EAP_TEAP_ID_REQUEST_MACHINE_ACCEPT_USER = 4,
+		EAP_TEAP_ID_REQUIRE_USER_AND_MACHINE = 5,
+	} eap_teap_id;
 
 	/**
 	 * eap_sim_aka_result_ind - EAP-SIM/AKA protected success indication
@@ -247,6 +255,9 @@ struct eap_config {
 	int erp;
 	unsigned int tls_session_lifetime;
 	unsigned int tls_flags;
+
+	unsigned int max_auth_rounds;
+	unsigned int max_auth_rounds_short;
 };
 
 struct eap_session_data {

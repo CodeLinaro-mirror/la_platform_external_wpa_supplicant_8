@@ -169,7 +169,7 @@ static void * eap_teap_init(struct eap_sm *sm)
 		eap_teap_parse_phase1(data, config->phase1);
 
 	if ((data->provisioning_allowed & EAP_TEAP_PROV_AUTH) &&
-	    !config->ca_cert && !config->ca_path) {
+	    !config->cert.ca_cert && !config->cert.ca_path) {
 		/* Prevent PAC provisioning without mutual authentication
 		 * (either by validating server certificate or by suitable
 		 * inner EAP method). */
@@ -180,7 +180,7 @@ static void * eap_teap_init(struct eap_sm *sm)
 
 	if (eap_peer_select_phase2_methods(config, "auth=",
 					   &data->phase2_types,
-					   &data->num_phase2_types) < 0) {
+					   &data->num_phase2_types, 0) < 0) {
 		eap_teap_deinit(sm, data);
 		return NULL;
 	}
@@ -378,6 +378,22 @@ static int eap_teap_select_phase2_method(struct eap_teap_data *data,
 }
 
 
+static void eap_teap_deinit_inner_eap(struct eap_sm *sm,
+				      struct eap_teap_data *data)
+{
+	if (!data->phase2_priv || !data->phase2_method)
+		return;
+
+	wpa_printf(MSG_DEBUG,
+		   "EAP-TEAP: Phase 2 EAP sequence - deinitialize previous method");
+	data->phase2_method->deinit(sm, data->phase2_priv);
+	data->phase2_method = NULL;
+	data->phase2_priv = NULL;
+	data->phase2_type.vendor = EAP_VENDOR_IETF;
+	data->phase2_type.method = EAP_TYPE_NONE;
+}
+
+
 static int eap_teap_phase2_request(struct eap_sm *sm,
 				   struct eap_teap_data *data,
 				   struct eap_method_ret *ret,
@@ -413,21 +429,15 @@ static int eap_teap_phase2_request(struct eap_sm *sm,
 	wpa_printf(MSG_DEBUG, "EAP-TEAP: Phase 2 Request: type=%u:%u",
 		   vendor, method);
 	if (vendor == EAP_VENDOR_IETF && method == EAP_TYPE_IDENTITY) {
+		eap_teap_deinit_inner_eap(sm, data);
 		*resp = eap_sm_buildIdentity(sm, hdr->identifier, 1);
 		return 0;
 	}
 
 	if (data->phase2_priv && data->phase2_method &&
 	    (vendor != data->phase2_type.vendor ||
-	     method != data->phase2_type.method)) {
-		wpa_printf(MSG_DEBUG,
-			   "EAP-TEAP: Phase 2 EAP sequence - deinitialize previous method");
-		data->phase2_method->deinit(sm, data->phase2_priv);
-		data->phase2_method = NULL;
-		data->phase2_priv = NULL;
-		data->phase2_type.vendor = EAP_VENDOR_IETF;
-		data->phase2_type.method = EAP_TYPE_NONE;
-	}
+	     method != data->phase2_type.method))
+		eap_teap_deinit_inner_eap(sm, data);
 
 	if (data->phase2_type.vendor == EAP_VENDOR_IETF &&
 	    data->phase2_type.method == EAP_TYPE_NONE &&
@@ -458,7 +468,8 @@ static int eap_teap_phase2_request(struct eap_sm *sm,
 	if (!(*resp) ||
 	    (iret.methodState == METHOD_DONE &&
 	     iret.decision == DECISION_FAIL)) {
-		ret->methodState = METHOD_DONE;
+		/* Wait for protected indication of failure */
+		ret->methodState = METHOD_MAY_CONT;
 		ret->decision = DECISION_FAIL;
 	} else if ((iret.methodState == METHOD_DONE ||
 		    iret.methodState == METHOD_MAY_CONT) &&
@@ -522,10 +533,23 @@ static struct wpabuf * eap_teap_tlv_pac_ack(void)
 }
 
 
+static struct wpabuf * eap_teap_add_identity_type(struct eap_sm *sm,
+						  struct wpabuf *msg)
+{
+	struct wpabuf *tlv;
+
+	tlv = eap_teap_tlv_identity_type(sm->use_machine_cred ?
+					 TEAP_IDENTITY_TYPE_MACHINE :
+					 TEAP_IDENTITY_TYPE_USER);
+	return wpabuf_concat(msg, tlv);
+}
+
+
 static struct wpabuf * eap_teap_process_eap_payload_tlv(
 	struct eap_sm *sm, struct eap_teap_data *data,
 	struct eap_method_ret *ret,
-	u8 *eap_payload_tlv, size_t eap_payload_tlv_len)
+	u8 *eap_payload_tlv, size_t eap_payload_tlv_len,
+	enum teap_identity_types req_id_type)
 {
 	struct eap_hdr *hdr;
 	struct wpabuf *resp = NULL;
@@ -557,13 +581,18 @@ static struct wpabuf * eap_teap_process_eap_payload_tlv(
 		return NULL;
 	}
 
-	return eap_teap_tlv_eap_payload(resp);
+	resp = eap_teap_tlv_eap_payload(resp);
+	if (req_id_type)
+		resp = eap_teap_add_identity_type(sm, resp);
+
+	return resp;
 }
 
 
 static struct wpabuf * eap_teap_process_basic_auth_req(
 	struct eap_sm *sm, struct eap_teap_data *data,
-	u8 *basic_auth_req, size_t basic_auth_req_len)
+	u8 *basic_auth_req, size_t basic_auth_req_len,
+	enum teap_identity_types req_id_type)
 {
 	const u8 *identity, *password;
 	size_t identity_len, password_len, plen;
@@ -593,6 +622,8 @@ static struct wpabuf * eap_teap_process_basic_auth_req(
 	wpabuf_put_data(resp, password, password_len);
 	wpa_hexdump_buf_key(MSG_DEBUG, "EAP-TEAP: Basic-Password-Auth-Resp",
 			    resp);
+	if (req_id_type)
+		resp = eap_teap_add_identity_type(sm, resp);
 
 	/* Assume this succeeds so that Result TLV(Success) from the server can
 	 * be used to terminate TEAP. */
@@ -1267,17 +1298,45 @@ static int eap_teap_process_decrypted(struct eap_sm *sm,
 		goto done;
 	}
 
+	if (tlv.identity_type == TEAP_IDENTITY_TYPE_MACHINE) {
+		struct eap_peer_config *config = eap_get_config(sm);
+
+		sm->use_machine_cred = config && config->machine_identity &&
+			config->machine_identity_len;
+	} else if (tlv.identity_type) {
+		sm->use_machine_cred = 0;
+	}
+	if (tlv.identity_type) {
+		struct eap_peer_config *config = eap_get_config(sm);
+
+		os_free(data->phase2_types);
+		data->phase2_types = NULL;
+		data->num_phase2_types = 0;
+		if (config &&
+		    eap_peer_select_phase2_methods(config, "auth=",
+						   &data->phase2_types,
+						   &data->num_phase2_types,
+						   sm->use_machine_cred) < 0) {
+			wpa_printf(MSG_INFO,
+				   "EAP-TEAP: Failed to update Phase 2 EAP types");
+			failed = 1;
+			goto done;
+		}
+	}
+
 	if (tlv.basic_auth_req) {
 		tmp = eap_teap_process_basic_auth_req(sm, data,
 						      tlv.basic_auth_req,
-						      tlv.basic_auth_req_len);
+						      tlv.basic_auth_req_len,
+						      tlv.identity_type);
 		if (!tmp)
 			failed = 1;
 		resp = wpabuf_concat(resp, tmp);
 	} else if (tlv.eap_payload_tlv) {
 		tmp = eap_teap_process_eap_payload_tlv(sm, data, ret,
 						       tlv.eap_payload_tlv,
-						       tlv.eap_payload_tlv_len);
+						       tlv.eap_payload_tlv_len,
+						       tlv.identity_type);
 		if (!tmp)
 			failed = 1;
 		resp = wpabuf_concat(resp, tmp);
@@ -1327,6 +1386,15 @@ static int eap_teap_process_decrypted(struct eap_sm *sm,
 		 * through inner authentication. */
 		wpa_printf(MSG_DEBUG,
 			   "EAP-TEAP: PAC used - server may decide to skip inner authentication");
+		ret->methodState = METHOD_MAY_CONT;
+		ret->decision = DECISION_COND_SUCC;
+	} else if (data->result_success_done &&
+		   tls_connection_get_own_cert_used(data->ssl.conn) &&
+		   eap_teap_derive_msk(data) == 0) {
+		/* Assume the server might accept authentication without going
+		 * through inner authentication. */
+		wpa_printf(MSG_DEBUG,
+			   "EAP-TEAP: Client certificate used - server may decide to skip inner authentication");
 		ret->methodState = METHOD_MAY_CONT;
 		ret->decision = DECISION_COND_SUCC;
 	}
@@ -1692,8 +1760,8 @@ static int eap_teap_process_start(struct eap_sm *sm,
 
 
 #ifdef CONFIG_TESTING_OPTIONS
-static struct wpabuf * eap_teap_add_dummy_outer_tlvs(struct eap_teap_data *data,
-						     struct wpabuf *resp)
+static struct wpabuf * eap_teap_add_stub_outer_tlvs(struct eap_teap_data *data,
+						    struct wpabuf *resp)
 {
 	struct wpabuf *resp2;
 	u16 len;
@@ -1707,11 +1775,11 @@ static struct wpabuf * eap_teap_add_dummy_outer_tlvs(struct eap_teap_data *data,
 		return NULL;
 	}
 
-	/* Outer TLVs (dummy Vendor-Specific TLV for testing) */
+	/* Outer TLVs (stub Vendor-Specific TLV for testing) */
 	wpabuf_put_be16(data->peer_outer_tlvs, TEAP_TLV_VENDOR_SPECIFIC);
 	wpabuf_put_be16(data->peer_outer_tlvs, 4);
 	wpabuf_put_be32(data->peer_outer_tlvs, EAP_VENDOR_HOSTAP);
-	wpa_hexdump_buf(MSG_DEBUG, "EAP-TEAP: TESTING - Add dummy Outer TLVs",
+	wpa_hexdump_buf(MSG_DEBUG, "EAP-TEAP: TESTING - Add stub Outer TLVs",
 			data->peer_outer_tlvs);
 
 	wpa_hexdump_buf(MSG_DEBUG,
@@ -1918,7 +1986,7 @@ static struct wpabuf * eap_teap_process(struct eap_sm *sm, void *priv,
 #ifdef CONFIG_TESTING_OPTIONS
 	if (data->test_outer_tlvs && res == 0 && resp &&
 	    (flags & EAP_TLS_FLAGS_START) && wpabuf_len(resp) >= 6)
-		resp = eap_teap_add_dummy_outer_tlvs(data, resp);
+		resp = eap_teap_add_stub_outer_tlvs(data, resp);
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	return resp;
@@ -1926,7 +1994,7 @@ static struct wpabuf * eap_teap_process(struct eap_sm *sm, void *priv,
 
 
 #if 0 /* TODO */
-static Boolean eap_teap_has_reauth_data(struct eap_sm *sm, void *priv)
+static bool eap_teap_has_reauth_data(struct eap_sm *sm, void *priv)
 {
 	struct eap_teap_data *data = priv;
 
@@ -1989,7 +2057,7 @@ static int eap_teap_get_status(struct eap_sm *sm, void *priv, char *buf,
 }
 
 
-static Boolean eap_teap_isKeyAvailable(struct eap_sm *sm, void *priv)
+static bool eap_teap_isKeyAvailable(struct eap_sm *sm, void *priv)
 {
 	struct eap_teap_data *data = priv;
 
