@@ -162,7 +162,7 @@ static void * eap_fast_init(struct eap_sm *sm)
 
 	if (eap_peer_select_phase2_methods(config, "auth=",
 					   &data->phase2_types,
-					   &data->num_phase2_types) < 0) {
+					   &data->num_phase2_types, 0) < 0) {
 		eap_fast_deinit(sm, data);
 		return NULL;
 	}
@@ -1688,7 +1688,7 @@ static struct wpabuf * eap_fast_process(struct eap_sm *sm, void *priv,
 
 
 #if 0 /* FIX */
-static Boolean eap_fast_has_reauth_data(struct eap_sm *sm, void *priv)
+static bool eap_fast_has_reauth_data(struct eap_sm *sm, void *priv)
 {
 	struct eap_fast_data *data = priv;
 	return tls_connection_established(sm->ssl_ctx, data->ssl.conn);
@@ -1754,7 +1754,7 @@ static int eap_fast_get_status(struct eap_sm *sm, void *priv, char *buf,
 }
 
 
-static Boolean eap_fast_isKeyAvailable(struct eap_sm *sm, void *priv)
+static bool eap_fast_isKeyAvailable(struct eap_sm *sm, void *priv)
 {
 	struct eap_fast_data *data = priv;
 	return data->success;

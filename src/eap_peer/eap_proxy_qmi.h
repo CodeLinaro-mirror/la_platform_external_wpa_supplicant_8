@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------
-Copyright (c) 2013, The Linux Foundation. All rights reserved.
+Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -48,89 +48,120 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif /* CONFIG_EAP_PROXY_DUAL_SIM */
 
 typedef enum {
-  QMI_STATE_IDLE = 0x00,
-  QMI_STATE_RESP_PENDING  = 0x01,
-  QMI_STATE_RESP_RECEIVED = 0x02,
-  QMI_STATE_RESP_TIME_OUT = 0x03
+        QMI_STATE_IDLE = 0x00,
+        QMI_STATE_RESP_PENDING  = 0x01,
+        QMI_STATE_RESP_RECEIVED = 0x02,
+        QMI_STATE_RESP_TIME_OUT = 0x03
 } qmi_state_e;
 
 typedef enum {
-  EAP_PROXY_QMI_SRVC_NO_RESULT,
-  EAP_PROXY_QMI_SRVC_SUCCESS,
-  EAP_PROXY_QMI_SRVC_FAILURE
+        EAP_PROXY_QMI_SRVC_NO_RESULT,
+        EAP_PROXY_QMI_SRVC_SUCCESS,
+        EAP_PROXY_QMI_SRVC_FAILURE
 } eap_proxy_qmi_srv_result;
 
 /* should match the EAP_state  of eap_i.h */
 typedef enum {
- EAP_PROXY_INITIALIZE, EAP_PROXY_DISABLED, EAP_PROXY_IDLE, EAP_PROXY_RECEIVED,
- EAP_PROXY_GET_METHOD, EAP_PROXY_METHOD, EAP_PROXY_SEND_RESPONSE,
- EAP_PROXY_DISCARD, EAP_PROXY_IDENTITY, EAP_PROXY_NOTIFICATION,
- EAP_PROXY_RETRANSMIT,
- EAP_PROXY_AUTH_SUCCESS,  EAP_PROXY_AUTH_FAILURE
+        EAP_PROXY_INITIALIZE, EAP_PROXY_DISABLED, EAP_PROXY_IDLE, EAP_PROXY_RECEIVED,
+        EAP_PROXY_GET_METHOD, EAP_PROXY_METHOD, EAP_PROXY_SEND_RESPONSE,
+        EAP_PROXY_DISCARD, EAP_PROXY_IDENTITY, EAP_PROXY_NOTIFICATION,
+        EAP_PROXY_RETRANSMIT,
+        EAP_PROXY_AUTH_SUCCESS,  EAP_PROXY_AUTH_FAILURE
 } eap_proxy_state;
 
-
-enum eap_proxy_status {
-   EAP_PROXY_FAILURE = 0x00,
-   EAP_PROXY_SUCCESS
-};
-
 typedef enum {
-  EAP_IDENTITY_ANNONYMOUS = 0x00,
-  EAP_IDENTITY_IMSI_RAW  = 0x02,
-  EAP_IDENTITY_IMSI_3GPP_REALM = 0x03,
-  EAP_IDENTITY_IMSI_REALM = 0x04,
-  EAP_IDENTITY_CFG_RAW = 0x05,
-  EAP_IDENTITY_CFG_3GPP_REALM = 0x06,
-  EAP_IDENTITY_CFG_REALM = 0x07,
+        EAP_IDENTITY_ANNONYMOUS = 0x00,
+        EAP_IDENTITY_IMSI_RAW  = 0x02,
+        EAP_IDENTITY_IMSI_3GPP_REALM = 0x03,
+        EAP_IDENTITY_IMSI_REALM = 0x04,
+        EAP_IDENTITY_CFG_RAW = 0x05,
+        EAP_IDENTITY_CFG_3GPP_REALM = 0x06,
+        EAP_IDENTITY_CFG_REALM = 0x07,
 } eap_identity_format_e;
 
 typedef union
 {
-       struct
-       {
-               void *resp_data; /* Pointer to the Response Packet*/
-               unsigned long length;     /*Length of the Response Packet*/
-       }eap_send_pkt_resp;
+        struct
+        {
+                void *resp_data; /* Pointer to the Response Packet*/
+                unsigned long length;     /*Length of the Response Packet*/
+        }eap_send_pkt_resp;
 
 }qmi_eap_sync_rsp_data_type;
 
 typedef struct {
-  uim_card_state_enum_v01                      card_state;
-  uim_card_error_code_enum_v01                 card_error_code;
-  u8                                           app_state;
-  u8                                           app_type;
+        uim_card_state_enum_v01                      card_state;
+        uim_card_error_code_enum_v01                 card_error_code;
+        u8                                           app_state;
+        u8                                           app_type;
 } wpa_uim_card_info_type;
 
 typedef struct {
-  int                                   card_ready_idx;
-  wpa_uim_card_info_type                card_info[QMI_UIM_CARDS_MAX_V01];
-  qmi_client_type                       qmi_uim_svc_client_ptr;
-  int                                   qmi_msg_lib_handle;
+        int                                   card_ready_idx;
+        wpa_uim_card_info_type                card_info[QMI_UIM_CARDS_MAX_V01];
+        qmi_client_type                       qmi_uim_svc_client_ptr;
+        int                                   qmi_msg_lib_handle;
 } wpa_uim_struct_type;
 
+struct qmi_cb_data {
+        struct dl_list list;
+
+        /* Common data for a QMI callback */
+        qmi_client_type userHandle;
+        unsigned int msg_id;
+        void *buf;
+        unsigned int buflen;
+        void *userdata;
+        eloop_timeout_handler handler;
+
+        /* additional data for eap_reply */
+        qmi_client_error_type err_code;
+};
+
+typedef enum {
+        EAP_PROXY_MODEM_UNKNOWN = 0x00,
+        EAP_PROXY_MODEM_UIM_UP  = 0x01,
+        EAP_PROXY_MODEM_AUTH_UP = 0x02,
+        EAP_PROXY_MODEM_FULL_UP = 0x03,
+} qmi_modem_state;
 
 struct eap_proxy_sm {
-   qmi_client_type qmi_auth_svc_client_ptr[MAX_NO_OF_SIM_SUPPORTED];
-   qmi_state_e qmi_state;
-   eap_proxy_qmi_srv_result srvc_result;
-   qmi_eap_sync_rsp_data_type qmi_resp_data;
-   eap_proxy_state  proxy_state;
-   Boolean iskey_valid;
-   u8 *key;
-   Boolean is_state_changed;
-   void *ctx;
-   void *msg_ctx;
-   struct eapol_callbacks *eapol_cb;
-   u8 *eapReqData;
-   size_t eapReqDataLen;
-   Boolean isEap;
-   int eap_type;
-   int user_selected_sim;
-   int eap_auth_session_flag[MAX_NO_OF_SIM_SUPPORTED];
-   pthread_t thread_id;
-   wpa_uim_struct_type   wpa_uim[MAX_NO_OF_SIM_SUPPORTED];
-   Boolean qmi_uim_svc_client_initialized[MAX_NO_OF_SIM_SUPPORTED];
+        qmi_client_type qmi_auth_svc_client_ptr[MAX_NO_OF_SIM_SUPPORTED];
+        qmi_state_e qmi_state;
+        eap_proxy_qmi_srv_result srvc_result;
+        qmi_eap_sync_rsp_data_type qmi_resp_data;
+        eap_proxy_state  proxy_state;
+        bool iskey_valid;
+        u8 *key;
+        bool is_state_changed;
+        void *ctx;
+        void *msg_ctx;
+        struct eapol_callbacks *eapol_cb;
+        u8 *eapReqData;
+        size_t eapReqDataLen;
+        bool isEap;
+        int eap_type;
+        int user_selected_sim;
+        int eap_auth_session_flag[MAX_NO_OF_SIM_SUPPORTED];
+        int notification_code;
+        pthread_t thread_id;
+        wpa_uim_struct_type   wpa_uim[MAX_NO_OF_SIM_SUPPORTED];
+        bool qmi_uim_svc_client_initialized[MAX_NO_OF_SIM_SUPPORTED];
+        bool qmi_thread_joined;
+        u8 *session_id;
+        size_t session_id_len;
+        u8 *emsk;
+        // To check if eap_proxy_sm for curernt interface is initialized/in use
+        bool initialized;
+        /* list to maintain qmi_cb_data list */
+        struct dl_list callback;
+        // To trigger initialization post SSR based on modem UP state.
+        qmi_modem_state modem_state;
+        qmi_client_os_params uim_notifier_os_params;
+        qmi_client_os_params auth_notifier_os_params;
+        qmi_client_type uim_notifier_handle;
+        qmi_client_type auth_notifier_handle;
+        bool notifier_cb_initialized;
 };
 
 int eap_proxy_allowed_method(struct eap_peer_config *config, int vendor,
