@@ -116,21 +116,24 @@ struct eap_proxy_sm {
    eap_proxy_qmi_srv_result srvc_result;
    qmi_eap_sync_rsp_data_type qmi_resp_data;
    eap_proxy_state  proxy_state;
-   Boolean iskey_valid;
+   bool iskey_valid;
    u8 *key;
-   Boolean is_state_changed;
+   bool is_state_changed;
    void *ctx;
    void *msg_ctx;
    struct eapol_callbacks *eapol_cb;
    u8 *eapReqData;
    size_t eapReqDataLen;
-   Boolean isEap;
+   bool isEap;
    int eap_type;
    int user_selected_sim;
    int eap_auth_session_flag[MAX_NO_OF_SIM_SUPPORTED];
    pthread_t thread_id;
    wpa_uim_struct_type   wpa_uim[MAX_NO_OF_SIM_SUPPORTED];
-   Boolean qmi_uim_svc_client_initialized[MAX_NO_OF_SIM_SUPPORTED];
+   bool qmi_uim_svc_client_initialized[MAX_NO_OF_SIM_SUPPORTED];
+   u8 *session_id;
+   size_t session_id_len;
+   u8 *emsk;
 };
 
 int eap_proxy_allowed_method(struct eap_peer_config *config, int vendor,
