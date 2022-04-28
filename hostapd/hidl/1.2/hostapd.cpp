@@ -743,9 +743,10 @@ HostapdStatus Hostapd::addSingleAccessPoint(
 	on_setup_complete_internal_callback =
 	    [this](struct hostapd_data* iface_hapd) {
 		    wpa_printf(
-			MSG_INFO, "AP interface setup completed - state %s",
+			MSG_INFO, "AP interface setup completed or unavailable - state %s",
 			hostapd_state_text(iface_hapd->iface->state));
-		    if (iface_hapd->iface->state == HAPD_IFACE_DISABLED) {
+		    if (iface_hapd->iface->state == HAPD_IFACE_DISABLED
+                    || iface_hapd->iface->state == HAPD_IFACE_UNAVAILABLE) {
 			    // Invoke the failure callback on all registered
 			    // clients.
 			    for (const auto& callback : callbacks_) {

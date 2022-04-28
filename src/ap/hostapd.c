@@ -3238,6 +3238,8 @@ const char * hostapd_state_text(enum hostapd_iface_state s)
 		return "DFS";
 	case HAPD_IFACE_ENABLED:
 		return "ENABLED";
+	case HAPD_IFACE_UNAVAILABLE:
+		return "UNAVAILABLE";
 	}
 
 	return "UNKNOWN";

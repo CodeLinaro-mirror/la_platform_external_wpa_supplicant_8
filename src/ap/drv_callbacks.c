@@ -1614,6 +1614,10 @@ static void hostapd_event_iface_unavailable(struct hostapd_data *hapd)
 		hostapd_switch_channel_fallback(hapd->iface,
 						&hapd->cs_freq_params);
 	}
+	// inform framework that interface is unavailable
+	hostapd_set_state(hapd->iface, HAPD_IFACE_UNAVAILABLE);
+	if (hapd->setup_complete_cb)
+		hapd->setup_complete_cb(hapd->setup_complete_cb_ctx);
 }
 
 
