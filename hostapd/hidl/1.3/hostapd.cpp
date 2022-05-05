@@ -542,13 +542,13 @@ std::string CreateHostapdConfig(
 				} else {
 					if (allowed_ht40_first_channel_list.end()
 						== allowed_ht40_first_channel_list.find(
-								iface_params.V1_2.V1_1.V1_0.channelParams.channel)) {
+								channelParams.channel)) {
 						// channels not in allowed list.
 						ht_cap_vht_oper_chwidth_as_string =
 							"ht_capab=[HT40-]\n";
 					} else {
 						// First channel > 157 not allowed in HE80. Override to 157
-						if (iface_params.V1_2.V1_1.V1_0.channelParams.channel >
+						if (channelParams.channel >
 								MAX_HE80_ALLOWED_PRI_CHANNEL) {
 							channel_config_as_string.replace(8, 3,
 									std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
@@ -579,13 +579,13 @@ std::string CreateHostapdConfig(
 			} else {
 				if (allowed_ht40_first_channel_list.end()
 					== allowed_ht40_first_channel_list.find(
-							iface_params.V1_2.V1_1.V1_0.channelParams.channel)) {
+							channelParams.channel)) {
 					// channels not in allowed list.
 					ht_cap_vht_oper_chwidth_as_string =
 						"ht_capab=[HT40-]\n";
 				} else {
 					// First channel > 157 not allowed in HE80. Override to 157
-					if (iface_params.V1_2.V1_1.V1_0.channelParams.channel >
+					if (channelParams.channel >
 							MAX_HE80_ALLOWED_PRI_CHANNEL) {
 						channel_config_as_string.replace(8, 3,
 								std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
