@@ -12017,6 +12017,58 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strcmp(buf, "UPDATE_BEACON") == 0) {
 		if (wpas_ap_update_beacon(wpa_s))
 			reply_len = -1;
+	} else if (os_strncmp(buf, "ACCEPT_ACL ", 11) == 0) {
+		if (os_strncmp(buf + 11, "ADD_MAC ", 8) == 0) {
+			if (ap_ctrl_iface_acl_add_mac(wpa_s,
+						      DENY_UNLESS_ACCEPTED,
+						      buf + 19) ||
+			    ap_ctrl_iface_set_acl(wpa_s))
+				reply_len = -1;
+		} else if (os_strncmp((buf + 11), "DEL_MAC ", 8) == 0) {
+			if (ap_ctrl_iface_acl_del_mac(wpa_s,
+						      DENY_UNLESS_ACCEPTED,
+						      buf + 19) ||
+			    ap_ctrl_iface_set_acl(wpa_s) ||
+			    ap_ctrl_iface_disassoc_accept_mac(wpa_s))
+				reply_len = -1;
+		} else if (os_strcmp(buf + 11, "SHOW") == 0) {
+			reply_len = ap_ctrl_iface_acl_show_mac(
+				wpa_s, DENY_UNLESS_ACCEPTED,
+				reply, reply_size);
+		} else if (os_strcmp(buf + 11, "CLEAR") == 0) {
+			ap_ctrl_iface_acl_clear_list(wpa_s,
+						     DENY_UNLESS_ACCEPTED);
+			if (ap_ctrl_iface_set_acl(wpa_s) ||
+			    ap_ctrl_iface_disassoc_accept_mac(wpa_s))
+				reply_len = -1;
+		} else {
+			reply_len = -1;
+		}
+	} else if (os_strncmp(buf, "DENY_ACL ", 9) == 0) {
+		if (os_strncmp(buf + 9, "ADD_MAC ", 8) == 0) {
+			if (ap_ctrl_iface_acl_add_mac(wpa_s,
+						      ACCEPT_UNLESS_DENIED,
+						      buf + 17) ||
+			    ap_ctrl_iface_set_acl(wpa_s) ||
+			    ap_ctrl_iface_disassoc_deny_mac(wpa_s))
+				reply_len = -1;
+		} else if (os_strncmp(buf + 9, "DEL_MAC ", 8) == 0) {
+			if (ap_ctrl_iface_acl_del_mac(wpa_s,
+						      ACCEPT_UNLESS_DENIED,
+						      buf + 17) ||
+			    ap_ctrl_iface_set_acl(wpa_s))
+				reply_len = -1;
+		} else if (os_strcmp(buf + 9, "SHOW") == 0) {
+			reply_len = ap_ctrl_iface_acl_show_mac(
+				wpa_s, ACCEPT_UNLESS_DENIED, reply, reply_size);
+		} else if (os_strcmp(buf + 9, "CLEAR") == 0) {
+			ap_ctrl_iface_acl_clear_list(wpa_s,
+						     ACCEPT_UNLESS_DENIED);
+			if (ap_ctrl_iface_set_acl(wpa_s))
+				reply_len = -1;
+		} else {
+			reply_len = -1;
+		}
 #endif /* CONFIG_AP */
 	} else if (os_strcmp(buf, "SUSPEND") == 0) {
 		wpas_notify_suspend(wpa_s->global);
@@ -12112,6 +12164,17 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		if (wpas_ctrl_iface_coloc_intf_report(wpa_s, buf + 18))
 			reply_len = -1;
 #endif /* CONFIG_WNM */
+#ifdef CONFIG_WNM_AP
+	} else if (os_strncmp(buf, "DISASSOC_IMMINENT ", 18) == 0) {
+		if (ap_ctrl_iface_disassoc_imminent(wpa_s, buf + 18))
+			reply_len = -1;
+	} else if (os_strncmp(buf, "ESS_DISASSOC ", 13) == 0) {
+		if (ap_ctrl_iface_ess_disassoc(wpa_s, buf + 13))
+			reply_len = -1;
+	} else if (os_strncmp(buf, "BSS_TM_REQ ", 11) == 0) {
+		if (ap_ctrl_iface_bss_tm_req(wpa_s, buf + 11))
+			reply_len = -1;
+#endif /* CONFIG_WNM_AP */
 	} else if (os_strcmp(buf, "FLUSH") == 0) {
 		wpa_supplicant_ctrl_iface_flush(wpa_s);
 	} else if (os_strncmp(buf, "RADIO_WORK ", 11) == 0) {
