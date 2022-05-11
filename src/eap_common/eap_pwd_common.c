@@ -145,7 +145,9 @@ int compute_password_element(EAP_PWD_group *grp, u16 num,
 	u8 qr_or_qnr_bin[MAX_ECC_PRIME_LEN];
 	u8 x_bin[MAX_ECC_PRIME_LEN];
 	u8 prime_bin[MAX_ECC_PRIME_LEN];
-	struct crypto_bignum *tmp1 = NULL, *tmp2 = NULL, *pm1 = NULL;
+	struct crypto_bignum *tmp1 = NULL, *pm1 = NULL;
+	u8 x_y[2 * MAX_ECC_PRIME_LEN];
+	struct crypto_bignum *tmp2 = NULL, *y = NULL;
 	struct crypto_hash *hash;
 	unsigned char pwe_digest[SHA256_MAC_LEN], *prfbuf = NULL, ctr;
 	int ret = 0, check, res;
@@ -155,6 +157,9 @@ int compute_password_element(EAP_PWD_group *grp, u16 num,
 	struct crypto_bignum *x_candidate = NULL;
 	const struct crypto_bignum *prime;
 	u8 mask, found_ctr = 0, is_odd = 0;
+	int cmp_prime;
+	unsigned int in_range;
+	unsigned int is_eq;
 
 	if (grp->pwe)
 		return -1;
@@ -320,10 +325,37 @@ int compute_password_element(EAP_PWD_group *grp, u16 num,
 	 */
 	crypto_bignum_deinit(x_candidate, 1);
 	x_candidate = crypto_bignum_init_set(x_bin, primebytelen);
-	if (!x_candidate ||
-	    crypto_ec_point_solve_y_coord(grp->group, grp->pwe, x_candidate,
-					  is_odd) != 0) {
-		wpa_printf(MSG_INFO, "EAP-pwd: Could not solve for y");
+	if (!x_candidate)
+		goto fail;
+
+	/* y = sqrt(x^3 + ax + b) mod p
+	 * if LSB(y) == LSB(pwd-seed): PWE = (x, y)
+	 * else: PWE = (x, p - y)
+	 *
+	 * Calculate y and the two possible values for PWE and after that,
+	 * use constant time selection to copy the correct alternative.
+	 */
+	y = crypto_ec_point_compute_y_sqr(grp->group, x_candidate);
+	if (!y ||
+	    dragonfly_sqrt(grp->group, y, y) < 0 ||
+	    crypto_bignum_to_bin(y, x_y, MAX_ECC_PRIME_LEN, primebytelen) < 0 ||
+	    crypto_bignum_sub(prime, y, y) < 0 ||
+	    crypto_bignum_to_bin(y, x_y + MAX_ECC_PRIME_LEN,
+				 MAX_ECC_PRIME_LEN, primebytelen) < 0) {
+		wpa_printf(MSG_DEBUG, "SAE: Could not solve y");
+		goto fail;
+	}
+
+	/* Constant time selection of the y coordinate from the two
+	 * options */
+	is_eq = const_time_eq(is_odd, x_y[primebytelen - 1] & 0x01);
+	const_time_select_bin(is_eq, x_y, x_y + MAX_ECC_PRIME_LEN,
+			      primebytelen, x_y + primebytelen);
+	os_memcpy(x_y, x_bin, primebytelen);
+	wpa_hexdump_key(MSG_DEBUG, "EAP-pwd: PWE", x_y, 2 * primebytelen);
+	grp->pwe = crypto_ec_point_from_bin(grp->group, x_y);
+	if (!grp->pwe) {
+		wpa_printf(MSG_DEBUG, "EAP-pwd: Could not generate PWE");
 		goto fail;
 	}
 
@@ -350,6 +382,7 @@ int compute_password_element(EAP_PWD_group *grp, u16 num,
 	crypto_bignum_deinit(pm1, 0);
 	crypto_bignum_deinit(tmp1, 1);
 	crypto_bignum_deinit(tmp2, 1);
+	crypto_bignum_deinit(y, 1);
 	crypto_bignum_deinit(qr, 1);
 	crypto_bignum_deinit(qnr, 1);
 	crypto_bignum_deinit(qr_or_qnr, 1);
@@ -359,6 +392,7 @@ int compute_password_element(EAP_PWD_group *grp, u16 num,
 	os_memset(qnr_bin, 0, sizeof(qnr_bin));
 	os_memset(qr_or_qnr_bin, 0, sizeof(qr_or_qnr_bin));
 	os_memset(pwe_digest, 0, sizeof(pwe_digest));
+	forced_memzero(x_y, sizeof(x_y));
 
 	return ret;
 }
