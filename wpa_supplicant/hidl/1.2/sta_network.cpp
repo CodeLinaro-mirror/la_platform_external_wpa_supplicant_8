@@ -906,12 +906,29 @@ SupplicantStatus StaNetwork::setAuthAlgInternal(uint32_t auth_alg_mask)
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
+bool StaNetwork::isWigig()
+{
+	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+
+	if (!wpa_s->hw.modes)
+		return false;
+
+	for (int m = 0; m < wpa_s->hw.num_modes; m++) {
+		if (wpa_s->hw.modes[m].mode == HOSTAPD_MODE_IEEE80211AD)
+			return true;
+	}
+
+	return false;
+}
+
 SupplicantStatus StaNetwork::setGroupCipherInternal(uint32_t group_cipher_mask)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (group_cipher_mask & ~kAllowedGroupCipherMask) {
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
+	if (isWigig() && group_cipher_mask & ISupplicantStaNetwork::GroupCipherMask::GCMP_256)
+	    group_cipher_mask |= WPA_CIPHER_GCMP;
 	wpa_ssid->group_cipher = group_cipher_mask;
 	wpa_printf(MSG_MSGDUMP, "group_cipher: 0x%x", wpa_ssid->group_cipher);
 	resetInternalStateAfterParamsUpdate();
@@ -925,6 +942,8 @@ SupplicantStatus StaNetwork::setPairwiseCipherInternal(
 	if (pairwise_cipher_mask & ~kAllowedPairwisewCipherMask) {
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, ""};
 	}
+	if (isWigig() && pairwise_cipher_mask & ISupplicantStaNetwork::PairwiseCipherMask::GCMP_256)
+	    pairwise_cipher_mask |= WPA_CIPHER_GCMP;
 	wpa_ssid->pairwise_cipher = pairwise_cipher_mask;
 	wpa_printf(
 	    MSG_MSGDUMP, "pairwise_cipher: 0x%x", wpa_ssid->pairwise_cipher);
@@ -1174,7 +1193,7 @@ SupplicantStatus StaNetwork::setEapCACertInternal(const std::string &path)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		path.c_str(), &(wpa_ssid->eap.ca_cert), "eap ca_cert")) {
+		path.c_str(), &(wpa_ssid->eap.cert.ca_cert), "eap ca_cert")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1184,7 +1203,7 @@ SupplicantStatus StaNetwork::setEapCAPathInternal(const std::string &path)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		path.c_str(), &(wpa_ssid->eap.ca_path), "eap ca_path")) {
+		path.c_str(), &(wpa_ssid->eap.cert.ca_path), "eap ca_path")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1194,7 +1213,7 @@ SupplicantStatus StaNetwork::setEapClientCertInternal(const std::string &path)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		path.c_str(), &(wpa_ssid->eap.client_cert),
+		path.c_str(), &(wpa_ssid->eap.cert.client_cert),
 		"eap client_cert")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1205,7 +1224,7 @@ SupplicantStatus StaNetwork::setEapPrivateKeyIdInternal(const std::string &id)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		id.c_str(), &(wpa_ssid->eap.key_id), "eap key_id")) {
+		id.c_str(), &(wpa_ssid->eap.cert.key_id), "eap key_id")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1216,7 +1235,7 @@ SupplicantStatus StaNetwork::setEapSubjectMatchInternal(
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		match.c_str(), &(wpa_ssid->eap.subject_match),
+		match.c_str(), &(wpa_ssid->eap.cert.subject_match),
 		"eap subject_match")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1228,7 +1247,7 @@ SupplicantStatus StaNetwork::setEapAltSubjectMatchInternal(
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		match.c_str(), &(wpa_ssid->eap.altsubject_match),
+		match.c_str(), &(wpa_ssid->eap.cert.altsubject_match),
 		"eap altsubject_match")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1238,7 +1257,7 @@ SupplicantStatus StaNetwork::setEapAltSubjectMatchInternal(
 SupplicantStatus StaNetwork::setEapEngineInternal(bool enable)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	wpa_ssid->eap.engine = enable ? 1 : 0;
+	wpa_ssid->eap.cert.engine = enable ? 1 : 0;
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
@@ -1246,7 +1265,7 @@ SupplicantStatus StaNetwork::setEapEngineIDInternal(const std::string &id)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		id.c_str(), &(wpa_ssid->eap.engine_id), "eap engine_id")) {
+		id.c_str(), &(wpa_ssid->eap.cert.engine_id), "eap engine_id")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1257,7 +1276,7 @@ SupplicantStatus StaNetwork::setEapDomainSuffixMatchInternal(
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (setStringFieldAndResetState(
-		match.c_str(), &(wpa_ssid->eap.domain_suffix_match),
+		match.c_str(), &(wpa_ssid->eap.cert.domain_suffix_match),
 		"eap domain_suffix_match")) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
@@ -1438,7 +1457,7 @@ StaNetwork::getEapMethodInternal()
 	// the first EAP method for each network.
 	const std::string eap_method_str = eap_get_name(
 	    wpa_ssid->eap.eap_methods[0].vendor,
-	    static_cast<EapType>(wpa_ssid->eap.eap_methods[0].method));
+	    static_cast<enum eap_type>(wpa_ssid->eap.eap_methods[0].method));
 	size_t eap_method_idx =
 	    std::find(
 		std::begin(kEapMethodStrings), std::end(kEapMethodStrings),
@@ -1532,89 +1551,89 @@ StaNetwork::getEapPasswordInternal()
 std::pair<SupplicantStatus, std::string> StaNetwork::getEapCACertInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.ca_cert) {
+	if (!wpa_ssid->eap.cert.ca_cert) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		reinterpret_cast<char *>(wpa_ssid->eap.ca_cert)};
+		reinterpret_cast<char *>(wpa_ssid->eap.cert.ca_cert)};
 }
 
 std::pair<SupplicantStatus, std::string> StaNetwork::getEapCAPathInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.ca_path) {
+	if (!wpa_ssid->eap.cert.ca_path) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		reinterpret_cast<char *>(wpa_ssid->eap.ca_path)};
+		reinterpret_cast<char *>(wpa_ssid->eap.cert.ca_path)};
 }
 
 std::pair<SupplicantStatus, std::string> StaNetwork::getEapClientCertInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.client_cert) {
+	if (!wpa_ssid->eap.cert.client_cert) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		reinterpret_cast<char *>(wpa_ssid->eap.client_cert)};
+		reinterpret_cast<char *>(wpa_ssid->eap.cert.client_cert)};
 }
 
 std::pair<SupplicantStatus, std::string>
 StaNetwork::getEapPrivateKeyIdInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.key_id) {
+	if (!wpa_ssid->eap.cert.key_id) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
-	return {{SupplicantStatusCode::SUCCESS, ""}, wpa_ssid->eap.key_id};
+	return {{SupplicantStatusCode::SUCCESS, ""}, wpa_ssid->eap.cert.key_id};
 }
 
 std::pair<SupplicantStatus, std::string>
 StaNetwork::getEapSubjectMatchInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.subject_match) {
+	if (!wpa_ssid->eap.cert.subject_match) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		reinterpret_cast<char *>(wpa_ssid->eap.subject_match)};
+		reinterpret_cast<char *>(wpa_ssid->eap.cert.subject_match)};
 }
 
 std::pair<SupplicantStatus, std::string>
 StaNetwork::getEapAltSubjectMatchInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.altsubject_match) {
+	if (!wpa_ssid->eap.cert.altsubject_match) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		reinterpret_cast<char *>(wpa_ssid->eap.altsubject_match)};
+		reinterpret_cast<char *>(wpa_ssid->eap.cert.altsubject_match)};
 }
 
 std::pair<SupplicantStatus, bool> StaNetwork::getEapEngineInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	return {{SupplicantStatusCode::SUCCESS, ""}, wpa_ssid->eap.engine == 1};
+	return {{SupplicantStatusCode::SUCCESS, ""}, wpa_ssid->eap.cert.engine == 1};
 }
 
 std::pair<SupplicantStatus, std::string> StaNetwork::getEapEngineIDInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.engine_id) {
+	if (!wpa_ssid->eap.cert.engine_id) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
-	return {{SupplicantStatusCode::SUCCESS, ""}, {wpa_ssid->eap.engine_id}};
+	return {{SupplicantStatusCode::SUCCESS, ""}, {wpa_ssid->eap.cert.engine_id}};
 }
 
 std::pair<SupplicantStatus, std::string>
 StaNetwork::getEapDomainSuffixMatchInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
-	if (!wpa_ssid->eap.domain_suffix_match) {
+	if (!wpa_ssid->eap.cert.domain_suffix_match) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		{wpa_ssid->eap.domain_suffix_match}};
+		{wpa_ssid->eap.cert.domain_suffix_match}};
 }
 
 std::pair<SupplicantStatus, std::string> StaNetwork::getIdStrInternal()
