@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef NOTIFY_H
@@ -231,5 +235,8 @@ void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 		unsigned int num_scs_resp, int **scs_resp);
 void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
 					enum mlo_info_change_reason reason);
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
+#endif
 
 #endif /* NOTIFY_H */

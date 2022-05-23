@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef CTRL_IFACE_H
@@ -14,6 +18,11 @@ int hostapd_ctrl_iface_init(struct hostapd_data *hapd);
 void hostapd_ctrl_iface_deinit(struct hostapd_data *hapd);
 int hostapd_global_ctrl_iface_init(struct hapd_interfaces *interface);
 void hostapd_global_ctrl_iface_deinit(struct hapd_interfaces *interface);
+int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+        char *buf, char *reply,
+        int reply_size,
+        struct sockaddr_storage *from,
+        socklen_t fromlen);
 #else /* CONFIG_NO_CTRL_IFACE */
 static inline int hostapd_ctrl_iface_init(struct hostapd_data *hapd)
 {
@@ -33,6 +42,16 @@ hostapd_global_ctrl_iface_init(struct hapd_interfaces *interface)
 static inline void
 hostapd_global_ctrl_iface_deinit(struct hapd_interfaces *interface)
 {
+}
+
+static inline int
+hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+        char *buf, char *reply,
+        int reply_size,
+        struct sockaddr_storage *from,
+        socklen_t fromlen)
+{
+	return 0;
 }
 #endif /* CONFIG_NO_CTRL_IFACE */
 

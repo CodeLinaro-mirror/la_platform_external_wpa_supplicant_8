@@ -5,9 +5,8 @@
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
@@ -1433,3 +1432,13 @@ void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_qos_policy_scs_response(wpa_s, num_scs_resp, scs_resp);
 }
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
+				    const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+	wpas_aidl_notify_vendor_ctrl_event(wpa_s, msg);
+}
+#endif

@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef HOSTAPD_H
@@ -305,6 +309,9 @@ struct hostapd_data {
 			   const u8 *p2p_dev_addr, const u8 *psk,
 			   size_t psk_len);
 	void *new_psk_cb_ctx;
+
+	void (*ctrl_event_aidl_cb)(void *ctx, const char* msg);
+	void *ctrl_event_aidl_cb_ctx;
 
 	/* channel switch parameters */
 	struct hostapd_freq_params cs_freq_params;

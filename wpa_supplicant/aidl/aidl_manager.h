@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef WPA_SUPPLICANT_AIDL_AIDL_MANAGER_H
@@ -15,6 +19,11 @@
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantP2pIfaceCallback.h>
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantStaIfaceCallback.h>
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantStaNetworkCallback.h>
+#ifdef CONFIG_USE_VENDOR_AIDL
+#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendor.h>
+#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIface.h>
+#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIfaceCallback.h>
+#endif
 
 #include "certificate_utils.h"
 #include "p2p_iface.h"
@@ -23,6 +32,10 @@
 #include "sta_iface.h"
 #include "sta_network.h"
 #include "supplicant.h"
+#ifdef CONFIG_USE_VENDOR_AIDL
+#include "vendorsta_iface.h"
+#include "supplicant_vendor.h"
+#endif
 
 extern "C"
 {
@@ -37,6 +50,14 @@ namespace android {
 namespace hardware {
 namespace wifi {
 namespace supplicant {
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+using aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendorStaIfaceCallback;
+using aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendorStaIface;
+using aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendor;
+using aidl::vendor::qti::hardware::wifi::supplicant::VendorStaIface;
+using aidl::vendor::qti::hardware::wifi::supplicant::SupplicantVendor;
+#endif
 
 /**
  * AidlManager is responsible for managing the lifetime of all
@@ -169,6 +190,9 @@ public:
 			unsigned int count, int **scs_resp);
 	void notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
 				       enum mlo_info_change_reason reason);
+#ifdef CONFIG_USE_VENDOR_AIDL
+	void notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char *msg);
+#endif
 
 	// Methods called from aidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
@@ -200,6 +224,15 @@ public:
 		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
+#ifdef CONFIG_USE_VENDOR_AIDL
+	int registerVendorAidlService(struct wpa_global *global);
+	int getVendorStaIfaceAidlObjectByIfname(
+		const std::string &ifname,
+		std::shared_ptr<ISupplicantVendorStaIface> *iface_object);
+	int addVendorStaIfaceCallbackAidlObject(
+		const std::string &ifname,
+		const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback);
+#endif
 
 private:
 	AidlManager() = default;
@@ -236,6 +269,16 @@ private:
 		const std::string &ifname, int network_id,
 		const std::function<::ndk::ScopedAStatus(
 		std::shared_ptr<ISupplicantStaNetworkCallback>)> &method);
+#ifdef CONFIG_USE_VENDOR_AIDL
+	void removeVendorStaIfaceCallbackAidlObject(
+		const std::string &ifname,
+		const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback);
+	bool checkForVendorStaIfaceCallback(const std::string &ifname);
+	void callWithEachVendorStaIfaceCallback(
+		const std::string &ifname,
+		const std::function<ndk::ScopedAStatus(
+		std::shared_ptr<ISupplicantVendorStaIfaceCallback>)> &method);
+#endif
 
 	// Singleton instance of this class.
 	static AidlManager *instance_;
@@ -253,6 +296,13 @@ private:
 	// |ifname|.
 	std::map<const std::string, std::shared_ptr<StaIface>>
 		sta_iface_object_map_;
+#ifdef CONFIG_USE_VENDOR_AIDL
+	// Map of all the STA interface specific aidl objects controlled by
+	// wpa_supplicant. This map is keyed in by the corresponding
+	// |ifname|.
+	std::map<const std::string, std::shared_ptr<VendorStaIface>>
+		vendorsta_iface_object_map_;
+#endif
 	// Map of all the P2P network specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
 	// |ifname| & |network_id|.
@@ -289,6 +339,15 @@ private:
 		sta_network_callbacks_map_;
 	// NonStandardCertCallback registered by the client.
 	std::shared_ptr<INonStandardCertCallback> non_standard_cert_callback_;
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+	std::shared_ptr<SupplicantVendor> supplicantvendor_object_;
+	std::map<const std::string, std::shared_ptr<VendorStaIface>>
+		vendor_sta_iface_object_map_;
+	std::map<const std::string,
+		std::vector<std::shared_ptr<ISupplicantVendorStaIfaceCallback>>>
+		vendor_sta_iface_callbacks_map_;
+#endif
 };
 
 // The aidl interface uses some values which are the same as internal ones to
