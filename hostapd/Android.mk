@@ -1151,6 +1151,10 @@ ifeq ($(filter gce_x86 gce_x86_64 calypso, $(TARGET_DEVICE)),)
 ifdef CONFIG_CTRL_IFACE_AIDL
 HOSTAPD_USE_AIDL=y
 L_CFLAGS += -DCONFIG_CTRL_IFACE_AIDL
+ifdef CONFIG_USE_VENDOR_AIDL
+HOSTAPD_USE_VENDOR_AIDL=y
+L_CFLAGS += -DCONFIG_USE_VENDOR_AIDL
+endif
 L_CPPFLAGS = -Wall -Werror
 endif
 endif
@@ -1196,6 +1200,9 @@ endif
 ifeq ($(HOSTAPD_USE_AIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd-V2-ndk
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.common-V1-ndk
+ifeq ($(HOSTAPD_USE_VENDOR_AIDL), y)
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd-V1-ndk
+endif
 LOCAL_SHARED_LIBRARIES += libbase libutils
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libhostapd_aidl
@@ -1229,6 +1236,7 @@ LOCAL_STATIC_LIBRARIES += libnl_2
 endif
 endif
 LOCAL_CFLAGS := $(patsubst -DCONFIG_CTRL_IFACE_AIDL,,$(L_CFLAGS))
+LOCAL_CFLAGS := $(patsubst -DCONFIG_USE_VENDOR_AIDL,,$(L_CFLAGS))
 LOCAL_SRC_FILES := $(OBJS)
 LOCAL_C_INCLUDES := $(INCLUDES)
 include $(BUILD_EXECUTABLE)
@@ -1255,6 +1263,10 @@ LOCAL_SHARED_LIBRARIES := \
     libbase \
     libutils \
     liblog
+ifeq ($(HOSTAPD_USE_VENDOR_AIDL), y)
+LOCAL_SRC_FILES += aidl/hostapd_vendor.cpp
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd-V1-ndk
+endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/aidl
 include $(BUILD_STATIC_LIBRARY)

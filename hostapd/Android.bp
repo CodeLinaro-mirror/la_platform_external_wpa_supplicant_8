@@ -46,6 +46,7 @@ cc_defaults {
     srcs: [":hostapd_srcs"],
     shared_libs: [
         "android.hardware.wifi.hostapd-V2-ndk",
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
         "libbase",
         "libutils",
         "libbinder_ndk",

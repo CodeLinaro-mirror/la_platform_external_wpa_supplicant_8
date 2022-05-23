@@ -69,6 +69,7 @@ cc_defaults {
     shared_libs: [
         "android.hardware.wifi.supplicant-V3-ndk",
         "android.system.keystore2-V1-ndk",
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbase",
         "libbinder_ndk",
         "libc",
