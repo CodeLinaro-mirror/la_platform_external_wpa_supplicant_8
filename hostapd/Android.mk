@@ -1159,6 +1159,8 @@ LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.2
 LOCAL_SHARED_LIBRARIES += libbase libhidlbase libutils
 LOCAL_STATIC_LIBRARIES += libhostapd_hidl
 ifdef HOSTAPD_USE_VENDOR_HIDL
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.0
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.1
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.2
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.3
 endif
@@ -1222,6 +1224,8 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 
 LOCAL_SRC_FILES += \
     hidl/$(HIDL_INTERFACE_VERSION)/hostapd_vendor.cpp
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.0
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.1
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.2
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.3
 endif
