@@ -94,13 +94,13 @@ int isPskPassphraseValid(const std::string &psk)
 void setBandScanFreqsList(
     struct wpa_supplicant *wpa_s,
     enum hostapd_hw_mode band,
-    struct wpa_driver_scan_params *params)
+    struct wpa_driver_scan_params *params, int is_6ghz)
 {
 	/* Include only supported channels for the specified band */
 	struct hostapd_hw_modes *mode;
 	int count, i;
 
-	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band);
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band, is_6ghz);
 	if (mode == NULL) {
 		/* No channels supported in this band. */
 		return;
@@ -163,7 +163,7 @@ struct wpa_ssid* addGroupClientNetwork(
 
 	// set P2p network defaults
 	wpa_network->p2p_group = 1;
-	wpa_network->mode = wpa_ssid::wpas_mode::WPAS_MODE_INFRA;
+	wpa_network->mode = wpas_mode::WPAS_MODE_INFRA;
 
 	wpa_network->auth_alg = WPA_AUTH_ALG_OPEN;
 	wpa_network->key_mgmt = WPA_KEY_MGMT_PSK;
@@ -225,6 +225,12 @@ int joinScanReq(
 	size_t ielen;
 	unsigned int bands;
 
+	if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
+		wpa_printf(MSG_ERROR,
+		    "P2P: P2P interface is gone, cancel join scan");
+		return -ENXIO;
+	}
+
 	os_memset(&params, 0, sizeof(params));
 	if (ssid.size() > 0) {
 		params.ssids[0].ssid = ssid.data();
@@ -242,11 +248,11 @@ int joinScanReq(
 				switch (freq) {
 				case 2:
 					setBandScanFreqsList(wpa_s,
-					    HOSTAPD_MODE_IEEE80211G, &params);
+					    HOSTAPD_MODE_IEEE80211G, &params, 0);
 				break;
 				case 5:
 					setBandScanFreqsList(wpa_s,
-					    HOSTAPD_MODE_IEEE80211A, &params);
+					    HOSTAPD_MODE_IEEE80211A, &params, 0);
 				break;
 				}
 				if (!params.freqs) {
@@ -327,6 +333,8 @@ int joinGroup(
 	int ret = 0;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int he = wpa_s->conf->p2p_go_he;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 
 	// Construct a network for adding group.
 	// Group client follows the persistent attribute of Group Owner.
@@ -343,7 +351,7 @@ int joinGroup(
 
 	if (wpas_p2p_group_add_persistent(
 		wpa_s, wpa_network, 0, 0, 0, 0, ht40, vht,
-		VHT_CHANWIDTH_USE_HT, 0, NULL, 0, 1)) {
+		CHANWIDTH_USE_HT, he, edmg, NULL, 0, 1)) {
 		ret = -1;
 	}
 
@@ -1056,12 +1064,14 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 	}
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int he = wpa_s->conf->p2p_go_he;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	const char* pin =
 	    pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	int new_pin = wpas_p2p_connect(
 	    wpa_s, peer_address.data(), pin, wps_method, persistent, false,
 	    join_existing_group, false, go_intent_signed, 0, 0, -1, false, ht40,
-	    vht, VHT_CHANWIDTH_USE_HT, 0, nullptr, 0);
+	    vht, CHANWIDTH_USE_HT, he, edmg, nullptr, 0);
 	if (new_pin < 0) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
@@ -1119,12 +1129,14 @@ SupplicantStatus P2pIface::addGroupInternal(
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int he = wpa_s->conf->p2p_go_he;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	struct wpa_ssid* ssid =
 	    wpa_config_get_network(wpa_s->conf, persistent_network_id);
 	if (ssid == NULL) {
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, 0, 0, ht40, vht,
-			VHT_CHANWIDTH_USE_HT, 0)) {
+			CHANWIDTH_USE_HT, he, edmg)) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		} else {
 			return {SupplicantStatusCode::SUCCESS, ""};
@@ -1132,7 +1144,7 @@ SupplicantStatus P2pIface::addGroupInternal(
 	} else if (ssid->disabled == 2) {
 		if (wpas_p2p_group_add_persistent(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
-			VHT_CHANWIDTH_USE_HT, 0, NULL, 0, 0)) {
+			CHANWIDTH_USE_HT, he, edmg, NULL, 0, 0)) {
 			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN,
 				""};
 		} else {
@@ -1189,6 +1201,8 @@ SupplicantStatus P2pIface::reinvokeInternal(
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int he = wpa_s->conf->p2p_go_he;
+	int edmg = wpa_s->conf->p2p_go_edmg;
 	struct wpa_ssid* ssid =
 	    wpa_config_get_network(wpa_s->conf, persistent_network_id);
 	if (ssid == NULL || ssid->disabled != 2) {
@@ -1196,7 +1210,7 @@ SupplicantStatus P2pIface::reinvokeInternal(
 	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
-		VHT_CHANWIDTH_USE_HT, 0, 0)) {
+		CHANWIDTH_USE_HT, 0, he, edmg)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1627,6 +1641,12 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+	int he = wpa_s->conf->p2p_go_he;
+	int edmg = wpa_s->conf->p2p_go_edmg;
+
+	if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
+		return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
+	}
 
 	if (!isSsidValid(ssid)) {
 		return {SupplicantStatusCode::FAILURE_ARGS_INVALID, "SSID is invalid."};
@@ -1637,10 +1657,6 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	}
 
 	if (!joinExistingGroup) {
-		if (wpa_s->global->p2p == NULL) {
-			return {SupplicantStatusCode::FAILURE_IFACE_DISABLED, ""};
-		}
-
 		struct p2p_data *p2p = wpa_s->global->p2p;
 		os_memcpy(p2p->ssid, ssid.data(), ssid.size());
 		p2p->ssid_len = ssid.size();
@@ -1652,7 +1668,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 
 		if (wpas_p2p_group_add(
 		    wpa_s, persistent, freq, 0, ht40, vht,
-		    VHT_CHANWIDTH_USE_HT, 0)) {
+		    CHANWIDTH_USE_HT, he, edmg)) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		}
 		return {SupplicantStatusCode::SUCCESS, ""};
@@ -1685,6 +1701,9 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 
 	pending_join_scan_callback =
 	    [wpa_s, ssid, freq]() {
+		if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
+			return;
+		}
 		int ret = joinScanReq(wpa_s, ssid, freq);
 		// for BUSY case, the scan might be occupied by WiFi.
 		// Do not give up immediately, but try again later.
@@ -1701,7 +1720,7 @@ SupplicantStatus P2pIface::addGroup_1_2Internal(
 	};
 
 	pending_scan_res_join_callback = [wpa_s, ssid, passphrase, peer_address, this]() {
-		if (wpa_s->global->p2p_disabled) {
+		if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 			return;
 		}
 
