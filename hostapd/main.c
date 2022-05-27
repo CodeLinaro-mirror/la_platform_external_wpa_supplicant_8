@@ -30,9 +30,6 @@
 #include "config_file.h"
 #include "eap_register.h"
 #include "ctrl_iface.h"
-#ifdef CONFIG_CTRL_IFACE_HIDL
-#include "hidl.h"
-#endif /* CONFIG_CTRL_IFACE_HIDL */
 
 struct hapd_global {
 	void **drv_priv;
@@ -82,9 +79,6 @@ static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
 		break;
 	case HOSTAPD_MODULE_DRIVER:
 		module_str = "DRIVER";
-		break;
-	case HOSTAPD_MODULE_IAPP:
-		module_str = "IAPP";
 		break;
 	case HOSTAPD_MODULE_MLME:
 		module_str = "MLME";
@@ -223,7 +217,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		struct wowlan_triggers *triggs;
 
 		iface->drv_flags = capa.flags;
-		iface->smps_modes = capa.smps_modes;
+		iface->drv_flags2 = capa.flags2;
 		iface->probe_resp_offloads = capa.probe_resp_offloads;
 		/*
 		 * Use default extended capa values from per-radio information
@@ -265,7 +259,7 @@ hostapd_interface_init(struct hapd_interfaces *interfaces, const char *if_name,
 	struct hostapd_iface *iface;
 	int k;
 
-	wpa_printf(MSG_ERROR, "Configuration file: %s", config_fname);
+	wpa_printf(MSG_DEBUG, "Configuration file: %s", config_fname);
 	iface = hostapd_init(interfaces, config_fname);
 	if (!iface)
 		return NULL;
@@ -456,11 +450,12 @@ static int hostapd_global_run(struct hapd_interfaces *ifaces, int daemonize,
 static void show_version(void)
 {
 	fprintf(stderr,
-		"hostapd v" VERSION_STR "\n"
+		"hostapd v%s\n"
 		"User space daemon for IEEE 802.11 AP management,\n"
 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
 		"Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi> "
-		"and contributors\n");
+		"and contributors\n",
+		VERSION_STR);
 }
 
 
@@ -655,6 +650,9 @@ int main(int argc, char *argv[])
 	int start_ifaces_in_sync = 0;
 	char **if_names = NULL;
 	size_t if_names_size = 0;
+#ifdef CONFIG_DPP
+	struct dpp_global_config dpp_conf;
+#endif /* CONFIG_DPP */
 
 	if (os_program_init())
 		return -1;
@@ -674,13 +672,18 @@ int main(int argc, char *argv[])
 	dl_list_init(&interfaces.eth_p_oui);
 #endif /* CONFIG_ETH_P_OUI */
 #ifdef CONFIG_DPP
-	interfaces.dpp = dpp_global_init();
+	os_memset(&dpp_conf, 0, sizeof(dpp_conf));
+	dpp_conf.cb_ctx = &interfaces;
+#ifdef CONFIG_DPP2
+	dpp_conf.remove_bi = hostapd_dpp_remove_bi;
+#endif /* CONFIG_DPP2 */
+	interfaces.dpp = dpp_global_init(&dpp_conf);
 	if (!interfaces.dpp)
 		return -1;
 #endif /* CONFIG_DPP */
 
 	for (;;) {
-		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:j:");
+		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:");
 		if (c < 0)
 			break;
 		switch (c) {
@@ -754,28 +757,21 @@ int main(int argc, char *argv[])
 							&if_names_size, optarg))
 				goto out;
 			break;
-#ifdef CONFIG_CTRL_IFACE_HIDL
-		case 'j':
-			interfaces.hidl_service_name = strdup(optarg);
-			break;
-#endif
 		default:
 			usage();
 			break;
 		}
 	}
 
-#ifndef CONFIG_CTRL_IFACE_HIDL
 	if (optind == argc && interfaces.global_iface_path == NULL &&
 	    num_bss_configs == 0)
 		usage();
-#endif
 
 	wpa_msg_register_ifname_cb(hostapd_msg_ifname_cb);
 
 	if (log_file)
 		wpa_debug_open_file(log_file);
-	else
+	if (!log_file && !wpa_debug_syslog)
 		wpa_debug_setup_stdout();
 #ifdef CONFIG_DEBUG_SYSLOG
 	if (wpa_debug_syslog)
@@ -820,7 +816,6 @@ int main(int argc, char *argv[])
 		wpa_printf(MSG_WARNING, "Failed to add CLI FST ctrl");
 #endif /* CONFIG_FST && CONFIG_CTRL_IFACE */
 
-    wpa_printf(MSG_ERROR, "debug, set loglevel");
 	/* Allocate and parse configuration for full interface files */
 	for (i = 0; i < interfaces.count; i++) {
 		char *if_name = NULL;
@@ -891,12 +886,6 @@ int main(int argc, char *argv[])
 			goto out;
 	}
 
-#ifdef CONFIG_CTRL_IFACE_HIDL
-	if (hostapd_hidl_init(&interfaces)) {
-		wpa_printf(MSG_ERROR, "Failed to initialize HIDL interface");
-		goto out;
-	}
-#endif /* CONFIG_CTRL_IFACE_HIDL */
 	hostapd_global_ctrl_iface_init(&interfaces);
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file)) {
@@ -907,9 +896,6 @@ int main(int argc, char *argv[])
 	ret = 0;
 
  out:
-#ifdef CONFIG_CTRL_IFACE_HIDL
-	hostapd_hidl_deinit(&interfaces);
-#endif /* CONFIG_CTRL_IFACE_HIDL */
 	hostapd_global_ctrl_iface_deinit(&interfaces);
 	/* Deinitialize all interfaces */
 	for (i = 0; i < interfaces.count; i++) {
@@ -919,8 +905,11 @@ int main(int argc, char *argv[])
 			!!(interfaces.iface[i]->drv_flags &
 			   WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT);
 		hostapd_interface_deinit_free(interfaces.iface[i]);
+		interfaces.iface[i] = NULL;
 	}
 	os_free(interfaces.iface);
+	interfaces.iface = NULL;
+	interfaces.count = 0;
 
 #ifdef CONFIG_DPP
 	dpp_global_deinit(interfaces.dpp);
