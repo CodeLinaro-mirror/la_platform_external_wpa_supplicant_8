@@ -644,9 +644,9 @@ static int test_eapol(struct eapol_test_data *e, struct wpa_supplicant *wpa_s,
 	eapol_sm_register_scard_ctx(wpa_s->eapol, wpa_s->scard);
 
 
-	eapol_sm_notify_portValid(wpa_s->eapol, FALSE);
+	eapol_sm_notify_portValid(wpa_s->eapol, false);
 	/* 802.1X::portControl = Auto */
-	eapol_sm_notify_portEnabled(wpa_s->eapol, TRUE);
+	eapol_sm_notify_portEnabled(wpa_s->eapol, true);
 
 	return 0;
 }
@@ -1023,6 +1023,7 @@ static void wpa_init_conf(struct eapol_test_data *e,
 		*pos++ = a[1];
 		*pos++ = a[2];
 		*pos++ = a[3];
+		as->addr.af = AF_INET;
 	}
 #else /* CONFIG_NATIVE_WINDOWS or CONFIG_ANSI_C_EXTRA */
 	if (hostapd_parse_ip_addr(authsrv, &as->addr) < 0) {
@@ -1388,7 +1389,7 @@ int main(int argc, char *argv[])
 			eapol_test.ctrl_iface = 1;
 			break;
 		case 'v':
-			printf("eapol_test v" VERSION_STR "\n");
+			printf("eapol_test v%s\n", VERSION_STR);
 			return 0;
 		case 'W':
 			wait_for_monitor++;

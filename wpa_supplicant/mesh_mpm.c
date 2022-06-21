@@ -147,13 +147,13 @@ static u16 copy_supp_rates(struct wpa_supplicant *wpa_s,
 
 
 /* return true if elems from a neighbor match this MBSS */
-static Boolean matches_local(struct wpa_supplicant *wpa_s,
-			     struct ieee802_11_elems *elems)
+static bool matches_local(struct wpa_supplicant *wpa_s,
+			  struct ieee802_11_elems *elems)
 {
 	struct mesh_conf *mconf = wpa_s->ifmsh->mconf;
 
 	if (elems->mesh_config_len < 5)
-		return FALSE;
+		return false;
 
 	return (mconf->meshid_len == elems->mesh_id_len &&
 		os_memcmp(mconf->meshid, elems->mesh_id,
@@ -167,17 +167,17 @@ static Boolean matches_local(struct wpa_supplicant *wpa_s,
 
 
 /* check if local link id is already used with another peer */
-static Boolean llid_in_use(struct wpa_supplicant *wpa_s, u16 llid)
+static bool llid_in_use(struct wpa_supplicant *wpa_s, u16 llid)
 {
 	struct sta_info *sta;
 	struct hostapd_data *hapd = wpa_s->ifmsh->bss[0];
 
 	for (sta = hapd->sta_list; sta; sta = sta->next) {
 		if (sta->my_lid == llid)
-			return TRUE;
+			return true;
 	}
 
-	return FALSE;
+	return false;
 }
 
 
@@ -233,12 +233,10 @@ static void mesh_mpm_send_plink_action(struct wpa_supplicant *wpa_s,
 		  2 + 24 + /* peering management */
 		  2 + 96 + 32 + 32 + /* AMPE (96 + max GTKlen + max IGTKlen) */
 		  2 + 16;  /* MIC */
-#ifdef CONFIG_IEEE80211N
 	if (type != PLINK_CLOSE && wpa_s->mesh_ht_enabled) {
 		buf_len += 2 + 26 + /* HT capabilities */
 			   2 + 22;  /* HT operation */
 	}
-#endif /* CONFIG_IEEE80211N */
 #ifdef CONFIG_IEEE80211AC
 	if (type != PLINK_CLOSE && wpa_s->mesh_vht_enabled) {
 		buf_len += 2 + 12 + /* VHT Capabilities */
@@ -253,6 +251,9 @@ static void mesh_mpm_send_plink_action(struct wpa_supplicant *wpa_s,
 			   HE_MAX_MCS_CAPAB_SIZE +
 			   HE_MAX_PPET_CAPAB_SIZE;
 		buf_len += 3 + sizeof(struct ieee80211_he_operation);
+		if (is_6ghz_op_class(bss->iconf->op_class))
+			buf_len += sizeof(struct ieee80211_he_6ghz_oper_info) +
+				3 + sizeof(struct ieee80211_he_6ghz_band_cap);
 	}
 #endif /* CONFIG_IEEE80211AX */
 	if (type != PLINK_CLOSE)
@@ -354,7 +355,6 @@ static void mesh_mpm_send_plink_action(struct wpa_supplicant *wpa_s,
 				   wpabuf_put(buf, PMKID_LEN));
 	}
 
-#ifdef CONFIG_IEEE80211N
 	if (type != PLINK_CLOSE && wpa_s->mesh_ht_enabled) {
 		u8 ht_capa_oper[2 + 26 + 2 + 22];
 
@@ -362,7 +362,6 @@ static void mesh_mpm_send_plink_action(struct wpa_supplicant *wpa_s,
 		pos = hostapd_eid_ht_operation(bss, pos);
 		wpabuf_put_data(buf, ht_capa_oper, pos - ht_capa_oper);
 	}
-#endif /* CONFIG_IEEE80211N */
 #ifdef CONFIG_IEEE80211AC
 	if (type != PLINK_CLOSE && wpa_s->mesh_vht_enabled) {
 		u8 vht_capa_oper[2 + 12 + 2 + 5];
@@ -379,11 +378,14 @@ static void mesh_mpm_send_plink_action(struct wpa_supplicant *wpa_s,
 				HE_MAX_PHY_CAPAB_SIZE +
 				HE_MAX_MCS_CAPAB_SIZE +
 				HE_MAX_PPET_CAPAB_SIZE +
-				3 + sizeof(struct ieee80211_he_operation)];
+				3 + sizeof(struct ieee80211_he_operation) +
+				sizeof(struct ieee80211_he_6ghz_oper_info) +
+				3 + sizeof(struct ieee80211_he_6ghz_band_cap)];
 
 		pos = hostapd_eid_he_capab(bss, he_capa_oper,
 					   IEEE80211_MODE_MESH);
 		pos = hostapd_eid_he_operation(bss, pos);
+		pos = hostapd_eid_he_6ghz_band_cap(bss, pos);
 		wpabuf_put_data(buf, he_capa_oper, pos - he_capa_oper);
 	}
 #endif /* CONFIG_IEEE80211AX */
@@ -537,11 +539,14 @@ static int mesh_mpm_plink_close(struct hostapd_data *hapd, struct sta_info *sta,
 	int reason = WLAN_REASON_MESH_PEERING_CANCELLED;
 
 	if (sta) {
+		if (sta->plink_state == PLINK_ESTAB)
+			hapd->num_plinks--;
 		wpa_mesh_set_plink_state(wpa_s, sta, PLINK_HOLDING);
 		mesh_mpm_send_plink_action(wpa_s, sta, PLINK_CLOSE, reason);
 		wpa_printf(MSG_DEBUG, "MPM closing plink sta=" MACSTR,
 			   MAC2STR(sta->addr));
 		eloop_cancel_timeout(plink_timer, wpa_s, sta);
+		eloop_cancel_timeout(mesh_auth_timer, wpa_s, sta);
 		return 0;
 	}
 
@@ -696,9 +701,7 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
 	struct mesh_conf *conf = wpa_s->ifmsh->mconf;
 	struct hostapd_data *data = wpa_s->ifmsh->bss[0];
 	struct sta_info *sta;
-#ifdef CONFIG_IEEE80211N
 	struct ieee80211_ht_operation *oper;
-#endif /* CONFIG_IEEE80211N */
 	int ret;
 
 	if (elems->mesh_config_len >= 7 &&
@@ -729,7 +732,6 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
 	if (!sta->my_lid)
 		mesh_mpm_init_link(wpa_s, sta);
 
-#ifdef CONFIG_IEEE80211N
 	copy_sta_ht_capab(data, sta, elems->ht_capabilities);
 
 	oper = (struct ieee80211_ht_operation *) elems->ht_operation;
@@ -743,7 +745,6 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
 	}
 
 	update_ht_state(data, sta);
-#endif /* CONFIG_IEEE80211N */
 
 #ifdef CONFIG_IEEE80211AC
 	copy_sta_vht_capab(data, sta, elems->vht_capabilities);
@@ -754,6 +755,7 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_IEEE80211AX
 	copy_sta_he_capab(data, sta, IEEE80211_MODE_MESH,
 			  elems->he_capabilities, elems->he_capabilities_len);
+	copy_sta_he_6ghz_capab(data, sta, elems->he_6ghz_band_cap);
 #endif /* CONFIG_IEEE80211AX */
 
 	if (hostapd_get_aid(data, sta) < 0) {
@@ -775,6 +777,7 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
 	params.vht_capabilities = sta->vht_capabilities;
 	params.he_capab = sta->he_capab;
 	params.he_capab_len = sta->he_capab_len;
+	params.he_6ghz_capab = sta->he_6ghz_capab;
 	params.flags |= WPA_STA_WMM;
 	params.flags_mask |= WPA_STA_AUTHENTICATED;
 	if (conf->security == MESH_CONF_SEC_NONE) {
@@ -1298,8 +1301,8 @@ void mesh_mpm_action_rx(struct wpa_supplicant *wpa_s,
 
 			if (ocv_verify_tx_params(elems.oci, elems.oci_len, &ci,
 						 tx_chanwidth, tx_seg1_idx) !=
-			    0) {
-				wpa_printf(MSG_WARNING, "MPM: %s",
+			    OCI_SUCCESS) {
+				wpa_printf(MSG_WARNING, "MPM: OCV failed: %s",
 					   ocv_errorstr);
 				return;
 			}

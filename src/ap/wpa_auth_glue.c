@@ -14,6 +14,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/sae.h"
 #include "common/wpa_ctrl.h"
+#include "common/ptksa_cache.h"
 #include "crypto/sha1.h"
 #include "eapol_auth/eapol_auth_sm.h"
 #include "eapol_auth/eapol_auth_sm_i.h"
@@ -41,6 +42,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 
 	os_memset(wconf, 0, sizeof(*wconf));
 	wconf->wpa = conf->wpa;
+	wconf->extended_key_id = conf->extended_key_id;
 	wconf->wpa_key_mgmt = conf->wpa_key_mgmt;
 	wconf->wpa_pairwise = conf->wpa_pairwise;
 	wconf->wpa_group = conf->wpa_group;
@@ -67,6 +69,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 #endif /* CONFIG_OCV */
 	wconf->okc = conf->okc;
 	wconf->ieee80211w = conf->ieee80211w;
+	wconf->beacon_prot = conf->beacon_prot;
 	wconf->group_mgmt_cipher = conf->group_mgmt_cipher;
 	wconf->sae_require_mfp = conf->sae_require_mfp;
 #ifdef CONFIG_IEEE80211R_AP
@@ -120,13 +123,41 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 			  wpabuf_head(conf->own_ie_override),
 			  wconf->own_ie_override_len);
 	}
+	if (conf->rsne_override_eapol &&
+	    wpabuf_len(conf->rsne_override_eapol) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsne_override_eapol_set = 1;
+		wconf->rsne_override_eapol_len =
+			wpabuf_len(conf->rsne_override_eapol);
+		os_memcpy(wconf->rsne_override_eapol,
+			  wpabuf_head(conf->rsne_override_eapol),
+			  wconf->rsne_override_eapol_len);
+	}
 	if (conf->rsnxe_override_eapol &&
 	    wpabuf_len(conf->rsnxe_override_eapol) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsnxe_override_eapol_set = 1;
 		wconf->rsnxe_override_eapol_len =
 			wpabuf_len(conf->rsnxe_override_eapol);
 		os_memcpy(wconf->rsnxe_override_eapol,
 			  wpabuf_head(conf->rsnxe_override_eapol),
 			  wconf->rsnxe_override_eapol_len);
+	}
+	if (conf->rsne_override_ft &&
+	    wpabuf_len(conf->rsne_override_ft) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsne_override_ft_set = 1;
+		wconf->rsne_override_ft_len =
+			wpabuf_len(conf->rsne_override_ft);
+		os_memcpy(wconf->rsne_override_ft,
+			  wpabuf_head(conf->rsne_override_ft),
+			  wconf->rsne_override_ft_len);
+	}
+	if (conf->rsnxe_override_ft &&
+	    wpabuf_len(conf->rsnxe_override_ft) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsnxe_override_ft_set = 1;
+		wconf->rsnxe_override_ft_len =
+			wpabuf_len(conf->rsnxe_override_ft);
+		os_memcpy(wconf->rsnxe_override_ft,
+			  wpabuf_head(conf->rsnxe_override_ft),
+			  wconf->rsnxe_override_ft_len);
 	}
 	if (conf->gtk_rsc_override &&
 	    wpabuf_len(conf->gtk_rsc_override) > 0 &&
@@ -144,6 +175,12 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 			  wpabuf_len(conf->igtk_rsc_override));
 		wconf->igtk_rsc_override_set = 1;
 	}
+	wconf->ft_rsnxe_used = conf->ft_rsnxe_used;
+	wconf->oci_freq_override_eapol_m3 = conf->oci_freq_override_eapol_m3;
+	wconf->oci_freq_override_eapol_g1 = conf->oci_freq_override_eapol_g1;
+	wconf->oci_freq_override_ft_assoc = conf->oci_freq_override_ft_assoc;
+	wconf->oci_freq_override_fils_assoc =
+		conf->oci_freq_override_fils_assoc;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	os_memcpy(wconf->ip_addr_go, conf->ip_addr_go, 4);
@@ -162,9 +199,21 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 		wconf->sae_pwe = 1;
 	else if (sae_pw_id == 1 && wconf->sae_pwe == 0)
 		wconf->sae_pwe = 2;
+#ifdef CONFIG_SAE_PK
+	wconf->sae_pk = hostapd_sae_pk_in_use(conf);
+#endif /* CONFIG_SAE_PK */
 #ifdef CONFIG_OWE
 	wconf->owe_ptk_workaround = conf->owe_ptk_workaround;
 #endif /* CONFIG_OWE */
+	wconf->transition_disable = conf->transition_disable;
+#ifdef CONFIG_DPP2
+	wconf->dpp_pfs = conf->dpp_pfs;
+#endif /* CONFIG_DPP2 */
+#ifdef CONFIG_PASN
+#ifdef CONFIG_TESTING_OPTIONS
+	wconf->force_kdk_derivation = conf->force_kdk_derivation;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_PASN */
 }
 
 
@@ -242,16 +291,15 @@ static void hostapd_wpa_auth_set_eapol(void *ctx, const u8 *addr,
 		break;
 	case WPA_EAPOL_keyRun:
 		if (sta->eapol_sm)
-			sta->eapol_sm->keyRun = value ? TRUE : FALSE;
+			sta->eapol_sm->keyRun = value;
 		break;
 	case WPA_EAPOL_keyAvailable:
 		if (sta->eapol_sm)
-			sta->eapol_sm->eap_if->eapKeyAvailable =
-				value ? TRUE : FALSE;
+			sta->eapol_sm->eap_if->eapKeyAvailable = value;
 		break;
 	case WPA_EAPOL_keyDone:
 		if (sta->eapol_sm)
-			sta->eapol_sm->keyDone = value ? TRUE : FALSE;
+			sta->eapol_sm->keyDone = value;
 		break;
 	case WPA_EAPOL_inc_EapolFramesTx:
 		if (sta->eapol_sm)
@@ -404,7 +452,11 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 	}
 
 #ifdef CONFIG_TESTING_OPTIONS
-	if (addr && !is_broadcast_ether_addr(addr)) {
+	if (key_flag & KEY_FLAG_MODIFY) {
+		/* We are updating an already installed key. Don't overwrite
+		 * the already stored key information with zeros.
+		 */
+	} else if (addr && !is_broadcast_ether_addr(addr)) {
 		struct sta_info *sta;
 
 		sta = ap_get_sta(hapd, addr);
@@ -415,15 +467,23 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 				os_memcpy(sta->last_tk, key, key_len);
 			sta->last_tk_len = key_len;
 		}
-	} else if (alg == WPA_ALG_IGTK ||
+	} else if (alg == WPA_ALG_BIP_CMAC_128 ||
 		   alg == WPA_ALG_BIP_GMAC_128 ||
 		   alg == WPA_ALG_BIP_GMAC_256 ||
 		   alg == WPA_ALG_BIP_CMAC_256) {
-		hapd->last_igtk_alg = alg;
-		hapd->last_igtk_key_idx = idx;
-		if (key)
-			os_memcpy(hapd->last_igtk, key, key_len);
-		hapd->last_igtk_len = key_len;
+		if (idx == 4 || idx == 5) {
+			hapd->last_igtk_alg = alg;
+			hapd->last_igtk_key_idx = idx;
+			if (key)
+				os_memcpy(hapd->last_igtk, key, key_len);
+			hapd->last_igtk_len = key_len;
+		} else if (idx == 6 || idx == 7) {
+			hapd->last_bigtk_alg = alg;
+			hapd->last_bigtk_key_idx = idx;
+			if (key)
+				os_memcpy(hapd->last_bigtk, key, key_len);
+			hapd->last_bigtk_len = key_len;
+		}
 	} else {
 		hapd->last_gtk_alg = alg;
 		hapd->last_gtk_key_idx = idx;
@@ -445,9 +505,9 @@ static int hostapd_wpa_auth_get_seqnum(void *ctx, const u8 *addr, int idx,
 }
 
 
-static int hostapd_wpa_auth_send_eapol(void *ctx, const u8 *addr,
-				       const u8 *data, size_t data_len,
-				       int encrypt)
+int hostapd_wpa_auth_send_eapol(void *ctx, const u8 *addr,
+				const u8 *data, size_t data_len,
+				int encrypt)
 {
 	struct hostapd_data *hapd = ctx;
 	struct sta_info *sta;
@@ -858,6 +918,27 @@ static int hostapd_channel_info(void *ctx, struct wpa_channel_info *ci)
 }
 
 
+#ifdef CONFIG_PASN
+
+static void hostapd_store_ptksa(void *ctx, const u8 *addr,int cipher,
+				u32 life_time, const struct wpa_ptk *ptk)
+{
+	struct hostapd_data *hapd = ctx;
+
+	ptksa_cache_add(hapd->ptksa, addr, cipher, life_time, ptk);
+}
+
+
+static void hostapd_clear_ptksa(void *ctx, const u8 *addr, int cipher)
+{
+	struct hostapd_data *hapd = ctx;
+
+	ptksa_cache_flush(hapd->ptksa, addr, cipher);
+}
+
+#endif /* CONFIG_PASN */
+
+
 static int hostapd_wpa_auth_update_vlan(void *ctx, const u8 *addr, int vlan_id)
 {
 #ifndef CONFIG_NO_VLAN
@@ -997,6 +1078,34 @@ hostapd_wpa_auth_add_sta(void *ctx, const u8 *sta_addr)
 	sta->auth_alg = WLAN_AUTH_FT;
 
 	return sta->wpa_sm;
+}
+
+
+static int hostapd_wpa_auth_add_sta_ft(void *ctx, const u8 *sta_addr)
+{
+	struct hostapd_data *hapd = ctx;
+	struct sta_info *sta;
+
+	sta = ap_get_sta(hapd, sta_addr);
+	if (!sta)
+		return -1;
+
+	if (FULL_AP_CLIENT_STATE_SUPP(hapd->iface->drv_flags) &&
+	    (sta->flags & WLAN_STA_MFP) && ap_sta_is_authorized(sta) &&
+	    !(hapd->conf->mesh & MESH_ENABLED) && !(sta->added_unassoc)) {
+		/* We could not do this in handle_auth() since there was a
+		 * PMF-enabled association for the STA and the new
+		 * authentication attempt was not yet fully processed. Now that
+		 * we are ready to configure the TK to the driver,
+		 * authentication has succeeded and we can clean up the driver
+		 * STA entry to avoid issues with any maintained state from the
+		 * previous association. */
+		wpa_printf(MSG_DEBUG,
+			   "FT: Remove and re-add driver STA entry after successful FT authentication");
+		return ap_sta_re_add(hapd, sta);
+	}
+
+	return 0;
 }
 
 
@@ -1355,12 +1464,18 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.send_oui = hostapd_wpa_auth_send_oui,
 		.channel_info = hostapd_channel_info,
 		.update_vlan = hostapd_wpa_auth_update_vlan,
+#ifdef CONFIG_PASN
+		.store_ptksa = hostapd_store_ptksa,
+		.clear_ptksa = hostapd_clear_ptksa,
+#endif /* CONFIG_PASN */
+
 #ifdef CONFIG_OCV
 		.get_sta_tx_params = hostapd_get_sta_tx_params,
 #endif /* CONFIG_OCV */
 #ifdef CONFIG_IEEE80211R_AP
 		.send_ft_action = hostapd_wpa_auth_send_ft_action,
 		.add_sta = hostapd_wpa_auth_add_sta,
+		.add_sta_ft = hostapd_wpa_auth_add_sta_ft,
 		.add_tspec = hostapd_wpa_auth_add_tspec,
 		.set_vlan = hostapd_wpa_auth_set_vlan,
 		.get_vlan = hostapd_wpa_auth_get_vlan,
@@ -1376,10 +1491,43 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	size_t wpa_ie_len;
 
 	hostapd_wpa_auth_conf(hapd->conf, hapd->iconf, &_conf);
+	_conf.msg_ctx = hapd->msg_ctx;
 	if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_EAPOL_TX_STATUS)
 		_conf.tx_status = 1;
 	if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_AP_MLME)
 		_conf.ap_mlme = 1;
+
+	if (!(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_WIRED) &&
+	    (hapd->conf->wpa_deny_ptk0_rekey == PTK0_REKEY_ALLOW_NEVER ||
+	     (hapd->conf->wpa_deny_ptk0_rekey == PTK0_REKEY_ALLOW_LOCAL_OK &&
+	      !(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_SAFE_PTK0_REKEYS)))) {
+		wpa_msg(hapd->msg_ctx, MSG_INFO,
+			"Disable PTK0 rekey support - replaced with disconnect");
+		_conf.wpa_deny_ptk0_rekey = 1;
+	}
+
+	if (_conf.extended_key_id &&
+	    (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_EXTENDED_KEY_ID))
+		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "Extended Key ID supported");
+	else
+		_conf.extended_key_id = 0;
+
+	if (!(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_BEACON_PROTECTION))
+		_conf.beacon_prot = 0;
+
+#ifdef CONFIG_OCV
+	if (!(hapd->iface->drv_flags2 &
+	      (WPA_DRIVER_FLAGS2_AP_SME | WPA_DRIVER_FLAGS2_OCV)))
+		_conf.ocv = 0;
+#endif /* CONFIG_OCV */
+
+	_conf.secure_ltf =
+		!!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF);
+	_conf.secure_rtt =
+		!!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT);
+	_conf.prot_range_neg =
+		!!(hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG);
+
 	hapd->wpa_auth = wpa_init(hapd->own_addr, &_conf, &cb, hapd);
 	if (hapd->wpa_auth == NULL) {
 		wpa_printf(MSG_ERROR, "WPA initialization failed.");
@@ -1402,6 +1550,13 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	if (rsn_preauth_iface_init(hapd)) {
 		wpa_printf(MSG_ERROR, "Initialization of RSN "
 			   "pre-authentication failed.");
+		return -1;
+	}
+
+	if (!hapd->ptksa)
+		hapd->ptksa = ptksa_cache_init();
+	if (!hapd->ptksa) {
+		wpa_printf(MSG_ERROR, "Failed to allocate PTKSA cache");
 		return -1;
 	}
 
@@ -1444,6 +1599,9 @@ void hostapd_reconfig_wpa(struct hostapd_data *hapd)
 void hostapd_deinit_wpa(struct hostapd_data *hapd)
 {
 	ieee80211_tkip_countermeasures_deinit(hapd);
+	ptksa_cache_deinit(hapd->ptksa);
+	hapd->ptksa = NULL;
+
 	rsn_preauth_iface_deinit(hapd);
 	if (hapd->wpa_auth) {
 		wpa_deinit(hapd->wpa_auth);

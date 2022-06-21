@@ -1,6 +1,6 @@
 /*
  * WPA Supplicant / UNIX domain socket -based control interface
- * Copyright (c) 2004-2005, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2004-2020, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -10,6 +10,10 @@
 #define CTRL_IFACE_H
 
 #ifdef CONFIG_CTRL_IFACE
+
+#ifndef CTRL_IFACE_MAX_LEN
+#define CTRL_IFACE_MAX_LEN 8192
+#endif /* CTRL_IFACE_MAX_LEN */
 
 /* Shared functions from ctrl_iface.c; to be called by ctrl_iface backends */
 
@@ -117,11 +121,6 @@ void wpa_supplicant_global_ctrl_iface_deinit(
 	struct ctrl_iface_global_priv *priv);
 
 void wpas_ctrl_radio_work_flush(struct wpa_supplicant *wpa_s);
-
-int wpa_supplicant_ctrl_iface_get_capability(
-       struct wpa_supplicant *wpa_s, const char *_field, char *buf,
-       size_t buflen);
-
 
 #else /* CONFIG_CTRL_IFACE */
 
