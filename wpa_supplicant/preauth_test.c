@@ -154,8 +154,7 @@ static int wpa_supplicant_add_pmkid(void *wpa_s, void *network_ctx,
 				    const u8 *bssid, const u8 *pmkid,
 				    const u8 *fils_cache_id,
 				    const u8 *pmk, size_t pmk_len,
-				    u32 pmk_lifetime, u8 pmk_reauth_threshold,
-				    int akmp)
+				    u32 pmk_lifetime, u8 pmk_reauth_threshold)
 {
 	printf("%s - not implemented\n", __func__);
 	return -1;
@@ -220,7 +219,7 @@ static void eapol_test_poll(void *eloop_ctx, void *timeout_ctx)
 }
 
 
-static struct wpa_driver_ops stub_driver;
+static struct wpa_driver_ops dummy_driver;
 
 
 static void wpa_init_conf(struct wpa_supplicant *wpa_s, const char *ifname)
@@ -228,8 +227,8 @@ static void wpa_init_conf(struct wpa_supplicant *wpa_s, const char *ifname)
 	struct l2_packet_data *l2;
 	struct wpa_sm_ctx *ctx;
 
-	os_memset(&stub_driver, 0, sizeof(stub_driver));
-	wpa_s->driver = &stub_driver;
+	os_memset(&dummy_driver, 0, sizeof(dummy_driver));
+	wpa_s->driver = &dummy_driver;
 
 	ctx = os_zalloc(sizeof(*ctx));
 	assert(ctx != NULL);
