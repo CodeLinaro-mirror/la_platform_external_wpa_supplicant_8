@@ -1203,6 +1203,12 @@ struct wpa_driver_associate_params {
 	 * 2 = both hunting-and-pecking loop and hash-to-element enabled
 	 */
 	int sae_pwe;
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	/**
+	 * td_policy - Transition Disable Policy
+	 */
+	u32 td_policy;
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 };
 
 enum hide_ssid {
@@ -2027,8 +2033,10 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_OCV			0x0000000000000080ULL
 /** Driver expects user space implementation of SME in AP mode */
 #define WPA_DRIVER_FLAGS2_AP_SME		0x0000000000000100ULL
+/** Driver handles SA Query procedures in AP mode */
+#define WPA_DRIVER_FLAGS2_SA_QUERY_OFFLOAD_AP	0x0000000000000200ULL
 /** Driver supports of adaptive 11r feature */
-#define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x0000000000000200ULL
+#define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x8000000000000000ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -2497,6 +2505,9 @@ enum wpa_drv_update_connect_params_mask {
 	WPA_DRV_UPDATE_ASSOC_IES	= BIT(0),
 	WPA_DRV_UPDATE_FILS_ERP_INFO	= BIT(1),
 	WPA_DRV_UPDATE_AUTH_TYPE	= BIT(2),
+#ifdef CONFIG_DRIVER_NL80211_BRCM
+	WPA_DRV_UPDATE_TD_POLICY	= BIT(3),
+#endif /* CONFIG_DRIVER_NL80211_BRCM */
 };
 
 /**
@@ -2536,6 +2547,24 @@ enum nested_attr {
 	NESTED_ATTR_NOT_USED = 0,
 	NESTED_ATTR_USED = 1,
 	NESTED_ATTR_UNSPECIFIED = 2,
+};
+
+/* Preferred channel list information */
+
+/* GO role */
+#define WEIGHTED_PCL_GO BIT(0)
+/* P2P Client role */
+#define WEIGHTED_PCL_CLI BIT(1)
+/* Must be considered for operating channel */
+#define WEIGHTED_PCL_MUST_CONSIDER BIT(2)
+/* Should be excluded in GO negotiation */
+#define WEIGHTED_PCL_EXCLUDE BIT(3)
+
+/* Preferred channel list with weight */
+struct weighted_pcl {
+	u32 freq; /* MHz */
+	u8 weight;
+	u32 flag; /* bitmap for WEIGHTED_PCL_* */
 };
 
 /**
@@ -4371,14 +4400,17 @@ struct wpa_driver_ops {
 	 * @priv: Private driver interface data
 	 * @if_type: Interface type
 	 * @num: Number of channels
-	 * @freq_list: Preferred channel frequency list encoded in MHz values
+	 * @freq_list: Weighted preferred channel list
 	 * Returns 0 on success, -1 on failure
 	 *
 	 * This command can be used to query the preferred frequency list from
-	 * the driver specific to a particular interface type.
+	 * the driver specific to a particular interface type. The freq_list
+	 * array needs to have room for *num entries. *num will be updated to
+	 * indicate the number of entries fetched from the driver.
 	 */
 	int (*get_pref_freq_list)(void *priv, enum wpa_driver_if_type if_type,
-				  unsigned int *num, unsigned int *freq_list);
+				  unsigned int *num,
+				  struct weighted_pcl *freq_list);
 
 	/**
 	 * set_prob_oper_freq - Indicate probable P2P operating channel

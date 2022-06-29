@@ -15,6 +15,7 @@
 #include "misc_utils.h"
 #include <android/binder_process.h>
 #include <android/binder_manager.h>
+#include <aidl/android/hardware/wifi/supplicant/IpVersion.h>
 
 extern "C" {
 #include "scan.h"
@@ -1904,7 +1905,7 @@ void AidlManager::notifyNetworkNotFound(struct wpa_supplicant *wpa_s)
 	callWithEachStaIfaceCallback(misc_utils::charBufToString(wpa_s->ifname), func);
 }
 
-void AidlManager::notifyBssFreqChanged(struct wpa_supplicant *wpa_group_s)
+void AidlManager::notifyFrequencyChanged(struct wpa_supplicant *wpa_group_s, int frequency)
 {
 	if (!wpa_group_s || !wpa_group_s->parent)
 		return;
@@ -1912,18 +1913,15 @@ void AidlManager::notifyBssFreqChanged(struct wpa_supplicant *wpa_group_s)
 	// For group notifications, need to use the parent iface for callbacks.
 	struct wpa_supplicant *wpa_s = getTargetP2pIfaceForGroup(wpa_group_s);
 	if (!wpa_s) {
-		wpa_printf(MSG_INFO, "Drop BSS frequency changed event");
+		wpa_printf(MSG_INFO, "Drop frequency changed event");
 		return;
 	}
-
-	uint32_t aidl_freq = wpa_group_s->current_bss
-				? wpa_group_s->current_bss->freq
-				: wpa_group_s->assoc_freq;
 
 	const std::function<
 		ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
 		func = std::bind(&ISupplicantP2pIfaceCallback::onGroupFrequencyChanged,
-		std::placeholders::_1, misc_utils::charBufToString(wpa_group_s->ifname), aidl_freq);
+		std::placeholders::_1, misc_utils::charBufToString(wpa_group_s->ifname),
+		frequency);
 	callWithEachP2pIfaceCallback(misc_utils::charBufToString(wpa_s->ifname), func);
 }
 
@@ -2329,6 +2327,136 @@ void AidlManager::callWithEachStaNetworkCallback(
 {
 	callWithEachNetworkCallback(
 		ifname, network_id, method, sta_network_callbacks_map_);
+}
+
+void AidlManager::notifyQosPolicyReset(
+	struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s)
+		return;
+
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onQosPolicyReset,
+			std::placeholders::_1));
+}
+
+void AidlManager::notifyQosPolicyRequest(struct wpa_supplicant *wpa_s,
+	struct dscp_policy_data *policies, int num_policies)
+{
+	if (!wpa_s || !policies)
+		return;
+
+	std::vector<QosPolicyData> qosPolicyData;
+	uint32_t mask = 0;
+
+	for (int num = 0; num < num_policies; num++) {
+		QosPolicyData policy;
+		QosPolicyClassifierParams classifier_params;
+		QosPolicyClassifierParamsMask classifier_param_mask;
+		bool ip_ver4 = false;
+
+		if (policies[num].type4_param.ip_version == 4) {
+			classifier_params.ipVersion = IpVersion::VERSION_4;
+			ip_ver4 = true;
+		} else {
+			classifier_params.ipVersion = IpVersion::VERSION_6;
+			ip_ver4 = false;
+		}
+
+		// classifier_mask parameters are defined in IEEE Std 802.11-2020, Table 9-170
+		if (policies[num].type4_param.classifier_mask & BIT(1)) {
+			mask |= static_cast<uint32_t>(QosPolicyClassifierParamsMask::SRC_IP);
+			if (ip_ver4) {
+				classifier_params.srcIp =
+					byteArrToVec((const uint8_t *)
+						&policies[num].type4_param.ip_params.v4.src_ip, 4);
+			} else {
+				classifier_params.srcIp =
+					byteArrToVec((const uint8_t *)
+						&policies[num].type4_param.ip_params.v6.src_ip, 16);
+			}
+		}
+		if (policies[num].type4_param.classifier_mask & BIT(2)) {
+			mask |= static_cast<uint32_t>(QosPolicyClassifierParamsMask::DST_IP);
+			if (ip_ver4){
+				classifier_params.dstIp =
+					byteArrToVec((const uint8_t *)
+						&policies[num].type4_param.ip_params.v4.dst_ip, 4);
+			} else {
+				classifier_params.dstIp =
+					byteArrToVec((const uint8_t *)
+						&policies[num].type4_param.ip_params.v6.dst_ip, 16);
+			}
+		}
+		if (policies[num].type4_param.classifier_mask & BIT(3)) {
+			mask |= static_cast<uint32_t>(QosPolicyClassifierParamsMask::SRC_PORT);
+			if (ip_ver4){
+				classifier_params.srcPort =
+					policies[num].type4_param.ip_params.v4.src_port;
+			} else {
+				classifier_params.srcPort =
+					policies[num].type4_param.ip_params.v6.src_port;
+			}
+		}
+
+		if (policies[num].type4_param.classifier_mask & BIT(4)) {
+			mask |= static_cast<uint32_t>(
+				QosPolicyClassifierParamsMask::DST_PORT_RANGE);
+			if (ip_ver4) {
+				classifier_params.dstPortRange.startPort =
+					policies[num].type4_param.ip_params.v4.dst_port;
+				classifier_params.dstPortRange.endPort =
+					policies[num].type4_param.ip_params.v4.dst_port;
+			} else {
+				classifier_params.dstPortRange.startPort =
+					policies[num].type4_param.ip_params.v6.dst_port;
+				classifier_params.dstPortRange.endPort =
+					policies[num].type4_param.ip_params.v6.dst_port;
+			}
+		} else if (policies[num].port_range_info) {
+			mask |= static_cast<uint32_t>(
+				QosPolicyClassifierParamsMask::DST_PORT_RANGE);
+			classifier_params.dstPortRange.startPort = policies[num].start_port;
+			classifier_params.dstPortRange.endPort = policies[num].end_port;
+		}
+		if (policies[num].type4_param.classifier_mask & BIT(6)) {
+			mask |= static_cast<uint32_t>(
+				QosPolicyClassifierParamsMask::PROTOCOL_NEXT_HEADER);
+			if (ip_ver4) {
+				classifier_params.protocolNextHdr = static_cast<ProtocolNextHeader>(
+					policies[num].type4_param.ip_params.v4.protocol);
+			} else {
+				classifier_params.protocolNextHdr = static_cast<ProtocolNextHeader>(
+					policies[num].type4_param.ip_params.v6.next_header);
+			}
+		}
+		if (policies[num].type4_param.classifier_mask & BIT(7)) {
+			mask |= static_cast<uint32_t>(QosPolicyClassifierParamsMask::FLOW_LABEL);
+			classifier_params.flowLabelIpv6 =
+				byteArrToVec(policies[num].type4_param.ip_params.v6.flow_label, 3);
+		}
+		if (policies[num].domain_name_len != 0) {
+			mask |= static_cast<uint32_t>(QosPolicyClassifierParamsMask::DOMAIN_NAME);
+			classifier_params.domainName =
+				misc_utils::charBufToString(
+					reinterpret_cast<const char *>(policies[num].domain_name));
+		}
+
+		classifier_params.classifierParamMask =
+			static_cast<QosPolicyClassifierParamsMask>(mask);
+		policy.policyId = policies[num].policy_id;
+		policy.requestType = static_cast<QosPolicyRequestType>(policies[num].req_type);
+		policy.dscp = policies[num].dscp;
+		policy.classifierParams = classifier_params;
+
+		qosPolicyData.push_back(policy);
+	}
+
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onQosPolicyRequest,
+			std::placeholders::_1, wpa_s->dscp_req_dialog_token, qosPolicyData));
 }
 
 }  // namespace supplicant

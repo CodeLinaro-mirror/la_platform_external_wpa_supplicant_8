@@ -690,6 +690,21 @@ struct active_scs_elem {
 	enum scs_response_status status;
 };
 
+struct dscp_policy_data {
+	u8 policy_id;
+	u8 req_type;
+	u8 dscp;
+	bool dscp_info;
+	const u8 *frame_classifier;
+	u8 frame_classifier_len;
+	struct type4_params type4_param;
+	const u8 *domain_name;
+	u8 domain_name_len;
+	u16 start_port;
+	u16 end_port;
+	bool port_range_info;
+};
+
 
 /**
  * struct wpa_supplicant - Internal data for wpa_supplicant interface
@@ -1879,7 +1894,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 int wpas_ctrl_iface_get_pref_freq_list_override(struct wpa_supplicant *wpa_s,
 						enum wpa_driver_if_type if_type,
 						unsigned int *num,
-						unsigned int *freq_list);
+						struct weighted_pcl *freq_list);
 
 int wpa_is_fils_supported(struct wpa_supplicant *wpa_s);
 int wpa_is_fils_sk_pfs_supported(struct wpa_supplicant *wpa_s);
