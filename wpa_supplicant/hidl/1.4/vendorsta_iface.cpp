@@ -257,6 +257,20 @@ SupplicantStatus VendorStaIface::registerVendorCallbackInternal_2_3(
 		wpa_printf(MSG_INFO, "return failure vendor staiface callback_2_3");
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
+
+	// return default thermal status
+	auto res = doDriverCmdInternal("GET_THERMAL_INFO");
+	std::string reply = res.second;
+	wpa_printf(MSG_INFO, "GET_THERMAL_INFO reply = %s", reply.c_str());
+	std::string thermal_level = THERMAL_LEVEL_UNKNOWN;
+	if (reply.size() >= MIN_THERMAL_REPLY_SIZE) {
+		int index = reply.rfind(" ");
+		thermal_level = reply.substr(index + 1);
+	}
+	std::string thermal_event = "CTRL-EVENT-THERMAL-CHANGED level=";
+	thermal_event += thermal_level;
+	callback->onCtrlEvent(ifname_, thermal_event);
+
 	return {SupplicantStatusCode::SUCCESS, ""};
 }
 
