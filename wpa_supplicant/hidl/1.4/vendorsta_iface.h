@@ -57,6 +57,9 @@ extern "C" {
 #include "driver_i.h"
 #include "wpa.h"
 #include "ctrl_iface.h"
+
+#define THERMAL_LEVEL_UNKNOWN "9"
+#define MIN_THERMAL_REPLY_SIZE 3
 }
 
 namespace vendor {
