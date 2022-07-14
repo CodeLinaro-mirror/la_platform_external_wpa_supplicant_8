@@ -312,7 +312,9 @@ CFLAGS += -DCONFIG_SAE
 OBJS += ../src/common/sae.o
 NEED_ECC=y
 NEED_DH_GROUPS=y
+NEED_HMAC_SHA256_KDF=y
 NEED_AP_MLME=y
+NEED_DRAGONFLY=y
 endif
 
 ifdef CONFIG_OWE
@@ -496,6 +498,7 @@ CFLAGS += -DEAP_SERVER_PWD
 OBJS += ../src/eap_server/eap_server_pwd.o ../src/eap_common/eap_pwd_common.o
 NEED_SHA256=y
 NEED_ECC=y
+NEED_DRAGONFLY=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -627,6 +630,10 @@ endif
 
 ifdef CONFIG_PKCS12
 CFLAGS += -DPKCS12_FUNCS
+endif
+
+ifdef NEED_DRAGONFLY
+OBJS += ../src/common/dragonfly.o
 endif
 
 ifdef MS_FUNCS

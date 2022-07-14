@@ -274,6 +274,11 @@ L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 NEED_ECC=y
 NEED_DH_GROUPS=y
+NEED_HMAC_SHA256_KDF=y
+NEED_DRAGONFLY=y
+ifdef CONFIG_TESTING_OPTIONS
+NEED_DH_GROUPS_ALL=y
+endif
 endif
 
 ifdef CONFIG_DPP
@@ -721,6 +726,7 @@ OBJS += src/eap_peer/eap_pwd.c src/eap_common/eap_pwd_common.c
 CONFIG_IEEE8021X_EAPOL=y
 NEED_SHA256=y
 NEED_ECC=y
+NEED_DRAGONFLY=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -1008,6 +1014,10 @@ endif
 
 ifdef CONFIG_SMARTCARD
 L_CFLAGS += -DCONFIG_SMARTCARD
+endif
+
+ifdef NEED_DRAGONFLY
+OBJS += src/common/dragonfly.c
 endif
 
 ifdef MS_FUNCS

@@ -1000,3 +1000,25 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
 	return 0;
 }
 #endif /* CONFIG_OCV */
+
+
+u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
+{
+	u8 *pos = eid;
+
+	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	    !wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt) ||
+	    (hapd->conf->sae_pwe != 1 && hapd->conf->sae_pwe != 2 &&
+	     !hostapd_sae_pw_id_in_use(hapd->conf)) ||
+	    hapd->conf->sae_pwe == 3 ||
+	    len < 3)
+		return pos;
+
+	*pos++ = WLAN_EID_RSNX;
+	*pos++ = 1;
+	/* bits 0-3 = 0 since only one octet of Extended RSN Capabilities is
+	 * used for now */
+	*pos++ = BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+
+	return pos;
+}

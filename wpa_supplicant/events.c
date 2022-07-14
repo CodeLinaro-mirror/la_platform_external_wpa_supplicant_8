@@ -775,8 +775,8 @@ static int freq_allowed(int *freqs, int freq)
 }
 
 
-static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
-		      int debug_print)
+static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+		      struct wpa_bss *bss, int debug_print)
 {
 	const struct hostapd_hw_modes *mode = NULL, *modes;
 	const u8 scan_ie[2] = { WLAN_EID_SUPP_RATES, WLAN_EID_EXT_SUPP_RATES };
@@ -852,6 +852,28 @@ static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 				}
 				continue;
 			}
+
+#ifdef CONFIG_SAE
+			if (flagged && ((rate_ie[j] & 0x7f) ==
+					BSS_MEMBERSHIP_SELECTOR_SAE_H2E_ONLY)) {
+				if (wpa_s->conf->sae_pwe == 0 &&
+				    !ssid->sae_password_id &&
+				    wpa_key_mgmt_sae(ssid->key_mgmt)) {
+					if (debug_print)
+						wpa_dbg(wpa_s, MSG_DEBUG,
+							"   SAE H2E disabled");
+#ifdef CONFIG_TESTING_OPTIONS
+					if (wpa_s->ignore_sae_h2e_only) {
+						wpa_dbg(wpa_s, MSG_DEBUG,
+							"TESTING: Ignore SAE H2E requirement mismatch");
+						continue;
+					}
+#endif /* CONFIG_TESTING_OPTIONS */
+					return 0;
+				}
+				continue;
+			}
+#endif /* CONFIG_SAE */
 
 			if (!flagged)
 				continue;
@@ -1245,12 +1267,26 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		}
 #endif /* CONFIG_MESH */
 
-		if (!rate_match(wpa_s, bss, debug_print)) {
+		if (!rate_match(wpa_s, ssid, bss, debug_print)) {
 			if (debug_print)
 				wpa_dbg(wpa_s, MSG_DEBUG,
 					"   skip - rate sets do not match");
 			continue;
 		}
+
+#ifdef CONFIG_SAE
+		if ((wpa_s->conf->sae_pwe == 1 || ssid->sae_password_id) &&
+		    wpa_s->conf->sae_pwe != 3 &&
+		    wpa_key_mgmt_sae(ssid->key_mgmt) &&
+		    (!(ie = wpa_bss_get_ie(bss, WLAN_EID_RSNX)) ||
+		     ie[1] < 1 ||
+		     !(ie[2] & BIT(WLAN_RSNX_CAPAB_SAE_H2E)))) {
+			if (debug_print)
+				wpa_dbg(wpa_s, MSG_DEBUG,
+					"   skip - SAE H2E required, but not supported by the AP");
+			continue;
+		}
+#endif /* CONFIG_SAE */
 
 #ifndef CONFIG_IBSS_RSN
 		if (ssid->mode == WPAS_MODE_IBSS &&
@@ -2378,7 +2414,7 @@ static int wpas_fst_update_mbie(struct wpa_supplicant *wpa_s,
 static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					  union wpa_event_data *data)
 {
-	int l, len, found = 0, wpa_found, rsn_found;
+	int l, len, found = 0, found_x = 0, wpa_found, rsn_found;
 	const u8 *p;
 #if defined(CONFIG_IEEE80211R) || defined(CONFIG_OWE)
 	u8 bssid[ETH_ALEN];
@@ -2450,22 +2486,29 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 				    p, l);
 			break;
 		}
-		if ((p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
-		     (os_memcmp(&p[2], "\x00\x50\xF2\x01\x01\x00", 6) == 0)) ||
-		    (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 4 &&
-		     (os_memcmp(&p[2], "\x50\x6F\x9A\x12", 4) == 0)) ||
-		    (p[0] == WLAN_EID_RSN && p[1] >= 2)) {
+		if (!found &&
+		    ((p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
+		      (os_memcmp(&p[2], "\x00\x50\xF2\x01\x01\x00", 6) == 0)) ||
+		     (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 4 &&
+		      (os_memcmp(&p[2], "\x50\x6F\x9A\x12", 4) == 0)) ||
+		     (p[0] == WLAN_EID_RSN && p[1] >= 2))) {
 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
 				break;
 			found = 1;
 			wpa_find_assoc_pmkid(wpa_s);
-			break;
+		}
+		if (!found_x && p[0] == WLAN_EID_RSNX) {
+			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
+				break;
+			found_x = 1;
 		}
 		l -= len;
 		p += len;
 	}
 	if (!found && data->assoc_info.req_ies)
 		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+	if (!found_x && data->assoc_info.req_ies)
+		wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
 
 #ifdef CONFIG_FILS
 #ifdef CONFIG_SME
@@ -2627,14 +2670,19 @@ no_pfs:
 			wpa_sm_set_ap_rsn_ie(wpa_s->wpa, p, len);
 		}
 
+		if (p[0] == WLAN_EID_RSNX && p[1] >= 1)
+			wpa_sm_set_ap_rsnxe(wpa_s->wpa, p, len);
+
 		l -= len;
 		p += len;
 	}
 
 	if (!wpa_found && data->assoc_info.beacon_ies)
 		wpa_sm_set_ap_wpa_ie(wpa_s->wpa, NULL, 0);
-	if (!rsn_found && data->assoc_info.beacon_ies)
+	if (!rsn_found && data->assoc_info.beacon_ies) {
 		wpa_sm_set_ap_rsn_ie(wpa_s->wpa, NULL, 0);
+		wpa_sm_set_ap_rsnxe(wpa_s->wpa, NULL, 0);
+	}
 	if (wpa_found || rsn_found)
 		wpa_s->ap_ies_from_associnfo = 1;
 
@@ -2654,7 +2702,7 @@ no_pfs:
 
 static int wpa_supplicant_assoc_update_ie(struct wpa_supplicant *wpa_s)
 {
-	const u8 *bss_wpa = NULL, *bss_rsn = NULL;
+	const u8 *bss_wpa = NULL, *bss_rsn = NULL, *bss_rsnx = NULL;
 
 	if (!wpa_s->current_bss || !wpa_s->current_ssid)
 		return -1;
@@ -2665,11 +2713,14 @@ static int wpa_supplicant_assoc_update_ie(struct wpa_supplicant *wpa_s)
 	bss_wpa = wpa_bss_get_vendor_ie(wpa_s->current_bss,
 					WPA_IE_VENDOR_TYPE);
 	bss_rsn = wpa_bss_get_ie(wpa_s->current_bss, WLAN_EID_RSN);
+	bss_rsnx = wpa_bss_get_ie(wpa_s->current_bss, WLAN_EID_RSNX);
 
 	if (wpa_sm_set_ap_wpa_ie(wpa_s->wpa, bss_wpa,
 				 bss_wpa ? 2 + bss_wpa[1] : 0) ||
 	    wpa_sm_set_ap_rsn_ie(wpa_s->wpa, bss_rsn,
-				 bss_rsn ? 2 + bss_rsn[1] : 0))
+				 bss_rsn ? 2 + bss_rsn[1] : 0) ||
+	    wpa_sm_set_ap_rsnxe(wpa_s->wpa, bss_rsnx,
+				 bss_rsnx ? 2 + bss_rsnx[1] : 0))
 		return -1;
 
 	return 0;
@@ -2888,6 +2939,16 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 
 	wpa_s->last_eapol_matches_bssid = 0;
 
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->rsnxe_override_eapol) {
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: RSNXE EAPOL-Key msg 2/4 override");
+		wpa_sm_set_assoc_rsnxe(wpa_s->wpa,
+				       wpabuf_head(wpa_s->rsnxe_override_eapol),
+				       wpabuf_len(wpa_s->rsnxe_override_eapol));
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
 	if (wpa_s->pending_eapol_rx) {
 		struct os_reltime now, age;
 		os_get_reltime(&now);
@@ -2953,6 +3014,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			wpa_sm_set_fils_cache_id(wpa_s->wpa, fils_cache_id);
 	}
 #endif /* CONFIG_FILS */
+
 }
 
 
@@ -2997,7 +3059,8 @@ static int could_be_psk_mismatch(struct wpa_supplicant *wpa_s, u16 reason_code,
 				 int locally_generated)
 {
 	if (wpa_s->wpa_state != WPA_4WAY_HANDSHAKE ||
-	    !wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt))
+	    !wpa_key_mgmt_wpa_psk(wpa_s->key_mgmt) ||
+	    wpa_key_mgmt_sae(wpa_s->key_mgmt))
 		return 0; /* Not in 4-way handshake with PSK */
 
 	/*

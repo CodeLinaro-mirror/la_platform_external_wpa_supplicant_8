@@ -16,6 +16,7 @@
 #include "common/ieee802_11_common.h"
 #include "common/wpa_ctrl.h"
 #include "common/dpp.h"
+#include "common/sae.h"
 #include "crypto/random.h"
 #include "p2p/p2p.h"
 #include "wps/wps.h"
@@ -321,6 +322,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  ie, ielen,
+					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
 					  elems.mdie, elems.mdie_len,
 					  elems.owe_dh, elems.owe_dh_len);
 		if (res != WPA_IE_OK) {
@@ -347,7 +350,10 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 				status = WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
 			}
 #endif /* CONFIG_IEEE80211W */
-			else {
+			else if (res == WPA_INVALID_PMKID) {
+				reason = WLAN_REASON_INVALID_PMKID;
+				status = WLAN_STATUS_INVALID_PMKID;
+			} else {
 				reason = WLAN_REASON_INVALID_IE;
 				status = WLAN_STATUS_INVALID_IE;
 			}
@@ -403,6 +409,20 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			}
 		}
 #endif /* CONFIG_IEEE80211R_AP */
+#ifdef CONFIG_SAE
+		if (hapd->conf->sae_pwe == 2 &&
+		    sta->auth_alg == WLAN_AUTH_SAE &&
+		    sta->sae && sta->sae->tmp && !sta->sae->tmp->h2e &&
+		    elems.rsnxe && elems.rsnxe_len >= 1 &&
+		    (elems.rsnxe[0] & BIT(WLAN_RSNX_CAPAB_SAE_H2E))) {
+			wpa_printf(MSG_INFO, "SAE: " MACSTR
+				   " indicates support for SAE H2E, but did not use it",
+				   MAC2STR(sta->addr));
+			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+			reason = WLAN_REASON_UNSPECIFIED;
+			goto fail;
+		}
+#endif /* CONFIG_SAE */
 	} else if (hapd->conf->wps_state) {
 #ifdef CONFIG_WPS
 		struct wpabuf *wps;

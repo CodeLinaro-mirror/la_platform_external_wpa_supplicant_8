@@ -894,6 +894,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(owe_group);
 	INT(owe_only);
 	INT(multi_ap_backhaul_sta);
+	INT(transition_disable);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
@@ -1389,6 +1390,13 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "\n");
 	}
 
+	if (config->sae_pwe)
+		fprintf(f, "sae_pwe=%d\n", config->sae_pwe);
+
+	if (config->sae_pmkid_in_assoc)
+		fprintf(f, "sae_pmkid_in_assoc=%d\n",
+			config->sae_pmkid_in_assoc);
+
 	if (config->ap_vendor_elements) {
 		int i, len = wpabuf_len(config->ap_vendor_elements);
 		const u8 *p = wpabuf_head_u8(config->ap_vendor_elements);
@@ -1594,8 +1602,11 @@ int wpa_config_write(const char *name, struct wpa_config *config)
 	for (ssid = config->ssid; ssid; ssid = ssid->next) {
 		if (ssid->key_mgmt == WPA_KEY_MGMT_WPS || ssid->temporary)
 			continue; /* do not save temporary networks */
-		if (wpa_key_mgmt_wpa_psk(ssid->key_mgmt) && !ssid->psk_set &&
-		    !ssid->passphrase)
+		if (wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt) &&
+		    !ssid->psk_set && !ssid->passphrase)
+			continue; /* do not save invalid network */
+		if (wpa_key_mgmt_sae(ssid->key_mgmt) &&
+		    !ssid->passphrase && !ssid->sae_password)
 			continue; /* do not save invalid network */
 		fprintf(f, "\nnetwork={\n");
 		wpa_config_write_network(f, ssid);

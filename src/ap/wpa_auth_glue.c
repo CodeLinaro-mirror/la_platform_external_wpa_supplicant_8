@@ -37,6 +37,8 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 				  struct hostapd_config *iconf,
 				  struct wpa_auth_config *wconf)
 {
+	int sae_pw_id;
+
 	os_memset(wconf, 0, sizeof(*wconf));
 	wconf->wpa = conf->wpa;
 	wconf->wpa_key_mgmt = conf->wpa_key_mgmt;
@@ -118,6 +120,14 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 			  wpabuf_head(conf->own_ie_override),
 			  wconf->own_ie_override_len);
 	}
+	if (conf->rsnxe_override_eapol &&
+	    wpabuf_len(conf->rsnxe_override_eapol) <= MAX_OWN_IE_OVERRIDE) {
+		wconf->rsnxe_override_eapol_len =
+			wpabuf_len(conf->rsnxe_override_eapol);
+		os_memcpy(wconf->rsnxe_override_eapol,
+			  wpabuf_head(conf->rsnxe_override_eapol),
+			  wconf->rsnxe_override_eapol_len);
+	}
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_P2P
 	os_memcpy(wconf->ip_addr_go, conf->ip_addr_go, 4);
@@ -130,6 +140,13 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
 	os_memcpy(wconf->fils_cache_id, conf->fils_cache_id,
 		  FILS_CACHE_ID_LEN);
 #endif /* CONFIG_FILS */
+	wconf->sae_pwe = conf->sae_pwe;
+	sae_pw_id = hostapd_sae_pw_id_in_use(conf);
+	if (sae_pw_id == 2 && wconf->sae_pwe != 3)
+		wconf->sae_pwe = 1;
+	else if (sae_pw_id == 1 && wconf->sae_pwe == 0)
+		wconf->sae_pwe = 2;
+	wconf->transition_disable = conf->transition_disable;
 }
 
 
