@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 #include "utils/includes.h"
 
 #include "utils/common.h"
@@ -699,7 +705,7 @@ skip_wpa_check:
 
 	hostapd_set_sta_flags(hapd, sta);
 
-	if (reassoc && (sta->auth_alg == WLAN_AUTH_FT))
+	if (sta->auth_alg == WLAN_AUTH_FT)
 		wpa_auth_sm_event(sta->wpa_sm, WPA_ASSOC_FT);
 #ifdef CONFIG_FILS
 	else if (sta->auth_alg == WLAN_AUTH_FILS_SK ||
