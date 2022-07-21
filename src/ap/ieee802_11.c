@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 #include "utils/includes.h"
 
 #ifndef CONFIG_NATIVE_WINDOWS
@@ -5557,6 +5563,29 @@ static void handle_assoc(struct hostapd_data *hapd,
 			sta->flags |= WLAN_STA_AUTH;
 			wpa_auth_sm_event(sta->wpa_sm, WPA_AUTH);
 			sta->auth_alg = WLAN_AUTH_OPEN;
+		}else if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_FT_PSK) {
+
+			sta = ap_get_sta(hapd, mgmt->sa);
+			if (!sta) {
+				sta = ap_sta_add(hapd, mgmt->sa);
+				if (!sta) {
+					hostapd_logger(hapd, mgmt->sa,
+					HOSTAPD_MODULE_IEEE80211,
+					HOSTAPD_LEVEL_INFO,
+					"Failed to add STA");
+					resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+					goto fail;
+				}
+			}
+				sta->flags |= WLAN_STA_AUTH;
+				wpa_auth_sm_event(sta->wpa_sm, WPA_AUTH);
+				sta->auth_alg = WLAN_AUTH_OPEN;
+				mlme_authenticate_indication(hapd, sta);
+				hostapd_logger(hapd, sta->addr,
+					       HOSTAPD_MODULE_IEEE80211,
+					       HOSTAPD_LEVEL_DEBUG,
+					       "Skip authentication for FT");
+
 		} else {
 			hostapd_logger(hapd, mgmt->sa,
 				       HOSTAPD_MODULE_IEEE80211,
@@ -5671,6 +5700,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 			break;
 		}
 	}
+#ifndef CONFIG_ADD_ASSOC_STA_OFFLOAD
 	if (sta->flags & WLAN_STA_NONERP && !sta->nonerp_set) {
 		sta->nonerp_set = 1;
 		hapd->iface->num_sta_non_erp++;
@@ -5688,12 +5718,14 @@ static void handle_assoc(struct hostapd_data *hapd,
 		    hapd->iface->num_sta_no_short_slot_time == 1)
 			ieee802_11_set_beacons(hapd->iface);
 	}
+#endif /* CONFIG_ADD_ASSOC_STA_OFFLOAD */
 
 	if (sta->capability & WLAN_CAPABILITY_SHORT_PREAMBLE)
 		sta->flags |= WLAN_STA_SHORT_PREAMBLE;
 	else
 		sta->flags &= ~WLAN_STA_SHORT_PREAMBLE;
 
+#ifndef CONFIG_ADD_ASSOC_STA_OFFLOAD
 	if (!(sta->capability & WLAN_CAPABILITY_SHORT_PREAMBLE) &&
 	    !sta->no_short_preamble_set) {
 		sta->no_short_preamble_set = 1;
@@ -5705,6 +5737,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 	}
 
 	update_ht_state(hapd, sta);
+#endif /* CONFIG_ADD_ASSOC_STA_OFFLOAD */
 
 	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 		       HOSTAPD_LEVEL_DEBUG,
@@ -5745,6 +5778,8 @@ static void handle_assoc(struct hostapd_data *hapd,
 
  fail:
 
+#ifndef CONFIG_ADD_ASSOC_STA_OFFLOAD
+
 	/*
 	 * In case of a successful response, add the station to the driver.
 	 * Otherwise, the kernel may ignore Data frames before we process the
@@ -5766,6 +5801,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 	if (resp == WLAN_STATUS_SUCCESS && sta &&
 	    add_associated_sta(hapd, sta, reassoc))
 		resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+#endif /* CONFIG_ADD_ASSOC_STA_OFFLOAD */
 
 #ifdef CONFIG_FILS
 	if (sta && delay_assoc && resp == WLAN_STATUS_SUCCESS &&
