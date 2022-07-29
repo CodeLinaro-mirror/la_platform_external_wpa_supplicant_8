@@ -136,15 +136,37 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
 	if (!is_6ghz_op_class(hapd->iconf->op_class))
 		cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &=
 			~EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK;
-	if (!hapd->iface->conf->eht_phy_capab.su_beamformer)
+	wpa_printf(MSG_INFO,"EHT TX_BF CAP: SU_BFER %d, SU_BFEE %d MU_BFER %d\n",
+			cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &
+			EHT_PHYCAP_SU_BEAMFORMER,
+			cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &
+			EHT_PHYCAP_SU_BEAMFORMER,
+			cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] &
+			EHT_PHYCAP_MU_BEAMFORMER_MASK);
+
+	wpa_printf(MSG_INFO,"EHT TX_BF CAP HOSTAPD CONF: SU_BFER %d, SU_BFEE %d MU_BFER %d\n",
+			hapd->iface->conf->eht_phy_capab.su_beamformer,
+			hapd->iface->conf->eht_phy_capab.su_beamformee,
+			hapd->iface->conf->eht_phy_capab.mu_beamformer);
+
+	if (hapd->iface->conf->eht_phy_capab.su_beamformer)
+		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] |=
+			EHT_PHYCAP_SU_BEAMFORMER;
+	else
 		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &=
 			~EHT_PHYCAP_SU_BEAMFORMER;
 
-	if (!hapd->iface->conf->eht_phy_capab.su_beamformee)
+	if (hapd->iface->conf->eht_phy_capab.su_beamformee)
+		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMEE_IDX] |=
+			EHT_PHYCAP_SU_BEAMFORMEE;
+	else
 		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMEE_IDX] &=
 			~EHT_PHYCAP_SU_BEAMFORMEE;
 
-	if (!hapd->iface->conf->eht_phy_capab.mu_beamformer)
+	if (hapd->iface->conf->eht_phy_capab.mu_beamformer)
+		cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] |=
+			EHT_PHYCAP_MU_BEAMFORMER_MASK;
+	else
 		cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] &=
 			~EHT_PHYCAP_MU_BEAMFORMER_MASK;
 
