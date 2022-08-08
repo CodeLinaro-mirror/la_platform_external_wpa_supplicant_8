@@ -45,6 +45,9 @@ extern "C"
 #include "utils/includes.h"
 #include "utils/wpa_debug.h"
 #include "ap/hostapd.h"
+
+#define THERMAL_LEVEL_UNKNOWN "9"
+#define MIN_THERMAL_REPLY_SIZE 3
 }
 
 namespace vendor {

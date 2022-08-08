@@ -259,6 +259,18 @@ HostapdStatus HostapdVendor::registerCallbackInternal_1_3(
 	// Save client callbacks
 	vendor_hostapd_callbacks_.push_back(callback);
 
+	// return default thermal status
+	auto res = hostapdCmdInternal(iface_name, "DRIVER GET_THERMAL_INFO");
+	std::string reply = res.second;
+	std::string thermal_level = THERMAL_LEVEL_UNKNOWN;
+	if (reply.size() >= MIN_THERMAL_REPLY_SIZE) {
+		int index = reply.rfind(" ");
+		thermal_level = reply.substr(index + 1);
+	}
+	std::string thermal_event = "CTRL-EVENT-THERMAL-CHANGED level=";
+	thermal_event += thermal_level;
+	callback->onCtrlEvent(iface_name, thermal_event);
+
 	return {HostapdStatusCode::SUCCESS, ""};
 }
 

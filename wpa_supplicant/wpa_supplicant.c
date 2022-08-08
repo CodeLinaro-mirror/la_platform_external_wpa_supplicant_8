@@ -6694,7 +6694,7 @@ static void wpa_supplicant_deinit_iface(struct wpa_supplicant *wpa_s,
 	struct wpa_global *global = wpa_s->global;
 	struct wpa_supplicant *iface, *prev;
 
-	if (wpa_s == wpa_s->parent)
+	if (wpa_s == wpa_s->parent || (wpa_s == wpa_s->p2pdev && wpa_s->p2p_mgmt))
 		wpas_p2p_group_remove(wpa_s, "*");
 
 	iface = global->ifaces;
@@ -8264,8 +8264,14 @@ int wpa_is_bss_tmp_disallowed(struct wpa_supplicant *wpa_s,
 		return 0;
 
 	if (disallowed->rssi_threshold != 0 &&
-	    bss->level > disallowed->rssi_threshold)
+	    bss->level > disallowed->rssi_threshold) {
+		eloop_cancel_timeout(wpa_bss_tmp_disallow_timeout,
+				     wpa_s, disallowed);
+		dl_list_del(&disallowed->list);
+		os_free(disallowed);
+		wpa_set_driver_tmp_disallow_list(wpa_s);
 		return 0;
+	}
 
 	return 1;
 }
