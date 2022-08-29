@@ -16,9 +16,8 @@ import threading
 import time
 
 import hostapd
-from utils import HwsimSkip, alloc_fail, fail_test, wait_fail_trigger
+from utils import *
 from test_ap_eap import check_eap_capa, check_hlr_auc_gw_support, int_eap_server_params
-from test_erp import check_erp_capa
 
 try:
     import OpenSSL
@@ -106,7 +105,7 @@ def start_radius_server(eap_handler):
                 logger.info("No EAP request available")
             reply.code = pyrad.packet.AccessChallenge
 
-            hmac_obj = hmac.new(reply.secret)
+            hmac_obj = hmac.new(reply.secret, digestmod=hashlib.md5)
             hmac_obj.update(struct.pack("B", reply.code))
             hmac_obj.update(struct.pack("B", reply.id))
 
@@ -984,7 +983,7 @@ def test_eap_proto_sake_server(dev, apdev):
     # Unknown session
     # --> EAP-SAKE: Session ID mismatch
     sess, = struct.unpack('B', binascii.unhexlify(resp[20:22]))
-    sess = binascii.hexlify(struct.pack('B', sess + 1)).decode()
+    sess = binascii.hexlify(struct.pack('B', (sess + 1) % 256)).decode()
     msg = resp[0:4] + "0008" + resp[8:12] + "0008" + "3002" + sess + "00"
     tx_msg(dev[0], hapd, msg)
     # Unknown subtype
@@ -2870,10 +2869,10 @@ def test_eap_proto_eke_errors(dev, apdev):
              (1, "os_get_random;eap_eke_dhcomp", None),
              (1, "aes_128_cbc_encrypt;eap_eke_dhcomp", None),
              (1, "aes_128_cbc_decrypt;eap_eke_shared_secret", None),
-             (1, "eap_eke_prf;eap_eke_shared_secret", None),
-             (1, "eap_eke_prfplus;eap_eke_derive_ke_ki", None),
-             (1, "eap_eke_prfplus;eap_eke_derive_ka", None),
-             (1, "eap_eke_prfplus;eap_eke_derive_msk", None),
+             (1, "hmac_sha256_vector;eap_eke_shared_secret", None),
+             (1, "eap_eke_prf_hmac_sha256;eap_eke_derive_ke_ki", None),
+             (1, "eap_eke_prf_hmac_sha256;eap_eke_derive_ka", None),
+             (1, "eap_eke_prf_hmac_sha256;eap_eke_derive_msk", None),
              (1, "os_get_random;eap_eke_prot", None),
              (1, "aes_128_cbc_decrypt;eap_eke_decrypt_prot", None),
              (1, "eap_eke_derive_key;eap_eke_process_commit", None),
@@ -5629,8 +5628,7 @@ def test_eap_proto_aka_errors(dev, apdev):
     tests = [(1, "=eap_aka_learn_ids"),
              (2, "=eap_aka_learn_ids"),
              (1, "eap_sim_parse_encr;eap_aka_process_challenge"),
-             (1, "wpabuf_dup;eap_aka_add_id_msg"),
-             (1, "wpabuf_resize;eap_aka_add_id_msg"),
+             (1, "wpabuf_alloc;eap_aka_add_id_msg"),
              (1, "eap_aka_getKey"),
              (1, "eap_aka_get_emsk"),
              (1, "eap_aka_get_session_id")]

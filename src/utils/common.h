@@ -482,7 +482,8 @@ int hexstr2bin(const char *hex, u8 *buf, size_t len);
 void inc_byte_array(u8 *counter, size_t len);
 void buf_shift_right(u8 *buf, size_t len, size_t bits);
 void wpa_get_ntp_timestamp(u8 *buf);
-int wpa_scnprintf(char *buf, size_t size, const char *fmt, ...);
+int wpa_scnprintf(char *buf, size_t size, const char *fmt, ...)
+	PRINTF_FORMAT(3, 4);
 int wpa_snprintf_hex_sep(char *buf, size_t buf_size, const u8 *data, size_t len,
 			 char sep);
 int wpa_snprintf_hex(char *buf, size_t buf_size, const u8 *data, size_t len);
@@ -593,5 +594,14 @@ void * __hide_aliasing_typecast(void *foo);
 #else /* CONFIG_VALGRIND */
 #define WPA_MEM_DEFINED(ptr, len) do { } while (0)
 #endif /* CONFIG_VALGRIND */
+
+#ifdef CONFIG_MARKER
+void place_marker(char const *name);
+#else
+static inline
+void place_marker(char const *name)
+{
+}
+#endif
 
 #endif /* COMMON_H */

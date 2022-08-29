@@ -63,6 +63,7 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_he_mu_edca_parameter_set(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_spatial_reuse(struct hostapd_data *hapd, u8 *eid);
+u8 * hostapd_eid_he_6ghz_band_cap(struct hostapd_data *hapd, u8 *eid);
 
 int hostapd_ht_operation_update(struct hostapd_iface *iface);
 void ieee802_11_send_sa_query_req(struct hostapd_data *hapd,
@@ -95,6 +96,8 @@ u16 set_sta_vht_opmode(struct hostapd_data *hapd, struct sta_info *sta,
 u16 copy_sta_he_capab(struct hostapd_data *hapd, struct sta_info *sta,
 		      enum ieee80211_op_mode opmode, const u8 *he_capab,
 		      size_t he_capab_len);
+u16 copy_sta_he_6ghz_capab(struct hostapd_data *hapd, struct sta_info *sta,
+			   const u8 *he_6ghz_capab);
 int hostapd_get_he_twt_responder(struct hostapd_data *hapd,
 				 enum ieee80211_op_mode mode);
 void hostapd_tx_status(struct hostapd_data *hapd, const u8 *addr,
@@ -191,5 +194,10 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
 
 void auth_sae_process_commit(void *eloop_ctx, void *user_ctx);
 u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len);
+size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type);
+u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type);
+
+u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
+		    const u8 *ext_capab_ie, size_t ext_capab_ie_len);
 
 #endif /* IEEE802_11_H */
