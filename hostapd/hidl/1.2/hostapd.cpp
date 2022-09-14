@@ -399,6 +399,7 @@ std::string CreateHostapdConfig(
 		    "ieee80211w=1\n"
 		    "transition_disable=1\n"
 		    "sae_require_mfp=1\n"
+		    "sae_pwe=2\n"
 		    "wpa_passphrase=%s\n"
 		    "sae_password=%s",
 		    nw_params.passphrase.c_str(),
@@ -415,6 +416,7 @@ std::string CreateHostapdConfig(
 		    "ieee80211w=2\n"
 		    "transition_disable=1\n"
 		    "sae_require_mfp=2\n"
+		    "sae_pwe=2\n"
 		    "sae_password=%s",
 		    nw_params.passphrase.c_str());
 		break;
