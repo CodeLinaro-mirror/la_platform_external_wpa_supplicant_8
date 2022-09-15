@@ -12,6 +12,7 @@
 #include "utils/eloop.h"
 #include "common/ieee802_11_defs.h"
 #include "common/wpa_ctrl.h"
+#include "common/ocv.h"
 #include "ap/hostapd.h"
 #include "ap/sta_info.h"
 #include "ap/ap_config.h"
@@ -53,9 +54,10 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 	size_t len;
 	size_t gtk_elem_len = 0;
 	size_t igtk_elem_len = 0;
+	size_t bigtk_elem_len = 0;
 	struct wnm_sleep_element wnmsleep_ie;
-	u8 *wnmtfs_ie;
-	u8 wnmsleep_ie_len;
+	u8 *wnmtfs_ie, *oci_ie;
+	u8 wnmsleep_ie_len, oci_ie_len;
 	u16 wnmtfs_ie_len;
 	u8 *pos;
 	struct sta_info *sta;
@@ -88,10 +90,53 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 		wnmtfs_ie = NULL;
 	}
 
+	oci_ie = NULL;
+	oci_ie_len = 0;
+#ifdef CONFIG_OCV
+	if (action_type == WNM_SLEEP_MODE_EXIT &&
+	    wpa_auth_uses_ocv(sta->wpa_sm)) {
+		struct wpa_channel_info ci;
+
+		if (hostapd_drv_channel_info(hapd, &ci) != 0) {
+			wpa_printf(MSG_WARNING,
+				   "Failed to get channel info for OCI element in WNM-Sleep Mode frame");
+			os_free(wnmtfs_ie);
+			return -1;
+		}
+#ifdef CONFIG_TESTING_OPTIONS
+		if (hapd->conf->oci_freq_override_wnm_sleep) {
+			wpa_printf(MSG_INFO,
+				   "TEST: Override OCI frequency %d -> %u MHz",
+				   ci.frequency,
+				   hapd->conf->oci_freq_override_wnm_sleep);
+			ci.frequency = hapd->conf->oci_freq_override_wnm_sleep;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+		oci_ie_len = OCV_OCI_EXTENDED_LEN;
+		oci_ie = os_zalloc(oci_ie_len);
+		if (!oci_ie) {
+			wpa_printf(MSG_WARNING,
+				   "Failed to allocate buffer for OCI element in WNM-Sleep Mode frame");
+			os_free(wnmtfs_ie);
+			return -1;
+		}
+
+		if (ocv_insert_extended_oci(&ci, oci_ie) < 0) {
+			os_free(wnmtfs_ie);
+			os_free(oci_ie);
+			return -1;
+		}
+	}
+#endif /* CONFIG_OCV */
+
 #define MAX_GTK_SUBELEM_LEN 45
 #define MAX_IGTK_SUBELEM_LEN 26
+#define MAX_BIGTK_SUBELEM_LEN 26
 	mgmt = os_zalloc(sizeof(*mgmt) + wnmsleep_ie_len +
-			 MAX_GTK_SUBELEM_LEN + MAX_IGTK_SUBELEM_LEN);
+			 MAX_GTK_SUBELEM_LEN + MAX_IGTK_SUBELEM_LEN +
+			 MAX_BIGTK_SUBELEM_LEN +
+			 oci_ie_len);
 	if (mgmt == NULL) {
 		wpa_printf(MSG_DEBUG, "MLME: Failed to allocate buffer for "
 			   "WNM-Sleep Response action frame");
@@ -117,7 +162,6 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 		pos += gtk_elem_len;
 		wpa_printf(MSG_DEBUG, "Pass 4, gtk_len = %d",
 			   (int) gtk_elem_len);
-#ifdef CONFIG_IEEE80211W
 		res = wpa_wnmsleep_igtk_subelem(sta->wpa_sm, pos);
 		if (res < 0)
 			goto fail;
@@ -125,20 +169,38 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 		pos += igtk_elem_len;
 		wpa_printf(MSG_DEBUG, "Pass 4 igtk_len = %d",
 			   (int) igtk_elem_len);
-#endif /* CONFIG_IEEE80211W */
+		if (hapd->conf->beacon_prot &&
+		    (hapd->iface->drv_flags &
+		     WPA_DRIVER_FLAGS_BEACON_PROTECTION)) {
+			res = wpa_wnmsleep_bigtk_subelem(sta->wpa_sm, pos);
+			if (res < 0)
+				goto fail;
+			bigtk_elem_len = res;
+			pos += bigtk_elem_len;
+			wpa_printf(MSG_DEBUG, "Pass 4 bigtk_len = %d",
+				   (int) bigtk_elem_len);
+		}
 
 		WPA_PUT_LE16((u8 *)
 			     &mgmt->u.action.u.wnm_sleep_resp.keydata_len,
-			     gtk_elem_len + igtk_elem_len);
+			     gtk_elem_len + igtk_elem_len + bigtk_elem_len);
 	}
 	os_memcpy(pos, &wnmsleep_ie, wnmsleep_ie_len);
 	/* copy TFS IE here */
 	pos += wnmsleep_ie_len;
-	if (wnmtfs_ie)
+	if (wnmtfs_ie) {
 		os_memcpy(pos, wnmtfs_ie, wnmtfs_ie_len);
+		pos += wnmtfs_ie_len;
+	}
+#ifdef CONFIG_OCV
+	/* copy OCV OCI here */
+	if (oci_ie_len > 0)
+		os_memcpy(pos, oci_ie, oci_ie_len);
+#endif /* CONFIG_OCV */
 
 	len = 1 + sizeof(mgmt->u.action.u.wnm_sleep_resp) + gtk_elem_len +
-		igtk_elem_len + wnmsleep_ie_len + wnmtfs_ie_len;
+		igtk_elem_len + bigtk_elem_len +
+		wnmsleep_ie_len + wnmtfs_ie_len + oci_ie_len;
 
 	/* In driver, response frame should be forced to sent when STA is in
 	 * PS mode */
@@ -151,8 +213,8 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 
 		/* when entering wnmsleep
 		 * 1. pause the node in driver
-		 * 2. mark the node so that AP won't update GTK/IGTK during
-		 * WNM Sleep
+		 * 2. mark the node so that AP won't update GTK/IGTK/BIGTK
+		 * during WNM Sleep
 		 */
 		if (wnmsleep_ie.status == WNM_STATUS_SLEEP_ACCEPT &&
 		    wnmsleep_ie.action_type == WNM_SLEEP_MODE_ENTER) {
@@ -163,7 +225,7 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 		}
 		/* when exiting wnmsleep
 		 * 1. unmark the node
-		 * 2. start GTK/IGTK update if MFP is not used
+		 * 2. start GTK/IGTK/BIGTK update if MFP is not used
 		 * 3. unpause the node in driver
 		 */
 		if ((wnmsleep_ie.status == WNM_STATUS_SLEEP_ACCEPT ||
@@ -183,8 +245,10 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 
 #undef MAX_GTK_SUBELEM_LEN
 #undef MAX_IGTK_SUBELEM_LEN
+#undef MAX_BIGTK_SUBELEM_LEN
 fail:
 	os_free(wnmtfs_ie);
+	os_free(oci_ie);
 	os_free(mgmt);
 	return res;
 }
@@ -201,13 +265,11 @@ static void ieee802_11_rx_wnmsleep_req(struct hostapd_data *hapd,
 	u8 *tfsreq_ie_start = NULL;
 	u8 *tfsreq_ie_end = NULL;
 	u16 tfsreq_ie_len = 0;
-
-	if (len < 1) {
-		wpa_printf(MSG_DEBUG,
-			   "WNM: Ignore too short WNM-Sleep Mode Request from "
-			   MACSTR, MAC2STR(addr));
-		return;
-	}
+#ifdef CONFIG_OCV
+	struct sta_info *sta;
+	const u8 *oci_ie = NULL;
+	u8 oci_ie_len = 0;
+#endif /* CONFIG_OCV */
 
 	if (!hapd->conf->wnm_sleep_mode) {
 		wpa_printf(MSG_DEBUG, "Ignore WNM-Sleep Mode Request from "
@@ -235,6 +297,12 @@ static void ieee802_11_rx_wnmsleep_req(struct hostapd_data *hapd,
 			if (!tfsreq_ie_start)
 				tfsreq_ie_start = (u8 *) pos;
 			tfsreq_ie_end = (u8 *) pos;
+#ifdef CONFIG_OCV
+		} else if (*pos == WLAN_EID_EXTENSION && ie_len >= 1 &&
+			   pos[2] == WLAN_EID_EXT_OCV_OCI) {
+			oci_ie = pos + 3;
+			oci_ie_len = ie_len - 1;
+#endif /* CONFIG_OCV */
 		} else
 			wpa_printf(MSG_DEBUG, "WNM: EID %d not recognized",
 				   *pos);
@@ -245,6 +313,28 @@ static void ieee802_11_rx_wnmsleep_req(struct hostapd_data *hapd,
 		wpa_printf(MSG_DEBUG, "No WNM-Sleep IE found");
 		return;
 	}
+
+#ifdef CONFIG_OCV
+	sta = ap_get_sta(hapd, addr);
+	if (wnmsleep_ie->action_type == WNM_SLEEP_MODE_EXIT &&
+	    sta && wpa_auth_uses_ocv(sta->wpa_sm)) {
+		struct wpa_channel_info ci;
+
+		if (hostapd_drv_channel_info(hapd, &ci) != 0) {
+			wpa_printf(MSG_WARNING,
+				   "Failed to get channel info to validate received OCI in WNM-Sleep Mode frame");
+			return;
+		}
+
+		if (ocv_verify_tx_params(oci_ie, oci_ie_len, &ci,
+					 channel_width_to_int(ci.chanwidth),
+					 ci.seg1_idx) != OCI_SUCCESS) {
+			wpa_msg(hapd, MSG_WARNING, "WNM: OCV failed: %s",
+				ocv_errorstr);
+			return;
+		}
+	}
+#endif /* CONFIG_OCV */
 
 	if (wnmsleep_ie->action_type == WNM_SLEEP_MODE_ENTER &&
 	    tfsreq_ie_start && tfsreq_ie_end &&
@@ -444,6 +534,31 @@ static void ieee802_11_rx_bss_trans_mgmt_resp(struct hostapd_data *hapd,
 }
 
 
+static void wnm_beacon_protection_failure(struct hostapd_data *hapd,
+					  const u8 *addr)
+{
+	struct sta_info *sta;
+
+	if (!hapd->conf->beacon_prot ||
+	    !(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_BEACON_PROTECTION))
+		return;
+
+	sta = ap_get_sta(hapd, addr);
+	if (!sta || !(sta->flags & WLAN_STA_AUTHORIZED)) {
+		wpa_printf(MSG_DEBUG, "Station " MACSTR
+			   " not found for received WNM-Notification Request",
+			   MAC2STR(addr));
+		return;
+	}
+
+	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+		       HOSTAPD_LEVEL_INFO,
+		       "Beacon protection failure reported");
+	wpa_msg(hapd->msg_ctx, MSG_INFO, WPA_EVENT_UNPROT_BEACON "reporter="
+		MACSTR, MAC2STR(addr));
+}
+
+
 static void ieee802_11_rx_wnm_notification_req(struct hostapd_data *hapd,
 					       const u8 *addr, const u8 *buf,
 					       size_t len)
@@ -462,8 +577,56 @@ static void ieee802_11_rx_wnm_notification_req(struct hostapd_data *hapd,
 		   MAC2STR(addr), dialog_token, type);
 	wpa_hexdump(MSG_MSGDUMP, "WNM: Notification Request subelements",
 		    buf, len);
-	if (type == WLAN_EID_VENDOR_SPECIFIC)
+	switch (type) {
+	case WNM_NOTIF_TYPE_BEACON_PROTECTION_FAILURE:
+		wnm_beacon_protection_failure(hapd, addr);
+		break;
+	case WNM_NOTIF_TYPE_VENDOR_SPECIFIC:
 		mbo_ap_wnm_notification_req(hapd, addr, buf, len);
+		break;
+	}
+}
+
+
+static void ieee802_11_rx_wnm_coloc_intf_report(struct hostapd_data *hapd,
+						const u8 *addr, const u8 *buf,
+						size_t len)
+{
+	u8 dialog_token;
+	char *hex;
+	size_t hex_len;
+
+	if (!hapd->conf->coloc_intf_reporting) {
+		wpa_printf(MSG_DEBUG,
+			   "WNM: Ignore unexpected Collocated Interference Report from "
+			   MACSTR, MAC2STR(addr));
+		return;
+	}
+
+	if (len < 1) {
+		wpa_printf(MSG_DEBUG,
+			   "WNM: Ignore too short Collocated Interference Report from "
+			   MACSTR, MAC2STR(addr));
+		return;
+	}
+	dialog_token = *buf++;
+	len--;
+
+	wpa_printf(MSG_DEBUG,
+		   "WNM: Received Collocated Interference Report frame from "
+		   MACSTR " (dialog_token=%u)",
+		   MAC2STR(addr), dialog_token);
+	wpa_hexdump(MSG_MSGDUMP, "WNM: Collocated Interference Report Elements",
+		    buf, len);
+
+	hex_len = 2 * len + 1;
+	hex = os_malloc(hex_len);
+	if (!hex)
+		return;
+	wpa_snprintf_hex(hex, hex_len, buf, len);
+	wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO, COLOC_INTF_REPORT MACSTR " %d %s",
+		     MAC2STR(addr), dialog_token, hex);
+	os_free(hex);
 }
 
 
@@ -496,6 +659,10 @@ int ieee802_11_rx_wnm_action_ap(struct hostapd_data *hapd,
 	case WNM_NOTIFICATION_REQ:
 		ieee802_11_rx_wnm_notification_req(hapd, mgmt->sa, payload,
 						   plen);
+		return 0;
+	case WNM_COLLOCATED_INTERFERENCE_REPORT:
+		ieee802_11_rx_wnm_coloc_intf_report(hapd, mgmt->sa, payload,
+						    plen);
 		return 0;
 	}
 
@@ -531,7 +698,7 @@ int wnm_send_disassoc_imminent(struct hostapd_data *hapd,
 
 	wpa_printf(MSG_DEBUG, "WNM: Send BSS Transition Management Request frame to indicate imminent disassociation (disassoc_timer=%d) to "
 		   MACSTR, disassoc_timer, MAC2STR(sta->addr));
-	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0) < 0) {
+	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0, NULL, 0, 0) < 0) {
 		wpa_printf(MSG_DEBUG, "Failed to send BSS Transition "
 			   "Management Request frame");
 		return -1;
@@ -604,7 +771,7 @@ int wnm_send_ess_disassoc_imminent(struct hostapd_data *hapd,
 	os_memcpy(pos, url, url_len);
 	pos += url_len;
 
-	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0) < 0) {
+	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0, NULL, 0, 0) < 0) {
 		wpa_printf(MSG_DEBUG, "Failed to send BSS Transition "
 			   "Management Request frame");
 		return -1;
@@ -621,8 +788,8 @@ int wnm_send_ess_disassoc_imminent(struct hostapd_data *hapd,
 
 int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 			u8 req_mode, int disassoc_timer, u8 valid_int,
-			const u8 *bss_term_dur, const char *url,
-			const u8 *nei_rep, size_t nei_rep_len,
+			const u8 *bss_term_dur, u8 dialog_token,
+			const char *url, const u8 *nei_rep, size_t nei_rep_len,
 			const u8 *mbo_attrs, size_t mbo_len)
 {
 	u8 *buf, *pos;
@@ -630,8 +797,10 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 	size_t url_len;
 
 	wpa_printf(MSG_DEBUG, "WNM: Send BSS Transition Management Request to "
-		   MACSTR " req_mode=0x%x disassoc_timer=%d valid_int=0x%x",
-		   MAC2STR(sta->addr), req_mode, disassoc_timer, valid_int);
+		   MACSTR
+		   " req_mode=0x%x disassoc_timer=%d valid_int=0x%x dialog_token=%u",
+		   MAC2STR(sta->addr), req_mode, disassoc_timer, valid_int,
+		   dialog_token);
 	buf = os_zalloc(1000 + nei_rep_len + mbo_len);
 	if (buf == NULL)
 		return -1;
@@ -643,7 +812,7 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 	os_memcpy(mgmt->bssid, hapd->own_addr, ETH_ALEN);
 	mgmt->u.action.category = WLAN_ACTION_WNM;
 	mgmt->u.action.u.bss_tm_req.action = WNM_BSS_TRANS_MGMT_REQ;
-	mgmt->u.action.u.bss_tm_req.dialog_token = 1;
+	mgmt->u.action.u.bss_tm_req.dialog_token = dialog_token;
 	mgmt->u.action.u.bss_tm_req.req_mode = req_mode;
 	mgmt->u.action.u.bss_tm_req.disassoc_timer =
 		host_to_le16(disassoc_timer);
@@ -680,7 +849,7 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 				  mbo_len);
 	}
 
-	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0) < 0) {
+	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0, NULL, 0, 0) < 0) {
 		wpa_printf(MSG_DEBUG,
 			   "Failed to send BSS Transition Management Request frame");
 		os_free(buf);
@@ -691,6 +860,43 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 	if (disassoc_timer) {
 		/* send disassociation frame after time-out */
 		set_disassoc_timer(hapd, sta, disassoc_timer);
+	}
+
+	return 0;
+}
+
+
+int wnm_send_coloc_intf_req(struct hostapd_data *hapd, struct sta_info *sta,
+			    unsigned int auto_report, unsigned int timeout)
+{
+	u8 buf[100], *pos;
+	struct ieee80211_mgmt *mgmt;
+	u8 dialog_token = 1;
+
+	if (auto_report > 3 || timeout > 63)
+		return -1;
+	os_memset(buf, 0, sizeof(buf));
+	mgmt = (struct ieee80211_mgmt *) buf;
+	mgmt->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT,
+					   WLAN_FC_STYPE_ACTION);
+	os_memcpy(mgmt->da, sta->addr, ETH_ALEN);
+	os_memcpy(mgmt->sa, hapd->own_addr, ETH_ALEN);
+	os_memcpy(mgmt->bssid, hapd->own_addr, ETH_ALEN);
+	mgmt->u.action.category = WLAN_ACTION_WNM;
+	mgmt->u.action.u.coloc_intf_req.action =
+		WNM_COLLOCATED_INTERFERENCE_REQ;
+	mgmt->u.action.u.coloc_intf_req.dialog_token = dialog_token;
+	mgmt->u.action.u.coloc_intf_req.req_info = auto_report | (timeout << 2);
+	pos = &mgmt->u.action.u.coloc_intf_req.req_info;
+	pos++;
+
+	wpa_printf(MSG_DEBUG, "WNM: Sending Collocated Interference Request to "
+		   MACSTR " (dialog_token=%u auto_report=%u timeout=%u)",
+		   MAC2STR(sta->addr), dialog_token, auto_report, timeout);
+	if (hostapd_drv_send_mlme(hapd, buf, pos - buf, 0, NULL, 0, 0) < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "WNM: Failed to send Collocated Interference Request frame");
+		return -1;
 	}
 
 	return 0;

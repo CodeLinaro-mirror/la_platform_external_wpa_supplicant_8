@@ -28,9 +28,9 @@ static void usage(void)
 	       "s"
 #endif /* CONFIG_DEBUG_SYSLOG */
 	       "t"
-#ifdef CONFIG_DBUS
+#ifdef CONFIG_CTRL_IFACE_DBUS_NEW
 	       "u"
-#endif /* CONFIG_DBUS */
+#endif /* CONFIG_CTRL_IFACE_DBUS_NEW */
 	       "vW] [-P<pid file>] "
 	       "[-g<global ctrl>] \\\n"
 	       "        [-G<group>] \\\n"
@@ -93,17 +93,14 @@ static void usage(void)
 #ifdef CONFIG_DEBUG_SYSLOG
 	       "  -s = log output to syslog instead of stdout\n"
 #endif /* CONFIG_DEBUG_SYSLOG */
-#ifdef CONFIG_HIDL
-	       "  -S = override default HIDL service name\n"
-#endif /* CONFIG_HIDL */
 	       "  -t = include timestamp in debug messages\n"
 #ifdef CONFIG_DEBUG_LINUX_TRACING
 	       "  -T = record to Linux tracing in addition to logging\n"
 	       "       (records all messages regardless of debug verbosity)\n"
 #endif /* CONFIG_DEBUG_LINUX_TRACING */
-#ifdef CONFIG_DBUS
+#ifdef CONFIG_CTRL_IFACE_DBUS_NEW
 	       "  -u = enable DBus control interface\n"
-#endif /* CONFIG_DBUS */
+#endif /* CONFIG_CTRL_IFACE_DBUS_NEW */
 	       "  -v = show version\n"
 	       "  -W = wait for a control interface monitor before starting\n");
 
@@ -204,7 +201,7 @@ int main(int argc, char *argv[])
 
 	for (;;) {
 		c = getopt(argc, argv,
-			   "b:Bc:C:D:de:f:g:G:hi:I:KLMm:No:O:p:P:qsS:TtuvW");
+			   "b:Bc:C:D:de:f:g:G:hi:I:KLMm:No:O:p:P:qsTtuvW");
 		if (c < 0)
 			break;
 		switch (c) {
@@ -290,11 +287,6 @@ int main(int argc, char *argv[])
 			params.wpa_debug_syslog++;
 			break;
 #endif /* CONFIG_DEBUG_SYSLOG */
-#ifdef CONFIG_HIDL
-		case 'S':
-			params.hidl_service_name = optarg;
-			break;
-#endif /* CONFIG_HIDL */
 #ifdef CONFIG_DEBUG_LINUX_TRACING
 		case 'T':
 			params.wpa_debug_tracing++;
@@ -303,11 +295,11 @@ int main(int argc, char *argv[])
 		case 't':
 			params.wpa_debug_timestamp++;
 			break;
-#ifdef CONFIG_DBUS
+#ifdef CONFIG_CTRL_IFACE_DBUS_NEW
 		case 'u':
 			params.dbus_ctrl_interface = 1;
 			break;
-#endif /* CONFIG_DBUS */
+#endif /* CONFIG_CTRL_IFACE_DBUS_NEW */
 		case 'v':
 			printf("%s\n", wpa_supplicant_version);
 			exitcode = 0;

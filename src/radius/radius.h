@@ -198,6 +198,11 @@ enum {
 	RADIUS_VENDOR_ATTR_WFA_HS20_STA_VERSION = 3,
 	RADIUS_VENDOR_ATTR_WFA_HS20_DEAUTH_REQ = 4,
 	RADIUS_VENDOR_ATTR_WFA_HS20_SESSION_INFO_URL = 5,
+	RADIUS_VENDOR_ATTR_WFA_HS20_ROAMING_CONSORTIUM = 6,
+	RADIUS_VENDOR_ATTR_WFA_HS20_T_C_FILENAME = 7,
+	RADIUS_VENDOR_ATTR_WFA_HS20_TIMESTAMP = 8,
+	RADIUS_VENDOR_ATTR_WFA_HS20_T_C_FILTERING = 9,
+	RADIUS_VENDOR_ATTR_WFA_HS20_T_C_URL = 10,
 };
 
 #ifdef _MSC_VER
@@ -220,6 +225,9 @@ struct radius_msg;
 /* Default size to be allocated for attribute array */
 #define RADIUS_DEFAULT_ATTR_COUNT 16
 
+/* Maximum message length for incoming RADIUS messages, as stated in RFC 2865
+ * Section 3 ("Packet Format").*/
+#define RADIUS_MAX_MSG_LEN 4096
 
 /* MAC address ASCII format for IEEE 802.1X use
  * (draft-congdon-radius-8021x-20.txt) */

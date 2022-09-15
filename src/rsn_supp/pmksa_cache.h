@@ -28,6 +28,7 @@ struct rsn_pmksa_cache_entry {
 	 */
 	u8 fils_cache_id[2];
 	unsigned int fils_cache_id_set:1;
+	unsigned int dpp_pfs:1;
 
 	os_time_t reauth_time;
 
@@ -42,6 +43,7 @@ struct rsn_pmksa_cache_entry {
 	 */
 	void *network_ctx;
 	int opportunistic;
+	bool external;
 };
 
 struct rsn_pmksa_cache;
@@ -57,11 +59,14 @@ enum pmksa_free_reason {
 struct rsn_pmksa_cache *
 pmksa_cache_init(void (*free_cb)(struct rsn_pmksa_cache_entry *entry,
 				 void *ctx, enum pmksa_free_reason reason),
+		 bool (*is_current_cb)(struct rsn_pmksa_cache_entry *entry,
+				       void *ctx),
 		 void *ctx, struct wpa_sm *sm);
 void pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
 struct rsn_pmksa_cache_entry * pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 					       const u8 *aa, const u8 *pmkid,
-					       const void *network_ctx);
+					       const void *network_ctx,
+					       int akmp);
 int pmksa_cache_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len);
 struct rsn_pmksa_cache_entry * pmksa_cache_head(struct rsn_pmksa_cache *pmksa);
 struct rsn_pmksa_cache_entry *
@@ -76,18 +81,22 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get_current(struct wpa_sm *sm);
 void pmksa_cache_clear_current(struct wpa_sm *sm);
 int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 			    const u8 *bssid, void *network_ctx,
-			    int try_opportunistic, const u8 *fils_cache_id);
+			    int try_opportunistic, const u8 *fils_cache_id,
+			    int akmp);
 struct rsn_pmksa_cache_entry *
 pmksa_cache_get_opportunistic(struct rsn_pmksa_cache *pmksa,
-			      void *network_ctx, const u8 *aa);
+			      void *network_ctx, const u8 *aa, int akmp);
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
-		       const u8 *pmk, size_t pmk_len);
+		       const u8 *pmk, size_t pmk_len, bool external_only);
+void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa);
 
 #else /* IEEE8021X_EAPOL */
 
 static inline struct rsn_pmksa_cache *
 pmksa_cache_init(void (*free_cb)(struct rsn_pmksa_cache_entry *entry,
 				 void *ctx, enum pmksa_free_reason reason),
+		 bool (*is_current_cb)(struct rsn_pmksa_cache_entry *entry,
+				       void *ctx),
 		 void *ctx, struct wpa_sm *sm)
 {
 	return (void *) -1;
@@ -99,7 +108,7 @@ static inline void pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
 
 static inline struct rsn_pmksa_cache_entry *
 pmksa_cache_get(struct rsn_pmksa_cache *pmksa, const u8 *aa, const u8 *pmkid,
-		const void *network_ctx)
+		const void *network_ctx, int akmp)
 {
 	return NULL;
 }
@@ -146,14 +155,20 @@ static inline int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 					  const u8 *bssid,
 					  void *network_ctx,
 					  int try_opportunistic,
-					  const u8 *fils_cache_id)
+					  const u8 *fils_cache_id,
+					  int akmp)
 {
 	return -1;
 }
 
 static inline void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa,
 				     void *network_ctx,
-				     const u8 *pmk, size_t pmk_len)
+				     const u8 *pmk, size_t pmk_len,
+				     bool external_only)
+{
+}
+
+static inline void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa)
 {
 }
 
