@@ -1312,7 +1312,7 @@ void place_marker(char const *name)
 
 	res = os_snprintf(marker, sizeof(marker),
 			  "108 WPA-SUPP/HOSTAPD %s", name);
-	wpa_printf(MSG_DEBUG, "%s:%s,len=%d,res=%d\n",
+	wpa_printf(MSG_DEBUG, "%s:%s,len=%zu,res=%d\n",
 		   __func__, marker, os_strlen(marker), res);
 	f = fopen("/sys/kernel/debug/bootkpi/kpi_values", "wb");
 	if (!f) {
