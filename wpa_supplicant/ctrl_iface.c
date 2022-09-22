@@ -9806,6 +9806,15 @@ static int wpas_ctrl_iface_driver_event(struct wpa_supplicant *wpa_s, char *cmd)
 		ev = EVENT_INTERFACE_ENABLED;
 	} else if (os_strcmp(cmd, "INTERFACE_DISABLED") == 0) {
 		ev = EVENT_INTERFACE_DISABLED;
+	} else if (os_strcmp(cmd, "THERMAL_CHANGED") == 0) {
+		// "THERMAL_CHANGED level=<level>"
+		ev = EVENT_THERMAL_CHANGED;
+		if (param == NULL)
+			return -1;
+		pos = os_strstr(param, "level=");
+		if (!pos)
+			return -1;
+		event.thermal_info.level = atoi(pos + 6);
 	} else if (os_strcmp(cmd, "AVOID_FREQUENCIES") == 0) {
 		ev = EVENT_AVOID_FREQUENCIES;
 		if (param == NULL)
