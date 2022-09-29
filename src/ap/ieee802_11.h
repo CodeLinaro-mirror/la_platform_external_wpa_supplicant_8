@@ -225,5 +225,9 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 			const u8 *known_bss, size_t known_bss_len);
 void punct_update_legacy_bw(u16 bitmap, u8 pri_chan,
 			    enum oper_chan_width *width, u8 *seg0, u8 *seg1);
+size_t hostapd_eid_basic_mle_len(struct hostapd_data *hapd,
+				 enum ieee80211_op_mode opmode);
+u8 * hostapd_eid_basic_mle(struct hostapd_data *hapd, u8 *eid,
+			   enum ieee80211_op_mode opmode);
 
 #endif /* IEEE802_11_H */

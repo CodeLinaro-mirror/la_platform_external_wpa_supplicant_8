@@ -1728,6 +1728,11 @@ struct wpa_driver_ap_params {
 	 * subchannel is punctured, otherwise active.
 	 */
 	u16 punct_bitmap;
+
+	/**
+	 * link_id - MLO Link ID
+	 * Set to a valid Link ID (0-14) when applicable, otherwise -1. */
+	int link_id;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -4955,6 +4960,7 @@ struct wpa_driver_ops {
 			      const u8 *match, size_t match_len,
 			      bool multicast);
 #endif /* CONFIG_TESTING_OPTIONS */
+	int (*add_link)(void *priv, u8 link_id, const u8 *addr);
 };
 
 /**

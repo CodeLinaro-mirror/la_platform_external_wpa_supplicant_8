@@ -435,4 +435,13 @@ hostapd_drv_register_frame(struct hostapd_data *hapd, u16 type,
 }
 #endif /* CONFIG_TESTING_OPTIONS */
 
+static inline int hostapd_drv_add_link(struct hostapd_data *hapd,
+				       u8 link_id, const u8 *addr)
+{
+	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->add_link)
+		return -1;
+
+	return hapd->driver->add_link(hapd->drv_priv, link_id, addr);
+}
+
 #endif /* AP_DRV_OPS */

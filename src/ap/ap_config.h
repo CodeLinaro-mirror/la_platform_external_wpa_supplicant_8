@@ -915,6 +915,8 @@ struct hostapd_bss_config {
 	u8 rnr;
 	char *config_id;
 	bool xrates_supported;
+
+	u8 link_id; /* MLO Link ID for MLD AP */
 };
 
 /**

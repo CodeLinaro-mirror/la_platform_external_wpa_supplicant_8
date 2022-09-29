@@ -740,5 +740,6 @@ void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 int hostapd_set_acl(struct hostapd_data *hapd);
 struct hostapd_data * hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
 int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
+int hapd_link_id(struct hostapd_data *hapd);
 
 #endif /* HOSTAPD_H */

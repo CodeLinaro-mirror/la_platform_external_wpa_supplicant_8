@@ -587,6 +587,7 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
 		if (hapd->iconf->punct_bitmap)
 			buflen += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
+		buflen += hostapd_eid_basic_mle_len(hapd, IEEE80211_MODE_AP);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -731,6 +732,7 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
 		pos = hostapd_eid_eht_capab(hapd, pos, IEEE80211_MODE_AP);
 		pos = hostapd_eid_eht_operation(hapd, pos);
+		pos = hostapd_eid_basic_mle(hapd, pos, IEEE80211_MODE_AP);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -1659,6 +1661,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		tail_len += 3 + sizeof(struct ieee80211_eht_operation);
 		if (hapd->iconf->punct_bitmap)
 			tail_len += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
+		tail_len += hostapd_eid_basic_mle_len(hapd, IEEE80211_MODE_AP);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -1832,6 +1835,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		tailpos = hostapd_eid_eht_capab(hapd, tailpos,
 						IEEE80211_MODE_AP);
 		tailpos = hostapd_eid_eht_operation(hapd, tailpos);
+		tailpos = hostapd_eid_basic_mle(hapd, tailpos,
+						IEEE80211_MODE_AP);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -2060,6 +2065,7 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
 	params.unsol_bcast_probe_resp_tmpl =
 		hostapd_unsol_bcast_probe_resp(hapd, &params);
 #endif /* CONFIG_IEEE80211AX */
+	params.link_id = hapd_link_id(hapd);
 	hapd->reenable_beacon = 0;
 #ifdef CONFIG_SAE
 	params.sae_pwe = hapd->conf->sae_pwe;
