@@ -10,6 +10,13 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include "includes.h"
 #include <sys/types.h>
 #include <fcntl.h>
@@ -2691,6 +2698,20 @@ static int nl80211_mgmt_subscribe_ap_dev_sme(struct i802_bss *bss)
 					   false) < 0)
 			wpa_printf(MSG_DEBUG,
 				   "nl80211: Failed to subscribe to handle Authentication frames - SAE offload may not work");
+		type = (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_ASSOC_REQ << 4);
+
+		/* Register for all ASSOC_REQ frames */
+		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0)
+		    < 0)
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Failed to subscribe to handle WLAN_FC_STYPE_ASSOC_REQ frames");
+		type = (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_REASSOC_REQ << 4);
+
+		/* Register for all REASSOC_REQ frames */
+		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0)
+		    < 0)
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Failed to subscribe to handle WLAN_FC_STYPE_REASSOC_REQ frames ");
 	}
 
 	nl80211_mgmt_handle_register_eloop(bss);
