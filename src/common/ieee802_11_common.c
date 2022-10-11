@@ -1249,8 +1249,9 @@ static int ieee80211_chan_to_freq_us(u8 op_class, u8 chan)
 		if (chan < 25 || chan > 29)
 			return -1;
 		return 56160 + 2160 * (chan - 24);
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 
@@ -1299,8 +1300,9 @@ static int ieee80211_chan_to_freq_eu(u8 op_class, u8 chan)
 		if (chan != 25)
 			return -1;
 		return 56160 + 2160 * (chan - 24);
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 
@@ -1355,8 +1357,9 @@ static int ieee80211_chan_to_freq_jp(u8 op_class, u8 chan)
 		if (chan != 25)
 			return -1;
 		return 56160 + 2160 * (chan - 24);
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 
@@ -1381,8 +1384,9 @@ static int ieee80211_chan_to_freq_cn(u8 op_class, u8 chan)
 		if (chan < 149 || chan > 165)
 			return -1;
 		return 5000 + 5 * chan;
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 
@@ -1467,8 +1471,9 @@ static int ieee80211_chan_to_freq_global(u8 op_class, u8 chan)
 		if (chan < 25 || chan > 29)
 			return -1;
 		return 56160 + 2160 * (chan - 24);
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 /**
@@ -2593,9 +2598,9 @@ int op_class_to_bandwidth(u8 op_class)
 		return 6480;
 	case 183: /* 60 GHz band, EDMG CB4, channel 25..29 */
 		return 8640;
+	default:
+		return 20;
 	}
-
-	return 20;
 }
 
 
@@ -2655,8 +2660,9 @@ int op_class_to_ch_width(u8 op_class)
 		return CHANWIDTH_6480MHZ;
 	case 183: /* 60 GHz band, EDMG CB4, channel 25..29 */
 		return CHANWIDTH_8640MHZ;
+	default:
+		return CHANWIDTH_USE_HT;
 	}
-	return CHANWIDTH_USE_HT;
 }
 
 

@@ -2595,9 +2595,9 @@ int wpa_cipher_key_len(int cipher)
 		return 16;
 	case WPA_CIPHER_TKIP:
 		return 32;
+	default:
+		return 0;
 	}
-
-	return 0;
 }
 
 
@@ -2610,9 +2610,9 @@ int wpa_cipher_rsc_len(int cipher)
 	case WPA_CIPHER_GCMP:
 	case WPA_CIPHER_TKIP:
 		return 6;
+	default:
+		return 0;
 	}
-
-	return 0;
 }
 
 
@@ -2637,8 +2637,9 @@ enum wpa_alg wpa_cipher_to_alg(int cipher)
 		return WPA_ALG_BIP_GMAC_256;
 	case WPA_CIPHER_BIP_CMAC_256:
 		return WPA_ALG_BIP_CMAC_256;
+	default:
+		return WPA_ALG_NONE;
 	}
-	return WPA_ALG_NONE;
 }
 
 
