@@ -12,7 +12,7 @@ import hwsim_utils
 import hostapd
 from wpasupplicant import WpaSupplicant
 from p2p_utils import *
-from test_wep import check_wep_capa
+from utils import *
 
 def test_connect_cmd_open(dev, apdev):
     """Open connection using cfg80211 connect command"""
@@ -183,6 +183,25 @@ def test_connect_cmd_roam(dev, apdev):
     wpas.connect("sta-connect", key_mgmt="NONE", scan_freq="2412")
     wpas.dump_monitor()
 
+    hostapd.add_ap(apdev[1], params)
+    wpas.scan_for_bss(apdev[1]['bssid'], freq=2412, force_scan=True)
+    wpas.roam(apdev[1]['bssid'])
+    time.sleep(0.1)
+    wpas.request("DISCONNECT")
+    wpas.wait_disconnected()
+    wpas.dump_monitor()
+
+def test_connect_cmd_wpa_psk_roam(dev, apdev):
+    """WPA2/WPA-PSK connection using cfg80211 connect command to trigger roam"""
+    params = hostapd.wpa2_params(ssid="sta-connect", passphrase="12345678")
+    hostapd.add_ap(apdev[0], params)
+
+    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+    wpas.interface_add("wlan5", drv_params="force_connect_cmd=1")
+    wpas.connect("sta-connect", psk="12345678", scan_freq="2412")
+    wpas.dump_monitor()
+
+    params = hostapd.wpa_params(ssid="sta-connect", passphrase="12345678")
     hostapd.add_ap(apdev[1], params)
     wpas.scan_for_bss(apdev[1]['bssid'], freq=2412, force_scan=True)
     wpas.roam(apdev[1]['bssid'])

@@ -18,18 +18,8 @@ from tshark import run_tshark
 from wpasupplicant import WpaSupplicant
 import hwsim_utils
 from utils import *
-from test_erp import check_erp_capa, start_erp_as
+from test_erp import start_erp_as
 from test_ap_hs20 import ip_checksum
-
-def check_fils_capa(dev):
-    capa = dev.get_capability("fils")
-    if capa is None or "FILS" not in capa:
-        raise HwsimSkip("FILS not supported")
-
-def check_fils_sk_pfs_capa(dev):
-    capa = dev.get_capability("fils")
-    if capa is None or "FILS-SK-PFS" not in capa:
-        raise HwsimSkip("FILS-SK-PFS not supported")
 
 def test_fils_sk_full_auth(dev, apdev, params):
     """FILS SK full authentication"""
@@ -1430,10 +1420,10 @@ def run_fils_sk_pfs(dev, apdev, group, params):
 
     tls = dev[0].request("GET tls_library")
     if int(group) in [25]:
-        if not (tls.startswith("OpenSSL") and ("build=OpenSSL 1.0.2" in tls or "build=OpenSSL 1.1" in tls) and ("run=OpenSSL 1.0.2" in tls or "run=OpenSSL 1.1" in tls)):
+        if not (tls.startswith("OpenSSL") and ("build=OpenSSL 1.0.2" in tls or "build=OpenSSL 1.1" in tls or "build=OpenSSL 3.0" in tls) and ("run=OpenSSL 1.0.2" in tls or "run=OpenSSL 1.1" in tls or "run=OpenSSL 3.0" in tls)):
             raise HwsimSkip("EC group not supported")
     if int(group) in [27, 28, 29, 30]:
-        if not (tls.startswith("OpenSSL") and ("build=OpenSSL 1.0.2" in tls or "build=OpenSSL 1.1" in tls) and ("run=OpenSSL 1.0.2" in tls or "run=OpenSSL 1.1" in tls)):
+        if not (tls.startswith("OpenSSL") and ("build=OpenSSL 1.0.2" in tls or "build=OpenSSL 1.1" in tls or "build=OpenSSL 3.0" in tls) and ("run=OpenSSL 1.0.2" in tls or "run=OpenSSL 1.1" in tls or "run=OpenSSL 3.0" in tls)):
             raise HwsimSkip("Brainpool EC group not supported")
 
     start_erp_as(msk_dump=os.path.join(params['logdir'], "msk.lst"))
@@ -1838,6 +1828,10 @@ def test_fils_and_ft_over_air_sha384(dev, apdev, params):
 
 def run_fils_and_ft_over_air(dev, apdev, params, key_mgmt):
     hapd, hapd2 = run_fils_and_ft_setup(dev, apdev, params, key_mgmt)
+    conf = hapd.request("GET_CONFIG")
+    if "key_mgmt=" + key_mgmt not in conf.splitlines():
+        logger.info("GET_CONFIG:\n" + conf)
+        raise Exception("GET_CONFIG did not report correct key_mgmt")
 
     logger.info("FT protocol using FT key hierarchy established during FILS authentication")
     dev[0].scan_for_bss(apdev[1]['bssid'], freq="2412", force_scan=True)
@@ -2330,3 +2324,137 @@ def test_fils_auth_ptk_rekey_ap_ext_key_id(dev, apdev, params):
         hwsim_utils.test_connectivity(dev[0], hapd)
     finally:
         dev[0].set("extended_key_id", "0")
+
+def test_fils_discovery_frame(dev, apdev, params):
+    """FILS Discovery frame generation"""
+    check_fils_capa(dev[0])
+    check_erp_capa(dev[0])
+
+    start_erp_as(msk_dump=os.path.join(params['logdir'], "msk.lst"))
+
+    bssid = apdev[0]['bssid']
+    params = hostapd.wpa2_eap_params(ssid="fils")
+    params['wpa_key_mgmt'] = "FILS-SHA256"
+    params['auth_server_port'] = "18128"
+    params['erp_send_reauth_start'] = '1'
+    params['erp_domain'] = 'example.com'
+    params['fils_realm'] = 'example.com'
+    params['wpa_group_rekey'] = '1'
+    params['fils_discovery_min_interval'] = '20'
+    params['fils_discovery_max_interval'] = '20'
+    hapd = hostapd.add_ap(apdev[0]['ifname'], params, no_enable=True)
+
+    if "OK" not in hapd.request("ENABLE"):
+        raise HwsimSkip("FILS Discovery frame transmission not supported")
+
+    ev = hapd.wait_event(["AP-ENABLED", "AP-DISABLED"], timeout=5)
+    if ev is None:
+        raise Exception("AP startup timed out")
+    if "AP-ENABLED" not in ev:
+        raise Exception("AP startup failed")
+
+    dev[0].request("ERP_FLUSH")
+    dev[0].connect("fils", key_mgmt="FILS-SHA256",
+                   eap="PSK", identity="psk.user@example.com",
+                   password_hex="0123456789abcdef0123456789abcdef",
+                   erp="1", scan_freq="2412")
+
+def test_fils_offload_to_driver(dev, apdev, params):
+    """FILS offload to driver"""
+    check_fils_capa(dev[0])
+    check_erp_capa(dev[0])
+    run_fils_offload_to_driver(dev[0], apdev, params)
+
+def test_fils_offload_to_driver2(dev, apdev, params):
+    """FILS offload to driver"""
+    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+    wpas.interface_add("wlan5", drv_params="force_connect_cmd=1")
+    run_fils_offload_to_driver(wpas, apdev, params)
+
+def run_fils_offload_to_driver(dev, apdev, params):
+    start_erp_as(msk_dump=os.path.join(params['logdir'], "msk.lst"))
+
+    bssid = apdev[0]['bssid']
+    params = hostapd.wpa2_eap_params(ssid="fils")
+    params['wpa_key_mgmt'] = "FILS-SHA256"
+    params['auth_server_port'] = "18128"
+    params['erp_send_reauth_start'] = '1'
+    params['erp_domain'] = 'example.com'
+    params['fils_realm'] = 'example.com'
+    params['disable_pmksa_caching'] = '1'
+    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
+
+    dev.request("ERP_FLUSH")
+    id = dev.connect("fils", key_mgmt="FILS-SHA256",
+                     eap="PSK", identity="psk.user@example.com",
+                     password_hex="0123456789abcdef0123456789abcdef",
+                     erp="1", scan_freq="2412")
+
+    p = "freq=2412 authorized=1 fils_erp_next_seq_num=4"
+    if "OK" not in dev.request("DRIVER_EVENT ASSOC " + p):
+        raise Exception("DRIVER_EVENT ASSOC did not succeed")
+    dev.wait_connected()
+
+    dev.request("DISCONNECT")
+    dev.wait_disconnected()
+    dev.dump_monitor()
+
+    dev.select_network(id, freq=2412)
+    dev.wait_connected()
+    dev.dump_monitor()
+
+    # This does not really work properly with SME-in-wpa_supplicant case
+    p = "freq=2412 authorized=1 fils_erp_next_seq_num=4"
+    if "OK" not in dev.request("DRIVER_EVENT ASSOC " + p):
+        raise Exception("DRIVER_EVENT ASSOC did not succeed")
+
+    dev.wait_connected()
+
+def test_fils_sk_okc(dev, apdev, params):
+    """FILS SK and opportunistic key caching"""
+    check_fils_capa(dev[0])
+    check_erp_capa(dev[0])
+
+    start_erp_as(msk_dump=os.path.join(params['logdir'], "msk.lst"))
+
+    bssid = apdev[0]['bssid']
+    params = hostapd.wpa2_eap_params(ssid="fils")
+    params['wpa_key_mgmt'] = "FILS-SHA256"
+    params['okc'] = '1'
+    params['auth_server_port'] = "18128"
+    params['erp_domain'] = 'example.com'
+    params['fils_realm'] = 'example.com'
+    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
+
+    dev[0].scan_for_bss(bssid, freq=2412)
+    dev[0].request("ERP_FLUSH")
+    id = dev[0].connect("fils", key_mgmt="FILS-SHA256",
+                        eap="PSK", identity="psk.user@example.com",
+                        password_hex="0123456789abcdef0123456789abcdef",
+                        erp="1", okc=True, scan_freq="2412")
+    pmksa = dev[0].get_pmksa(bssid)
+    if pmksa is None:
+        raise Exception("No PMKSA cache entry created")
+    hapd.wait_sta()
+
+    hapd2 = hostapd.add_ap(apdev[1], params)
+    bssid2 = hapd2.own_addr()
+
+    dev[0].scan_for_bss(bssid2, freq=2412)
+    if "OK" not in dev[0].request("ROAM " + bssid2):
+        raise Exception("ROAM failed")
+    ev = dev[0].wait_event(["CTRL-EVENT-EAP-STARTED",
+                            "CTRL-EVENT-CONNECTED"], timeout=10)
+    if ev is None:
+        raise Exception("Connection using OKC/PMKSA caching timed out")
+    if "CTRL-EVENT-EAP-STARTED" in ev:
+        raise Exception("Unexpected EAP exchange")
+    hapd2.wait_sta()
+    hwsim_utils.test_connectivity(dev[0], hapd2)
+    pmksa2 = dev[0].get_pmksa(bssid2)
+    if pmksa2 is None:
+        raise Exception("No PMKSA cache entry found")
+    if 'opportunistic' not in pmksa2 or pmksa2['opportunistic'] != '1':
+        raise Exception("OKC not indicated in PMKSA entry")
+    if pmksa['pmkid'] != pmksa2['pmkid']:
+        raise Exception("Unexpected PMKID change")

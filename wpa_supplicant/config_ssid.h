@@ -46,6 +46,9 @@
 #define DEFAULT_USER_SELECTED_SIM 1
 #define DEFAULT_MAX_OPER_CHWIDTH -1
 
+/* Consider global sae_pwe for SAE mechanism for PWE derivation */
+#define DEFAULT_SAE_PWE 4
+
 struct psk_list_entry {
 	struct dl_list list;
 	u8 addr[ETH_ALEN];
@@ -60,6 +63,12 @@ enum wpas_mode {
 	WPAS_MODE_P2P_GO = 3,
 	WPAS_MODE_P2P_GROUP_FORMATION = 4,
 	WPAS_MODE_MESH = 5,
+};
+
+enum sae_pk_mode {
+	SAE_PK_MODE_AUTOMATIC = 0,
+	SAE_PK_MODE_ONLY = 1,
+	SAE_PK_MODE_DISABLED = 2,
 };
 
 /**
@@ -147,16 +156,16 @@ struct wpa_ssid {
 	u8 bssid[ETH_ALEN];
 
 	/**
-	 * bssid_blacklist - List of inacceptable BSSIDs
+	 * bssid_ignore - List of inacceptable BSSIDs
 	 */
-	u8 *bssid_blacklist;
-	size_t num_bssid_blacklist;
+	u8 *bssid_ignore;
+	size_t num_bssid_ignore;
 
 	/**
-	 * bssid_blacklist - List of acceptable BSSIDs
+	 * bssid_accept - List of acceptable BSSIDs
 	 */
-	u8 *bssid_whitelist;
-	size_t num_bssid_whitelist;
+	u8 *bssid_accept;
+	size_t num_bssid_accept;
 
 	/**
 	 * bssid_set - Whether BSSID is configured for this network
@@ -539,6 +548,11 @@ struct wpa_ssid {
 	int dot11MeshRetryTimeout; /* msec */
 	int dot11MeshConfirmTimeout; /* msec */
 	int dot11MeshHoldingTimeout; /* msec */
+
+	/**
+	 * Mesh network layer-2 forwarding (dot11MeshForwarding)
+	 */
+	int mesh_fwding;
 
 	int ht;
 	int ht40;
@@ -1018,6 +1032,16 @@ struct wpa_ssid {
 	size_t dpp_csign_len;
 
 	/**
+	 * dpp_pp_key - ppKey (Configurator privacy protection public key)
+	 */
+	u8 *dpp_pp_key;
+
+	/**
+	 * dpp_pp_key_len - ppKey length in octets
+	 */
+	size_t dpp_pp_key_len;
+
+	/**
 	 * dpp_pfs - DPP PFS
 	 * 0: allow PFS to be used or not used
 	 * 1: require PFS to be used (note: not compatible with DPP R1)
@@ -1121,6 +1145,38 @@ struct wpa_ssid {
 	 *	OWE)
 	 */
 	u8 transition_disable;
+
+	/**
+	 * sae_pk - SAE-PK mode
+	 * 0 = automatic SAE/SAE-PK selection based on password; enable
+	 * transition mode (allow SAE authentication without SAE-PK)
+	 * 1 = SAE-PK only (disable transition mode; allow SAE authentication
+	 * only with SAE-PK)
+	 * 2 = disable SAE-PK (allow SAE authentication only without SAE-PK)
+	 */
+	enum sae_pk_mode sae_pk;
+
+	/**
+	 * was_recently_reconfigured - Whether this SSID config has been changed
+	 * recently
+	 *
+	 * This is an internally used variable, i.e., not used in external
+	 * configuration.
+	 */
+	bool was_recently_reconfigured;
+
+	/**
+	 * sae_pwe - SAE mechanism for PWE derivation
+	 *
+	 * Internally, special value 4 (DEFAULT_SAE_PWE) is used to indicate
+	 * that the parameter is not set and the global sae_pwe value needs to
+	 * be considered.
+	 *
+	 * 0 = hunting-and-pecking loop only
+	 * 1 = hash-to-element only
+	 * 2 = both hunting-and-pecking loop and hash-to-element enabled
+	 */
+	int sae_pwe;
 };
 
 #endif /* CONFIG_SSID_H */
