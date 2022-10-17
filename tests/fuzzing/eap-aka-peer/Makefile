@@ -1,4 +1,4 @@
-ALL=eap-aka-peer
+all: eap-aka-peer
 include ../rules.include
 
 CFLAGS += -DIEEE8021X_EAPOL
@@ -10,17 +10,12 @@ OBJS += $(SRC)/eap_common/eap_common.o
 LIBS += $(SRC)/crypto/libcrypto.a
 LIBS += $(SRC)/utils/libutils.a
 
-OBJS += eap-aka-peer.o
-
-_OBJS_VAR := OBJS
-include ../../../src/objs.mk
-
-_OBJS_VAR := LIBS
-include ../../../src/objs.mk
-
-eap-aka-peer: $(OBJS) $(LIBS)
+eap-aka-peer: eap-aka-peer.o $(OBJS) $(LIBS)
 	$(Q)$(LDO) $(LDFLAGS) -o $@ $^ $(LIBS) $(ELIBS)
 	@$(E) "  LD " $@
 
-clean: common-clean
+clean:
+	$(MAKE) -C $(SRC) clean
 	rm -f eap-aka-peer *~ *.o *.d ../*~ ../*.o ../*.d
+
+-include $(OBJS:%.o=%.d)

@@ -15,16 +15,11 @@ mount sysfs -t sysfs /sys
 # needed for tracing
 mount debugfs -t debugfs /sys/kernel/debug
 
-mkdir /tmp/wireshark-share
-mount --bind /usr/share/wireshark /tmp/wireshark-share
-mount tmpfs -t tmpfs /usr/share/wireshark
-
 # for inside telnet
 mkdir /dev/pts
 mount devpts -t devpts /dev/pts
 
 export PATH=/usr/sbin:$PATH
-export HOME=/tmp
 
 # reboot on any sort of crash
 sysctl kernel.panic_on_oops=1
@@ -37,8 +32,6 @@ EPATH=$(sed 's/.*EPATH=\([^ ]*\) .*/\1/' /proc/cmdline)
 TELNET=$(sed 's/.*TELNET=\([^ ]*\) .*/\1/' /proc/cmdline)
 ARGS=$(sed 's/.*ARGS=\([^ ]*\)\( \|$\).*/\1/' /proc/cmdline)
 LOGDIR=$(sed 's/.*LOGDIR=\([^ ]*\)\( \|$\).*/\1/' /proc/cmdline)
-
-mount --bind "$TESTDIR/vm/regdb/" /lib/firmware
 
 # create /dev entries we need
 mknod -m 660 /dev/ttyS0 c 4 64
@@ -55,7 +48,7 @@ ln -s /proc/self/fd/2 /dev/stderr
 
 echo "VM has started up" > /dev/ttyS0
 
-# create stub sudo - everything runs as uid 0
+# create dummy sudo - everything runs as uid 0
 mkdir /tmp/bin
 cat > /tmp/bin/sudo << EOF
 #!/bin/bash

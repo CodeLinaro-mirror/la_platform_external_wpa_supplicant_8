@@ -211,7 +211,7 @@ static struct wpabuf * eap_eke_build_fail(struct eap_eke_data *data,
 	eap_eke_state(data, FAILURE);
 	ret->methodState = METHOD_DONE;
 	ret->decision = DECISION_FAIL;
-	ret->allowNotifications = false;
+	ret->allowNotifications = FALSE;
 
 	return resp;
 }
@@ -617,7 +617,7 @@ static struct wpabuf * eap_eke_process_confirm(struct eap_eke_data *data,
 	eap_eke_state(data, SUCCESS);
 	ret->methodState = METHOD_MAY_CONT;
 	ret->decision = DECISION_COND_SUCC;
-	ret->allowNotifications = false;
+	ret->allowNotifications = FALSE;
 
 	return resp;
 }
@@ -656,7 +656,7 @@ static struct wpabuf * eap_eke_process(struct eap_sm *sm, void *priv,
 
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_EKE, reqData, &len);
 	if (pos == NULL || len < 1) {
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
@@ -666,10 +666,10 @@ static struct wpabuf * eap_eke_process(struct eap_sm *sm, void *priv,
 	wpa_printf(MSG_DEBUG, "EAP-EKE: Received frame: exch %d", eke_exch);
 	wpa_hexdump(MSG_DEBUG, "EAP-EKE: Received Data", pos, end - pos);
 
-	ret->ignore = false;
+	ret->ignore = FALSE;
 	ret->methodState = METHOD_MAY_CONT;
 	ret->decision = DECISION_FAIL;
-	ret->allowNotifications = true;
+	ret->allowNotifications = TRUE;
 
 	switch (eke_exch) {
 	case EAP_EKE_ID:
@@ -689,18 +689,18 @@ static struct wpabuf * eap_eke_process(struct eap_sm *sm, void *priv,
 		break;
 	default:
 		wpa_printf(MSG_DEBUG, "EAP-EKE: Ignoring message with unknown EKE-Exch %d", eke_exch);
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
 	if (ret->methodState == METHOD_DONE)
-		ret->allowNotifications = false;
+		ret->allowNotifications = FALSE;
 
 	return resp;
 }
 
 
-static bool eap_eke_isKeyAvailable(struct eap_sm *sm, void *priv)
+static Boolean eap_eke_isKeyAvailable(struct eap_sm *sm, void *priv)
 {
 	struct eap_eke_data *data = priv;
 	return data->state == SUCCESS;

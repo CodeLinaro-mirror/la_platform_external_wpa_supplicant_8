@@ -215,7 +215,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\bssid_ignore.c"
+				RelativePath="..\..\blacklist.c"
 				>
 			</File>
 			<File
@@ -228,10 +228,6 @@
 			</File>
 			<File
 				RelativePath="..\..\..\src\utils\common.c"
-				>
-			</File>
-			<File
-				RelativePath="..\..\..\src\utils\config.c"
 				>
 			</File>
 			<File

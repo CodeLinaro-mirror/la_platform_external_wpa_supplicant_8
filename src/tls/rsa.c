@@ -37,8 +37,9 @@ static const u8 * crypto_rsa_parse_integer(const u8 *pos, const u8 *end,
 		return NULL;
 
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_integer(&hdr)) {
-		asn1_unexpected(&hdr, "RSA: Expected INTEGER");
+	    hdr.class != ASN1_CLASS_UNIVERSAL || hdr.tag != ASN1_TAG_INTEGER) {
+		wpa_printf(MSG_DEBUG, "RSA: Expected INTEGER - found class %d "
+			   "tag 0x%x", hdr.class, hdr.tag);
 		return NULL;
 	}
 
@@ -83,8 +84,12 @@ crypto_rsa_import_public_key(const u8 *buf, size_t len)
 	 * }
 	 */
 
-	if (asn1_get_next(buf, len, &hdr) < 0 || !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr, "RSA: Expected SEQUENCE (public key)");
+	if (asn1_get_next(buf, len, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG, "RSA: Expected SEQUENCE "
+			   "(public key) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		goto error;
 	}
 	pos = hdr.payload;
@@ -186,8 +191,12 @@ crypto_rsa_import_private_key(const u8 *buf, size_t len)
 	 *
 	 * Version ::= INTEGER -- shall be 0 for this version of the standard
 	 */
-	if (asn1_get_next(buf, len, &hdr) < 0 || !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr, "RSA: Expected SEQUENCE (public key)");
+	if (asn1_get_next(buf, len, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG, "RSA: Expected SEQUENCE "
+			   "(public key) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		goto error;
 	}
 	pos = hdr.payload;
@@ -276,7 +285,7 @@ int crypto_rsa_exptmod(const u8 *in, size_t inlen, u8 *out, size_t *outlen,
 
 	if (use_private) {
 		/*
-		 * Decrypt (or sign) using Chinese remainder theorem to speed
+		 * Decrypt (or sign) using Chinese remainer theorem to speed
 		 * up calculation. This is equivalent to tmp = tmp^d mod n
 		 * (which would require more CPU to calculate directly).
 		 *

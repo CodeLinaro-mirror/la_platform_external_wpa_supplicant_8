@@ -45,8 +45,6 @@ int ocv_derive_all_parameters(struct oci_info *oci)
 		oci->sec_channel = 1;
 	else if (op_class_map->bw == BW40MINUS)
 		oci->sec_channel = -1;
-	else if (op_class_map->bw == BW40)
-		oci->sec_channel = (((oci->channel - 1) / 4) % 2) ? -1 : 1;
 
 	return 0;
 }
@@ -97,24 +95,23 @@ int ocv_insert_extended_oci(struct wpa_channel_info *ci, u8 *pos)
 }
 
 
-enum oci_verify_result
-ocv_verify_tx_params(const u8 *oci_ie, size_t oci_ie_len,
-		     struct wpa_channel_info *ci, int tx_chanwidth,
-		     int tx_seg1_idx)
+int ocv_verify_tx_params(const u8 *oci_ie, size_t oci_ie_len,
+			 struct wpa_channel_info *ci, int tx_chanwidth,
+			 int tx_seg1_idx)
 {
 	struct oci_info oci;
 
 	if (!oci_ie) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "did not receive mandatory OCI");
-		return OCI_NOT_FOUND;
+			    "OCV failed: did not receive mandatory OCI");
+		return -1;
 	}
 
 	if (oci_ie_len != 3) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "received OCI of unexpected length (%d)",
+			    "OCV failed: received OCI of unexpected length (%d)",
 			    (int) oci_ie_len);
-		return OCI_INVALID_LENGTH;
+		return -1;
 	}
 
 	os_memset(&oci, 0, sizeof(oci));
@@ -123,25 +120,25 @@ ocv_verify_tx_params(const u8 *oci_ie, size_t oci_ie_len,
 	oci.seg1_idx = oci_ie[2];
 	if (ocv_derive_all_parameters(&oci) != 0) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "unable to interpret received OCI");
-		return OCI_PARSE_ERROR;
+			    "OCV failed: unable to interpret received OCI");
+		return -1;
 	}
 
 	/* Primary frequency used to send frames to STA must match the STA's */
 	if ((int) ci->frequency != oci.freq) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "primary channel mismatch in received OCI (we use %d but receiver is using %d)",
+			    "OCV failed: primary channel mismatch in received OCI (we use %d but receiver is using %d)",
 			    ci->frequency, oci.freq);
-		return OCI_PRIMARY_FREQ_MISMATCH;
+		return -1;
 	}
 
 	/* We shouldn't transmit with a higher bandwidth than the STA supports
 	 */
 	if (tx_chanwidth > oci.chanwidth) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "channel bandwidth mismatch in received OCI (we use %d but receiver only supports %d)",
+			    "OCV failed: channel bandwidth mismatch in received OCI (we use %d but receiver only supports %d)",
 			    tx_chanwidth, oci.chanwidth);
-		return OCI_CHANNEL_WIDTH_MISMATCH;
+		return -1;
 	}
 
 	/*
@@ -153,9 +150,9 @@ ocv_verify_tx_params(const u8 *oci_ie, size_t oci_ie_len,
 	if (tx_chanwidth == 40 && ci->frequency < 2500 &&
 	    ci->sec_channel != oci.sec_channel) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "secondary channel mismatch in received OCI (we use %d but receiver is using %d)",
+			    "OCV failed: secondary channel mismatch in received OCI (we use %d but receiver is using %d)",
 			    ci->sec_channel, oci.sec_channel);
-		return OCI_SECONDARY_FREQ_MISMATCH;
+		return -1;
 	}
 
 	/*
@@ -166,10 +163,10 @@ ocv_verify_tx_params(const u8 *oci_ie, size_t oci_ie_len,
 	     ci->chanwidth == CHAN_WIDTH_80P80) &&
 	    tx_seg1_idx != oci.seg1_idx) {
 		os_snprintf(ocv_errorstr, sizeof(ocv_errorstr),
-			    "frequency segment 1 mismatch in received OCI (we use %d but receiver is using %d)",
+			    "OCV failed: frequency segment 1 mismatch in received OCI (we use %d but receiver is using %d)",
 			    tx_seg1_idx, oci.seg1_idx);
-		return OCI_SEG_1_INDEX_MISMATCH;
+		return -1;
 	}
 
-	return OCI_SUCCESS;
+	return 0;
 }

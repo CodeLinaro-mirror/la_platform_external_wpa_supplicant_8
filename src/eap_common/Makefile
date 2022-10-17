@@ -1,3 +1,13 @@
+all: libeap_common.a
+
+clean:
+	rm -f *~ *.o *.d *.gcno *.gcda *.gcov libeap_common.a
+
+install:
+	@echo Nothing to be made.
+
+include ../lib.rules
+
 LIB_OBJS= \
 	chap.o \
 	eap_common.o \
@@ -15,4 +25,7 @@ LIB_OBJS= \
 	eap_wsc_common.o \
 	ikev2_common.o
 
-include ../lib.rules
+libeap_common.a: $(LIB_OBJS)
+	$(AR) crT $@ $?
+
+-include $(OBJS:%.o=%.d)

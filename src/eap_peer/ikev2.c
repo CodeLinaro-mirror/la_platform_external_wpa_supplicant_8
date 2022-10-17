@@ -201,8 +201,7 @@ static int ikev2_parse_proposal(struct ikev2_proposal_data *prop,
 				const u8 *pos, const u8 *end)
 {
 	const u8 *pend, *ppos;
-	int proposal_len;
-	unsigned int i, num;
+	int proposal_len, i;
 	const struct ikev2_proposal *p;
 
 	if (end - pos < (int) sizeof(*p)) {
@@ -270,13 +269,12 @@ static int ikev2_parse_proposal(struct ikev2_proposal_data *prop,
 		return -1;
 	}
 
-	num = p->num_transforms;
-	if (num == 0 || num > 255) {
+	if (p->num_transforms == 0) {
 		wpa_printf(MSG_INFO, "IKEV2: At least one transform required");
 		return -1;
 	}
 
-	for (i = 0; i < num; i++) {
+	for (i = 0; i < (int) p->num_transforms; i++) {
 		int tlen = ikev2_parse_transform(prop, ppos, pend);
 		if (tlen < 0)
 			return -1;
@@ -413,7 +411,7 @@ static int ikev2_process_kei(struct ikev2_responder_data *data,
 
 	wpa_hexdump_buf(MSG_DEBUG, "IKEV2: KEi Diffie-Hellman Public Value",
 			data->i_dh_public);
-
+	
 	return 0;
 }
 

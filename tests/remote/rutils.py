@@ -117,8 +117,7 @@ def run_hostapd(host, setup_params):
 
     if log_file:
         host.add_log(log_file)
-    pidfile = setup_params['log_dir'] + "hostapd_" + host.ifname + "_" + setup_params['tc_name'] + ".pid"
-    status, buf = host.execute([setup_params['hostapd'], "-B", "-ddt", "-g", "udp:" + host.port, "-P", pidfile, log])
+    status, buf = host.execute([setup_params['hostapd'], "-B", "-ddt", "-g", "udp:" + host.port, log])
     if status != 0:
         raise Exception("Could not run hostapd: " + buf)
 
@@ -135,18 +134,15 @@ def run_wpasupplicant(host, setup_params):
 
     if log_file:
         host.add_log(log_file)
-    pidfile = setup_params['log_dir'] + "wpa_supplicant_" + host.ifname + "_" + setup_params['tc_name'] + ".pid"
-    status, buf = host.execute([setup_params['wpa_supplicant'], "-B", "-ddt", "-g", "udp:" + host.port, "-P", pidfile, log])
+    status, buf = host.execute([setup_params['wpa_supplicant'], "-B", "-ddt", "-g", "udp:" + host.port, log])
     if status != 0:
         raise Exception("Could not run wpa_supplicant: " + buf)
 
 def kill_wpasupplicant(host, setup_params):
-    pidfile = setup_params['log_dir'] + "wpa_supplicant_" + host.ifname + "_" + setup_params['tc_name'] + ".pid"
-    host.execute(["kill `cat " + pidfile + "`"])
+    host.execute(['killall', setup_params['wpa_supplicant']])
 
 def kill_hostapd(host, setup_params):
-    pidfile = setup_params['log_dir'] + "hostapd_" + host.ifname + "_" + setup_params['tc_name'] + ".pid"
-    host.execute(["kill `cat " + pidfile + "`"])
+    host.execute(['killall', setup_params['hostapd']])
 
 def get_ap_params(channel="1", bw="HT20", country="US", security="open", ht_capab=None, vht_capab=None):
     ssid = "test_" + channel + "_" + security + "_" + bw
@@ -342,12 +338,12 @@ def ping_run(host, ip, result, ifname=None, addr_type="ipv4", deadline="5", qos=
 
     flush_arp_cache(host)
 
-    thread = host.thread_run(ping, result)
+    thread = host.execute_run(ping, result)
     return thread
 
 def ping_wait(host, thread, timeout=None):
-    host.thread_wait(thread, timeout)
-    if thread.is_alive():
+    host.wait_execute_complete(thread, timeout)
+    if thread.isAlive():
         raise Exception("ping thread still alive")
 
 def flush_arp_cache(host):
@@ -496,24 +492,24 @@ def iperf_run(server, client, server_ip, client_res, server_res,
     flush_arp_cache(server)
     flush_arp_cache(client)
 
-    server_thread = server.thread_run(iperf_server, server_res)
+    server_thread = server.execute_run(iperf_server, server_res)
     time.sleep(1)
-    client_thread = client.thread_run(iperf_client, client_res)
+    client_thread = client.execute_run(iperf_client, client_res)
 
     return server_thread, client_thread
 
 def iperf_wait(server, client, server_thread, client_thread, timeout=None, iperf="iperf"):
-    client.thread_wait(client_thread, timeout)
-    if client_thread.is_alive():
+    client.wait_execute_complete(client_thread, timeout)
+    if client_thread.isAlive():
         raise Exception("iperf client thread still alive")
 
-    server.thread_wait(server_thread, 5)
-    if server_thread.is_alive():
+    server.wait_execute_complete(server_thread, 5)
+    if server_thread.isAlive():
         server.execute(["killall", "-s", "INT", iperf])
         time.sleep(1)
 
-    server.thread_wait(server_thread, 5)
-    if server_thread.is_alive():
+    server.wait_execute_complete(server_thread, 5)
+    if server_thread.isAlive():
         raise Exception("iperf server thread still alive")
 
     return

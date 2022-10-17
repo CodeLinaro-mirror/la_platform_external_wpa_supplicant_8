@@ -79,10 +79,6 @@ static void count_backlogged_sta(struct hostapd_data *hapd)
 	for (sta = hapd->sta_list; sta; sta = sta->next) {
 		if (hostapd_drv_read_sta_data(hapd, &data, sta->addr))
 			continue;
-#ifdef CONFIG_TESTING_OPTIONS
-		if (hapd->force_backlog_bytes)
-			data.backlog_bytes = 1;
-#endif /* CONFIG_TESTING_OPTIONS */
 
 		if (data.backlog_bytes > 0)
 			set_new_backlog_time(hapd, sta, &now);
@@ -138,8 +134,8 @@ static void update_airtime_weights(void *eloop_data, void *user_data)
 	unsigned int num_sta_min = 0, num_sta_prod = 1, num_sta_sum = 0,
 		wt_sum = 0;
 	unsigned int quantum;
-	bool all_div_min = true;
-	bool apply_limit = iface->conf->airtime_mode == AIRTIME_MODE_DYNAMIC;
+	Boolean all_div_min = TRUE;
+	Boolean apply_limit = iface->conf->airtime_mode == AIRTIME_MODE_DYNAMIC;
 	int wt, num_bss = 0, max_wt = 0;
 	size_t i;
 
@@ -173,7 +169,7 @@ static void update_airtime_weights(void *eloop_data, void *user_data)
 			 * integers. */
 			if (bss->num_backlogged_sta &&
 			    bss->num_backlogged_sta % num_sta_min > 0)
-				all_div_min = false;
+				all_div_min = FALSE;
 
 			/* If we're in LIMIT mode, we only apply the weight
 			 * scaling when the BSS(es) marked as limited would a
@@ -182,7 +178,7 @@ static void update_airtime_weights(void *eloop_data, void *user_data)
 			if (!apply_limit && bss->conf->airtime_limit) {
 				if (bss->num_backlogged_sta * wt_sum >
 				    bss->conf->airtime_weight * num_sta_sum)
-					apply_limit = true;
+					apply_limit = TRUE;
 			}
 		}
 		if (all_div_min)

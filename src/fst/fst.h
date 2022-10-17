@@ -113,24 +113,24 @@ struct fst_wpa_obj {
 	 * get_peer_first - Get MAC address of the 1st connected STA
 	 * @ctx: User context %ctx
 	 * @get_ctx: Context to be used for %get_peer_next call
-	 * @mb_only: %true if only multi-band capable peer should be reported
+	 * @mb_only: %TRUE if only multi-band capable peer should be reported
 	 * Returns: Address of the 1st connected STA, %NULL if no STAs connected
 	 */
 	const u8 * (*get_peer_first)(void *ctx,
 				     struct fst_get_peer_ctx **get_ctx,
-				     bool mb_only);
+				     Boolean mb_only);
 	/**
 	 * get_peer_next - Get MAC address of the next connected STA
 	 * @ctx: User context %ctx
 	 * @get_ctx: Context received from %get_peer_first or previous
 	 *           %get_peer_next call
-	 * @mb_only: %true if only multi-band capable peer should be reported
+	 * @mb_only: %TRUE if only multi-band capable peer should be reported
 	 * Returns: Address of the next connected STA, %NULL if no more STAs
 	 *          connected
 	 */
 	const u8 * (*get_peer_next)(void *ctx,
 				    struct fst_get_peer_ctx **get_ctx,
-				    bool mb_only);
+				    Boolean mb_only);
 };
 
 /**
@@ -273,11 +273,11 @@ void fst_notify_peer_disconnected(struct fst_iface *iface, const u8 *addr);
  * @iface1: 1st FST interface object
  * @iface1: 2nd FST interface object
  *
- * Returns: %true if the interfaces belong to the same FST group,
- *          %false otherwise
+ * Returns: %TRUE if the interfaces belong to the same FST group,
+ *          %FALSE otherwise
  */
-bool fst_are_ifaces_aggregated(struct fst_iface *iface1,
-			       struct fst_iface *iface2);
+Boolean fst_are_ifaces_aggregated(struct fst_iface *iface1,
+				  struct fst_iface *iface2);
 
 /**
  * fst_update_mac_addr - Notify FST about MAC address change

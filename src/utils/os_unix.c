@@ -39,7 +39,7 @@ static struct dl_list alloc_list = DL_LIST_HEAD_INIT(alloc_list);
 
 struct os_alloc_trace {
 	unsigned int magic;
-	struct dl_list list __attribute__((aligned(16)));
+	struct dl_list list;
 	size_t len;
 	WPA_TRACE_INFO
 } __attribute__((aligned(16)));
@@ -464,9 +464,9 @@ int os_file_exists(const char *fname)
 int os_fdatasync(FILE *stream)
 {
 	if (!fflush(stream)) {
-#if defined __FreeBSD__ || defined __linux__
+#ifdef __linux__
 		return fdatasync(fileno(stream));
-#else /* !__linux__ && !__FreeBSD__ */
+#else /* !__linux__ */
 #ifdef F_FULLFSYNC
 		/* OS X does not implement fdatasync(). */
 		return fcntl(fileno(stream), F_FULLFSYNC);

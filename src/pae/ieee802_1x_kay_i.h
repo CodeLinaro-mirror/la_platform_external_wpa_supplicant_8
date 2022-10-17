@@ -46,11 +46,11 @@ struct ieee802_1x_kay_peer {
 	u8 mi[MI_LEN];
 	u32 mn;
 	time_t expire;
-	bool is_key_server;
+	Boolean is_key_server;
 	u8 key_server_priority;
-	bool macsec_desired;
+	Boolean macsec_desired;
 	enum macsec_cap macsec_capability;
-	bool sak_used;
+	Boolean sak_used;
 	int missing_sak_use_count;
 	struct dl_list list;
 };
@@ -87,18 +87,18 @@ struct ieee802_1x_mka_participant {
 	/* used for active and potential participant */
 	struct mka_key_name ckn;
 	struct mka_key cak;
-	bool cached;
+	Boolean cached;
 
 	/* used by management to monitor and control activation */
-	bool active;
-	bool participant;
-	bool retain;
+	Boolean active;
+	Boolean participant;
+	Boolean retain;
 	enum mka_created_mode mode;
 
 	enum activate_ctrl { DEFAULT, DISABLED, ON_OPER_UP, ALWAYS } activate;
 
 	/* used for active participant */
-	bool principal;
+	Boolean principal;
 	struct dl_list live_peers;
 	struct dl_list potential_peers;
 
@@ -110,18 +110,18 @@ struct ieee802_1x_mka_participant {
 
 	struct ieee802_1x_mka_ki lki;
 	u8 lan;
-	bool ltx;
-	bool lrx;
+	Boolean ltx;
+	Boolean lrx;
 
 	struct ieee802_1x_mka_ki oki;
 	u8 oan;
-	bool otx;
-	bool orx;
+	Boolean otx;
+	Boolean orx;
 
-	bool is_key_server;
-	bool is_obliged_key_server;
-	bool can_be_key_server;
-	bool is_elected;
+	Boolean is_key_server;
+	Boolean is_obliged_key_server;
+	Boolean can_be_key_server;
+	Boolean is_elected;
 
 	struct dl_list sak_list;
 	struct dl_list rxsc_list;
@@ -137,11 +137,11 @@ struct ieee802_1x_mka_participant {
 
 	time_t cak_life;
 	time_t mka_life;
-	bool to_dist_sak;
-	bool to_use_sak;
-	bool new_sak;
+	Boolean to_dist_sak;
+	Boolean to_use_sak;
+	Boolean new_sak;
 
-	bool advised_desired;
+	Boolean advised_desired;
 	enum macsec_cap advised_capability;
 
 	struct data_key *new_key;

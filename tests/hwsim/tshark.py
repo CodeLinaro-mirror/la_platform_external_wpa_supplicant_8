@@ -12,8 +12,6 @@ import subprocess
 import logging
 logger = logging.getLogger()
 
-from utils import *
-
 class UnknownFieldsException(Exception):
     def __init__(self, fields):
         Exception.__init__(self, "unknown tshark fields %s" % ','.join(fields))
@@ -43,8 +41,6 @@ def _run_tshark(filename, filter, display=None, wait=True):
                                stderr=subprocess.PIPE)
     except Exception as e:
         logger.info("Could run run tshark check: " + str(e))
-        if "No such file or directory: 'tshark'" in str(e):
-            raise HwsimSkip("No tshark available")
         cmd = None
         return None
 
@@ -115,8 +111,6 @@ def run_tshark_json(filename, filter):
                                stderr=subprocess.PIPE)
     except Exception as e:
         logger.info("Could run run tshark: " + str(e))
-        if "No such file or directory: 'tshark'" in str(e):
-            raise HwsimSkip("No tshark available")
         return None
     output = cmd.communicate()
     out = output[0].decode()

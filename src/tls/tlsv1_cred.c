@@ -455,8 +455,12 @@ static int pkcs12_certbag(struct tlsv1_credentials *cred,
 	 * }
 	 */
 
-	if (asn1_get_next(buf, len, &hdr) < 0 || !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr, "PKCS #12: Expected SEQUENCE (CertBag)");
+	if (asn1_get_next(buf, len, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE (CertBag) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -478,17 +482,21 @@ static int pkcs12_certbag(struct tlsv1_credentials *cred,
 			   obuf);
 	}
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !hdr.constructed ||
-	    !asn1_is_cs_tag(&hdr, 0)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected [0] EXPLICIT (certValue)");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_CONTEXT_SPECIFIC ||
+	    hdr.tag != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected [0] EXPLICIT (certValue) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
 	if (asn1_get_next(hdr.payload, hdr.length, &hdr) < 0 ||
-	    !asn1_is_octetstring(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected OCTET STRING (x509Certificate)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_OCTETSTRING) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected OCTET STRING (x509Certificate) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -526,9 +534,11 @@ static int pkcs12_parse_attr_friendly_name(const u8 *pos, const u8 *end)
 	 * }
 	 */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_bmpstring(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected BMPSTRING (friendlyName)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_BMPSTRING) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected BMPSTRING (friendlyName) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return 0;
 	}
 	wpa_hexdump_ascii(MSG_DEBUG, "PKCS #12: friendlyName",
@@ -551,9 +561,11 @@ static int pkcs12_parse_attr_local_key_id(const u8 *pos, const u8 *end)
 	 * }
 	 */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_octetstring(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected OCTET STRING (localKeyID)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_OCTETSTRING) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected OCTET STRING (localKeyID) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	wpa_hexdump_key(MSG_DEBUG, "PKCS #12: localKeyID",
@@ -584,8 +596,12 @@ static int pkcs12_parse_attr(const u8 *pos, size_t len)
 	asn1_oid_to_str(&a_oid, obuf, sizeof(obuf));
 	wpa_printf(MSG_DEBUG, "PKCS #12: attrId %s", obuf);
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !asn1_is_set(&hdr)) {
-		asn1_unexpected(&hdr, "PKCS #12: Expected SET (attrValues)");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SET) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SET (attrValues) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	wpa_hexdump_key(MSG_MSGDUMP, "PKCS #12: attrValues",
@@ -625,10 +641,12 @@ static int pkcs12_safebag(struct tlsv1_credentials *cred,
 	asn1_oid_to_str(&oid, obuf, sizeof(obuf));
 	wpa_printf(MSG_DEBUG, "PKCS #12: BAG-TYPE %s", obuf);
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !hdr.constructed ||
-	    !asn1_is_cs_tag(&hdr, 0)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected [0] EXPLICIT (bagValue)");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_CONTEXT_SPECIFIC ||
+	    hdr.tag != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected [0] EXPLICIT (bagValue) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return 0;
 	}
 	value = hdr.payload;
@@ -639,9 +657,11 @@ static int pkcs12_safebag(struct tlsv1_credentials *cred,
 	if (pos < end) {
 		/* bagAttributes  SET OF PKCS12Attribute OPTIONAL */
 		if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-		    !asn1_is_set(&hdr)) {
-			asn1_unexpected(&hdr,
-					"PKCS #12: Expected SET (bagAttributes)");
+		    hdr.class != ASN1_CLASS_UNIVERSAL ||
+		    hdr.tag != ASN1_TAG_SET) {
+			wpa_printf(MSG_DEBUG,
+				   "PKCS #12: Expected SET (bagAttributes) - found class %d tag 0x%x",
+				   hdr.class, hdr.tag);
 			return -1;
 		}
 		wpa_hexdump_key(MSG_MSGDUMP, "PKCS #12: bagAttributes",
@@ -652,9 +672,11 @@ static int pkcs12_safebag(struct tlsv1_credentials *cred,
 		while (pos < end) {
 			/* PKCS12Attribute ::= SEQUENCE */
 			if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-			    !asn1_is_sequence(&hdr)) {
-				asn1_unexpected(&hdr,
-						"PKCS #12: Expected SEQUENCE (PKCS12Attribute)");
+			    hdr.class != ASN1_CLASS_UNIVERSAL ||
+			    hdr.tag != ASN1_TAG_SEQUENCE) {
+				wpa_printf(MSG_DEBUG,
+					   "PKCS #12: Expected SEQUENCE (PKCS12Attribute) - found class %d tag 0x%x",
+					   hdr.class, hdr.tag);
 				return -1;
 			}
 			if (pkcs12_parse_attr(hdr.payload, hdr.length) < 0)
@@ -683,9 +705,12 @@ static int pkcs12_safecontents(struct tlsv1_credentials *cred,
 	const u8 *pos, *end;
 
 	/* SafeContents ::= SEQUENCE OF SafeBag */
-	if (asn1_get_next(buf, len, &hdr) < 0 || !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE (SafeContents)");
+	if (asn1_get_next(buf, len, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE (SafeContents) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	pos = hdr.payload;
@@ -701,9 +726,11 @@ static int pkcs12_safecontents(struct tlsv1_credentials *cred,
 
 	while (pos < end) {
 		if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-		    !asn1_is_sequence(&hdr)) {
-			asn1_unexpected(&hdr,
-					"PKCS #12: Expected SEQUENCE (SafeBag)");
+		    hdr.class != ASN1_CLASS_UNIVERSAL ||
+		    hdr.tag != ASN1_TAG_SEQUENCE) {
+			wpa_printf(MSG_DEBUG,
+				   "PKCS #12: Expected SEQUENCE (SafeBag) - found class %d tag 0x%x",
+				   hdr.class, hdr.tag);
 			return -1;
 		}
 		if (pkcs12_safebag(cred, hdr.payload, hdr.length, passwd) < 0)
@@ -723,8 +750,11 @@ static int pkcs12_parse_content_data(struct tlsv1_credentials *cred,
 
 	/* Data ::= OCTET STRING */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_octetstring(&hdr)) {
-		asn1_unexpected(&hdr, "PKCS #12: Expected OCTET STRING (Data)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_OCTETSTRING) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected OCTET STRING (Data) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -752,17 +782,21 @@ static int pkcs12_parse_content_enc_data(struct tlsv1_credentials *cred,
 	 *   encryptedContentInfo EncryptedContentInfo }
 	 */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE (EncryptedData)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE (EncryptedData) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return 0;
 	}
 	pos = hdr.payload;
 
 	/* Version ::= INTEGER */
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !asn1_is_integer(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: No INTEGER tag found for version");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL || hdr.tag != ASN1_TAG_INTEGER) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: No INTEGER tag found for version; class=%d tag=0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	if (hdr.length != 1 || hdr.payload[0] != 0) {
@@ -781,9 +815,11 @@ static int pkcs12_parse_content_enc_data(struct tlsv1_credentials *cred,
 	 *   encryptedContent [0] IMPLICIT EncryptedContent OPTIONAL }
 	 */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE (EncryptedContentInfo)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE (EncryptedContentInfo) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -809,19 +845,22 @@ static int pkcs12_parse_content_enc_data(struct tlsv1_credentials *cred,
 
 	/* ContentEncryptionAlgorithmIdentifier ::= AlgorithmIdentifier */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE (ContentEncryptionAlgorithmIdentifier)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG, "PKCS #12: Expected SEQUENCE (ContentEncryptionAlgorithmIdentifier) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	enc_alg = hdr.payload;
 	enc_alg_len = hdr.length;
 	pos = hdr.payload + hdr.length;
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || hdr.constructed ||
-	    !asn1_is_cs_tag(&hdr, 0)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected [0] IMPLICIT (encryptedContent)");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_CONTEXT_SPECIFIC ||
+	    hdr.tag != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected [0] IMPLICIT (encryptedContent) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -861,10 +900,12 @@ static int pkcs12_parse_content(struct tlsv1_credentials *cred,
 	asn1_oid_to_str(&oid, txt, sizeof(txt));
 	wpa_printf(MSG_DEBUG, "PKCS #12: contentType %s", txt);
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !hdr.constructed ||
-	    !asn1_is_cs_tag(&hdr, 0)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected [0] EXPLICIT (content)");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_CONTEXT_SPECIFIC ||
+	    hdr.tag != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected [0] EXPLICIT (content) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return 0;
 	}
 	pos = hdr.payload;
@@ -897,18 +938,23 @@ static int pkcs12_parse(struct tlsv1_credentials *cred,
 	 * }
 	 */
 
-	if (asn1_get_next(key, len, &hdr) < 0 || !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE (PFX); assume PKCS #12 not used");
+	if (asn1_get_next(key, len, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE (PFX) - found class %d tag 0x%x; assume PKCS #12 not used",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
 	pos = hdr.payload;
 	end = pos + hdr.length;
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !asn1_is_integer(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: No INTEGER tag found for version");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL || hdr.tag != ASN1_TAG_INTEGER) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: No INTEGER tag found for version; class=%d tag=0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	if (hdr.length != 1 || hdr.payload[0] != 3) {
@@ -924,9 +970,11 @@ static int pkcs12_parse(struct tlsv1_credentials *cred,
 	 */
 
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE (authSafe); assume PKCS #12 not used");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE (authSafe) - found class %d tag 0x%x; assume PKCS #12 not used",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -947,10 +995,12 @@ static int pkcs12_parse(struct tlsv1_credentials *cred,
 		return -1;
 	}
 
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 || !hdr.constructed ||
-	    !asn1_is_cs_tag(&hdr, 0)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected [0] EXPLICIT (content); assume PKCS #12 not used");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_CONTEXT_SPECIFIC ||
+	    hdr.tag != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected [0] EXPLICIT (content) - found class %d tag 0x%x; assume PKCS #12 not used",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -958,9 +1008,11 @@ static int pkcs12_parse(struct tlsv1_credentials *cred,
 
 	/* Data ::= OCTET STRING */
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_octetstring(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected OCTET STRING (Data); assume PKCS #12 not used");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_OCTETSTRING) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected OCTET STRING (Data) - found class %d tag 0x%x; assume PKCS #12 not used",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -974,9 +1026,11 @@ static int pkcs12_parse(struct tlsv1_credentials *cred,
 		    hdr.payload, hdr.length);
 
 	if (asn1_get_next(hdr.payload, hdr.length, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #12: Expected SEQUENCE within Data content; assume PKCS #12 not used");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #12: Expected SEQUENCE within Data content - found class %d tag 0x%x; assume PKCS #12 not used",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -985,9 +1039,11 @@ static int pkcs12_parse(struct tlsv1_credentials *cred,
 
 	while (end > pos) {
 		if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-		    !asn1_is_sequence(&hdr)) {
-			asn1_unexpected(&hdr,
-					"PKCS #12: Expected SEQUENCE (ContentInfo); assume PKCS #12 not used");
+		    hdr.class != ASN1_CLASS_UNIVERSAL ||
+		    hdr.tag != ASN1_TAG_SEQUENCE) {
+			wpa_printf(MSG_DEBUG,
+				   "PKCS #12: Expected SEQUENCE (ContentInfo) - found class %d tag 0x%x; assume PKCS #12 not used",
+				   hdr.class, hdr.tag);
 			return -1;
 		}
 		if (pkcs12_parse_content(cred, hdr.payload, hdr.length,
@@ -1085,17 +1141,24 @@ static int tlsv1_set_dhparams_der(struct tlsv1_credentials *cred,
 	 */
 
 	/* DHParamer ::= SEQUENCE */
-	if (asn1_get_next(pos, len, &hdr) < 0 || !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"DH: DH parameters did not start with a valid SEQUENCE");
+	if (asn1_get_next(pos, len, &hdr) < 0 ||
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG, "DH: DH parameters did not start with a "
+			   "valid SEQUENCE - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		return -1;
 	}
 	pos = hdr.payload;
 
 	/* prime INTEGER */
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_integer(&hdr)) {
-		asn1_unexpected(&hdr, "DH: No INTEGER tag found for p");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0)
+		return -1;
+
+	if (hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_INTEGER) {
+		wpa_printf(MSG_DEBUG, "DH: No INTEGER tag found for p; "
+			   "class=%d tag=0x%x", hdr.class, hdr.tag);
 		return -1;
 	}
 
@@ -1110,9 +1173,13 @@ static int tlsv1_set_dhparams_der(struct tlsv1_credentials *cred,
 	pos = hdr.payload + hdr.length;
 
 	/* base INTEGER */
-	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_integer(&hdr)) {
-		asn1_unexpected(&hdr, "DH: No INTEGER tag found for g");
+	if (asn1_get_next(pos, end - pos, &hdr) < 0)
+		return -1;
+
+	if (hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_INTEGER) {
+		wpa_printf(MSG_DEBUG, "DH: No INTEGER tag found for g; "
+			   "class=%d tag=0x%x", hdr.class, hdr.tag);
 		return -1;
 	}
 

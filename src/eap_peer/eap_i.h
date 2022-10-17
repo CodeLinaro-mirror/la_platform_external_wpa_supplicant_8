@@ -38,7 +38,7 @@ struct eap_method_ret {
 	/**
 	 * ignore - Whether method decided to drop the current packed (OUT)
 	 */
-	bool ignore;
+	Boolean ignore;
 
 	/**
 	 * methodState - Method-specific state (IN/OUT)
@@ -53,7 +53,7 @@ struct eap_method_ret {
 	/**
 	 * allowNotifications - Whether method allows notifications (OUT)
 	 */
-	bool allowNotifications;
+	Boolean allowNotifications;
 };
 
 
@@ -123,9 +123,9 @@ struct eap_method {
 	 * isKeyAvailable - Find out whether EAP method has keying material
 	 * @sm: Pointer to EAP state machine allocated with eap_peer_sm_init()
 	 * @priv: Pointer to private EAP method data from eap_method::init()
-	 * Returns: %true if key material (eapKeyData) is available
+	 * Returns: %TRUE if key material (eapKeyData) is available
 	 */
-	bool (*isKeyAvailable)(struct eap_sm *sm, void *priv);
+	Boolean (*isKeyAvailable)(struct eap_sm *sm, void *priv);
 
 	/**
 	 * getKey - Get EAP method specific keying material (eapKeyData)
@@ -161,13 +161,13 @@ struct eap_method {
 	 * has_reauth_data - Whether method is ready for fast reauthentication
 	 * @sm: Pointer to EAP state machine allocated with eap_peer_sm_init()
 	 * @priv: Pointer to private EAP method data from eap_method::init()
-	 * Returns: %true or %false based on whether fast reauthentication is
+	 * Returns: %TRUE or %FALSE based on whether fast reauthentication is
 	 * possible
 	 *
 	 * This function is an optional handler that only EAP methods
 	 * supporting fast re-authentication need to implement.
 	 */
-	bool (*has_reauth_data)(struct eap_sm *sm, void *priv);
+	Boolean (*has_reauth_data)(struct eap_sm *sm, void *priv);
 
 	/**
 	 * deinit_for_reauth - Release data that is not needed for fast re-auth
@@ -318,39 +318,39 @@ struct eap_sm {
 	struct wpabuf *lastRespData;
 	EapDecision decision;
 	/* Short-term local variables */
-	bool rxReq;
-	bool rxSuccess;
-	bool rxFailure;
+	Boolean rxReq;
+	Boolean rxSuccess;
+	Boolean rxFailure;
 	int reqId;
 	enum eap_type reqMethod;
 	int reqVendor;
 	u32 reqVendorMethod;
-	bool ignore;
+	Boolean ignore;
 	/* Constants */
 	int ClientTimeout;
 
 	/* Miscellaneous variables */
-	bool allowNotifications; /* peer state machine <-> methods */
+	Boolean allowNotifications; /* peer state machine <-> methods */
 	struct wpabuf *eapRespData; /* peer to lower layer */
-	bool eapKeyAvailable; /* peer to lower layer */
+	Boolean eapKeyAvailable; /* peer to lower layer */
 	u8 *eapKeyData; /* peer to lower layer */
 	size_t eapKeyDataLen; /* peer to lower layer */
 	u8 *eapSessionId; /* peer to lower layer */
 	size_t eapSessionIdLen; /* peer to lower layer */
 	const struct eap_method *m; /* selected EAP method */
 	/* not defined in RFC 4137 */
-	bool changed;
+	Boolean changed;
 	void *eapol_ctx;
 	const struct eapol_callbacks *eapol_cb;
 	void *eap_method_priv;
 	int init_phase2;
 	int fast_reauth;
-	bool reauthInit; /* send EAP-Identity/Re-auth */
+	Boolean reauthInit; /* send EAP-Identity/Re-auth */
 	u32 erp_seq;
 
-	bool rxResp /* LEAP only */;
-	bool leap_done;
-	bool peap_done;
+	Boolean rxResp /* LEAP only */;
+	Boolean leap_done;
+	Boolean peap_done;
 	u8 req_sha1[20]; /* SHA1() of the current EAP packet */
 	u8 last_sha1[20]; /* SHA1() of the previously received EAP packet; used
 			   * in duplicate request detection. */

@@ -1,3 +1,13 @@
+all: libeap_server.a
+
+clean:
+	rm -f *~ *.o *.d *.gcno *.gcda *.gcov libeap_server.a
+
+install:
+	@echo Nothing to be made.
+
+include ../lib.rules
+
 CFLAGS += -DCONFIG_HS20
 
 LIB_OBJS= \
@@ -5,4 +15,7 @@ LIB_OBJS= \
 	eap_server_identity.o \
 	eap_server_methods.o
 
-include ../lib.rules
+libeap_server.a: $(LIB_OBJS)
+	$(AR) crT $@ $?
+
+-include $(OBJS:%.o=%.d)

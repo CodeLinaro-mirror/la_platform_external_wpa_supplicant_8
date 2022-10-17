@@ -1,4 +1,4 @@
-ALL=p2p
+all: p2p
 include ../rules.include
 
 LIBS += $(SRC)/utils/libutils.a
@@ -8,16 +8,11 @@ LIBS += $(SRC)/p2p/libp2p.a
 LIBS += $(SRC)/tls/libtls.a
 LIBS += $(SRC)/wps/libwps.a
 
-OBJS += p2p.o
-
-_OBJS_VAR := OBJS
-include ../../../src/objs.mk
-
-_OBJS_VAR := LIBS
-include ../../../src/objs.mk
-
-p2p: $(OBJS) $(LIBS)
+p2p: p2p.o $(OBJS) $(LIBS)
 	$(LDO) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-clean: common-clean
+clean:
+	$(MAKE) -C $(SRC) clean
 	rm -f p2p *~ *.o *.d ../*~ ../*.o ../*.d
+
+-include $(OBJS:%.o=%.d)

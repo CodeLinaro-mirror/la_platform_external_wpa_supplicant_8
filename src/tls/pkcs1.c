@@ -236,14 +236,14 @@ int pkcs1_v15_sig_ver(struct crypto_public_key *pk,
 	 *
 	 */
 	if (asn1_get_next(decrypted, decrypted_len, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #1: Expected SEQUENCE (DigestInfo)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #1: Expected SEQUENCE (DigestInfo) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		os_free(decrypted);
 		return -1;
 	}
-	wpa_hexdump(MSG_MSGDUMP, "PKCS #1: DigestInfo",
-		    hdr.payload, hdr.length);
 
 	pos = hdr.payload;
 	end = pos + hdr.length;
@@ -257,36 +257,19 @@ int pkcs1_v15_sig_ver(struct crypto_public_key *pk,
 	 */
 
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_sequence(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #1: Expected SEQUENCE (AlgorithmIdentifier)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_SEQUENCE) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #1: Expected SEQUENCE (AlgorithmIdentifier) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		os_free(decrypted);
 		return -1;
 	}
-	wpa_hexdump(MSG_MSGDUMP, "PKCS #1: DigestAlgorithmIdentifier",
-		    hdr.payload, hdr.length);
 	da_end = hdr.payload + hdr.length;
 
 	if (asn1_get_oid(hdr.payload, hdr.length, &oid, &next)) {
 		wpa_printf(MSG_DEBUG,
 			   "PKCS #1: Failed to parse digestAlgorithm");
-		os_free(decrypted);
-		return -1;
-	}
-	wpa_hexdump(MSG_MSGDUMP, "PKCS #1: Digest algorithm parameters",
-		    next, da_end - next);
-
-	/*
-	 * RFC 5754: The correct encoding for the SHA2 algorithms would be to
-	 * omit the parameters, but there are implementation that encode these
-	 * as a NULL element. Allow these two cases and reject anything else.
-	 */
-	if (da_end > next &&
-	    (asn1_get_next(next, da_end - next, &hdr) < 0 ||
-	     !asn1_is_null(&hdr) ||
-	     hdr.payload + hdr.length != da_end)) {
-		wpa_printf(MSG_DEBUG,
-			   "PKCS #1: Unexpected digest algorithm parameters");
 		os_free(decrypted);
 		return -1;
 	}
@@ -304,11 +287,14 @@ int pkcs1_v15_sig_ver(struct crypto_public_key *pk,
 
 	/* Digest ::= OCTET STRING */
 	pos = da_end;
+	end = decrypted + decrypted_len;
 
 	if (asn1_get_next(pos, end - pos, &hdr) < 0 ||
-	    !asn1_is_octetstring(&hdr)) {
-		asn1_unexpected(&hdr,
-				"PKCS #1: Expected OCTETSTRING (Digest)");
+	    hdr.class != ASN1_CLASS_UNIVERSAL ||
+	    hdr.tag != ASN1_TAG_OCTETSTRING) {
+		wpa_printf(MSG_DEBUG,
+			   "PKCS #1: Expected OCTETSTRING (Digest) - found class %d tag 0x%x",
+			   hdr.class, hdr.tag);
 		os_free(decrypted);
 		return -1;
 	}
@@ -324,14 +310,13 @@ int pkcs1_v15_sig_ver(struct crypto_public_key *pk,
 
 	os_free(decrypted);
 
-	if (hdr.payload + hdr.length != decrypted + decrypted_len) {
+	if (hdr.payload + hdr.length != end) {
 		wpa_printf(MSG_INFO,
 			   "PKCS #1: Extra data after signature - reject");
 
 		wpa_hexdump(MSG_DEBUG, "PKCS #1: Extra data",
 			    hdr.payload + hdr.length,
-			    decrypted + decrypted_len - hdr.payload -
-			    hdr.length);
+			    end - hdr.payload - hdr.length);
 		return -1;
 	}
 

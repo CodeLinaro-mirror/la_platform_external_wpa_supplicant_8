@@ -85,7 +85,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	struct eap_sm *sm;
 	void *priv;
 	struct eap_method_ret ret;
-	unsigned int count = 0;
 
 	wpa_fuzzer_set_debug_level();
 
@@ -99,7 +98,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	pos = data;
 	end = pos + size;
 
-	while (end - pos > 2 && count < 100) {
+	while (end - pos > 2) {
 		u16 flen;
 		struct wpabuf *buf, *req;
 
@@ -116,7 +115,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 		wpabuf_free(req);
 		wpabuf_free(buf);
 		pos += flen;
-		count++;
 	}
 
 	registered_eap_method->deinit(sm, priv);

@@ -100,7 +100,7 @@ static struct wpabuf * eap_psk_process_1(struct eap_psk_data *data,
 			   "length (%lu; expected %lu or more)",
 			   (unsigned long) len,
 			   (unsigned long) sizeof(*hdr1));
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 	wpa_printf(MSG_DEBUG, "EAP-PSK: Flags=0x%x", hdr1->flags);
@@ -120,7 +120,7 @@ static struct wpabuf * eap_psk_process_1(struct eap_psk_data *data,
 	if (data->id_s == NULL) {
 		wpa_printf(MSG_ERROR, "EAP-PSK: Failed to allocate memory for "
 			   "ID_S (len=%lu)", (unsigned long) data->id_s_len);
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 	wpa_hexdump_ascii(MSG_DEBUG, "EAP-PSK: ID_S",
@@ -128,7 +128,7 @@ static struct wpabuf * eap_psk_process_1(struct eap_psk_data *data,
 
 	if (random_get_bytes(data->rand_p, EAP_PSK_RAND_LEN)) {
 		wpa_printf(MSG_ERROR, "EAP-PSK: Failed to get random data");
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
@@ -198,7 +198,7 @@ static struct wpabuf * eap_psk_process_3(struct eap_psk_data *data,
 			   "length (%lu; expected %lu or more)",
 			   (unsigned long) len,
 			   (unsigned long) sizeof(*hdr3));
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 	left = len - sizeof(*hdr3);
@@ -220,7 +220,7 @@ static struct wpabuf * eap_psk_process_3(struct eap_psk_data *data,
 		wpa_printf(MSG_INFO, "EAP-PSK: Too short PCHANNEL data in "
 			   "third message (len=%lu, expected 21)",
 			   (unsigned long) left);
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
@@ -377,14 +377,14 @@ static struct wpabuf * eap_psk_process(struct eap_sm *sm, void *priv,
 
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_PSK, reqData, &len);
 	if (pos == NULL) {
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
-	ret->ignore = false;
+	ret->ignore = FALSE;
 	ret->methodState = METHOD_MAY_CONT;
 	ret->decision = DECISION_FAIL;
-	ret->allowNotifications = true;
+	ret->allowNotifications = TRUE;
 
 	switch (data->state) {
 	case PSK_INIT:
@@ -396,19 +396,19 @@ static struct wpabuf * eap_psk_process(struct eap_sm *sm, void *priv,
 	case PSK_DONE:
 		wpa_printf(MSG_DEBUG, "EAP-PSK: in DONE state - ignore "
 			   "unexpected message");
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
 	if (ret->methodState == METHOD_DONE) {
-		ret->allowNotifications = false;
+		ret->allowNotifications = FALSE;
 	}
 
 	return resp;
 }
 
 
-static bool eap_psk_isKeyAvailable(struct eap_sm *sm, void *priv)
+static Boolean eap_psk_isKeyAvailable(struct eap_sm *sm, void *priv)
 {
 	struct eap_psk_data *data = priv;
 	return data->state == PSK_DONE;

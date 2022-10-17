@@ -54,7 +54,7 @@ static struct wpabuf * eap_gtc_process(struct eap_sm *sm, void *priv,
 
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_GTC, reqData, &len);
 	if (pos == NULL) {
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 	id = eap_get_id(reqData);
@@ -85,15 +85,15 @@ static struct wpabuf * eap_gtc_process(struct eap_sm *sm, void *priv,
 	if (password == NULL) {
 		wpa_printf(MSG_INFO, "EAP-GTC: Password not configured");
 		eap_sm_request_otp(sm, (const char *) pos, len);
-		ret->ignore = true;
+		ret->ignore = TRUE;
 		return NULL;
 	}
 
-	ret->ignore = false;
+	ret->ignore = FALSE;
 
 	ret->methodState = data->prefix ? METHOD_MAY_CONT : METHOD_DONE;
 	ret->decision = DECISION_COND_SUCC;
-	ret->allowNotifications = false;
+	ret->allowNotifications = FALSE;
 
 	plen = password_len;
 	identity = eap_get_config_identity(sm, &identity_len);

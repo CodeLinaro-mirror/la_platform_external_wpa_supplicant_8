@@ -1,3 +1,13 @@
+all: librsn_supp.a
+
+clean:
+	rm -f *~ *.o *.d *.gcno *.gcda *.gcov librsn_supp.a
+
+install:
+	@echo Nothing to be made.
+
+include ../lib.rules
+
 CFLAGS += -DCONFIG_IEEE80211R
 CFLAGS += -DCONFIG_TDLS
 CFLAGS += -DCONFIG_WNM
@@ -11,4 +21,7 @@ LIB_OBJS= \
 	wpa.o \
 	wpa_ie.o
 
-include ../lib.rules
+librsn_supp.a: $(LIB_OBJS)
+	$(AR) crT $@ $?
+
+-include $(OBJS:%.o=%.d)

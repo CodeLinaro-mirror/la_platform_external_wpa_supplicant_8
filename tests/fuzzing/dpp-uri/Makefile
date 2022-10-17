@@ -13,6 +13,7 @@ LIBS += $(SRC)/common/libcommon.a
 LIBS += $(SRC)/utils/libutils.a
 
 OBJS += $(SRC)/crypto/crypto_openssl.o
+LIBS += -lcrypto
 
 OBJS += $(SRC)/crypto/aes-ctr.o
 OBJS += $(SRC)/crypto/aes-siv.o
@@ -21,23 +22,12 @@ OBJS += $(SRC)/crypto/sha384-kdf.o
 OBJS += $(SRC)/crypto/sha512-kdf.o
 OBJS += $(SRC)/tls/asn1.o
 OBJS += $(SRC)/common/dpp.o
-OBJS += $(SRC)/common/dpp_auth.o
-OBJS += $(SRC)/common/dpp_backup.o
-OBJS += $(SRC)/common/dpp_crypto.o
-OBJS += $(SRC)/common/dpp_pkex.o
-OBJS += $(SRC)/common/dpp_reconfig.o
-OBJS += $(SRC)/common/dpp_tcp.o
 
-OBJS += dpp-uri.o
+dpp-uri: dpp-uri.o $(OBJS) $(LIBS)
+	$(LDO) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-_OBJS_VAR := OBJS
-include ../../../src/objs.mk
-
-_OBJS_VAR := LIBS
-include ../../../src/objs.mk
-
-dpp-uri: $(OBJS) $(LIBS)
-	$(LDO) $(LDFLAGS) -o $@ $^ -lcrypto
-
-clean: common-clean
+clean:
+	$(MAKE) -C $(SRC) clean
 	rm -f dpp-uri *~ *.o *.d ../*~ ../*.o ../*.d
+
+-include $(OBJS:%.o=%.d)

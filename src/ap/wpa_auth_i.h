@@ -39,20 +39,20 @@ struct wpa_state_machine {
 		WPA_PTK_GROUP_KEYERROR
 	} wpa_ptk_group_state;
 
-	bool Init;
-	bool DeauthenticationRequest;
-	bool AuthenticationRequest;
-	bool ReAuthenticationRequest;
-	bool Disconnect;
+	Boolean Init;
+	Boolean DeauthenticationRequest;
+	Boolean AuthenticationRequest;
+	Boolean ReAuthenticationRequest;
+	Boolean Disconnect;
 	u16 disconnect_reason; /* specific reason code to use with Disconnect */
 	u32 TimeoutCtr;
 	u32 GTimeoutCtr;
-	bool TimeoutEvt;
-	bool EAPOLKeyReceived;
-	bool EAPOLKeyPairwise;
-	bool EAPOLKeyRequest;
-	bool MICVerified;
-	bool GUpdateStationKeys;
+	Boolean TimeoutEvt;
+	Boolean EAPOLKeyReceived;
+	Boolean EAPOLKeyPairwise;
+	Boolean EAPOLKeyRequest;
+	Boolean MICVerified;
+	Boolean GUpdateStationKeys;
 	u8 ANonce[WPA_NONCE_LEN];
 	u8 SNonce[WPA_NONCE_LEN];
 	u8 alt_SNonce[WPA_NONCE_LEN];
@@ -62,21 +62,21 @@ struct wpa_state_machine {
 	u8 pmkid[PMKID_LEN]; /* valid if pmkid_set == 1 */
 	struct wpa_ptk PTK;
 	u8 keyidx_active;
-	bool use_ext_key_id;
-	bool PTK_valid;
-	bool pairwise_set;
-	bool tk_already_set;
+	Boolean use_ext_key_id;
+	Boolean PTK_valid;
+	Boolean pairwise_set;
+	Boolean tk_already_set;
 	int keycount;
-	bool Pair;
+	Boolean Pair;
 	struct wpa_key_replay_counter {
 		u8 counter[WPA_REPLAY_COUNTER_LEN];
-		bool valid;
+		Boolean valid;
 	} key_replay[RSNA_MAX_EAPOL_RETRIES],
 		prev_key_replay[RSNA_MAX_EAPOL_RETRIES];
-	bool PInitAKeys; /* WPA only, not in IEEE 802.11i */
-	bool PTKRequest; /* not in IEEE 802.11i state machine */
-	bool has_GTK;
-	bool PtkGroupInit; /* init request for PTK Group state machine */
+	Boolean PInitAKeys; /* WPA only, not in IEEE 802.11i */
+	Boolean PTKRequest; /* not in IEEE 802.11i state machine */
+	Boolean has_GTK;
+	Boolean PtkGroupInit; /* init request for PTK Group state machine */
 
 	u8 *last_rx_eapol_key; /* starting from IEEE 802.1X header */
 	size_t last_rx_eapol_key_len;
@@ -95,9 +95,8 @@ struct wpa_state_machine {
 #endif /* CONFIG_IEEE80211R_AP */
 	unsigned int is_wnmsleep:1;
 	unsigned int pmkid_set:1;
-
 #ifdef CONFIG_OCV
-	int ocv_enabled;
+	unsigned int ocv_enabled:1;
 #endif /* CONFIG_OCV */
 
 	u8 req_replay_counter[WPA_REPLAY_COUNTER_LEN];
@@ -175,12 +174,12 @@ struct wpa_group {
 	struct wpa_group *next;
 	int vlan_id;
 
-	bool GInit;
+	Boolean GInit;
 	int GKeyDoneStations;
-	bool GTKReKey;
+	Boolean GTKReKey;
 	int GTK_len;
 	int GN, GM;
-	bool GTKAuthenticator;
+	Boolean GTKAuthenticator;
 	u8 Counter[WPA_NONCE_LEN];
 
 	enum {
@@ -192,9 +191,9 @@ struct wpa_group {
 	u8 GMK[WPA_GMK_LEN];
 	u8 GTK[2][WPA_GTK_MAX_LEN];
 	u8 GNonce[WPA_NONCE_LEN];
-	bool changed;
-	bool first_sta_seen;
-	bool reject_4way_hs_for_entropy;
+	Boolean changed;
+	Boolean first_sta_seen;
+	Boolean reject_4way_hs_for_entropy;
 	u8 IGTK[2][WPA_IGTK_MAX_LEN];
 	u8 BIGTK[2][WPA_IGTK_MAX_LEN];
 	int GN_igtk, GM_igtk;
@@ -278,8 +277,7 @@ int wpa_write_rsnxe(struct wpa_auth_config *conf, u8 *buf, size_t len);
 void wpa_auth_logger(struct wpa_authenticator *wpa_auth, const u8 *addr,
 		     logger_level level, const char *txt);
 void wpa_auth_vlogger(struct wpa_authenticator *wpa_auth, const u8 *addr,
-		      logger_level level, const char *fmt, ...)
-	PRINTF_FORMAT(4, 5);
+		      logger_level level, const char *fmt, ...);
 void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
 		      struct wpa_state_machine *sm, int key_info,
 		      const u8 *key_rsc, const u8 *nonce,

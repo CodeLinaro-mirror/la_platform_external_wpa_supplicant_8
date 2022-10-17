@@ -114,7 +114,7 @@ OBJS = \
 	$(OBJDIR)\driver_ndis_.obj \
 	$(OBJDIR)\scan_helpers.obj \
 	$(OBJDIR)\events.obj \
-	$(OBJDIR)\bssid_ignore.obj \
+	$(OBJDIR)\blacklist.obj \
 	$(OBJDIR)\scan.obj \
 	$(OBJDIR)\wpas_glue.obj \
 	$(OBJDIR)\eap_register.obj \

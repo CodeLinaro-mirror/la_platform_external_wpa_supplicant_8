@@ -418,7 +418,6 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 		    const struct ieee80211_vht_capabilities *vht_capab,
 		    const struct ieee80211_he_capabilities *he_capab,
 		    size_t he_capab_len,
-		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
 		    int set)
 {
@@ -440,7 +439,6 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 	params.vht_capabilities = vht_capab;
 	params.he_capab = he_capab;
 	params.he_capab_len = he_capab_len;
-	params.he_6ghz_capab = he_6ghz_capab;
 	params.vht_opmode_enabled = !!(flags & WLAN_STA_VHT_OPMODE_ENABLED);
 	params.vht_opmode = vht_opmode;
 	params.flags = hostapd_sta_flags_to_drv(flags);
@@ -649,12 +647,6 @@ int hostapd_driver_commit(struct hostapd_data *hapd)
 int hostapd_drv_none(struct hostapd_data *hapd)
 {
 	return hapd->driver && os_strcmp(hapd->driver->name, "none") == 0;
-}
-
-
-bool hostapd_drv_nl80211(struct hostapd_data *hapd)
-{
-	return hapd->driver && os_strcmp(hapd->driver->name, "nl80211") == 0;
 }
 
 
@@ -888,8 +880,7 @@ static void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 			continue;
 		if (!(chan->flag & HOSTAPD_CHAN_DISABLED) &&
 		    !(hapd->iface->conf->acs_exclude_dfs &&
-		      (chan->flag & HOSTAPD_CHAN_RADAR)) &&
-		    !(chan->max_tx_power < hapd->iface->conf->min_tx_power))
+		      (chan->flag & HOSTAPD_CHAN_RADAR)))
 			int_array_add_unique(freq_list, chan->freq);
 	}
 }
@@ -988,12 +979,4 @@ int hostapd_drv_update_dh_ie(struct hostapd_data *hapd, const u8 *peer,
 		return 0;
 	return hapd->driver->update_dh_ie(hapd->drv_priv, peer, reason_code,
 					  ie, ielen);
-}
-
-
-int hostapd_drv_dpp_listen(struct hostapd_data *hapd, bool enable)
-{
-	if (!hapd->driver || !hapd->driver->dpp_listen || !hapd->drv_priv)
-		return 0;
-	return hapd->driver->dpp_listen(hapd->drv_priv, enable);
 }

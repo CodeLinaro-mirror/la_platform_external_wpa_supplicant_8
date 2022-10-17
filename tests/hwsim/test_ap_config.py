@@ -161,9 +161,10 @@ def run_ap_config_reload_on_sighup(dev, apdev, params, ht=True):
     name = "ap_config_reload_on_sighup"
     if not ht:
         name += "_no_ht"
-    pidfile = params['prefix'] + ".hostapd.pid"
-    logfile = params['prefix'] + ".hostapd.log"
-    conffile = params['prefix'] + ".hostapd.conf"
+    pidfile = os.path.join(params['logdir'], name + "-hostapd.pid")
+    logfile = os.path.join(params['logdir'], name + "-hostapd-log")
+    conffile = os.path.join(os.getcwd(), params['logdir'],
+                            name + "-hostapd.conf")
     prg = os.path.join(params['logdir'], 'alt-hostapd/hostapd/hostapd')
     if not os.path.exists(prg):
         prg = '../../hostapd/hostapd'
@@ -207,9 +208,11 @@ def run_ap_config_reload_on_sighup(dev, apdev, params, ht=True):
 
 def test_ap_config_reload_on_sighup_bss_changes(dev, apdev, params):
     """hostapd configuration reload modification from file on SIGHUP with bss remove/add"""
-    pidfile = params['prefix'] + ".hostapd.pid"
-    logfile = params['prefix'] + ".hostapd-log"
-    conffile = params['prefix'] + ".hostapd.conf"
+    name = "ap_config_reload_on_sighup_bss_changes"
+    pidfile = os.path.join(params['logdir'], name + "-hostapd.pid")
+    logfile = os.path.join(params['logdir'], name + "-hostapd-log")
+    conffile = os.path.join(os.getcwd(), params['logdir'],
+                            name + "-hostapd.conf")
     prg = os.path.join(params['logdir'], 'alt-hostapd/hostapd/hostapd')
     if not os.path.exists(prg):
         prg = '../../hostapd/hostapd'
@@ -361,7 +364,7 @@ def test_ap_config_invalid_value(dev, apdev, params):
 
 def test_ap_config_eap_user_file_parsing(dev, apdev, params):
     """hostapd eap_user_file parsing"""
-    tmp = params['prefix'] + '.tmp'
+    tmp = os.path.join(params['logdir'], 'ap_config_eap_user_file_parsing.tmp')
     hapd = hostapd.add_ap(apdev[0], {"ssid": "foobar"})
 
     for i in range(2):

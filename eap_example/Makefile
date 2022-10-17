@@ -1,15 +1,28 @@
 ALL=eap_example
 
-include ../src/build.rules
+all: $(ALL)
+
+ifndef CC
+CC=gcc
+endif
+
+ifndef RANLIB
+RANLIB=ranlib
+endif
+
+ifndef CFLAGS
+CFLAGS = -MMD -O2 -Wall -g
+endif
+
 
 CFLAGS += -I.
 CFLAGS += -I../src
 CFLAGS += -I../src/utils
 
 
-EAP_LIBS += ../src/utils/libutils.a
-EAP_LIBS += ../src/crypto/libcrypto.a
-EAP_LIBS += ../src/tls/libtls.a
+OBJS_both += ../src/utils/libutils.a
+OBJS_both += ../src/crypto/libcrypto.a
+OBJS_both += ../src/tls/libtls.a
 
 OBJS_both += ../src/eap_common/eap_peap_common.o
 OBJS_both += ../src/eap_common/eap_psk_common.o
@@ -82,22 +95,41 @@ OBJS_server += ../src/eap_server/eap_server_tls_common.o
 CFLAGS += -DEAP_SERVER
 
 
+ifndef LDO
+LDO=$(CC)
+endif
+
+Q=@
+E=echo
+ifeq ($(V), 1)
+Q=
+E=true
+endif
+
+%.o: %.c
+	$(Q)$(CC) -c -o $@ $(CFLAGS) $<
+	@$(E) "  CC " $<
+
+
 OBJS_lib=$(OBJS_both) $(OBJS_peer) $(OBJS_server)
-_OBJS_VAR := OBJS_lib
-include ../src/objs.mk
 
 OBJS_ex = eap_example.o eap_example_peer.o eap_example_server.o
-_OBJS_VAR := OBJS_ex
-include ../src/objs.mk
 
-_OBJS_VAR := EAP_LIBS
-include ../src/objs.mk
+
+../src/utils/libutils.a:
+	$(MAKE) -C ../src/utils
+
+../src/crypto/libcrypto.a:
+	$(MAKE) -C ../src/crypto
+
+../src/tls/libtls.a:
+	$(MAKE) -C ../src/tls
 
 
 ifneq ($(CONFIG_SOLIB), yes)
 LIBEAP = libeap.a
-libeap.a: $(EAP_LIBS) $(OBJS_lib)
-	$(AR) crT libeap.a $^
+libeap.a: $(OBJS_lib)
+	$(AR) crT libeap.a $(OBJS_lib)
 	$(RANLIB) libeap.a
 
 else
@@ -105,15 +137,16 @@ CFLAGS  += -fPIC -DPIC
 LDFLAGS += -shared
 
 LIBEAP  = libeap.so
-libeap.so: $(EAP_LIBS) $(OBJS_lib)
-	$(LDO) $(LDFLAGS) $^ -o $(LIBEAP)
+libeap.so: $(OBJS_lib)
+	$(LDO) $(LDFLAGS) $(OBJS_lib) -o $(LIBEAP)
 
 endif
 
 eap_example: $(OBJS_ex) $(LIBEAP)
 	$(LDO) $(LDFLAGS) -o eap_example $(OBJS_ex) -L. -leap $(LIBS)
 
-clean: common-clean
-	rm -f core *~ *.o *.d libeap.a libeap.so
+clean:
+	$(MAKE) -C ../src clean
+	rm -f core *~ *.o *.d libeap.a libeap.so $(ALL)
 
 -include $(OBJS:%.o=%.d)

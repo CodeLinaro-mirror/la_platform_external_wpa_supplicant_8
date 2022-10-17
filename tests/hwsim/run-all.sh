@@ -122,13 +122,7 @@ if ! ./start.sh $VM $VALGRIND $TRACE channels=$NUM_CH; then
 	exit 1
 fi
 
-# Only use sudo if not already root.
-if [ "$(id -u)" != 0 ]; then
-	SUDO=sudo
-else
-	SUDO=
-fi
-${SUDO} ./run-tests.py -D --logdir "$LOGDIR" $TRACE_ARGS -q $DB $RUN_TEST_ARGS || errors=1
+sudo ./run-tests.py -D --logdir "$LOGDIR" $TRACE_ARGS -q $DB $RUN_TEST_ARGS || errors=1
 
 ./stop.sh
 

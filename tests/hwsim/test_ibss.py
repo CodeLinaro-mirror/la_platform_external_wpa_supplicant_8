@@ -13,6 +13,7 @@ import subprocess
 
 import hwsim_utils
 from utils import *
+from test_wep import check_wep_capa
 
 def connect_ibss_cmd(dev, id, freq=2412):
     dev.dump_monitor()

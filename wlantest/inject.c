@@ -68,8 +68,7 @@ static int is_robust_mgmt(u8 *frame, size_t len)
 	stype = WLAN_FC_GET_STYPE(fc);
 	if (stype == WLAN_FC_STYPE_DEAUTH || stype == WLAN_FC_STYPE_DISASSOC)
 		return 1;
-	if (stype == WLAN_FC_STYPE_ACTION ||
-	    stype == WLAN_FC_STYPE_ACTION_NO_ACK) {
+	if (stype == WLAN_FC_STYPE_ACTION) {
 		if (len < 25)
 			return 0;
 		if (mgmt->u.action.category != WLAN_ACTION_PUBLIC)
@@ -83,17 +82,17 @@ static int wlantest_inject_bip(struct wlantest *wt, struct wlantest_bss *bss,
 			       u8 *frame, size_t len, int incorrect_key)
 {
 	u8 *prot;
-	u8 stub[32];
+	u8 dummy[32];
 	int ret;
 	size_t plen;
 
 	if (!bss->igtk_len[bss->igtk_idx])
 		return -1;
 
-	os_memset(stub, 0x11, sizeof(stub));
+	os_memset(dummy, 0x11, sizeof(dummy));
 	inc_byte_array(bss->ipn[bss->igtk_idx], 6);
 
-	prot = bip_protect(incorrect_key ? stub : bss->igtk[bss->igtk_idx],
+	prot = bip_protect(incorrect_key ? dummy : bss->igtk[bss->igtk_idx],
 			   bss->igtk_len[bss->igtk_idx],
 			   frame, len, bss->ipn[bss->igtk_idx],
 			   bss->igtk_idx, &plen);
@@ -115,7 +114,7 @@ static int wlantest_inject_prot_bc(struct wlantest *wt,
 	u8 *crypt;
 	size_t crypt_len;
 	int ret;
-	u8 stub[64];
+	u8 dummy[64];
 	u8 *pn;
 	struct ieee80211_hdr *hdr;
 	u16 fc;
@@ -134,14 +133,14 @@ static int wlantest_inject_prot_bc(struct wlantest *wt,
 	pn = bss->rsc[bss->gtk_idx];
 	inc_byte_array(pn, 6);
 
-	os_memset(stub, 0x11, sizeof(stub));
+	os_memset(dummy, 0x11, sizeof(dummy));
 	if (bss->group_cipher == WPA_CIPHER_TKIP)
-		crypt = tkip_encrypt(incorrect_key ? stub :
+		crypt = tkip_encrypt(incorrect_key ? dummy :
 				     bss->gtk[bss->gtk_idx],
 				     frame, len, hdrlen, NULL, pn,
 				     bss->gtk_idx, &crypt_len);
 	else
-		crypt = ccmp_encrypt(incorrect_key ? stub :
+		crypt = ccmp_encrypt(incorrect_key ? dummy :
 				     bss->gtk[bss->gtk_idx],
 				     frame, len, hdrlen, NULL, pn,
 				     bss->gtk_idx, &crypt_len);
@@ -163,7 +162,7 @@ static int wlantest_inject_prot(struct wlantest *wt, struct wlantest_bss *bss,
 	u8 *crypt;
 	size_t crypt_len;
 	int ret;
-	u8 stub[64];
+	u8 dummy[64];
 	u8 *pn;
 	struct ieee80211_hdr *hdr;
 	u16 fc;
@@ -243,17 +242,17 @@ static int wlantest_inject_prot(struct wlantest *wt, struct wlantest_bss *bss,
 		pn = sta->rsc_tods[tid];
 	inc_byte_array(pn, 6);
 
-	os_memset(stub, 0x11, sizeof(stub));
+	os_memset(dummy, 0x11, sizeof(dummy));
 	if (tk)
-		crypt = ccmp_encrypt(incorrect_key ? stub : tk,
+		crypt = ccmp_encrypt(incorrect_key ? dummy : tk,
 				     frame, len, hdrlen, qos, pn, 0,
 				     &crypt_len);
 	else if (sta->pairwise_cipher == WPA_CIPHER_TKIP)
-		crypt = tkip_encrypt(incorrect_key ? stub : sta->ptk.tk,
+		crypt = tkip_encrypt(incorrect_key ? dummy : sta->ptk.tk,
 				     frame, len, hdrlen, qos, pn, 0,
 				     &crypt_len);
 	else
-		crypt = ccmp_encrypt(incorrect_key ? stub : sta->ptk.tk,
+		crypt = ccmp_encrypt(incorrect_key ? dummy : sta->ptk.tk,
 				     frame, len, hdrlen, qos, pn, 0,
 				     &crypt_len);
 

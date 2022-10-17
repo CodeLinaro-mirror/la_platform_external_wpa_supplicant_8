@@ -126,7 +126,7 @@ class RFKill(object):
     @classmethod
     def list(cls):
         res = []
-        rfk = open('/dev/rfkill', 'rb', buffering=0)
+        rfk = open('/dev/rfkill', 'rb')
         fd = rfk.fileno()
         flgs = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, flgs | os.O_NONBLOCK)

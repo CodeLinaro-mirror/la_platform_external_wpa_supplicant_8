@@ -56,7 +56,6 @@ static void eapol_auth_logger(struct eapol_authenticator *eapol,
 }
 
 
-PRINTF_FORMAT(4, 5)
 static void eapol_auth_vlogger(struct eapol_authenticator *eapol,
 			       const u8 *addr, eapol_logger_level level,
 			       const char *fmt, ...)
@@ -207,10 +206,10 @@ SM_STATE(AUTH_PAE, INITIALIZE)
 	 * get here on disconnection event without advancing to the
 	 * AUTHENTICATING state to clear keyRun before the IEEE 802.11 RSN
 	 * authenticator state machine runs and that may advance from
-	 * AUTHENTICATION2 to INITPMK if keyRun = true has been left from the
+	 * AUTHENTICATION2 to INITPMK if keyRun = TRUE has been left from the
 	 * last association. This can be avoided by clearing keyRun here.
 	 */
-	sm->keyRun = false;
+	sm->keyRun = FALSE;
 }
 
 
@@ -230,7 +229,7 @@ SM_STATE(AUTH_PAE, DISCONNECTED)
 	sm->authPortStatus = Unauthorized;
 	setPortUnauthorized();
 	sm->reAuthCount = 0;
-	sm->eapolLogoff = false;
+	sm->eapolLogoff = FALSE;
 	if (!from_initialize) {
 		sm->eapol->cb.finished(sm->eapol->conf.ctx, sm->sta, 0,
 				       sm->flags & EAPOL_SM_PREAUTH,
@@ -252,7 +251,7 @@ SM_STATE(AUTH_PAE, RESTART)
 
 	SM_ENTRY_MA(AUTH_PAE, RESTART, auth_pae);
 
-	sm->eap_if->eapRestart = true;
+	sm->eap_if->eapRestart = TRUE;
 }
 
 
@@ -263,7 +262,7 @@ SM_STATE(AUTH_PAE, CONNECTING)
 
 	SM_ENTRY_MA(AUTH_PAE, CONNECTING, auth_pae);
 
-	sm->reAuthenticate = false;
+	sm->reAuthenticate = FALSE;
 	sm->reAuthCount++;
 }
 
@@ -278,7 +277,7 @@ SM_STATE(AUTH_PAE, HELD)
 	sm->authPortStatus = Unauthorized;
 	setPortUnauthorized();
 	sm->quietWhile = sm->quietPeriod;
-	sm->eapolLogoff = false;
+	sm->eapolLogoff = FALSE;
 
 	eapol_auth_vlogger(sm->eapol, sm->addr, EAPOL_LOGGER_WARNING,
 			   "authentication failed - EAP type: %d (%s)",
@@ -325,13 +324,13 @@ SM_STATE(AUTH_PAE, AUTHENTICATING)
 {
 	SM_ENTRY_MA(AUTH_PAE, AUTHENTICATING, auth_pae);
 
-	sm->eapolStart = false;
-	sm->authSuccess = false;
-	sm->authFail = false;
-	sm->authTimeout = false;
-	sm->authStart = true;
-	sm->keyRun = false;
-	sm->keyDone = false;
+	sm->eapolStart = FALSE;
+	sm->authSuccess = FALSE;
+	sm->authFail = FALSE;
+	sm->authTimeout = FALSE;
+	sm->authStart = TRUE;
+	sm->keyRun = FALSE;
+	sm->keyDone = FALSE;
 }
 
 
@@ -348,9 +347,9 @@ SM_STATE(AUTH_PAE, ABORTING)
 
 	SM_ENTRY_MA(AUTH_PAE, ABORTING, auth_pae);
 
-	sm->authAbort = true;
-	sm->keyRun = false;
-	sm->keyDone = false;
+	sm->authAbort = TRUE;
+	sm->keyRun = FALSE;
+	sm->keyDone = FALSE;
 }
 
 
@@ -361,7 +360,7 @@ SM_STATE(AUTH_PAE, FORCE_AUTH)
 	sm->authPortStatus = Authorized;
 	setPortAuthorized();
 	sm->portMode = ForceAuthorized;
-	sm->eapolStart = false;
+	sm->eapolStart = FALSE;
 	txCannedSuccess();
 }
 
@@ -373,7 +372,7 @@ SM_STATE(AUTH_PAE, FORCE_UNAUTH)
 	sm->authPortStatus = Unauthorized;
 	setPortUnauthorized();
 	sm->portMode = ForceUnauthorized;
-	sm->eapolStart = false;
+	sm->eapolStart = FALSE;
 	txCannedFail();
 }
 
@@ -458,8 +457,8 @@ SM_STATE(BE_AUTH, INITIALIZE)
 	SM_ENTRY_MA(BE_AUTH, INITIALIZE, be_auth);
 
 	abortAuth();
-	sm->eap_if->eapNoReq = false;
-	sm->authAbort = false;
+	sm->eap_if->eapNoReq = FALSE;
+	sm->authAbort = FALSE;
 }
 
 
@@ -468,7 +467,7 @@ SM_STATE(BE_AUTH, REQUEST)
 	SM_ENTRY_MA(BE_AUTH, REQUEST, be_auth);
 
 	txReq();
-	sm->eap_if->eapReq = false;
+	sm->eap_if->eapReq = FALSE;
 	sm->backendOtherRequestsToSupplicant++;
 
 	/*
@@ -482,7 +481,7 @@ SM_STATE(BE_AUTH, REQUEST)
 	 * EAP-Request from the main EAP method. This can be avoided by
 	 * clearing eapolEap here.
 	 */
-	sm->eapolEap = false;
+	sm->eapolEap = FALSE;
 }
 
 
@@ -490,11 +489,11 @@ SM_STATE(BE_AUTH, RESPONSE)
 {
 	SM_ENTRY_MA(BE_AUTH, RESPONSE, be_auth);
 
-	sm->authTimeout = false;
-	sm->eapolEap = false;
-	sm->eap_if->eapNoReq = false;
+	sm->authTimeout = FALSE;
+	sm->eapolEap = FALSE;
+	sm->eap_if->eapNoReq = FALSE;
 	sm->aWhile = sm->serverTimeout;
-	sm->eap_if->eapResp = true;
+	sm->eap_if->eapResp = TRUE;
 	/* sendRespToServer(); */
 	sm->backendResponses++;
 }
@@ -505,8 +504,8 @@ SM_STATE(BE_AUTH, SUCCESS)
 	SM_ENTRY_MA(BE_AUTH, SUCCESS, be_auth);
 
 	txReq();
-	sm->authSuccess = true;
-	sm->keyRun = true;
+	sm->authSuccess = TRUE;
+	sm->keyRun = TRUE;
 }
 
 
@@ -515,7 +514,7 @@ SM_STATE(BE_AUTH, FAIL)
 	SM_ENTRY_MA(BE_AUTH, FAIL, be_auth);
 
 	txReq();
-	sm->authFail = true;
+	sm->authFail = TRUE;
 }
 
 
@@ -523,7 +522,7 @@ SM_STATE(BE_AUTH, TIMEOUT)
 {
 	SM_ENTRY_MA(BE_AUTH, TIMEOUT, be_auth);
 
-	sm->authTimeout = true;
+	sm->authTimeout = TRUE;
 }
 
 
@@ -531,7 +530,7 @@ SM_STATE(BE_AUTH, IDLE)
 {
 	SM_ENTRY_MA(BE_AUTH, IDLE, be_auth);
 
-	sm->authStart = false;
+	sm->authStart = FALSE;
 }
 
 
@@ -539,7 +538,7 @@ SM_STATE(BE_AUTH, IGNORE)
 {
 	SM_ENTRY_MA(BE_AUTH, IGNORE, be_auth);
 
-	sm->eap_if->eapNoReq = false;
+	sm->eap_if->eapNoReq = FALSE;
 }
 
 
@@ -622,7 +621,7 @@ SM_STATE(REAUTH_TIMER, REAUTHENTICATE)
 {
 	SM_ENTRY_MA(REAUTH_TIMER, REAUTHENTICATE, reauth_timer);
 
-	sm->reAuthenticate = true;
+	sm->reAuthenticate = TRUE;
 	sm->eapol->cb.eapol_event(sm->eapol->conf.ctx, sm->sta,
 				  EAPOL_AUTH_REAUTHENTICATE);
 }
@@ -664,8 +663,8 @@ SM_STATE(AUTH_KEY_TX, KEY_TRANSMIT)
 	SM_ENTRY_MA(AUTH_KEY_TX, KEY_TRANSMIT, auth_key_tx);
 
 	txKey();
-	sm->eap_if->eapKeyAvailable = false;
-	sm->keyDone = true;
+	sm->eap_if->eapKeyAvailable = FALSE;
+	sm->keyDone = TRUE;
 }
 
 
@@ -706,7 +705,7 @@ SM_STATE(KEY_RX, KEY_RECEIVE)
 	SM_ENTRY_MA(KEY_RX, KEY_RECEIVE, key_rx);
 
 	processKey();
-	sm->rxKey = false;
+	sm->rxKey = FALSE;
 }
 
 
@@ -808,7 +807,7 @@ eapol_auth_alloc(struct eapol_authenticator *eapol, const u8 *addr,
 
 	sm->reauth_timer_state = REAUTH_TIMER_INITIALIZE;
 	sm->reAuthPeriod = eapol->conf.eap_reauth_period;
-	sm->reAuthEnabled = eapol->conf.eap_reauth_period > 0;
+	sm->reAuthEnabled = eapol->conf.eap_reauth_period > 0 ? TRUE : FALSE;
 
 	sm->auth_key_tx_state = AUTH_KEY_TX_NO_KEY_TRANSMIT;
 
@@ -821,14 +820,14 @@ eapol_auth_alloc(struct eapol_authenticator *eapol, const u8 *addr,
 #ifdef CONFIG_WEP
 	if (!eapol->conf.wpa &&
 	    (eapol->default_wep_key || eapol->conf.individual_wep_key_len > 0))
-		sm->keyTxEnabled = true;
+		sm->keyTxEnabled = TRUE;
 	else
 #endif /* CONFIG_WEP */
-		sm->keyTxEnabled = false;
+		sm->keyTxEnabled = FALSE;
 	if (eapol->conf.wpa)
-		sm->portValid = false;
+		sm->portValid = FALSE;
 	else
-		sm->portValid = true;
+		sm->portValid = TRUE;
 
 	os_memset(&eap_sess, 0, sizeof(eap_sess));
 	eap_sess.assoc_wps_ie = assoc_wps_ie;
@@ -950,7 +949,7 @@ restart:
 
 		/* TODO: find a better location for this */
 		if (sm->eap_if->aaaEapResp) {
-			sm->eap_if->aaaEapResp = false;
+			sm->eap_if->aaaEapResp = FALSE;
 			if (sm->eap_if->aaaEapRespData == NULL) {
 				wpa_printf(MSG_DEBUG, "EAPOL: aaaEapResp set, "
 					   "but no aaaEapRespData available");
@@ -997,14 +996,14 @@ void eapol_auth_step(struct eapol_state_machine *sm)
 
 static void eapol_auth_initialize(struct eapol_state_machine *sm)
 {
-	sm->initializing = true;
+	sm->initializing = TRUE;
 	/* Initialize the state machines by asserting initialize and then
 	 * deasserting it after one step */
-	sm->initialize = true;
+	sm->initialize = TRUE;
 	eapol_sm_step_run(sm);
-	sm->initialize = false;
+	sm->initialize = FALSE;
 	eapol_sm_step_run(sm);
-	sm->initializing = false;
+	sm->initializing = FALSE;
 
 	/* Start one second tick for port timers state machine */
 	eloop_cancel_timeout(eapol_port_timers_tick, NULL, sm);
@@ -1092,7 +1091,7 @@ void eapol_auth_reauthenticate(struct eapol_state_machine *sm)
 {
 	wpa_printf(MSG_DEBUG, "EAPOL: External reauthentication trigger for "
 		   MACSTR, MAC2STR(sm->addr));
-	sm->reAuthenticate = true;
+	sm->reAuthenticate = TRUE;
 	eapol_auth_step(sm);
 }
 
@@ -1145,9 +1144,9 @@ int eapol_auth_set_conf(struct eapol_state_machine *sm, const char *param,
 
 	if (os_strcasecmp(param, "reAuthEnabled") == 0) {
 		if (os_strcmp(value, "TRUE") == 0)
-			sm->reAuthEnabled = true;
+			sm->reAuthEnabled = TRUE;
 		else if (os_strcmp(value, "FALSE") == 0)
-			sm->reAuthEnabled = false;
+			sm->reAuthEnabled = FALSE;
 		else
 			return -1;
 		eapol_auth_step(sm);
@@ -1156,9 +1155,9 @@ int eapol_auth_set_conf(struct eapol_state_machine *sm, const char *param,
 
 	if (os_strcasecmp(param, "KeyTransmissionEnabled") == 0) {
 		if (os_strcmp(value, "TRUE") == 0)
-			sm->keyTxEnabled = true;
+			sm->keyTxEnabled = TRUE;
 		else if (os_strcmp(value, "FALSE") == 0)
-			sm->keyTxEnabled = false;
+			sm->keyTxEnabled = FALSE;
 		else
 			return -1;
 		eapol_auth_step(sm);

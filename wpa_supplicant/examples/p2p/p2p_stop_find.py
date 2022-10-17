@@ -130,7 +130,7 @@ if __name__ == "__main__":
 		usage()
 		quit()
 
-	# If there's a switch, override default option
+	# If theres a switch, override default option
 	for key, value in options:
 		# Help
 		if (key == "-h"):

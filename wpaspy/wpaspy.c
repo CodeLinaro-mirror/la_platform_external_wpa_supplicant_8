@@ -44,7 +44,8 @@ static void wpaspy_close(struct wpaspy_obj *self)
 		self->ctrl = NULL;
 	}
 
-	PyObject_Del(self);
+	if (self->ob_type)
+		self->ob_type->tp_free((PyObject *) self);
 }
 
 
@@ -192,7 +193,6 @@ static PyTypeObject wpaspy_ctrl = {
 };
 
 
-#if PY_MAJOR_VERSION < 3
 static PyMethodDef module_methods[] = {
 	{ NULL, NULL, 0, NULL }
 };
@@ -212,34 +212,3 @@ PyMODINIT_FUNC initwpaspy(void)
 	PyModule_AddObject(mod, "Ctrl", (PyObject *) &wpaspy_ctrl);
 	PyModule_AddObject(mod, "error", wpaspy_error);
 }
-#else
-static struct PyModuleDef wpaspy_def = {
-	PyModuleDef_HEAD_INIT,
-	"wpaspy",
-};
-
-
-PyMODINIT_FUNC initwpaspy(void)
-{
-	PyObject *mod;
-
-	mod = PyModule_Create(&wpaspy_def);
-	if (!mod)
-		return NULL;
-
-	wpaspy_error = PyErr_NewException("wpaspy.error", NULL, NULL);
-
-	Py_INCREF(&wpaspy_ctrl);
-	Py_INCREF(wpaspy_error);
-
-	if (PyModule_AddObject(mod, "Ctrl", (PyObject *) &wpaspy_ctrl) < 0 ||
-	    PyModule_AddObject(mod, "error", wpaspy_error) < 0) {
-		Py_DECREF(&wpaspy_ctrl);
-		Py_DECREF(wpaspy_error);
-		Py_DECREF(mod);
-		mod = NULL;
-	}
-
-	return mod;
-}
-#endif

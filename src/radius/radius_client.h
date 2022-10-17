@@ -174,11 +174,6 @@ struct hostapd_radius_servers {
 	 * force_client_addr - Whether to force client (local) address
 	 */
 	int force_client_addr;
-
-	/**
-	 * force_client_dev - Bind the socket to a specified interface, if set
-	 */
-	char *force_client_dev;
 };
 
 

@@ -28,7 +28,6 @@ struct rsn_pmksa_cache_entry {
 	 */
 	u8 fils_cache_id[2];
 	unsigned int fils_cache_id_set:1;
-	unsigned int dpp_pfs:1;
 
 	os_time_t reauth_time;
 
@@ -43,7 +42,6 @@ struct rsn_pmksa_cache_entry {
 	 */
 	void *network_ctx;
 	int opportunistic;
-	bool external;
 };
 
 struct rsn_pmksa_cache;
@@ -59,8 +57,6 @@ enum pmksa_free_reason {
 struct rsn_pmksa_cache *
 pmksa_cache_init(void (*free_cb)(struct rsn_pmksa_cache_entry *entry,
 				 void *ctx, enum pmksa_free_reason reason),
-		 bool (*is_current_cb)(struct rsn_pmksa_cache_entry *entry,
-				       void *ctx),
 		 void *ctx, struct wpa_sm *sm);
 void pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
 struct rsn_pmksa_cache_entry * pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
@@ -87,16 +83,13 @@ struct rsn_pmksa_cache_entry *
 pmksa_cache_get_opportunistic(struct rsn_pmksa_cache *pmksa,
 			      void *network_ctx, const u8 *aa, int akmp);
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
-		       const u8 *pmk, size_t pmk_len, bool external_only);
-void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa);
+		       const u8 *pmk, size_t pmk_len);
 
 #else /* IEEE8021X_EAPOL */
 
 static inline struct rsn_pmksa_cache *
 pmksa_cache_init(void (*free_cb)(struct rsn_pmksa_cache_entry *entry,
 				 void *ctx, enum pmksa_free_reason reason),
-		 bool (*is_current_cb)(struct rsn_pmksa_cache_entry *entry,
-				       void *ctx),
 		 void *ctx, struct wpa_sm *sm)
 {
 	return (void *) -1;
@@ -163,12 +156,7 @@ static inline int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 
 static inline void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa,
 				     void *network_ctx,
-				     const u8 *pmk, size_t pmk_len,
-				     bool external_only)
-{
-}
-
-static inline void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa)
+				     const u8 *pmk, size_t pmk_len)
 {
 }
 

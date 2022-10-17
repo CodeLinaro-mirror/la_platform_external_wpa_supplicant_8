@@ -1,3 +1,13 @@
+all: libap.a
+
+clean:
+	rm -f *~ *.o *.d *.gcno *.gcda *.gcov libap.a
+
+install:
+	@echo Nothing to be made.
+
+include ../lib.rules
+
 CFLAGS += -DHOSTAPD
 CFLAGS += -DNEED_AP_MLME
 CFLAGS += -DCONFIG_ETH_P_OUI
@@ -57,4 +67,7 @@ LIB_OBJS= \
 	wps_hostapd.o \
 	x_snoop.o
 
-include ../lib.rules
+libap.a: $(LIB_OBJS)
+	$(AR) crT $@ $?
+
+-include $(OBJS:%.o=%.d)
