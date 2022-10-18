@@ -570,6 +570,9 @@ VendorStaIface::doDriverCmdInternal(const std::string &command)
 	std::vector<char> cmd_vec(cmd, cmd + strlen(cmd) + 1);
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	char driver_cmd_reply_buf[4096] = {};
+	if (strlen(cmd) + 1 > sizeof(driver_cmd_reply_buf)) {
+		return {{SupplicantStatusCode::FAILURE_ARGS_INVALID, ""}, ""};
+	}
 	int ret = wpa_drv_driver_cmd(wpa_s, cmd_vec.data(),
 				     driver_cmd_reply_buf,
 				     sizeof(driver_cmd_reply_buf));
