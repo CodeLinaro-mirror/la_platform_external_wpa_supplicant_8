@@ -40,13 +40,10 @@ int ap_ctrl_iface_sta_disassociate(struct wpa_supplicant *wpa_s,
 				   const char *txtaddr);
 int ap_ctrl_iface_wpa_get_status(struct wpa_supplicant *wpa_s, char *buf,
 				 size_t buflen, int verbose);
-#ifdef CONFIG_WNM_AP
 int ap_ctrl_iface_disassoc_imminent(struct wpa_supplicant *wpa_s,
 				    const char *buf);
 int ap_ctrl_iface_ess_disassoc(struct wpa_supplicant *wpa_s, const char *buf);
 int ap_ctrl_iface_bss_tm_req(struct wpa_supplicant *wpa_s, const char *buf);
-#endif /* CONFIG_WNM_AP */
-
 int ap_ctrl_iface_acl_add_mac(struct wpa_supplicant *wpa_s,
 			      enum macaddr_acl acl_type, const char *buf);
 int ap_ctrl_iface_acl_del_mac(struct wpa_supplicant *wpa_s,

@@ -674,6 +674,9 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 	} else if (os_strcasecmp(cmd, "dpp_configurator_params") == 0) {
 		os_free(wpa_s->dpp_configurator_params);
 		wpa_s->dpp_configurator_params = os_strdup(value);
+#ifdef CONFIG_DPP2
+		dpp_controller_set_params(wpa_s->dpp, value);
+#endif /* CONFIG_DPP2 */
 	} else if (os_strcasecmp(cmd, "dpp_init_max_tries") == 0) {
 		wpa_s->dpp_init_max_tries = atoi(value);
 	} else if (os_strcasecmp(cmd, "dpp_init_retry_time") == 0) {
@@ -8590,6 +8593,8 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 
 	if (wpa_s->mac_addr_changed && wpa_s->conf->mac_addr == 0)
 		wpas_restore_permanent_mac_addr(wpa_s);
+
+	wpa_s->conf->ignore_old_scan_res = 0;
 }
 
 
@@ -12373,6 +12378,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 			if (os_snprintf_error(reply_size, reply_len))
 				reply_len = -1;
 		}
+	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_SET ", 21) == 0) {
+		if (dpp_configurator_set(wpa_s->dpp, buf + 20) < 0)
+			reply_len = -1;
 	} else if (os_strncmp(buf, "DPP_CONFIGURATOR_REMOVE ", 24) == 0) {
 		if (dpp_configurator_remove(wpa_s->dpp, buf + 24) < 0)
 			reply_len = -1;
@@ -12396,6 +12404,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		}
 	} else if (os_strncmp(buf, "DPP_PKEX_REMOVE ", 16) == 0) {
 		if (wpas_dpp_pkex_remove(wpa_s, buf + 16) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "DPP_CONF_SET ", 13) == 0) {
+		if (wpas_dpp_conf_set(wpa_s, buf + 12) < 0)
 			reply_len = -1;
 #ifdef CONFIG_DPP2
 	} else if (os_strncmp(buf, "DPP_CONTROLLER_START ", 21) == 0) {

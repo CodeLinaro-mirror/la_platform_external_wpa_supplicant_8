@@ -508,7 +508,7 @@ class Hostapd:
             raise Exception("Failed to initiate DPP Authentication")
 
     def dpp_pkex_init(self, identifier, code, role=None, key=None, curve=None,
-                      extra=None, use_id=None, v2=False):
+                      extra=None, use_id=None, ver=None):
         if use_id is None:
             id1 = self.dpp_bootstrap_gen(type="pkex", key=key, curve=curve)
         else:
@@ -516,10 +516,9 @@ class Hostapd:
         cmd = "own=%d " % id1
         if identifier:
             cmd += "identifier=%s " % identifier
-        if v2:
-            cmd += "init=2 "
-        else:
-            cmd += "init=1 "
+        cmd += "init=1 "
+        if ver is not None:
+            cmd += "ver=" + str(ver) + " "
         if role:
             cmd += "role=%s " % role
         if extra:
@@ -542,10 +541,13 @@ class Hostapd:
             raise Exception("Failed to set PKEX data (responder)")
         self.dpp_listen(freq, role=listen_role)
 
-    def dpp_configurator_add(self, curve=None, key=None):
+    def dpp_configurator_add(self, curve=None, key=None,
+                             net_access_key_curve=None):
         cmd = "DPP_CONFIGURATOR_ADD"
         if curve:
             cmd += " curve=" + curve
+        if net_access_key_curve:
+            cmd += " net_access_key_curve=" + curve
         if key:
             cmd += " key=" + key
         res = self.request(cmd)

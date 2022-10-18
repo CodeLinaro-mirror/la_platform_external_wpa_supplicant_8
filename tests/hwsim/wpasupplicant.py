@@ -1577,7 +1577,8 @@ class WpaSupplicant:
         return int(peer)
 
     def dpp_pkex_init(self, identifier, code, role=None, key=None, curve=None,
-                      extra=None, use_id=None, allow_fail=False, v2=False):
+                      extra=None, use_id=None, allow_fail=False, ver=None,
+                      tcp_addr=None, tcp_port=None):
         if use_id is None:
             id1 = self.dpp_bootstrap_gen(type="pkex", key=key, curve=curve)
         else:
@@ -1585,12 +1586,15 @@ class WpaSupplicant:
         cmd = "own=%d " % id1
         if identifier:
             cmd += "identifier=%s " % identifier
-        if v2:
-            cmd += "init=2 "
-        else:
-            cmd += "init=1 "
+        cmd += "init=1 "
+        if ver is not None:
+            cmd += "ver=" + str(ver) + " "
         if role:
             cmd += "role=%s " % role
+        if tcp_addr:
+            cmd += "tcp_addr=" + tcp_addr + " "
+        if tcp_port:
+            cmd += "tcp_port=" + tcp_port + " "
         if extra:
             cmd += extra + " "
         cmd += "code=%s" % code
@@ -1617,16 +1621,27 @@ class WpaSupplicant:
         self.dpp_listen(freq, role=listen_role)
         return id0
 
-    def dpp_configurator_add(self, curve=None, key=None):
+    def dpp_configurator_add(self, curve=None, key=None,
+                             net_access_key_curve=None):
         cmd = "DPP_CONFIGURATOR_ADD"
         if curve:
             cmd += " curve=" + curve
+        if net_access_key_curve:
+            cmd += " net_access_key_curve=" + net_access_key_curve
         if key:
             cmd += " key=" + key
         res = self.request(cmd)
         if "FAIL" in res:
             raise Exception("Failed to add configurator")
         return int(res)
+
+    def dpp_configurator_set(self, conf_id, net_access_key_curve=None):
+        cmd = "DPP_CONFIGURATOR_SET %d" % conf_id
+        if net_access_key_curve:
+            cmd += " net_access_key_curve=" + net_access_key_curve
+        res = self.request(cmd)
+        if "FAIL" in res:
+            raise Exception("Failed to set configurator")
 
     def dpp_configurator_remove(self, conf_id):
         res = self.request("DPP_CONFIGURATOR_REMOVE %d" % conf_id)
