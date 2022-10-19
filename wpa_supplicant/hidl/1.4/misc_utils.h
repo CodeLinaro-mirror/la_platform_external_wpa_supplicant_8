@@ -83,13 +83,10 @@ inline std::stringstream& serializePmkCacheEntry(
 	return ss;
 }
 
-inline std::int8_t deserializePmkCacheEntry(
+inline std::stringstream& deserializePmkCacheEntry(
     std::stringstream &ss, struct rsn_pmksa_cache_entry *pmksa_entry) {
 	ss.seekg(0);
 	ss.read((char *) &pmksa_entry->pmk_len, sizeof(pmksa_entry->pmk_len));
-	if (pmksa_entry->pmk_len > PMK_LEN_MAX) {
-		return -1;
-	}
 	ss.read((char *) pmksa_entry->pmk, pmksa_entry->pmk_len);
 	ss.read((char *) pmksa_entry->pmkid, PMKID_LEN);
 	ss.read((char *) pmksa_entry->aa, ETH_ALEN);
@@ -102,7 +99,7 @@ inline std::int8_t deserializePmkCacheEntry(
 	ss.read((char *) &byte, sizeof(byte));
 	pmksa_entry->fils_cache_id_set = (byte) ? 1 : 0;
 	ss.read((char *) pmksa_entry->fils_cache_id, FILS_CACHE_ID_LEN);
-	return 0;
+	return ss;
 }
 }  // namespace misc_utils
 }  // namespace implementation

@@ -2268,7 +2268,6 @@ SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& ser
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	struct rsn_pmksa_cache_entry *new_entry = NULL;
-	int8_t deserializeReturnValue = 0;
 
 	new_entry = (struct rsn_pmksa_cache_entry *) os_zalloc(sizeof(*new_entry));
 	if (!new_entry) {
@@ -2278,12 +2277,7 @@ SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& ser
 	std::stringstream ss(
 	    std::stringstream::in | std::stringstream::out | std::stringstream::binary);
 	ss.write((char *) serializedEntry.data(), std::streamsize(serializedEntry.size()));
-	deserializeReturnValue = misc_utils::deserializePmkCacheEntry(ss, new_entry);
-
-	if (deserializeReturnValue == -1) {
-		createStatusWithMsg(SupplicantStatusCode::FAILURE_ARGS_INVALID,
-		 "Invalid pmk length");
-	}
+	misc_utils::deserializePmkCacheEntry(ss, new_entry);
 	new_entry->network_ctx = wpa_ssid;
 	wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, new_entry);
 
