@@ -1647,6 +1647,7 @@ bool hostapd_sae_pk_exclusively(struct hostapd_bss_config *conf)
 }
 #endif /* CONFIG_SAE_PK */
 
+
 int hostapd_acl_comp(const void *a, const void *b)
 {
 	const struct mac_acl_entry *aa = a;

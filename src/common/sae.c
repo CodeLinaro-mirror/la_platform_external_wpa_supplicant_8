@@ -141,6 +141,7 @@ static void sae_pwd_seed_key(const u8 *addr1, const u8 *addr2, u8 *key)
 	}
 }
 
+
 static int sae_test_pwd_seed_ecc(struct sae_data *sae, const u8 *pwd_seed,
 				 const u8 *prime, const u8 *qr, const u8 *qnr,
 				 u8 *pwd_value)
@@ -275,6 +276,7 @@ fail:
 	crypto_bignum_deinit(b, 1);
 	return res;
 }
+
 
 static int sae_derive_pwe_ecc(struct sae_data *sae, const u8 *addr1,
 			      const u8 *addr2, const u8 *password,
@@ -426,6 +428,7 @@ static int sae_derive_pwe_ecc(struct sae_data *sae, const u8 *addr1,
 		wpa_printf(MSG_DEBUG, "SAE: Could not generate PWE");
 		res = -1;
 	}
+
 fail:
 	forced_memzero(x_y, sizeof(x_y));
 	crypto_bignum_deinit(qr, 0);

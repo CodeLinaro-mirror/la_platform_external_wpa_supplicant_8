@@ -498,6 +498,7 @@ static const char * sae_get_password(struct hostapd_data *hapd,
 	struct sae_password_entry *pw;
 	struct sae_pt *pt = NULL;
 	const struct sae_pk *pk = NULL;
+	struct hostapd_sta_wpa_psk_short *psk = NULL;
 
 	for (pw = hapd->conf->sae_passwords; pw; pw = pw->next) {
 		if (!is_broadcast_ether_addr(pw->peer_addr) &&
@@ -517,6 +518,15 @@ static const char * sae_get_password(struct hostapd_data *hapd,
 	if (!password) {
 		password = hapd->conf->ssid.wpa_passphrase;
 		pt = hapd->conf->ssid.pt;
+	}
+
+	if (!password) {
+		for (psk = sta->psk; psk; psk = psk->next) {
+			if (psk->is_passphrase) {
+				password = psk->passphrase;
+				break;
+			}
+		}
 	}
 
 	if (pw_entry)
@@ -4123,32 +4133,6 @@ static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
 }
 
 
-u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
-		    const u8 *ext_capab_ie, size_t ext_capab_ie_len)
-{
-#ifdef CONFIG_INTERWORKING
-	/* check for QoS Map support */
-	if (ext_capab_ie_len >= 5) {
-		if (ext_capab_ie[4] & 0x01)
-			sta->qos_map_enabled = 1;
-	}
-#endif /* CONFIG_INTERWORKING */
-
-	if (ext_capab_ie_len > 0) {
-		sta->ecsa_supported = !!(ext_capab_ie[0] & BIT(2));
-		os_free(sta->ext_capability);
-		sta->ext_capability = os_malloc(1 + ext_capab_ie_len);
-		if (sta->ext_capability) {
-			sta->ext_capability[0] = ext_capab_ie_len;
-			os_memcpy(sta->ext_capability + 1, ext_capab_ie,
-				  ext_capab_ie_len);
-		}
-	}
-
-	return WLAN_STATUS_SUCCESS;
-}
-
-
 #ifdef CONFIG_OWE
 
 static int owe_group_supported(struct hostapd_data *hapd, u16 group)
@@ -6098,19 +6082,17 @@ static int handle_action(struct hostapd_data *hapd,
 			end = ((const u8 *) mgmt) + len;
 			gas_query_ap_rx(hapd->gas, mgmt->sa,
 					mgmt->u.action.category,
-					pos, end - pos, hapd->iface->freq);
+					pos, end - pos, freq);
 			return 1;
 		}
 #endif /* CONFIG_DPP */
 		if (hapd->public_action_cb) {
 			hapd->public_action_cb(hapd->public_action_cb_ctx,
-					       (u8 *) mgmt, len,
-					       hapd->iface->freq);
+					       (u8 *) mgmt, len, freq);
 		}
 		if (hapd->public_action_cb2) {
 			hapd->public_action_cb2(hapd->public_action_cb2_ctx,
-						(u8 *) mgmt, len,
-						hapd->iface->freq);
+						(u8 *) mgmt, len, freq);
 		}
 		if (hapd->public_action_cb || hapd->public_action_cb2)
 			return 1;
@@ -6118,8 +6100,7 @@ static int handle_action(struct hostapd_data *hapd,
 	case WLAN_ACTION_VENDOR_SPECIFIC:
 		if (hapd->vendor_action_cb) {
 			if (hapd->vendor_action_cb(hapd->vendor_action_cb_ctx,
-						   (u8 *) mgmt, len,
-						   hapd->iface->freq) == 0)
+						   (u8 *) mgmt, len, freq) == 0)
 				return 1;
 		}
 		break;
@@ -6621,8 +6602,6 @@ static void handle_action_cb(struct hostapd_data *hapd,
 	struct sta_info *sta;
 	const struct rrm_measurement_report_element *report;
 
-	if (is_multicast_ether_addr(mgmt->da))
-		return;
 #ifdef CONFIG_DPP
 	if (len >= IEEE80211_HDRLEN + 6 &&
 	    mgmt->u.action.category == WLAN_ACTION_PUBLIC &&
@@ -6653,6 +6632,8 @@ static void handle_action_cb(struct hostapd_data *hapd,
 		return;
 	}
 #endif /* CONFIG_DPP */
+	if (is_multicast_ether_addr(mgmt->da))
+		return;
 	sta = ap_get_sta(hapd, mgmt->da);
 	if (!sta) {
 		wpa_printf(MSG_DEBUG, "handle_action_cb: STA " MACSTR

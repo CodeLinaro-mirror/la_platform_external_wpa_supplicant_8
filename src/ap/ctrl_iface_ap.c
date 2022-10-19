@@ -24,6 +24,7 @@
 #include "ap_drv_ops.h"
 #include "mbo_ap.h"
 #include "taxonomy.h"
+#include "wnm_ap.h"
 
 
 static size_t hostapd_write_ht_mcs_bitmask(char *buf, size_t buflen,
@@ -724,15 +725,15 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 	} else {
 		/* CAC started and CAC time set - calculate remaining time */
 		struct os_reltime now;
-		unsigned int left_time;
+		long left_time;
 
 		os_reltime_age(&iface->dfs_cac_start, &now);
-		left_time = iface->dfs_cac_ms / 1000 - now.sec;
+		left_time = (long) iface->dfs_cac_ms / 1000 - now.sec;
 		ret = os_snprintf(buf + len, buflen - len,
 				  "cac_time_seconds=%u\n"
-				  "cac_time_left_seconds=%u\n",
+				  "cac_time_left_seconds=%lu\n",
 				  iface->dfs_cac_ms / 1000,
-				  left_time);
+				  left_time > 0 ? left_time : 0);
 	}
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
