@@ -132,7 +132,9 @@ static bool check_sa_query_need(struct hostapd_data *hapd, struct sta_info *sta)
 
 
 int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
-			const u8 *req_ies, size_t req_ies_len, int reassoc)
+			const u8 *req_ies, size_t req_ies_len,
+			const u8 *link_addr, const u8 *resp_ies,
+			size_t resp_ies_len, int reassoc)
 {
 	struct sta_info *sta;
 	int new_assoc;
@@ -213,7 +215,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		 */
 		sta->timeout_next = STA_NULLFUNC;
 	} else {
-		sta = ap_sta_add(hapd, addr);
+		sta = ap_sta_add(hapd, addr, link_addr);
 		if (sta == NULL) {
 			hostapd_drv_sta_disassoc(hapd, addr,
 						 WLAN_REASON_DISASSOC_AP_BUSY);
@@ -1296,7 +1298,7 @@ static void hostapd_notif_auth(struct hostapd_data *hapd,
 
 	sta = ap_get_sta(hapd, rx_auth->peer);
 	if (!sta) {
-		sta = ap_sta_add(hapd, rx_auth->peer);
+		sta = ap_sta_add(hapd, rx_auth->peer, NULL);
 		if (sta == NULL) {
 			status = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
 			goto fail;
@@ -1561,7 +1563,7 @@ static int hostapd_event_new_sta(struct hostapd_data *hapd, const u8 *addr)
 
 	wpa_printf(MSG_DEBUG, "Data frame from unknown STA " MACSTR
 		   " - adding a new STA", MAC2STR(addr));
-	sta = ap_sta_add(hapd, addr);
+	sta = ap_sta_add(hapd, addr, NULL);
 	if (sta) {
 		hostapd_new_assoc_sta(hapd, sta, 0);
 	} else {
@@ -1867,7 +1869,7 @@ static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
 		 */
 		sta->timeout_next = STA_NULLFUNC;
 	} else {
-		sta = ap_sta_add(hapd, peer);
+		sta = ap_sta_add(hapd, peer, NULL);
 		if (!sta) {
 			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 			goto err;
@@ -1992,6 +1994,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		hostapd_notif_assoc(hapd, data->assoc_info.addr,
 				    data->assoc_info.req_ies,
 				    data->assoc_info.req_ies_len,
+				    data->assoc_info.link_addr,
+				    data->assoc_info.resp_ies,
+				    data->assoc_info.resp_ies_len,
 				    data->assoc_info.reassoc);
 		break;
 #ifdef CONFIG_OWE

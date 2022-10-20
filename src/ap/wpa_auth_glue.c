@@ -1070,7 +1070,7 @@ hostapd_wpa_auth_add_sta(void *ctx, const u8 *sta_addr)
 	if (ret < 0 && ret != -EOPNOTSUPP)
 		return NULL;
 
-	sta = ap_sta_add(hapd, sta_addr);
+	sta = ap_sta_add(hapd, sta_addr, NULL);
 	if (sta == NULL)
 		return NULL;
 	if (ret == 0)
