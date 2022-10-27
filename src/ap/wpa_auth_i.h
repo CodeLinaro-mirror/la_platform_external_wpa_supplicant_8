@@ -21,6 +21,8 @@ struct wpa_state_machine {
 	struct wpa_group *group;
 
 	u8 addr[ETH_ALEN];
+	bool is_mld;
+	u8 link_addr[ETH_ALEN];
 	u8 p2p_dev_addr[ETH_ALEN];
 	u16 auth_alg;
 

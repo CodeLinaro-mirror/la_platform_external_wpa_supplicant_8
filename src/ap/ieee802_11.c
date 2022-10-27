@@ -1791,7 +1791,7 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 
 	if (!sta->wpa_sm)
 		sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth, sta->addr,
-						NULL);
+						NULL, NULL);
 	if (!sta->wpa_sm) {
 		wpa_printf(MSG_DEBUG,
 			   "FILS: Failed to initialize RSN state machine");
@@ -3052,7 +3052,7 @@ static void handle_auth(struct hostapd_data *hapd,
 		sta->auth_alg = WLAN_AUTH_FT;
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL);
+							sta->addr, NULL, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_DEBUG, "FT: Failed to initialize WPA "
 				   "state machine");
@@ -3075,7 +3075,8 @@ static void handle_auth(struct hostapd_data *hapd,
 			if (sta->wpa_sm == NULL)
 				sta->wpa_sm =
 					wpa_auth_sta_init(hapd->wpa_auth,
-							  sta->addr, NULL);
+							  sta->addr, NULL,
+							  NULL);
 			if (sta->wpa_sm == NULL) {
 				wpa_printf(MSG_DEBUG,
 					   "SAE: Failed to initialize WPA state machine");
@@ -3539,7 +3540,7 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 
 	if (!sta->wpa_sm)
 		sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,	sta->addr,
-						NULL);
+						NULL, NULL);
 	if (!sta->wpa_sm) {
 		wpa_printf(MSG_WARNING,
 			   "OWE: Failed to initialize WPA state machine");
@@ -3800,7 +3801,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		wpa_ie_len += 2;
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr,
+							sta->addr, NULL,
 							p2p_dev_addr);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_WARNING, "Failed to initialize WPA "
@@ -3948,7 +3949,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL);
+							sta->addr, NULL, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_WARNING, "Failed to initialize WPA "
 				   "state machine");
