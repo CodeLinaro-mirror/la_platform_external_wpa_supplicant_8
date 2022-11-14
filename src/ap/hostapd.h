@@ -282,6 +282,9 @@ struct hostapd_data {
 			   size_t psk_len);
 	void *new_psk_cb_ctx;
 
+	void (*ctrl_event_hidl_cb)(void *ctx, const char* msg);
+	void *ctrl_event_hidl_cb_ctx;
+
 	/* channel switch parameters */
 	struct hostapd_freq_params cs_freq_params;
 	u8 cs_count;

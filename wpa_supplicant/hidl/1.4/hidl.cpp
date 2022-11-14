@@ -69,6 +69,10 @@ struct wpas_hidl_priv *wpas_hidl_init(struct wpa_global *global)
 	if (hidl_manager->registerHidlService(global)) {
 		goto err;
 	}
+#ifdef SUPPLICANT_VENDOR_HIDL
+	wpa_printf(MSG_INFO, "register vendor hal service.");
+	hidl_manager->registerVendorHidlService(global);
+#endif
 	// We may not need to store this hidl manager reference in the
 	// global data strucure because we've made it a singleton class.
 	priv->hidl_manager = (void *)hidl_manager;
@@ -925,4 +929,17 @@ void wpas_hidl_notify_network_not_found(struct wpa_supplicant *wpa_s)
 	wpa_printf(MSG_DEBUG, "Notify network not found");
 
 	hidl_manager->notifyNetworkNotFound(wpa_s);
+}
+
+void wpas_hidl_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+
+	HidlManager *hidl_manager = HidlManager::getInstance();
+	if (!hidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying vendor control event");
+	hidl_manager->notifyVendorCtrlEvent(wpa_s, msg);
 }
