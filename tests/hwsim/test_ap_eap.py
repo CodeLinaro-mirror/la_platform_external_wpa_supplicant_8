@@ -97,6 +97,11 @@ def check_pkcs5_v15_support(dev):
     if "BoringSSL" in tls or "GnuTLS" in tls:
         raise HwsimSkip("PKCS#5 v1.5 not supported with this TLS library: " + tls)
 
+def check_tls13_support(dev):
+    tls = dev.request("GET tls_library")
+    if "run=OpenSSL 1.1.1" not in tls and "run=OpenSSL 3.0" not in tls:
+        raise HwsimSkip("TLS v1.3 not supported")
+
 def check_ocsp_multi_support(dev):
     tls = dev.request("GET tls_library")
     if not tls.startswith("internal"):
@@ -124,19 +129,25 @@ def check_ec_support(dev):
     if tls.startswith("internal"):
         raise HwsimSkip("EC not supported with this TLS library: " + tls)
 
-def read_pem(fname):
+def read_pem(fname, decode=True):
     with open(fname, "r") as f:
         lines = f.readlines()
         copy = False
         cert = ""
         for l in lines:
             if "-----END" in l:
+                if not decode:
+                    cert = cert + l
                 break
             if copy:
                 cert = cert + l
             if "-----BEGIN" in l:
                 copy = True
-    return base64.b64decode(cert)
+                if not decode:
+                    cert = cert + l
+    if decode:
+        return base64.b64decode(cert)
+    return cert.encode()
 
 def eap_connect(dev, hapd, method, identity,
                 sha256=False, expect_failure=False, local_error_report=False,
@@ -881,6 +892,7 @@ def test_ap_wpa2_eap_sim_ext_anonymous(dev, apdev):
     try:
         run_ap_wpa2_eap_sim_ext_anonymous(dev, "anonymous@example.org")
         run_ap_wpa2_eap_sim_ext_anonymous(dev, "@example.org")
+        run_ap_wpa2_eap_sim_ext_anonymous(dev, "example.org!anonymous@otherexample.org")
     finally:
         dev[0].request("SET external_sim 0")
 
@@ -2243,6 +2255,24 @@ def test_ap_wpa2_eap_tls_blob(dev, apdev):
                 client_cert="blob://usercert",
                 private_key="blob://userkey")
 
+def test_ap_wpa2_eap_tls_blob_pem(dev, apdev):
+    """WPA2-Enterprise connection using EAP-TLS and config blobs (PEM)"""
+    params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+    hapd = hostapd.add_ap(apdev[0], params)
+    cert = read_pem("auth_serv/ca.pem", decode=False)
+    if "OK" not in dev[0].request("SET blob cacert " +  binascii.hexlify(cert).decode()):
+        raise Exception("Could not set cacert blob")
+    cert = read_pem("auth_serv/user.pem", decode=False)
+    if "OK" not in dev[0].request("SET blob usercert " + binascii.hexlify(cert).decode()):
+        raise Exception("Could not set usercert blob")
+    key = read_pem("auth_serv/user.key.pkcs8", decode=False)
+    if "OK" not in dev[0].request("SET blob userkey " + binascii.hexlify(key).decode()):
+        raise Exception("Could not set cacert blob")
+    eap_connect(dev[0], hapd, "TLS", "tls user", ca_cert="blob://cacert",
+                client_cert="blob://usercert",
+                private_key="blob://userkey",
+                private_key_passwd="whatever")
+
 def test_ap_wpa2_eap_tls_blob_missing(dev, apdev):
     """EAP-TLS and config blob missing"""
     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
@@ -2731,7 +2761,7 @@ def test_ap_wpa2_eap_ttls_server_cert_hash(dev, apdev):
     """WPA2-Enterprise connection using EAP-TTLS and server certificate hash"""
     check_cert_probe_support(dev[0])
     skip_with_fips(dev[0])
-    srv_cert_hash = "f6b9d0b2bc3f106ff01542161647036992de889267005d93fac1c7274bfca5bb"
+    srv_cert_hash = "5891bd91eaf977684e70d4376d1514621d18f09ab2020bea1ad293d59a6e8944"
     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
     hapd = hostapd.add_ap(apdev[0], params)
     dev[0].connect("test-wpa2-eap", key_mgmt="WPA-EAP", eap="TTLS",
@@ -3026,10 +3056,9 @@ def test_ap_wpa2_eap_eke(dev, apdev):
     eap_connect(dev[0], hapd, "EKE", "eke user", password="hello1",
                 expect_failure=True)
 
-def test_ap_wpa2_eap_eke_many(dev, apdev, params):
-    """WPA2-Enterprise connection using EAP-EKE (many connections) [long]"""
-    if not params['long']:
-        raise HwsimSkip("Skip test case with long duration due to --long not specified")
+@long_duration_test
+def test_ap_wpa2_eap_eke_many(dev, apdev):
+    """WPA2-Enterprise connection using EAP-EKE (many connections)"""
     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
     hostapd.add_ap(apdev[0], params)
     success = 0
@@ -3947,7 +3976,7 @@ def test_ap_wpa2_eap_fast_cipher_suites(dev, apdev):
             if cipher == "RC4-SHA" and \
                ("Could not select EAP method" in str(e) or \
                 "EAP failed" in str(e)):
-                if "run=OpenSSL 1.1" in tls:
+                if "run=OpenSSL 1.1" in tls or "run=OpenSSL 3.0" in tls:
                     logger.info("Allow failure due to missing TLS library support")
                     dev[0].request("REMOVE_NETWORK all")
                     dev[0].wait_disconnected()
@@ -4176,7 +4205,7 @@ def ocsp_req(outfile):
            "-reqout", outfile,
            '-issuer', 'auth_serv/ca.pem',
            '-sha256',
-           '-serial', '0xD8D3E3A6CBE3CD1F',
+           '-serial', '0xD8D3E3A6CBE3CD69',
            '-no_nonce']
     run_openssl(arg)
     if not os.path.exists(outfile):
@@ -5351,6 +5380,15 @@ def test_ap_wpa2_eap_sql(dev, apdev, params):
         eap_connect(dev[1], hapd, "TTLS", "user-pap",
                     anonymous_identity="ttls", password="password",
                     ca_cert="auth_serv/ca.pem", phase2="auth=PAP")
+        dev[0].request("REMOVE_NETWORK all")
+        dev[1].request("REMOVE_NETWORK all")
+        dev[0].wait_disconnected()
+        dev[1].wait_disconnected()
+        hapd.disable()
+        hapd.enable()
+        eap_connect(dev[0], hapd, "TTLS", "user-mschapv2",
+                    anonymous_identity="ttls", password="password",
+                    ca_cert="auth_serv/ca.pem", phase2="auth=MSCHAPV2")
     finally:
         os.remove(dbfile)
 
@@ -5840,7 +5878,17 @@ def check_tls_ver(dev, hapd, phase1, expected):
 
 def test_ap_wpa2_eap_tls_versions(dev, apdev):
     """EAP-TLS and TLS version configuration"""
-    params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+    params = {"ssid": "test-wpa2-eap",
+              "wpa": "2",
+              "wpa_key_mgmt": "WPA-EAP",
+              "rsn_pairwise": "CCMP",
+              "ieee8021x": "1",
+              "eap_server": "1",
+              "tls_flags": "[ENABLE-TLSv1.0][ENABLE-TLSv1.1][ENABLE-TLSv1.2][ENABLE-TLSv1.3]",
+              "eap_user_file": "auth_serv/eap_user.conf",
+              "ca_cert": "auth_serv/ca.pem",
+              "server_cert": "auth_serv/server.pem",
+              "private_key": "auth_serv/server.key"}
     hapd = hostapd.add_ap(apdev[0], params)
 
     tls = dev[0].request("GET tls_library")
@@ -5859,10 +5907,10 @@ def test_ap_wpa2_eap_tls_versions(dev, apdev):
         check_tls_ver(dev[0], hapd,
                       "tls_disable_tlsv1_0=1 tls_disable_tlsv1_1=1", "TLSv1.2")
     check_tls_ver(dev[1], hapd,
-                  "tls_disable_tlsv1_0=1 tls_disable_tlsv1_2=1", "TLSv1.1")
+                  "tls_disable_tlsv1_0=1 tls_disable_tlsv1_1=0 tls_disable_tlsv1_2=1", "TLSv1.1")
     check_tls_ver(dev[2], hapd,
-                  "tls_disable_tlsv1_1=1 tls_disable_tlsv1_2=1", "TLSv1")
-    if "run=OpenSSL 1.1.1" in tls:
+                  "tls_disable_tlsv1_0=0 tls_disable_tlsv1_1=1 tls_disable_tlsv1_2=1", "TLSv1")
+    if "run=OpenSSL 1.1.1" in tls or "run=OpenSSL 3.0" in tls:
         check_tls_ver(dev[0], hapd,
                       "tls_disable_tlsv1_0=1 tls_disable_tlsv1_1=1 tls_disable_tlsv1_2=1 tls_disable_tlsv1_3=0", "TLSv1.3")
 
@@ -5887,16 +5935,14 @@ def test_ap_wpa2_eap_tls_versions_server(dev, apdev):
         hapd.disable()
         hapd.set("tls_flags", flags)
         hapd.enable()
-        check_tls_ver(dev[0], hapd, "", exp)
+        check_tls_ver(dev[0], hapd, "tls_disable_tlsv1_0=0 tls_disable_tlsv1_1=0 tls_disable_tlsv1_2=0 tls_disable_tlsv1_3=0", exp)
 
 def test_ap_wpa2_eap_tls_13(dev, apdev):
     """EAP-TLS and TLS 1.3"""
     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
     hapd = hostapd.add_ap(apdev[0], params)
 
-    tls = dev[0].request("GET tls_library")
-    if "run=OpenSSL 1.1.1" not in tls:
-        raise HwsimSkip("TLS v1.3 not supported")
+    check_tls13_support(dev[0])
     id = eap_connect(dev[0], hapd, "TLS", "tls user",
                      ca_cert="auth_serv/ca.pem",
                      client_cert="auth_serv/user.pem",
@@ -5907,6 +5953,51 @@ def test_ap_wpa2_eap_tls_13(dev, apdev):
         raise Exception("Unexpected TLS version")
 
     eap_reauth(dev[0], "TLS")
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].request("PMKSA_FLUSH")
+    dev[0].request("RECONNECT")
+    dev[0].wait_connected()
+
+def test_ap_wpa2_eap_ttls_13(dev, apdev):
+    """EAP-TTLS and TLS 1.3"""
+    params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    check_tls13_support(dev[0])
+    id = eap_connect(dev[0], hapd, "TTLS", "pap user",
+                     anonymous_identity="ttls", password="password",
+                     ca_cert="auth_serv/ca.pem",
+                     phase1="tls_disable_tlsv1_0=1 tls_disable_tlsv1_1=1 tls_disable_tlsv1_2=1 tls_disable_tlsv1_3=0",
+                     phase2="auth=PAP")
+    ver = dev[0].get_status_field("eap_tls_version")
+    if ver != "TLSv1.3":
+        raise Exception("Unexpected TLS version")
+
+    eap_reauth(dev[0], "TTLS")
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+    dev[0].request("PMKSA_FLUSH")
+    dev[0].request("RECONNECT")
+    dev[0].wait_connected()
+
+def test_ap_wpa2_eap_peap_13(dev, apdev):
+    """PEAP and TLS 1.3"""
+    check_eap_capa(dev[0], "MSCHAPV2")
+    params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    check_tls13_support(dev[0])
+    id = eap_connect(dev[0], hapd, "PEAP", "user",
+                     anonymous_identity="peap", password="password",
+                     ca_cert="auth_serv/ca.pem",
+                     phase1="tls_disable_tlsv1_0=1 tls_disable_tlsv1_1=1 tls_disable_tlsv1_2=1 tls_disable_tlsv1_3=0",
+                     phase2="auth=MSCHAPV2")
+    ver = dev[0].get_status_field("eap_tls_version")
+    if ver != "TLSv1.3":
+        raise Exception("Unexpected TLS version")
+
+    eap_reauth(dev[0], "PEAP")
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
     dev[0].request("PMKSA_FLUSH")
@@ -5927,13 +6018,9 @@ def test_ap_wpa2_eap_tls_13_ec(dev, apdev):
               "private_key": "auth_serv/ec-server.key",
               "tls_flags": "[ENABLE-TLSv1.3]"}
     hapd = hostapd.add_ap(apdev[0], params)
-    tls = hapd.request("GET tls_library")
-    if "run=OpenSSL 1.1.1" not in tls:
-        raise HwsimSkip("TLS v1.3 not supported")
+    check_tls13_support(hapd)
 
-    tls = dev[0].request("GET tls_library")
-    if "run=OpenSSL 1.1.1" not in tls:
-        raise HwsimSkip("TLS v1.3 not supported")
+    check_tls13_support(dev[0])
     id = eap_connect(dev[0], hapd, "TLS", "tls user",
                      ca_cert="auth_serv/ec-ca.pem",
                      client_cert="auth_serv/ec-user.pem",
@@ -6648,6 +6735,62 @@ def test_ap_wpa2_eap_sim_db(dev, apdev, params):
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
 
+def test_ap_wpa2_eap_sim_db_sqlite(dev, apdev, params):
+    """EAP-SIM DB error cases (SQLite)"""
+    sockpath = '/tmp/hlr_auc_gw.sock-test'
+    try:
+        os.remove(sockpath)
+    except:
+        pass
+    hparams = int_eap_server_params()
+    hparams['eap_sim_db'] = 'unix:' + sockpath
+    hapd = hostapd.add_ap(apdev[0], hparams)
+
+    fname = params['prefix'] + ".milenage_db.sqlite"
+    cmd = subprocess.Popen(['../../hostapd/hlr_auc_gw',
+                            '-D', fname, "FOO"],
+                           stdout=subprocess.PIPE)
+    res = cmd.stdout.read().decode().strip()
+    cmd.stdout.close()
+    logger.debug("hlr_auc_gw response: " + res)
+
+    try:
+        import sqlite3
+    except ImportError:
+        raise HwsimSkip("No sqlite3 module available")
+    con = sqlite3.connect(fname)
+    with con:
+        cur = con.cursor()
+        try:
+            cur.execute("INSERT INTO milenage(imsi,ki,opc,amf,sqn) VALUES ('232010000000000', '90dca4eda45b53cf0f12d7c9c3bc6a89', 'cb9cccc4b9258e6dca4760379fb82581', '61df', '000000000000')")
+        except sqlite3.IntegrityError as e:
+            pass
+
+    class test_handler3(SocketServer.DatagramRequestHandler):
+        def handle(self):
+            data = self.request[0].decode().strip()
+            socket = self.request[1]
+            logger.debug("Received hlr_auc_gw request: " + data)
+            cmd = subprocess.Popen(['../../hostapd/hlr_auc_gw',
+                                    '-D', fname, data],
+                                   stdout=subprocess.PIPE)
+            res = cmd.stdout.read().decode().strip()
+            cmd.stdout.close()
+            logger.debug("hlr_auc_gw response: " + res)
+            socket.sendto(res.encode(), self.client_address)
+
+    server = SocketServer.UnixDatagramServer(sockpath, test_handler3)
+    server.timeout = 1
+
+    id = dev[0].connect("test-wpa2-eap", key_mgmt="WPA-EAP WPA-EAP-SHA256",
+                        eap="SIM", identity="1232010000000000",
+                        password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581",
+                        scan_freq="2412", wait_connect=False)
+    server.handle_request()
+    dev[0].wait_connected()
+    dev[0].request("DISCONNECT")
+    dev[0].wait_disconnected()
+
 def test_eap_tls_sha512(dev, apdev, params):
     """EAP-TLS with SHA512 signature"""
     params = int_eap_server_params()
@@ -7215,6 +7358,13 @@ def run_openssl_systemwide_policy(iface, apdev, test_params):
     logger.info("Start wpa_supplicant: " + str(arg))
     subprocess.call(arg, env={'OPENSSL_CONF': openssl_cnf})
     wpas = WpaSupplicant(ifname=iface)
+    try:
+        finish_openssl_systemwide_policy(wpas)
+    finally:
+        wpas.close_monitor()
+        wpas.request("TERMINATE")
+
+def finish_openssl_systemwide_policy(wpas):
     if "PONG" not in wpas.request("PING"):
         raise Exception("Could not PING wpa_supplicant")
     tls = wpas.request("GET tls_library")
@@ -7247,10 +7397,9 @@ def run_openssl_systemwide_policy(iface, apdev, test_params):
     wpas.select_network(id, freq="2412")
     wpas.wait_connected()
 
-    wpas.request("TERMINATE")
-
 def test_ap_wpa2_eap_tls_tod(dev, apdev):
     """EAP-TLS server certificate validation and TOD-STRICT"""
+    check_tls_tod(dev[0])
     params = int_eap_server_params()
     params["server_cert"] = "auth_serv/server-certpol.pem"
     params["private_key"] = "auth_serv/server-certpol.key"
@@ -7280,6 +7429,7 @@ def test_ap_wpa2_eap_tls_tod(dev, apdev):
 
 def test_ap_wpa2_eap_tls_tod_tofu(dev, apdev):
     """EAP-TLS server certificate validation and TOD-TOFU"""
+    check_tls_tod(dev[0])
     params = int_eap_server_params()
     params["server_cert"] = "auth_serv/server-certpol2.pem"
     params["private_key"] = "auth_serv/server-certpol2.key"

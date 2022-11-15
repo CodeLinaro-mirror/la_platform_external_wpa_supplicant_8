@@ -32,6 +32,10 @@ ifeq ($(BOARD_WPA_SUPPLICANT_PRIVATE_LIB),)
 L_CFLAGS += -DANDROID_LIB_STUB
 endif
 
+ifneq ($(BOARD_WPA_SUPPLICANT_PRIVATE_LIB_EVENT),)
+L_CFLAGS += -DANDROID_LIB_EVENT
+endif
+
 # Disable roaming in wpa_supplicant
 ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
@@ -90,6 +94,7 @@ OBJS += notify.c
 OBJS += bss.c
 OBJS += eap_register.c
 OBJS += src/utils/common.c
+OBJS += src/utils/config.c
 OBJS += src/utils/wpa_debug.c
 OBJS += src/utils/wpabuf.c
 OBJS += src/utils/bitfield.c
@@ -98,6 +103,8 @@ OBJS += src/utils/crc32.c
 OBJS += wmm_ac.c
 OBJS += op_classes.c
 OBJS += rrm.c
+OBJS += twt.c
+OBJS += robust_av.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
 OBJS_p += src/utils/wpa_debug.c
@@ -235,6 +242,10 @@ endif
 ifdef CONFIG_SAE
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
+ifdef CONFIG_SAE_PK
+L_CFLAGS += -DCONFIG_SAE_PK
+OBJS += src/common/sae_pk.c
+endif
 NEED_ECC=y
 NEED_DH_GROUPS=y
 NEED_HMAC_SHA256_KDF=y
@@ -247,6 +258,12 @@ endif
 ifdef CONFIG_DPP
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
+OBJS += src/common/dpp_auth.c
+OBJS += src/common/dpp_backup.c
+OBJS += src/common/dpp_crypto.c
+OBJS += src/common/dpp_pkex.c
+OBJS += src/common/dpp_reconfig.c
+OBJS += src/common/dpp_tcp.c
 OBJS += dpp_supplicant.c
 NEED_AES_SIV=y
 NEED_HMAC_SHA256_KDF=y
@@ -261,6 +278,9 @@ NEED_BASE64=y
 NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
+endif
+ifdef CONFIG_DPP3
+L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
@@ -349,11 +369,21 @@ CONFIG_AP=y
 ifdef CONFIG_P2P_STRICT
 L_CFLAGS += -DCONFIG_P2P_STRICT
 endif
-endif
-
 ifdef CONFIG_WIFI_DISPLAY
 L_CFLAGS += -DCONFIG_WIFI_DISPLAY
 OBJS += wifi_display.c
+endif
+endif
+
+ifdef CONFIG_PASN
+L_CFLAGS += -DCONFIG_PASN
+L_CFLAGS += -DCONFIG_PTKSA_CACHE
+NEED_HMAC_SHA256_KDF=y
+NEED_HMAC_SHA384_KDF=y
+NEED_SHA256=y
+NEED_SHA384=y
+OBJS += src/common/ptksa_cache.c
+OBJS += pasn_supplicant.c
 endif
 
 ifdef CONFIG_HS20
@@ -1590,6 +1620,12 @@ L_CFLAGS += -DCONFIG_EXT_PASSWORD_TEST
 NEED_EXT_PASSWORD=y
 endif
 
+ifdef CONFIG_EXT_PASSWORD_FILE
+OBJS += src/utils/ext_password_file.c
+L_CFLAGS += -DCONFIG_EXT_PASSWORD_FILE
+NEED_EXT_PASSWORD=y
+endif
+
 ifdef NEED_EXT_PASSWORD
 OBJS += src/utils/ext_password.c
 L_CFLAGS += -DCONFIG_EXT_PASSWORD
@@ -1620,7 +1656,7 @@ endif
 
 OBJS += src/drivers/driver_common.c
 
-OBJS += wpa_supplicant.c events.c blacklist.c wpas_glue.c scan.c
+OBJS += wpa_supplicant.c events.c bssid_ignore.c wpas_glue.c scan.c
 OBJS_t := $(OBJS) $(OBJS_l2) eapol_test.c
 OBJS_t += src/radius/radius_client.c
 OBJS_t += src/radius/radius.c
