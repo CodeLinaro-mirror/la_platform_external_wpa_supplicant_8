@@ -2701,15 +2701,15 @@ static int nl80211_mgmt_subscribe_ap_dev_sme(struct i802_bss *bss)
 		type = (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_ASSOC_REQ << 4);
 
 		/* Register for all ASSOC_REQ frames */
-		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0)
-		    < 0)
+		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0,
+					   false) < 0)
 			wpa_printf(MSG_DEBUG,
 				   "nl80211: Failed to subscribe to handle WLAN_FC_STYPE_ASSOC_REQ frames");
 		type = (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_REASSOC_REQ << 4);
 
 		/* Register for all REASSOC_REQ frames */
-		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0)
-		    < 0)
+		if (nl80211_register_frame(bss, bss->nl_mgmt, type, NULL, 0,
+					   false) < 0)
 			wpa_printf(MSG_DEBUG,
 				   "nl80211: Failed to subscribe to handle WLAN_FC_STYPE_REASSOC_REQ frames ");
 	}
