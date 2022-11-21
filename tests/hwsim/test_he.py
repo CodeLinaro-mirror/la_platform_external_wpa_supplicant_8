@@ -14,8 +14,6 @@ import hostapd
 from wpasupplicant import WpaSupplicant
 from utils import *
 from test_dfs import wait_dfs_event
-from test_ap_csa import csa_supported
-from test_ap_ht import clear_scan_cache
 
 def test_he_open(dev, apdev):
     """HE AP with open mode configuration"""
@@ -26,8 +24,24 @@ def test_he_open(dev, apdev):
               "he_mu_edca_ac_be_ecwmax": "15"}
     hapd = hostapd.add_ap(apdev[0], params)
     if hapd.get_status_field("ieee80211ax") != "1":
-        raise Exception("STATUS did not indicate ieee80211ac=1")
+        raise Exception("STATUS did not indicate ieee80211ax=1")
     dev[0].connect("he", key_mgmt="NONE", scan_freq="2412")
+    sta = hapd.get_sta(dev[0].own_addr())
+    if "[HE]" not in sta['flags']:
+        raise Exception("Missing STA flag: HE")
+
+def test_he_disabled_on_sta(dev, apdev):
+    """HE AP and HE disabled on STA"""
+    params = {"ssid": "he",
+              "ieee80211ax": "1",
+              "he_bss_color": "42",
+              "he_mu_edca_ac_be_ecwmin": "7",
+              "he_mu_edca_ac_be_ecwmax": "15"}
+    hapd = hostapd.add_ap(apdev[0], params)
+    dev[0].connect("he", key_mgmt="NONE", scan_freq="2412", disable_he="1")
+    sta = hapd.get_sta(dev[0].own_addr())
+    if "[HE]" in sta['flags']:
+        raise Exception("Unexpected STA flag: HE")
 
 def test_he_params(dev, apdev):
     """HE AP parameters"""
@@ -69,12 +83,36 @@ def test_he_params(dev, apdev):
               "he_spr_non_srg_obss_pd_max_offset": "0",
               "he_spr_srg_obss_pd_min_offset": "0",
               "he_spr_srg_obss_pd_max_offset": "0",
+              "he_spr_srg_bss_colors": "1 2 10 63",
+              "he_spr_srg_partial_bssid": "0 1 3 63",
+              "he_6ghz_max_ampdu_len_exp": "7",
+              "he_6ghz_rx_ant_pat": "1",
+              "he_6ghz_tx_ant_pat": "1",
+              "he_6ghz_max_mpdu": "2",
               "he_oper_chwidth": "0",
               "he_oper_centr_freq_seg0_idx": "1",
               "he_oper_centr_freq_seg1_idx": "0"}
     hapd = hostapd.add_ap(apdev[0], params)
     if hapd.get_status_field("ieee80211ax") != "1":
-        raise Exception("STATUS did not indicate ieee80211ac=1")
+        raise Exception("STATUS did not indicate ieee80211ax=1")
+    dev[0].connect("he", key_mgmt="NONE", scan_freq="2412")
+
+def test_he_spr_params(dev, apdev):
+    """HE AP spatial reuse parameters"""
+    params = {"ssid": "he",
+              "ieee80211ax": "1",
+              "he_spr_sr_control": "12",
+              "he_spr_non_srg_obss_pd_max_offset": "1",
+              "he_spr_srg_obss_pd_min_offset": "2",
+              "he_spr_srg_obss_pd_max_offset": "3",
+              "he_spr_srg_bss_colors": "1 2 10 63",
+              "he_spr_srg_partial_bssid": "0 1 3 63",
+              "he_oper_chwidth": "0",
+              "he_oper_centr_freq_seg0_idx": "1",
+              "he_oper_centr_freq_seg1_idx": "0"}
+    hapd = hostapd.add_ap(apdev[0], params)
+    if hapd.get_status_field("ieee80211ax") != "1":
+        raise Exception("STATUS did not indicate ieee80211ax=1")
     dev[0].connect("he", key_mgmt="NONE", scan_freq="2412")
 
 def he_supported():
@@ -112,7 +150,7 @@ def test_he80(dev, apdev):
         if "WIDTH=80 MHz" not in sig:
             raise Exception("Unexpected SIGNAL_POLL value(2): " + str(sig))
         est = dev[0].get_bss(bssid)['est_throughput']
-        if est != "390001":
+        if est != "600502":
             raise Exception("Unexpected BSS est_throughput: " + est)
         status = dev[0].get_status()
         if status["ieee80211ac"] != "1":
@@ -156,27 +194,19 @@ def test_he80(dev, apdev):
         dev[0].request("DISCONNECT")
         clear_regdom(hapd, dev)
 
-def test_he_wifi_generation(dev, apdev):
+def _test_he_wifi_generation(dev, apdev, conf, scan_freq):
     """HE and wifi_generation"""
     try:
         hapd = None
         params = {"ssid": "he",
                   "country_code": "FI",
-                  "hw_mode": "a",
-                  "channel": "36",
-                  "ht_capab": "[HT40+]",
                   "ieee80211n": "1",
-                  "ieee80211ac": "1",
-                  "ieee80211ax": "1",
-                  "vht_oper_chwidth": "1",
-                  "vht_capab": "[MAX-MPDU-11454]",
-                  "vht_oper_centr_freq_seg0_idx": "42",
-                  "he_oper_chwidth": "1",
-                  "he_oper_centr_freq_seg0_idx": "42"}
+                  "ieee80211ax": "1"}
+        params.update(conf)
         hapd = hostapd.add_ap(apdev[0], params)
         bssid = apdev[0]['bssid']
 
-        dev[0].connect("he", key_mgmt="NONE", scan_freq="5180")
+        dev[0].connect("he", key_mgmt="NONE", scan_freq=scan_freq)
         status = dev[0].get_status()
         if 'wifi_generation' not in status:
             # For now, assume this is because of missing kernel support
@@ -187,7 +217,7 @@ def test_he_wifi_generation(dev, apdev):
 
         wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
         wpas.interface_add("wlan5", drv_params="force_connect_cmd=1")
-        wpas.connect("he", key_mgmt="NONE", scan_freq="5180")
+        wpas.connect("he", key_mgmt="NONE", scan_freq=scan_freq)
         status = wpas.get_status()
         if 'wifi_generation' not in status:
             # For now, assume this is because of missing kernel support
@@ -203,6 +233,27 @@ def test_he_wifi_generation(dev, apdev):
     finally:
         dev[0].request("DISCONNECT")
         clear_regdom(hapd, dev)
+
+def test_he_wifi_generation(dev, apdev):
+    conf = {
+        "vht_oper_chwidth": "1",
+        "hw_mode": "a",
+        "channel": "36",
+        "ht_capab": "[HT40+]",
+        "vht_oper_centr_freq_seg0_idx": "42",
+        "he_oper_chwidth": "1",
+        "he_oper_centr_freq_seg0_idx": "42",
+        "vht_capab": "[MAX-MPDU-11454]",
+        "ieee80211ac": "1",
+    }
+    _test_he_wifi_generation(dev, apdev, conf, "5180")
+
+def test_he_wifi_generation_24(dev, apdev):
+    conf = {
+        "hw_mode": "g",
+        "channel": "1",
+    }
+    _test_he_wifi_generation(dev, apdev, conf, "2412")
 
 def he80_test(apdev, dev, channel, ht_capab):
     clear_scan_cache(apdev)
@@ -420,10 +471,9 @@ def test_he_40(devs, apdevs):
         dev.request("DISCONNECT")
         clear_regdom(hapd, devs)
 
-def test_he160(dev, apdev, params):
-    """HE with 160 MHz channel width (1) [long]"""
-    if not params['long']:
-        raise HwsimSkip("Skip test case with long duration due to --long not specified")
+@long_duration_test
+def test_he160(dev, apdev):
+    """HE with 160 MHz channel width (1)"""
     try:
         hapd = None
         params = {"ssid": "he",
@@ -431,6 +481,7 @@ def test_he160(dev, apdev, params):
                   "hw_mode": "a",
                   "channel": "36",
                   "ht_capab": "[HT40+]",
+                  "vht_capab": "[VHT160]",
                   "ieee80211n": "1",
                   "ieee80211ac": "1",
                   "ieee80211ax": "1",
@@ -441,6 +492,7 @@ def test_he160(dev, apdev, params):
                   'ieee80211d': '1',
                   'ieee80211h': '1'}
         hapd = hostapd.add_ap(apdev[0], params, wait_enabled=False)
+        bssid = apdev[0]['bssid']
 
         ev = wait_dfs_event(hapd, "DFS-CAC-START", 5)
         if "DFS-CAC-START" not in ev:
@@ -479,6 +531,9 @@ def test_he160(dev, apdev, params):
             raise Exception("Unexpected SIGNAL_POLL value(1): " + str(sig))
         if "WIDTH=160 MHz" not in sig:
             raise Exception("Unexpected SIGNAL_POLL value(2): " + str(sig))
+        est = dev[0].get_bss(bssid)['est_throughput']
+        if est != "1201002":
+            raise Exception("Unexpected BSS est_throughput: " + est)
     except Exception as e:
         if isinstance(e, Exception) and str(e) == "AP startup failed":
             if not he_supported():
@@ -492,10 +547,9 @@ def test_he160(dev, apdev, params):
         dev[0].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=0.5)
         dev[0].flush_scan_cache()
 
-def test_he160b(dev, apdev, params):
-    """HE with 160 MHz channel width (2) [long]"""
-    if not params['long']:
-        raise HwsimSkip("Skip test case with long duration due to --long not specified")
+@long_duration_test
+def test_he160b(dev, apdev):
+    """HE with 160 MHz channel width (2)"""
     try:
         hapd = None
 
@@ -504,6 +558,7 @@ def test_he160b(dev, apdev, params):
                   "hw_mode": "a",
                   "channel": "104",
                   "ht_capab": "[HT40-]",
+                  "vht_capab": "[VHT160]",
                   "ieee80211n": "1",
                   "ieee80211ac": "1",
                   "ieee80211ax": "1",
@@ -609,6 +664,7 @@ def run_ap_he160_no_dfs(dev, apdev, channel, ht_capab):
                   "hw_mode": "a",
                   "channel": channel,
                   "ht_capab": ht_capab,
+                  "vht_capab": "[VHT160]",
                   "ieee80211n": "1",
                   "ieee80211ac": "1",
                   "ieee80211ax": "1",
@@ -624,7 +680,7 @@ def run_ap_he160_no_dfs(dev, apdev, channel, ht_capab):
             cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
             reg = cmd.stdout.readlines()
             for r in reg:
-                if "5490" in r and "DFS" in r:
+                if b"5490" in r and b"DFS" in r:
                     raise HwsimSkip("ZA regulatory rule did not have DFS requirement removed")
             raise Exception("AP setup timed out")
 
@@ -693,6 +749,7 @@ def test_he80plus80(dev, apdev):
                   "hw_mode": "a",
                   "channel": "52",
                   "ht_capab": "[HT40+]",
+                  "vht_capab": "[VHT160-80PLUS80]",
                   "ieee80211n": "1",
                   "ieee80211ac": "1",
                   "ieee80211ax": "1",
@@ -714,6 +771,7 @@ def test_he80plus80(dev, apdev):
                   "hw_mode": "a",
                   "channel": "36",
                   "ht_capab": "[HT40+]",
+                  "vht_capab": "[VHT160-80PLUS80]",
                   "ieee80211n": "1",
                   "ieee80211ac": "1",
                   "ieee80211ax": "1",
@@ -991,7 +1049,7 @@ def test_he_tkip(dev, apdev):
             raise Exception("Unexpected STATUS ieee80211n value")
         if status["ieee80211ac"] != "0":
             raise Exception("Unexpected STATUS ieee80211ac value")
-        if status["ieee80211ax"] != "1":
+        if status["ieee80211ax"] != "0":
             raise Exception("Unexpected STATUS ieee80211ax value")
         if status["secondary_channel"] != "0":
             raise Exception("Unexpected STATUS secondary_channel value")
@@ -1074,3 +1132,216 @@ def test_he80_to_24g_he(dev, apdev):
     finally:
         dev[0].request("DISCONNECT")
         clear_regdom(hapd, dev)
+
+def test_he_twt(dev, apdev):
+    """HE and TWT"""
+    params = {"ssid": "he",
+              "ieee80211ax": "1",
+              "he_bss_color": "42",
+              "he_twt_required":"1"}
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].connect("he", key_mgmt="NONE", scan_freq="2412")
+    if "OK" not in dev[0].request("TWT_SETUP"):
+        raise Exception("TWT_SETUP failed")
+    if "OK" not in dev[0].request("TWT_TEARDOWN"):
+        raise Exception("TWT_SETUP failed")
+    if "OK" not in dev[0].request("TWT_SETUP dialog=123 exponent=9 mantissa=10 min_twt=254 setup_cmd=1 twt=1234567890 requestor=1 trigger=0 implicit=0 flow_type=0 flow_id=2 protection=1 twt_channel=3 control=16"):
+        raise Exception("TWT_SETUP failed")
+    if "OK" not in dev[0].request("TWT_TEARDOWN flags=255"):
+        raise Exception("TWT_SETUP failed")
+
+def test_he_6ghz_security(dev, apdev):
+    """HE AP and 6 GHz security parameter validation"""
+    params = {"ssid": "he",
+              "ieee80211ax": "1",
+              "op_class": "131",
+              "channel": "1"}
+    hapd = hostapd.add_ap(apdev[0], params, no_enable=True)
+
+    # Pre-RSNA security methods are not allowed in 6 GHz
+    if "FAIL" not in hapd.request("ENABLE"):
+        raise Exception("Invalid configuration accepted(1)")
+
+    # Management frame protection is required in 6 GHz"
+    hapd.set("wpa", "2")
+    hapd.set("wpa_passphrase", "12345678")
+    hapd.set("wpa_key_mgmt", "SAE")
+    hapd.set("rsn_pairwise", "CCMP")
+    hapd.set("ieee80211w", "1")
+    if "FAIL" not in hapd.request("ENABLE"):
+        raise Exception("Invalid configuration accepted(2)")
+
+    # Invalid AKM suite for 6 GHz
+    hapd.set("ieee80211w", "2")
+    hapd.set("wpa_key_mgmt", "SAE WPA-PSK")
+    if "FAIL" not in hapd.request("ENABLE"):
+        raise Exception("Invalid configuration accepted(3)")
+
+    # Invalid pairwise cipher suite for 6 GHz
+    hapd.set("wpa_key_mgmt", "SAE")
+    hapd.set("rsn_pairwise", "CCMP TKIP")
+    if "FAIL" not in hapd.request("ENABLE"):
+        raise Exception("Invalid configuration accepted(4)")
+
+    # Invalid group cipher suite for 6 GHz
+    hapd.set("wpa_key_mgmt", "SAE")
+    hapd.set("rsn_pairwise", "CCMP")
+    hapd.set("group_cipher", "TKIP")
+    if "FAIL" not in hapd.request("ENABLE"):
+        raise Exception("Invalid configuration accepted(5)")
+
+def test_he_prefer_he20(dev, apdev):
+    """Preference on HE20 over HT20"""
+    params = {"ssid": "he",
+              "channel": "1",
+              "ieee80211ax": "0",
+              "ieee80211n": "1"}
+    hapd = hostapd.add_ap(apdev[0], params)
+    bssid = apdev[0]['bssid']
+    params = {"ssid": "test",
+              "channel": "1",
+              "ieee80211ax": "1",
+              "ieee80211n": "1"}
+    hapd2 = hostapd.add_ap(apdev[1], params)
+    bssid2 = apdev[1]['bssid']
+
+    dev[0].scan_for_bss(bssid, freq=2412)
+    dev[0].scan_for_bss(bssid2, freq=2412)
+    dev[0].connect("test", key_mgmt="NONE", scan_freq="2412")
+    if dev[0].get_status_field('bssid') != bssid2:
+        raise Exception("Unexpected BSS selected")
+
+    est = dev[0].get_bss(bssid)['est_throughput']
+    if est != "65000":
+        raise Exception("Unexpected BSS0 est_throughput: " + est)
+
+    est = dev[0].get_bss(bssid2)['est_throughput']
+    if est != "143402":
+        raise Exception("Unexpected BSS1 est_throughput: " + est)
+
+def test_he_capab_parsing(dev, apdev):
+    """HE AP and capability parsing"""
+    params = {"ssid": "he",
+              "ieee80211ax": "1",
+              "he_bss_color": "42",
+              "he_mu_edca_ac_be_ecwmin": "7",
+              "he_mu_edca_ac_be_ecwmax": "15"}
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    hapd.set("ext_mgmt_frame_handling", "1")
+    bssid = hapd.own_addr().replace(':', '')
+    addr = "020304050607"
+    addr_ = "02:03:04:05:06:07"
+
+    tests = []
+    mac_capa = binascii.unhexlify("0178c81a4000")
+    phy_capa = binascii.unhexlify("00bfce0000000000000000")
+    mcs_nss = binascii.unhexlify("faff")
+    payload = mac_capa + phy_capa + 2*mcs_nss
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, True) ]
+
+    phy_capa = binascii.unhexlify("08bfce0000000000000000")
+    payload = mac_capa + phy_capa + 4*mcs_nss
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, True) ]
+
+    phy_capa = binascii.unhexlify("10bfce0000000000000000")
+    payload = mac_capa + phy_capa + 4*mcs_nss
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, True) ]
+
+    phy_capa = binascii.unhexlify("18bfce0000000000000000")
+    payload = mac_capa + phy_capa + 6*mcs_nss
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, True) ]
+
+    # Missing PPE Threshold field
+    phy_capa = binascii.unhexlify("00bfce0000008000000000")
+    payload = mac_capa + phy_capa + 2*mcs_nss
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, False) ]
+
+    # Truncated PPE Threshold field
+    phy_capa = binascii.unhexlify("00bfce0000008000000000")
+    payload = mac_capa + phy_capa + 2*mcs_nss + struct.pack('B', 0x79)
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, False) ]
+
+    # Extra field at the end (without PPE Threshold field)
+    phy_capa = binascii.unhexlify("00bfce0000000000000000")
+    payload = mac_capa + phy_capa + 2*mcs_nss
+    payload += struct.pack('B', 0)
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, True) ]
+
+    # Extra field at the end (with PPE Threshold field)
+    phy_capa = binascii.unhexlify("00bfce0000008000000000")
+    payload = mac_capa + phy_capa + 2*mcs_nss
+    payload += binascii.unhexlify("79000000000000")
+    payload += struct.pack('B', 0)
+    hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+    tests += [ (hdr + payload, True) ]
+
+    ppet = []
+    # NSTS=1 (i.e., NSTS field value 0), RU Index Bitmask=0x0
+    # --> 3 + 4 + 0 * 6 * 1 = 7 bits --> 1 octet
+    ppet += ["00"]
+    # NSTS=1 (i.e., NSTS field value 0), RU Index Bitmask=0x1
+    # --> 3 + 4 + 1 * 6 * 1 = 13 bits --> 2 octets
+    ppet += ["08" + "00"]
+    # NSTS=1 (i.e., NSTS field value 0), RU Index Bitmask=0x8
+    # --> 3 + 4 + 1 * 6 * 1 = 13 bits --> 2 octets
+    ppet += ["40" + "00"]
+    # NSTS=2 (i.e., NSTS field value 1), RU Index Bitmask=0xf
+    # --> 3 + 4 + 4 * 6 * 2 = 55 bits --> 7 octets
+    ppet += ["79" + 6*"00"]
+    # NSTS=3 (i.e., NSTS field value 2), RU Index Bitmask=0xf
+    # --> 3 + 4 + 4 * 6 * 3 = 79 bits --> 10 octets
+    ppet += ["7a" + 9*"00"]
+    # NSTS=4 (i.e., NSTS field value 3), RU Index Bitmask=0x5
+    # --> 3 + 4 + 2 * 6 * 4 = 55 bits --> 7 octets
+    ppet += ["2b" + 6*"00"]
+    # NSTS=8 (i.e., NSTS field value 7), RU Index Bitmask=0xf
+    # --> 3 + 4 + 4 * 6 * 8 = 199 bits --> 25 octets
+    ppet += ["ff" + 24*"00"]
+    for p in ppet:
+        phy_capa = binascii.unhexlify("00bfce0000008000000000")
+        payload = mac_capa + phy_capa + 2*mcs_nss + binascii.unhexlify(p)
+        hdr = struct.pack('BBB', 255, 1 + len(payload), 35)
+        tests += [ (hdr + payload, True) ]
+
+    for capab, result in tests:
+        auth = "b0003a01" + bssid + addr + bssid + '1000000001000000'
+        if "OK" not in hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % auth):
+            raise Exception("MGMT_RX_PROCESS failed")
+
+        he_capab = binascii.hexlify(capab).decode()
+
+        ies = "00026865" # SSID
+        ies += "010802040b160c121824" # Supp Rates
+        ies += "32043048606c" # Ext Supp Rates
+        ies += "2d1afe131bffff000000000000000000000100000000000000000000" # HT Capab
+        ies += "7f0b04004a0201404040000120" # Ext Capab
+        ies += he_capab
+        ies += "3b155151525354737475767778797a7b7c7d7e7f808182" # Supp Op Classes
+        ies += "dd070050f202000100" # WMM
+
+        assoc_req = "00003a01" + bssid + addr + bssid + "2000" + "21040500" + ies
+        if "OK" not in hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % assoc_req):
+            raise Exception("MGMT_RX_PROCESS failed")
+
+        sta = hapd.get_sta(addr_)
+        if result:
+            if "[HE]" not in sta['flags']:
+                raise Exception("Missing STA flag: HE (HE Capab: %s)" % he_capab)
+        else:
+            if "[HE]" in sta['flags']:
+                raise Exception("Unexpected STA flag: HE (HE Capab: %s)" % he_capab)
+
+        deauth = "c0003a01" + bssid + addr + bssid + "3000" + "0300"
+        if "OK" not in hapd.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=%s" % deauth):
+            raise Exception("MGMT_RX_PROCESS failed")
+
+        hapd.dump_monitor()

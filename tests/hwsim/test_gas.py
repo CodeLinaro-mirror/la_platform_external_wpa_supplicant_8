@@ -487,6 +487,25 @@ def test_gas_anqp_get(dev, apdev):
         if "FAIL" not in dev[0].request("HS20_ANQP_GET " + cmd):
             raise Exception("Invalid HS20_ANQP_GET accepted")
 
+def test_gas_anqp_get_no_scan(dev, apdev):
+    """GAS/ANQP query without scan"""
+    hapd = start_ap(apdev[0])
+    bssid = apdev[0]['bssid']
+    if "OK" not in dev[0].request("ANQP_GET " + bssid + " freq=2412 258"):
+        raise Exception("ANQP_GET command failed")
+    ev = dev[0].wait_event(["ANQP-QUERY-DONE"], timeout=10)
+    if ev is None:
+        raise Exception("ANQP query timed out")
+    dev[0].dump_monitor()
+
+    if "OK" not in dev[0].request("ANQP_GET 02:11:22:33:44:55 freq=2417 258"):
+        raise Exception("ANQP_GET command failed")
+    ev = dev[0].wait_event(["ANQP-QUERY-DONE"], timeout=10)
+    if ev is None:
+        raise Exception("ANQP query timed out [2]")
+    if "result=FAILURE" not in ev:
+        raise Exception("Unexpected result: " + ev)
+
 def test_gas_anqp_get_oom(dev, apdev):
     """GAS/ANQP query OOM"""
     hapd = start_ap(apdev[0])
@@ -1622,6 +1641,7 @@ def test_gas_anqp_venue_url(dev, apdev):
     hapd = hostapd.add_ap(apdev[0], params)
     bssid = apdev[0]['bssid']
 
+    dev[0].flush_scan_cache()
     dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
     if "OK" not in dev[0].request("ANQP_GET " + bssid + " 257,258,277"):
         raise Exception("ANQP_GET command failed")
@@ -1651,6 +1671,11 @@ def test_gas_anqp_venue_url(dev, apdev):
     if not bss['anqp_capability_list'].startswith(binascii.hexlify(ids).decode()):
         raise Exception("Unexpected Capability List ANQP-element value: " + bss['anqp_capability_list'])
 
+    if "anqp[277]" not in bss:
+        raise Exception("Venue-URL ANQP info not available")
+    if "protected-anqp-info[277]" in bss:
+        raise Exception("Unexpected Venue-URL protection info")
+
 def test_gas_anqp_venue_url2(dev, apdev):
     """GAS/ANQP and Venue URL (hostapd venue_url)"""
     venue_group = 1
@@ -1679,6 +1704,7 @@ def test_gas_anqp_venue_url2(dev, apdev):
     hapd = hostapd.add_ap(apdev[0], params)
     bssid = apdev[0]['bssid']
 
+    dev[0].flush_scan_cache()
     dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
     if "OK" not in dev[0].request("ANQP_GET " + bssid + " 257,258,277"):
         raise Exception("ANQP_GET command failed")
@@ -1735,6 +1761,7 @@ def test_gas_anqp_venue_url_pmf(dev, apdev):
     hapd = hostapd.add_ap(apdev[0], params)
     bssid = apdev[0]['bssid']
 
+    dev[0].flush_scan_cache()
     dev[0].connect("gas/anqp/pmf", psk="12345678", ieee80211w="2",
                    scan_freq="2412")
     if "OK" not in dev[0].request("ANQP_GET " + bssid + " 277"):
@@ -1756,6 +1783,14 @@ def test_gas_anqp_venue_url_pmf(dev, apdev):
     if "2 " + url2 not in ev:
         raise Exception("Unexpected Venue URL information (2): " + ev)
 
+    bss = dev[0].get_bss(bssid)
+    if "anqp[277]" not in bss:
+        raise Exception("Venue-URL ANQP info not available")
+    if "protected-anqp-info[277]" not in bss:
+        raise Exception("Venue-URL protection info not available")
+    if bss["protected-anqp-info[277]"] != "1":
+        raise Exception("Venue-URL was not indicated to be protected")
+
 def test_gas_anqp_capab_list(dev, apdev):
     """GAS/ANQP and Capability List ANQP-element"""
     params = {"ssid": "gas/anqp",
@@ -1767,6 +1802,7 @@ def test_gas_anqp_capab_list(dev, apdev):
     hapd = hostapd.add_ap(apdev[0], params)
     bssid = apdev[0]['bssid']
 
+    dev[0].flush_scan_cache()
     dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
     if "OK" not in dev[0].request("ANQP_GET " + bssid + " 257"):
         raise Exception("ANQP_GET command failed")

@@ -2,6 +2,7 @@
  * hostapd / DPP integration
  * Copyright (c) 2017, Qualcomm Atheros, Inc.
  * Copyright (c) 2018-2020, The Linux Foundation
+ * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -23,9 +24,23 @@
 
 
 static void hostapd_dpp_reply_wait_timeout(void *eloop_ctx, void *timeout_ctx);
+static void hostapd_dpp_auth_conf_wait_timeout(void *eloop_ctx,
+					       void *timeout_ctx);
 static void hostapd_dpp_auth_success(struct hostapd_data *hapd, int initiator);
 static void hostapd_dpp_init_timeout(void *eloop_ctx, void *timeout_ctx);
 static int hostapd_dpp_auth_init_next(struct hostapd_data *hapd);
+static void hostapd_dpp_set_testing_options(struct hostapd_data *hapd,
+					    struct dpp_authentication *auth);
+static void hostapd_dpp_start_gas_client(struct hostapd_data *hapd);
+#ifdef CONFIG_DPP2
+static void hostapd_dpp_reconfig_reply_wait_timeout(void *eloop_ctx,
+						    void *timeout_ctx);
+static void hostapd_dpp_handle_config_obj(struct hostapd_data *hapd,
+					  struct dpp_authentication *auth,
+					  struct dpp_config_obj *conf);
+static int hostapd_dpp_process_conf_obj(void *ctx,
+					struct dpp_authentication *auth);
+#endif /* CONFIG_DPP2 */
 
 static const u8 broadcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
@@ -58,6 +73,10 @@ int hostapd_dpp_qr_code(struct hostapd_data *hapd, const char *cmd)
 					wpabuf_head(hapd->dpp_auth->resp_msg),
 					wpabuf_len(hapd->dpp_auth->resp_msg));
 	}
+
+#ifdef CONFIG_DPP2
+	dpp_controller_new_qr_code(hapd->iface->interfaces->dpp, bi);
+#endif /* CONFIG_DPP2 */
 
 	return bi->id;
 }
@@ -203,6 +222,249 @@ static void hostapd_dpp_auth_resp_retry(struct hostapd_data *hapd)
 }
 
 
+static int hostapd_dpp_allow_ir(struct hostapd_data *hapd, unsigned int freq)
+{
+	int i, j;
+
+	if (!hapd->iface->hw_features)
+		return -1;
+
+	for (i = 0; i < hapd->iface->num_hw_features; i++) {
+		struct hostapd_hw_modes *mode = &hapd->iface->hw_features[i];
+
+		for (j = 0; j < mode->num_channels; j++) {
+			struct hostapd_channel_data *chan = &mode->channels[j];
+
+			if (chan->freq != (int) freq)
+				continue;
+
+			if (chan->flag & (HOSTAPD_CHAN_DISABLED |
+					  HOSTAPD_CHAN_NO_IR |
+					  HOSTAPD_CHAN_RADAR))
+				continue;
+
+			return 1;
+		}
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "DPP: Frequency %u MHz not supported or does not allow PKEX initiation in the current channel list",
+		   freq);
+
+	return 0;
+}
+
+
+static int hostapd_dpp_pkex_next_channel(struct hostapd_data *hapd,
+					 struct dpp_pkex *pkex)
+{
+	if (pkex->freq == 2437)
+		pkex->freq = 5745;
+	else if (pkex->freq == 5745)
+		pkex->freq = 5220;
+	else if (pkex->freq == 5220)
+		pkex->freq = 60480;
+	else
+		return -1; /* no more channels to try */
+
+	if (hostapd_dpp_allow_ir(hapd, pkex->freq) == 1) {
+		wpa_printf(MSG_DEBUG, "DPP: Try to initiate on %u MHz",
+			   pkex->freq);
+		return 0;
+	}
+
+	/* Could not use this channel - try the next one */
+	return hostapd_dpp_pkex_next_channel(hapd, pkex);
+}
+
+
+#ifdef CONFIG_DPP2
+static int hostapd_dpp_pkex_done(void *ctx, void *conn,
+				 struct dpp_bootstrap_info *peer_bi)
+{
+	struct hostapd_data *hapd = ctx;
+	const char *cmd = hapd->dpp_pkex_auth_cmd;
+	const char *pos;
+	u8 allowed_roles = DPP_CAPAB_CONFIGURATOR;
+	struct dpp_bootstrap_info *own_bi = NULL;
+	struct dpp_authentication *auth;
+
+	if (!cmd)
+		cmd = "";
+	wpa_printf(MSG_DEBUG, "DPP: Start authentication after PKEX (cmd: %s)",
+		   cmd);
+
+	pos = os_strstr(cmd, " own=");
+	if (pos) {
+		pos += 5;
+		own_bi = dpp_bootstrap_get_id(hapd->iface->interfaces->dpp,
+					      atoi(pos));
+		if (!own_bi) {
+			wpa_printf(MSG_INFO,
+				   "DPP: Could not find bootstrapping info for the identified local entry");
+			return -1;
+		}
+
+		if (peer_bi->curve != own_bi->curve) {
+			wpa_printf(MSG_INFO,
+				   "DPP: Mismatching curves in bootstrapping info (peer=%s own=%s)",
+				   peer_bi->curve->name, own_bi->curve->name);
+			return -1;
+		}
+	}
+
+	pos = os_strstr(cmd, " role=");
+	if (pos) {
+		pos += 6;
+		if (os_strncmp(pos, "configurator", 12) == 0)
+			allowed_roles = DPP_CAPAB_CONFIGURATOR;
+		else if (os_strncmp(pos, "enrollee", 8) == 0)
+			allowed_roles = DPP_CAPAB_ENROLLEE;
+		else if (os_strncmp(pos, "either", 6) == 0)
+			allowed_roles = DPP_CAPAB_CONFIGURATOR |
+				DPP_CAPAB_ENROLLEE;
+		else
+			return -1;
+	}
+
+	auth = dpp_auth_init(hapd->iface->interfaces->dpp, hapd->msg_ctx,
+			     peer_bi, own_bi, allowed_roles, 0,
+			     hapd->iface->hw_features,
+			     hapd->iface->num_hw_features);
+	if (!auth)
+		return -1;
+
+	hostapd_dpp_set_testing_options(hapd, auth);
+	if (dpp_set_configurator(auth, cmd) < 0) {
+		dpp_auth_deinit(auth);
+		return -1;
+	}
+
+	return dpp_tcp_auth(hapd->iface->interfaces->dpp, conn, auth,
+			    hapd->conf->dpp_name, DPP_NETROLE_AP,
+			    hostapd_dpp_process_conf_obj, NULL);
+}
+#endif /* CONFIG_DPP2 */
+
+
+static int hostapd_dpp_pkex_init(struct hostapd_data *hapd,
+				 enum dpp_pkex_ver ver,
+				 const struct hostapd_ip_addr *ipaddr,
+				 int tcp_port)
+{
+	struct dpp_pkex *pkex;
+	struct wpabuf *msg;
+	unsigned int wait_time;
+	bool v2 = ver != PKEX_VER_ONLY_1;
+
+	wpa_printf(MSG_DEBUG, "DPP: Initiating PKEXv%d", v2 ? 2 : 1);
+	dpp_pkex_free(hapd->dpp_pkex);
+	hapd->dpp_pkex = NULL;
+	pkex = dpp_pkex_init(hapd->msg_ctx, hapd->dpp_pkex_bi, hapd->own_addr,
+			     hapd->dpp_pkex_identifier,
+			     hapd->dpp_pkex_code, v2);
+	if (!pkex)
+		return -1;
+	pkex->forced_ver = ver != PKEX_VER_AUTO;
+
+	if (ipaddr) {
+#ifdef CONFIG_DPP2
+		return dpp_tcp_pkex_init(hapd->iface->interfaces->dpp, pkex,
+					 ipaddr, tcp_port,
+					 hapd->msg_ctx, hapd,
+					 hostapd_dpp_pkex_done);
+#else /* CONFIG_DPP2 */
+		return -1;
+#endif /* CONFIG_DPP2 */
+	}
+
+	hapd->dpp_pkex = pkex;
+	msg = hapd->dpp_pkex->exchange_req;
+	wait_time = 2000; /* TODO: hapd->max_remain_on_chan; */
+	pkex->freq = 2437;
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR
+		" freq=%u type=%d", MAC2STR(broadcast), pkex->freq,
+		v2 ? DPP_PA_PKEX_EXCHANGE_REQ :
+		DPP_PA_PKEX_V1_EXCHANGE_REQ);
+	hostapd_drv_send_action(hapd, pkex->freq, 0, broadcast,
+				wpabuf_head(msg), wpabuf_len(msg));
+	pkex->exch_req_wait_time = wait_time;
+	pkex->exch_req_tries = 1;
+
+	return 0;
+}
+
+
+static void hostapd_dpp_pkex_retry_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct dpp_pkex *pkex = hapd->dpp_pkex;
+
+	if (!pkex || !pkex->exchange_req)
+		return;
+	if (pkex->exch_req_tries >= 5) {
+		if (hostapd_dpp_pkex_next_channel(hapd, pkex) < 0) {
+#ifdef CONFIG_DPP3
+			if (pkex->v2 && !pkex->forced_ver) {
+				wpa_printf(MSG_DEBUG,
+					   "DPP: Fall back to PKEXv1");
+				hostapd_dpp_pkex_init(hapd, PKEX_VER_ONLY_1,
+						      NULL, 0);
+				return;
+			}
+#endif /* CONFIG_DPP3 */
+			wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+				"No response from PKEX peer");
+			dpp_pkex_free(pkex);
+			hapd->dpp_pkex = NULL;
+			return;
+		}
+		pkex->exch_req_tries = 0;
+	}
+
+	pkex->exch_req_tries++;
+	wpa_printf(MSG_DEBUG, "DPP: Retransmit PKEX Exchange Request (try %u)",
+		   pkex->exch_req_tries);
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR
+		" freq=%u type=%d",
+		MAC2STR(broadcast), pkex->freq,
+		pkex->v2 ? DPP_PA_PKEX_EXCHANGE_REQ :
+		DPP_PA_PKEX_V1_EXCHANGE_REQ);
+	hostapd_drv_send_action(hapd, pkex->freq, pkex->exch_req_wait_time,
+				broadcast,
+				wpabuf_head(pkex->exchange_req),
+				wpabuf_len(pkex->exchange_req));
+}
+
+
+static void hostapd_dpp_pkex_tx_status(struct hostapd_data *hapd, const u8 *dst,
+				       const u8 *data, size_t data_len, int ok)
+{
+	struct dpp_pkex *pkex = hapd->dpp_pkex;
+
+	if (pkex->failed) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Terminate PKEX exchange due to an earlier error");
+		if (pkex->t > pkex->own_bi->pkex_t)
+			pkex->own_bi->pkex_t = pkex->t;
+		dpp_pkex_free(pkex);
+		hapd->dpp_pkex = NULL;
+		return;
+	}
+
+	if (pkex->exch_req_wait_time && pkex->exchange_req) {
+		/* Wait for PKEX Exchange Response frame and retry request if
+		 * no response is seen. */
+		eloop_cancel_timeout(hostapd_dpp_pkex_retry_timeout, hapd,
+				     NULL);
+		eloop_register_timeout(pkex->exch_req_wait_time / 1000,
+				       (pkex->exch_req_wait_time % 1000) * 1000,
+				       hostapd_dpp_pkex_retry_timeout, hapd,
+				       NULL);
+	}
+}
+
+
 void hostapd_dpp_tx_status(struct hostapd_data *hapd, const u8 *dst,
 			   const u8 *data, size_t data_len, int ok)
 {
@@ -214,6 +476,11 @@ void hostapd_dpp_tx_status(struct hostapd_data *hapd, const u8 *dst,
 		" result=%s", MAC2STR(dst), ok ? "SUCCESS" : "FAILED");
 
 	if (!hapd->dpp_auth) {
+		if (hapd->dpp_pkex) {
+			hostapd_dpp_pkex_tx_status(hapd, dst, data, data_len,
+						   ok);
+			return;
+		}
 		wpa_printf(MSG_DEBUG,
 			   "DPP: Ignore TX status since there is no ongoing authentication exchange");
 		return;
@@ -235,8 +502,14 @@ void hostapd_dpp_tx_status(struct hostapd_data *hapd, const u8 *dst,
 		eloop_cancel_timeout(hostapd_dpp_init_timeout, hapd, NULL);
 		eloop_cancel_timeout(hostapd_dpp_reply_wait_timeout,
 				     hapd, NULL);
+		eloop_cancel_timeout(hostapd_dpp_auth_conf_wait_timeout,
+				     hapd, NULL);
 		eloop_cancel_timeout(hostapd_dpp_auth_resp_retry_timeout, hapd,
 				     NULL);
+#ifdef CONFIG_DPP2
+		eloop_cancel_timeout(hostapd_dpp_reconfig_reply_wait_timeout,
+				     hapd, NULL);
+#endif /* CONFIG_DPP2 */
 		hostapd_drv_send_action_cancel_wait(hapd);
 		dpp_auth_deinit(hapd->dpp_auth);
 		hapd->dpp_auth = NULL;
@@ -260,6 +533,17 @@ void hostapd_dpp_tx_status(struct hostapd_data *hapd, const u8 *dst,
 			hostapd_dpp_auth_resp_retry(hapd);
 			return;
 		}
+	}
+
+	if (auth->waiting_auth_conf &&
+	    auth->auth_resp_status == DPP_STATUS_OK) {
+		/* Make sure we do not get stuck waiting for Auth Confirm
+		 * indefinitely after successfully transmitted Auth Response to
+		 * allow new authentication exchanges to be started. */
+		eloop_cancel_timeout(hostapd_dpp_auth_conf_wait_timeout, hapd,
+				     NULL);
+		eloop_register_timeout(1, 0, hostapd_dpp_auth_conf_wait_timeout,
+				       hapd, NULL);
 	}
 
 	if (!is_broadcast_ether_addr(dst) && auth->waiting_auth_resp && ok) {
@@ -362,6 +646,25 @@ static void hostapd_dpp_reply_wait_timeout(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static void hostapd_dpp_auth_conf_wait_timeout(void *eloop_ctx,
+					       void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct dpp_authentication *auth = hapd->dpp_auth;
+
+	if (!auth || !auth->waiting_auth_conf)
+		return;
+
+	wpa_printf(MSG_DEBUG,
+		   "DPP: Terminate authentication exchange due to Auth Confirm timeout");
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+		"No Auth Confirm received");
+	hostapd_drv_send_action_cancel_wait(hapd);
+	dpp_auth_deinit(auth);
+	hapd->dpp_auth = NULL;
+}
+
+
 static void hostapd_dpp_set_testing_options(struct hostapd_data *hapd,
 					    struct dpp_authentication *auth)
 {
@@ -446,7 +749,9 @@ static int hostapd_dpp_auth_init_next(struct hostapd_data *hapd)
 	freq = auth->freq[auth->freq_idx++];
 	auth->curr_freq = freq;
 
-	if (is_zero_ether_addr(auth->peer_bi->mac_addr))
+	if (!is_zero_ether_addr(auth->peer_mac_addr))
+		dst = auth->peer_mac_addr;
+	else if (is_zero_ether_addr(auth->peer_bi->mac_addr))
 		dst = broadcast;
 	else
 		dst = auth->peer_bi->mac_addr;
@@ -478,12 +783,35 @@ static int hostapd_dpp_auth_init_next(struct hostapd_data *hapd)
 }
 
 
+#ifdef CONFIG_DPP2
+static int hostapd_dpp_process_conf_obj(void *ctx,
+				     struct dpp_authentication *auth)
+{
+	struct hostapd_data *hapd = ctx;
+	unsigned int i;
+
+	for (i = 0; i < auth->num_conf_obj; i++)
+		hostapd_dpp_handle_config_obj(hapd, auth,
+					      &auth->conf_obj[i]);
+
+	return 0;
+}
+#endif /* CONFIG_DPP2 */
+
+
 int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 {
 	const char *pos;
 	struct dpp_bootstrap_info *peer_bi, *own_bi = NULL;
+	struct dpp_authentication *auth;
 	u8 allowed_roles = DPP_CAPAB_CONFIGURATOR;
 	unsigned int neg_freq = 0;
+	int tcp = 0;
+#ifdef CONFIG_DPP2
+	int tcp_port = DPP_TCP_PORT;
+	struct hostapd_ip_addr ipaddr;
+	char *addr;
+#endif /* CONFIG_DPP2 */
 
 	pos = os_strstr(cmd, " peer=");
 	if (!pos)
@@ -495,6 +823,25 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 			   "DPP: Could not find bootstrapping info for the identified peer");
 		return -1;
 	}
+
+#ifdef CONFIG_DPP2
+	pos = os_strstr(cmd, " tcp_port=");
+	if (pos) {
+		pos += 10;
+		tcp_port = atoi(pos);
+	}
+
+	addr = get_param(cmd, " tcp_addr=");
+	if (addr) {
+		int res;
+
+		res = hostapd_parse_ip_addr(addr, &ipaddr);
+		os_free(addr);
+		if (res)
+			return -1;
+		tcp = 1;
+	}
+#endif /* CONFIG_DPP2 */
 
 	pos = os_strstr(cmd, " own=");
 	if (pos) {
@@ -533,36 +880,48 @@ int hostapd_dpp_auth_init(struct hostapd_data *hapd, const char *cmd)
 	if (pos)
 		neg_freq = atoi(pos + 10);
 
-	if (hapd->dpp_auth) {
+	if (!tcp && hapd->dpp_auth) {
 		eloop_cancel_timeout(hostapd_dpp_init_timeout, hapd, NULL);
 		eloop_cancel_timeout(hostapd_dpp_reply_wait_timeout,
 				     hapd, NULL);
+		eloop_cancel_timeout(hostapd_dpp_auth_conf_wait_timeout,
+				     hapd, NULL);
 		eloop_cancel_timeout(hostapd_dpp_auth_resp_retry_timeout, hapd,
 				     NULL);
+#ifdef CONFIG_DPP2
+		eloop_cancel_timeout(hostapd_dpp_reconfig_reply_wait_timeout,
+				     hapd, NULL);
+#endif /* CONFIG_DPP2 */
 		hostapd_drv_send_action_cancel_wait(hapd);
 		dpp_auth_deinit(hapd->dpp_auth);
 	}
 
-	hapd->dpp_auth = dpp_auth_init(hapd->iface->interfaces->dpp,
-				       hapd->msg_ctx, peer_bi, own_bi,
-				       allowed_roles, neg_freq,
-				       hapd->iface->hw_features,
-				       hapd->iface->num_hw_features);
-	if (!hapd->dpp_auth)
+	auth = dpp_auth_init(hapd->iface->interfaces->dpp, hapd->msg_ctx,
+			     peer_bi, own_bi, allowed_roles, neg_freq,
+			     hapd->iface->hw_features,
+			     hapd->iface->num_hw_features);
+	if (!auth)
 		goto fail;
-	hostapd_dpp_set_testing_options(hapd, hapd->dpp_auth);
-	if (dpp_set_configurator(hapd->dpp_auth, cmd) < 0) {
-		dpp_auth_deinit(hapd->dpp_auth);
-		hapd->dpp_auth = NULL;
+	hostapd_dpp_set_testing_options(hapd, auth);
+	if (dpp_set_configurator(auth, cmd) < 0) {
+		dpp_auth_deinit(auth);
 		goto fail;
 	}
 
-	hapd->dpp_auth->neg_freq = neg_freq;
+	auth->neg_freq = neg_freq;
 
 	if (!is_zero_ether_addr(peer_bi->mac_addr))
-		os_memcpy(hapd->dpp_auth->peer_mac_addr, peer_bi->mac_addr,
-			  ETH_ALEN);
+		os_memcpy(auth->peer_mac_addr, peer_bi->mac_addr, ETH_ALEN);
 
+#ifdef CONFIG_DPP2
+	if (tcp)
+		return dpp_tcp_init(hapd->iface->interfaces->dpp, auth,
+				    &ipaddr, tcp_port, hapd->conf->dpp_name,
+				    DPP_NETROLE_AP, hapd->msg_ctx, hapd,
+				    hostapd_dpp_process_conf_obj, NULL);
+#endif /* CONFIG_DPP2 */
+
+	hapd->dpp_auth = auth;
 	return hostapd_dpp_auth_init_next(hapd);
 fail:
 	return -1;
@@ -594,12 +953,14 @@ int hostapd_dpp_listen(struct hostapd_data *hapd, const char *cmd)
 		return -1;
 	}
 
+	hostapd_drv_dpp_listen(hapd, true);
 	return 0;
 }
 
 
 void hostapd_dpp_listen_stop(struct hostapd_data *hapd)
 {
+	hostapd_drv_dpp_listen(hapd, false);
 	/* TODO: Stop listen operation on non-operating channel */
 }
 
@@ -617,6 +978,10 @@ static void hostapd_dpp_rx_auth_req(struct hostapd_data *hapd, const u8 *src,
 
 	wpa_printf(MSG_DEBUG, "DPP: Authentication Request from " MACSTR,
 		   MAC2STR(src));
+
+#ifdef CONFIG_DPP2
+	hostapd_dpp_chirp_stop(hapd);
+#endif /* CONFIG_DPP2 */
 
 	r_bootstrap = dpp_get_attr(buf, len, DPP_ATTR_R_BOOTSTRAP_KEY_HASH,
 				   &r_bootstrap_len);
@@ -646,7 +1011,7 @@ static void hostapd_dpp_rx_auth_req(struct hostapd_data *hapd, const u8 *src,
 	if (!own_bi) {
 		if (dpp_relay_rx_action(hapd->iface->interfaces->dpp,
 					src, hdr, buf, len, freq, i_bootstrap,
-					r_bootstrap) == 0)
+					r_bootstrap, hapd) == 0)
 			return;
 	}
 #endif /* CONFIG_DPP2 */
@@ -790,6 +1155,21 @@ static int hostapd_dpp_handle_key_pkg(struct hostapd_data *hapd,
 }
 
 
+#ifdef CONFIG_DPP3
+static void hostapd_dpp_build_new_key(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct dpp_authentication *auth = hapd->dpp_auth;
+
+	if (!auth || !auth->waiting_new_key)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Build config request with a new key");
+	hostapd_dpp_start_gas_client(hapd);
+}
+#endif /* CONFIG_DPP3 */
+
+
 static void hostapd_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 				    enum gas_query_ap_result result,
 				    const struct wpabuf *adv_proto,
@@ -799,12 +1179,14 @@ static void hostapd_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 	const u8 *pos;
 	struct dpp_authentication *auth = hapd->dpp_auth;
 	enum dpp_status_error status = DPP_STATUS_CONFIG_REJECTED;
+	int res;
 
 	if (!auth || !auth->auth_success) {
 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
 		return;
 	}
-	if (!resp || status_code != WLAN_STATUS_SUCCESS) {
+	if (result != GAS_QUERY_AP_SUCCESS ||
+	    !resp || status_code != WLAN_STATUS_SUCCESS) {
 		wpa_printf(MSG_DEBUG, "DPP: GAS query did not succeed");
 		goto fail;
 	}
@@ -828,7 +1210,16 @@ static void hostapd_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
 		goto fail;
 	}
 
-	if (dpp_conf_resp_rx(auth, resp) < 0) {
+	res = dpp_conf_resp_rx(auth, resp);
+#ifdef CONFIG_DPP3
+	if (res == -3) {
+		wpa_printf(MSG_DEBUG, "DPP: New protocol key needed");
+		eloop_register_timeout(0, 0, hostapd_dpp_build_new_key, hapd,
+				       NULL);
+		return;
+	}
+#endif /* CONFIG_DPP3 */
+	if (res < 0) {
 		wpa_printf(MSG_DEBUG, "DPP: Configuration attempt failed");
 		goto fail;
 	}
@@ -1078,6 +1469,7 @@ static void hostapd_dpp_rx_conf_result(struct hostapd_data *hapd, const u8 *src,
 		wpa_printf(MSG_DEBUG, "DPP: Wait for Connection Status Result");
 		eloop_cancel_timeout(hostapd_dpp_config_result_wait_timeout,
 				     hapd, NULL);
+		auth->waiting_conn_status_result = 1;
 		eloop_cancel_timeout(
 			hostapd_dpp_conn_status_result_wait_timeout,
 			hapd, NULL);
@@ -1157,10 +1549,13 @@ hostapd_dpp_rx_presence_announcement(struct hostapd_data *hapd, const u8 *src,
 		    r_bootstrap, r_bootstrap_len);
 	peer_bi = dpp_bootstrap_find_chirp(hapd->iface->interfaces->dpp,
 					   r_bootstrap);
+	dpp_notify_chirp_received(hapd->msg_ctx,
+				  peer_bi ? (int) peer_bi->id : -1,
+				  src, freq, r_bootstrap);
 	if (!peer_bi) {
 		if (dpp_relay_rx_action(hapd->iface->interfaces->dpp,
 					src, hdr, buf, len, freq, NULL,
-					r_bootstrap) == 0)
+					r_bootstrap, hapd) == 0)
 			return;
 		wpa_printf(MSG_DEBUG,
 			   "DPP: No matching bootstrapping information found");
@@ -1178,8 +1573,8 @@ hostapd_dpp_rx_presence_announcement(struct hostapd_data *hapd, const u8 *src,
 			     0);
 	if (!auth)
 		return;
-	hostapd_dpp_set_testing_options(hapd, hapd->dpp_auth);
-	if (dpp_set_configurator(hapd->dpp_auth,
+	hostapd_dpp_set_testing_options(hapd, auth);
+	if (dpp_set_configurator(auth,
 				 hapd->dpp_configurator_params) < 0) {
 		dpp_auth_deinit(auth);
 		return;
@@ -1187,14 +1582,169 @@ hostapd_dpp_rx_presence_announcement(struct hostapd_data *hapd, const u8 *src,
 
 	auth->neg_freq = freq;
 
-	if (!is_zero_ether_addr(peer_bi->mac_addr))
-		os_memcpy(auth->peer_mac_addr, peer_bi->mac_addr, ETH_ALEN);
+	/* The source address of the Presence Announcement frame overrides any
+	 * MAC address information from the bootstrapping information. */
+	os_memcpy(auth->peer_mac_addr, src, ETH_ALEN);
 
 	hapd->dpp_auth = auth;
 	if (hostapd_dpp_auth_init_next(hapd) < 0) {
 		dpp_auth_deinit(hapd->dpp_auth);
 		hapd->dpp_auth = NULL;
 	}
+}
+
+
+static void hostapd_dpp_reconfig_reply_wait_timeout(void *eloop_ctx,
+						    void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct dpp_authentication *auth = hapd->dpp_auth;
+
+	if (!auth)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Reconfig Reply wait timeout");
+	hostapd_dpp_listen_stop(hapd);
+	dpp_auth_deinit(auth);
+	hapd->dpp_auth = NULL;
+}
+
+
+static void
+hostapd_dpp_rx_reconfig_announcement(struct hostapd_data *hapd, const u8 *src,
+				     const u8 *hdr, const u8 *buf, size_t len,
+				     unsigned int freq)
+{
+	const u8 *csign_hash, *fcgroup, *a_nonce, *e_id;
+	u16 csign_hash_len, fcgroup_len, a_nonce_len, e_id_len;
+	struct dpp_configurator *conf;
+	struct dpp_authentication *auth;
+	unsigned int wait_time, max_wait_time;
+	u16 group;
+
+	if (hapd->dpp_auth) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore Reconfig Announcement during ongoing Authentication");
+		return;
+	}
+
+	wpa_printf(MSG_DEBUG, "DPP: Reconfig Announcement from " MACSTR,
+		   MAC2STR(src));
+
+	csign_hash = dpp_get_attr(buf, len, DPP_ATTR_C_SIGN_KEY_HASH,
+				  &csign_hash_len);
+	if (!csign_hash || csign_hash_len != SHA256_MAC_LEN) {
+		wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+			"Missing or invalid required Configurator C-sign key Hash attribute");
+		return;
+	}
+	wpa_hexdump(MSG_MSGDUMP, "DPP: Configurator C-sign key Hash (kid)",
+		    csign_hash, csign_hash_len);
+	conf = dpp_configurator_find_kid(hapd->iface->interfaces->dpp,
+					 csign_hash);
+	if (!conf) {
+		if (dpp_relay_rx_action(hapd->iface->interfaces->dpp,
+					src, hdr, buf, len, freq, NULL,
+					NULL, hapd) == 0)
+			return;
+		wpa_printf(MSG_DEBUG,
+			   "DPP: No matching Configurator information found");
+		return;
+	}
+
+	fcgroup = dpp_get_attr(buf, len, DPP_ATTR_FINITE_CYCLIC_GROUP,
+			       &fcgroup_len);
+	if (!fcgroup || fcgroup_len != 2) {
+		wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_FAIL
+			"Missing or invalid required Finite Cyclic Group attribute");
+		return;
+	}
+	group = WPA_GET_LE16(fcgroup);
+	wpa_printf(MSG_DEBUG, "DPP: Enrollee finite cyclic group: %u", group);
+
+	a_nonce = dpp_get_attr(buf, len, DPP_ATTR_A_NONCE, &a_nonce_len);
+	e_id = dpp_get_attr(buf, len, DPP_ATTR_E_PRIME_ID, &e_id_len);
+
+	auth = dpp_reconfig_init(hapd->iface->interfaces->dpp, hapd->msg_ctx,
+				 conf, freq, group, a_nonce, a_nonce_len,
+				 e_id, e_id_len);
+	if (!auth)
+		return;
+	hostapd_dpp_set_testing_options(hapd, auth);
+	if (dpp_set_configurator(auth, hapd->dpp_configurator_params) < 0) {
+		dpp_auth_deinit(auth);
+		return;
+	}
+
+	os_memcpy(auth->peer_mac_addr, src, ETH_ALEN);
+	hapd->dpp_auth = auth;
+
+	hapd->dpp_in_response_listen = 0;
+	hapd->dpp_auth_ok_on_ack = 0;
+	wait_time = 2000; /* TODO: hapd->max_remain_on_chan; */
+	max_wait_time = hapd->dpp_resp_wait_time ?
+		hapd->dpp_resp_wait_time : 2000;
+	if (wait_time > max_wait_time)
+		wait_time = max_wait_time;
+	wait_time += 10; /* give the driver some extra time to complete */
+	eloop_register_timeout(wait_time / 1000, (wait_time % 1000) * 1000,
+			       hostapd_dpp_reconfig_reply_wait_timeout,
+			       hapd, NULL);
+	wait_time -= 10;
+
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR
+		" freq=%u type=%d",
+		MAC2STR(src), freq, DPP_PA_RECONFIG_AUTH_REQ);
+	if (hostapd_drv_send_action(hapd, freq, wait_time, src,
+				    wpabuf_head(auth->reconfig_req_msg),
+				    wpabuf_len(auth->reconfig_req_msg)) < 0) {
+		dpp_auth_deinit(hapd->dpp_auth);
+		hapd->dpp_auth = NULL;
+	}
+}
+
+
+static void
+hostapd_dpp_rx_reconfig_auth_resp(struct hostapd_data *hapd, const u8 *src,
+				  const u8 *hdr, const u8 *buf, size_t len,
+				  unsigned int freq)
+{
+	struct dpp_authentication *auth = hapd->dpp_auth;
+	struct wpabuf *conf;
+
+	wpa_printf(MSG_DEBUG, "DPP: Reconfig Authentication Response from "
+		   MACSTR, MAC2STR(src));
+
+	if (!auth || !auth->reconfig || !auth->configurator) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: No DPP Reconfig Authentication in progress - drop");
+		return;
+	}
+
+	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+		return;
+	}
+
+	conf = dpp_reconfig_auth_resp_rx(auth, hdr, buf, len);
+	if (!conf)
+		return;
+
+	eloop_cancel_timeout(hostapd_dpp_reconfig_reply_wait_timeout,
+			     hapd, NULL);
+
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR
+		" freq=%u type=%d",
+		MAC2STR(src), freq, DPP_PA_RECONFIG_AUTH_CONF);
+	if (hostapd_drv_send_action(hapd, freq, 500, src,
+				    wpabuf_head(conf), wpabuf_len(conf)) < 0) {
+		wpabuf_free(conf);
+		dpp_auth_deinit(hapd->dpp_auth);
+		hapd->dpp_auth = NULL;
+		return;
+	}
+	wpabuf_free(conf);
 }
 
 #endif /* CONFIG_DPP2 */
@@ -1206,9 +1756,13 @@ static void hostapd_dpp_send_peer_disc_resp(struct hostapd_data *hapd,
 					    enum dpp_status_error status)
 {
 	struct wpabuf *msg;
+	size_t len;
 
-	msg = dpp_alloc_msg(DPP_PA_PEER_DISCOVERY_RESP,
-			    5 + 5 + 4 + os_strlen(hapd->conf->dpp_connector));
+	len = 5 + 5 + 4 + os_strlen(hapd->conf->dpp_connector);
+#ifdef CONFIG_DPP2
+	len += 5;
+#endif /* CONFIG_DPP2 */
+	msg = dpp_alloc_msg(DPP_PA_PEER_DISCOVERY_RESP, len);
 	if (!msg)
 		return;
 
@@ -1279,6 +1833,43 @@ skip_status:
 
 #ifdef CONFIG_TESTING_OPTIONS
 skip_connector:
+	if (dpp_test == DPP_TEST_NO_PROTOCOL_VERSION_PEER_DISC_RESP) {
+		wpa_printf(MSG_INFO, "DPP: TESTING - no Protocol Version");
+		goto skip_proto_ver;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+#ifdef CONFIG_DPP2
+	if (DPP_VERSION > 1) {
+		u8 ver = DPP_VERSION;
+#ifdef CONFIG_DPP3
+		int conn_ver;
+
+		conn_ver = dpp_get_connector_version(hapd->conf->dpp_connector);
+		if (conn_ver > 0 && ver != conn_ver) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: Use Connector version %d instead of current protocol version %d",
+				   conn_ver, ver);
+			ver = conn_ver;
+		}
+#endif /* CONFIG_DPP3 */
+
+#ifdef CONFIG_TESTING_OPTIONS
+	if (dpp_test == DPP_TEST_INVALID_PROTOCOL_VERSION_PEER_DISC_RESP) {
+		wpa_printf(MSG_INFO, "DPP: TESTING - invalid Protocol Version");
+		ver = 1;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+		/* Protocol Version */
+		wpabuf_put_le16(msg, DPP_ATTR_PROTOCOL_VERSION);
+		wpabuf_put_le16(msg, 1);
+		wpabuf_put_u8(msg, ver);
+	}
+#endif /* CONFIG_DPP2 */
+
+#ifdef CONFIG_TESTING_OPTIONS
+skip_proto_ver:
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	wpa_printf(MSG_DEBUG, "DPP: Send Peer Discovery Response to " MACSTR
@@ -1364,6 +1955,28 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 		return;
 	}
 
+#ifdef CONFIG_DPP3
+	if (intro.peer_version && intro.peer_version >= 2) {
+		const u8 *version;
+		u16 version_len;
+		u8 attr_version = 1;
+
+		version = dpp_get_attr(buf, len, DPP_ATTR_PROTOCOL_VERSION,
+				       &version_len);
+		if (version && version_len >= 1)
+			attr_version = version[0];
+		if (attr_version != intro.peer_version) {
+			wpa_printf(MSG_INFO,
+				   "DPP: Protocol version mismatch (Connector: %d Attribute: %d",
+				   intro.peer_version, attr_version);
+			hostapd_dpp_send_peer_disc_resp(hapd, src, freq,
+							trans_id[0],
+							DPP_STATUS_NO_MATCH);
+			return;
+		}
+	}
+#endif /* CONFIG_DPP3 */
+
 	if (!expire || (os_time_t) hapd->conf->dpp_netaccesskey_expiry < expire)
 		expire = hapd->conf->dpp_netaccesskey_expiry;
 	if (expire)
@@ -1385,13 +1998,24 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 
 static void
 hostapd_dpp_rx_pkex_exchange_req(struct hostapd_data *hapd, const u8 *src,
-				 const u8 *buf, size_t len,
-				 unsigned int freq)
+				 const u8 *hdr, const u8 *buf, size_t len,
+				 unsigned int freq, bool v2)
 {
 	struct wpabuf *msg;
 
 	wpa_printf(MSG_DEBUG, "DPP: PKEX Exchange Request from " MACSTR,
 		   MAC2STR(src));
+
+	if (hapd->dpp_pkex_ver == PKEX_VER_ONLY_1 && v2) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore PKEXv2 Exchange Request when configured to be PKEX v1 only");
+		return;
+	}
+	if (hapd->dpp_pkex_ver == PKEX_VER_ONLY_2 && !v2) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Ignore PKEXv1 Exchange Request when configured to be PKEX v2 only");
+		return;
+	}
 
 	/* TODO: Support multiple PKEX codes by iterating over all the enabled
 	 * values here */
@@ -1399,14 +2023,14 @@ hostapd_dpp_rx_pkex_exchange_req(struct hostapd_data *hapd, const u8 *src,
 	if (!hapd->dpp_pkex_code || !hapd->dpp_pkex_bi) {
 		wpa_printf(MSG_DEBUG,
 			   "DPP: No PKEX code configured - ignore request");
-		return;
+		goto try_relay;
 	}
 
 	if (hapd->dpp_pkex) {
 		/* TODO: Support parallel operations */
 		wpa_printf(MSG_DEBUG,
 			   "DPP: Already in PKEX session - ignore new request");
-		return;
+		goto try_relay;
 	}
 
 	hapd->dpp_pkex = dpp_pkex_rx_exchange_req(hapd->msg_ctx,
@@ -1414,11 +2038,11 @@ hostapd_dpp_rx_pkex_exchange_req(struct hostapd_data *hapd, const u8 *src,
 						  hapd->own_addr, src,
 						  hapd->dpp_pkex_identifier,
 						  hapd->dpp_pkex_code,
-						  buf, len);
+						  buf, len, v2);
 	if (!hapd->dpp_pkex) {
 		wpa_printf(MSG_DEBUG,
 			   "DPP: Failed to process the request - ignore it");
-		return;
+		goto try_relay;
 	}
 
 	msg = hapd->dpp_pkex->exchange_resp;
@@ -1435,6 +2059,17 @@ hostapd_dpp_rx_pkex_exchange_req(struct hostapd_data *hapd, const u8 *src,
 		dpp_pkex_free(hapd->dpp_pkex);
 		hapd->dpp_pkex = NULL;
 	}
+
+	return;
+
+try_relay:
+#ifdef CONFIG_DPP2
+	if (v2)
+		dpp_relay_rx_action(hapd->iface->interfaces->dpp,
+				    src, hdr, buf, len, freq, NULL, NULL, hapd);
+#else /* CONFIG_DPP2 */
+	wpa_printf(MSG_DEBUG, "DPP: No relay functionality included - skip");
+#endif /* CONFIG_DPP2 */
 }
 
 
@@ -1455,6 +2090,9 @@ hostapd_dpp_rx_pkex_exchange_resp(struct hostapd_data *hapd, const u8 *src,
 		wpa_printf(MSG_DEBUG, "DPP: No matching PKEX session");
 		return;
 	}
+
+	eloop_cancel_timeout(hostapd_dpp_pkex_retry_timeout, hapd, NULL);
+	hapd->dpp_pkex->exch_req_wait_time = 0;
 
 	msg = dpp_pkex_rx_exchange_resp(hapd->dpp_pkex, src, buf, len);
 	if (!msg) {
@@ -1608,7 +2246,8 @@ void hostapd_dpp_rx_action(struct hostapd_data *hapd, const u8 *src,
 
 #ifdef CONFIG_DPP2
 	if (dpp_relay_rx_action(hapd->iface->interfaces->dpp,
-				src, hdr, buf, len, freq, NULL, NULL) == 0)
+				src, hdr, buf, len, freq, NULL, NULL,
+				hapd) == 0)
 		return;
 #endif /* CONFIG_DPP2 */
 
@@ -1625,8 +2264,18 @@ void hostapd_dpp_rx_action(struct hostapd_data *hapd, const u8 *src,
 	case DPP_PA_PEER_DISCOVERY_REQ:
 		hostapd_dpp_rx_peer_disc_req(hapd, src, buf, len, freq);
 		break;
+#ifdef CONFIG_DPP3
 	case DPP_PA_PKEX_EXCHANGE_REQ:
-		hostapd_dpp_rx_pkex_exchange_req(hapd, src, buf, len, freq);
+		/* This is for PKEXv2, but for now, process only with
+		 * CONFIG_DPP3 to avoid issues with a capability that has not
+		 * been tested with other implementations. */
+		hostapd_dpp_rx_pkex_exchange_req(hapd, src, hdr, buf, len, freq,
+						 true);
+		break;
+#endif /* CONFIG_DPP3 */
+	case DPP_PA_PKEX_V1_EXCHANGE_REQ:
+		hostapd_dpp_rx_pkex_exchange_req(hapd, src, hdr, buf, len, freq,
+						 false);
 		break;
 	case DPP_PA_PKEX_EXCHANGE_RESP:
 		hostapd_dpp_rx_pkex_exchange_resp(hapd, src, buf, len, freq);
@@ -1649,6 +2298,14 @@ void hostapd_dpp_rx_action(struct hostapd_data *hapd, const u8 *src,
 	case DPP_PA_PRESENCE_ANNOUNCEMENT:
 		hostapd_dpp_rx_presence_announcement(hapd, src, hdr, buf, len,
 						     freq);
+		break;
+	case DPP_PA_RECONFIG_ANNOUNCEMENT:
+		hostapd_dpp_rx_reconfig_announcement(hapd, src, hdr, buf, len,
+						     freq);
+		break;
+	case DPP_PA_RECONFIG_AUTH_RESP:
+		hostapd_dpp_rx_reconfig_auth_resp(hapd, src, hdr, buf, len,
+						  freq);
 		break;
 #endif /* CONFIG_DPP2 */
 	default:
@@ -1679,7 +2336,7 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 	struct wpabuf *resp;
 
 	wpa_printf(MSG_DEBUG, "DPP: GAS request from " MACSTR, MAC2STR(sa));
-	if (!auth || !auth->auth_success ||
+	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
 	    os_memcmp(sa, auth->peer_mac_addr, ETH_ALEN) != 0) {
 #ifdef CONFIG_DPP2
 		if (dpp_relay_rx_gas_req(hapd->iface->interfaces->dpp, sa, data,
@@ -1691,6 +2348,19 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
 		return NULL;
 	}
+
+	if (hapd->dpp_auth_ok_on_ack && auth->configurator) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Have not received ACK for Auth Confirm yet - assume it was received based on this GAS request");
+		/* hostapd_dpp_auth_success() would normally have been called
+		 * from TX status handler, but since there was no such handler
+		 * call yet, simply send out the event message and proceed with
+		 * exchange. */
+		wpa_msg(hapd->msg_ctx, MSG_INFO,
+			DPP_EVENT_AUTH_SUCCESS "init=1");
+		hapd->dpp_auth_ok_on_ack = 0;
+	}
+
 	wpa_hexdump(MSG_DEBUG,
 		    "DPP: Received Configuration Request (GAS Query Request)",
 		    query, query_len);
@@ -1710,11 +2380,21 @@ void hostapd_dpp_gas_status_handler(struct hostapd_data *hapd, int ok)
 	if (!auth)
 		return;
 
+#ifdef CONFIG_DPP3
+	if (auth->waiting_new_key && ok) {
+		wpa_printf(MSG_DEBUG, "DPP: Waiting for a new key");
+		return;
+	}
+#endif /* CONFIG_DPP3 */
+
 	wpa_printf(MSG_DEBUG, "DPP: Configuration exchange completed (ok=%d)",
 		   ok);
 	eloop_cancel_timeout(hostapd_dpp_reply_wait_timeout, hapd, NULL);
+	eloop_cancel_timeout(hostapd_dpp_auth_conf_wait_timeout, hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_auth_resp_retry_timeout, hapd, NULL);
 #ifdef CONFIG_DPP2
+		eloop_cancel_timeout(hostapd_dpp_reconfig_reply_wait_timeout,
+				     hapd, NULL);
 	if (ok && auth->peer_version >= 2 &&
 	    auth->conf_resp_status == DPP_STATUS_OK) {
 		wpa_printf(MSG_DEBUG, "DPP: Wait for Configuration Result");
@@ -1767,6 +2447,34 @@ int hostapd_dpp_pkex_add(struct hostapd_data *hapd, const char *cmd)
 {
 	struct dpp_bootstrap_info *own_bi;
 	const char *pos, *end;
+#ifdef CONFIG_DPP3
+		enum dpp_pkex_ver ver = PKEX_VER_AUTO;
+#else /* CONFIG_DPP3 */
+		enum dpp_pkex_ver ver = PKEX_VER_ONLY_1;
+#endif /* CONFIG_DPP3 */
+	int tcp_port = DPP_TCP_PORT;
+	struct hostapd_ip_addr *ipaddr = NULL;
+#ifdef CONFIG_DPP2
+	struct hostapd_ip_addr ipaddr_buf;
+	char *addr;
+
+	pos = os_strstr(cmd, " tcp_port=");
+	if (pos) {
+		pos += 10;
+		tcp_port = atoi(pos);
+	}
+
+	addr = get_param(cmd, " tcp_addr=");
+	if (addr) {
+		int res;
+
+		res = hostapd_parse_ip_addr(addr, &ipaddr_buf);
+		os_free(addr);
+		if (res)
+			return -1;
+		ipaddr = &ipaddr_buf;
+	}
+#endif /* CONFIG_DPP2 */
 
 	pos = os_strstr(cmd, " own=");
 	if (!pos)
@@ -1809,25 +2517,30 @@ int hostapd_dpp_pkex_add(struct hostapd_data *hapd, const char *cmd)
 	if (!hapd->dpp_pkex_code)
 		return -1;
 
-	if (os_strstr(cmd, " init=1")) {
-		struct wpabuf *msg;
+	pos = os_strstr(cmd, " ver=");
+	if (pos) {
+		int v;
 
-		wpa_printf(MSG_DEBUG, "DPP: Initiating PKEX");
-		dpp_pkex_free(hapd->dpp_pkex);
-		hapd->dpp_pkex = dpp_pkex_init(hapd->msg_ctx, own_bi,
-					       hapd->own_addr,
-					       hapd->dpp_pkex_identifier,
-					       hapd->dpp_pkex_code);
-		if (!hapd->dpp_pkex)
+		pos += 5;
+		v = atoi(pos);
+		if (v == 1)
+			ver = PKEX_VER_ONLY_1;
+		else if (v == 2)
+			ver = PKEX_VER_ONLY_2;
+		else
 			return -1;
+	}
+	hapd->dpp_pkex_ver = ver;
 
-		msg = hapd->dpp_pkex->exchange_req;
-		/* TODO: Which channel to use? */
-		wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR
-			" freq=%u type=%d", MAC2STR(broadcast), 2437,
-			DPP_PA_PKEX_EXCHANGE_REQ);
-		hostapd_drv_send_action(hapd, 2437, 0, broadcast,
-					wpabuf_head(msg), wpabuf_len(msg));
+	if (os_strstr(cmd, " init=1")) {
+		if (hostapd_dpp_pkex_init(hapd, ver, ipaddr, tcp_port) < 0)
+			return -1;
+	} else {
+#ifdef CONFIG_DPP2
+		dpp_controller_pkex_add(hapd->iface->interfaces->dpp, own_bi,
+					hapd->dpp_pkex_code,
+					hapd->dpp_pkex_identifier);
+#endif /* CONFIG_DPP2 */
 	}
 
 	/* TODO: Support multiple PKEX info entries */
@@ -1955,15 +2668,25 @@ void hostapd_dpp_deinit(struct hostapd_data *hapd)
 #endif /* CONFIG_TESTING_OPTIONS */
 	if (!hapd->dpp_init_done)
 		return;
+	eloop_cancel_timeout(hostapd_dpp_pkex_retry_timeout, hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_reply_wait_timeout, hapd, NULL);
+	eloop_cancel_timeout(hostapd_dpp_auth_conf_wait_timeout, hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_init_timeout, hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_auth_resp_retry_timeout, hapd, NULL);
 #ifdef CONFIG_DPP2
+	eloop_cancel_timeout(hostapd_dpp_reconfig_reply_wait_timeout,
+			     hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_config_result_wait_timeout, hapd,
 			     NULL);
 	eloop_cancel_timeout(hostapd_dpp_conn_status_result_wait_timeout, hapd,
 			     NULL);
+	hostapd_dpp_chirp_stop(hapd);
+	if (hapd->iface->interfaces)
+		dpp_controller_stop_for_ctx(hapd->iface->interfaces->dpp, hapd);
 #endif /* CONFIG_DPP2 */
+#ifdef CONFIG_DPP3
+	eloop_cancel_timeout(hostapd_dpp_build_new_key, hapd, NULL);
+#endif /* CONFIG_DPP3 */
 	dpp_auth_deinit(hapd->dpp_auth);
 	hapd->dpp_auth = NULL;
 	hostapd_dpp_pkex_remove(hapd, "*");
@@ -1971,3 +2694,374 @@ void hostapd_dpp_deinit(struct hostapd_data *hapd)
 	os_free(hapd->dpp_configurator_params);
 	hapd->dpp_configurator_params = NULL;
 }
+
+
+#ifdef CONFIG_DPP2
+
+int hostapd_dpp_controller_start(struct hostapd_data *hapd, const char *cmd)
+{
+	struct dpp_controller_config config;
+	const char *pos;
+
+	os_memset(&config, 0, sizeof(config));
+	config.allowed_roles = DPP_CAPAB_ENROLLEE | DPP_CAPAB_CONFIGURATOR;
+	config.netrole = DPP_NETROLE_AP;
+	config.msg_ctx = hapd->msg_ctx;
+	config.cb_ctx = hapd;
+	config.process_conf_obj = hostapd_dpp_process_conf_obj;
+	if (cmd) {
+		pos = os_strstr(cmd, " tcp_port=");
+		if (pos) {
+			pos += 10;
+			config.tcp_port = atoi(pos);
+		}
+
+		pos = os_strstr(cmd, " role=");
+		if (pos) {
+			pos += 6;
+			if (os_strncmp(pos, "configurator", 12) == 0)
+				config.allowed_roles = DPP_CAPAB_CONFIGURATOR;
+			else if (os_strncmp(pos, "enrollee", 8) == 0)
+				config.allowed_roles = DPP_CAPAB_ENROLLEE;
+			else if (os_strncmp(pos, "either", 6) == 0)
+				config.allowed_roles = DPP_CAPAB_CONFIGURATOR |
+					DPP_CAPAB_ENROLLEE;
+			else
+				return -1;
+		}
+
+		config.qr_mutual = os_strstr(cmd, " qr=mutual") != NULL;
+	}
+	config.configurator_params = hapd->dpp_configurator_params;
+	return dpp_controller_start(hapd->iface->interfaces->dpp, &config);
+}
+
+
+static void hostapd_dpp_chirp_next(void *eloop_ctx, void *timeout_ctx);
+
+static void hostapd_dpp_chirp_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+
+	wpa_printf(MSG_DEBUG, "DPP: No chirp response received");
+	hostapd_drv_send_action_cancel_wait(hapd);
+	hostapd_dpp_chirp_next(hapd, NULL);
+}
+
+
+static void hostapd_dpp_chirp_start(struct hostapd_data *hapd)
+{
+	struct wpabuf *msg;
+	int type;
+
+	msg = hapd->dpp_presence_announcement;
+	type = DPP_PA_PRESENCE_ANNOUNCEMENT;
+	wpa_printf(MSG_DEBUG, "DPP: Chirp on %d MHz", hapd->dpp_chirp_freq);
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR
+		" freq=%u type=%d",
+		MAC2STR(broadcast), hapd->dpp_chirp_freq, type);
+	if (hostapd_drv_send_action(
+		    hapd, hapd->dpp_chirp_freq, 2000, broadcast,
+		    wpabuf_head(msg), wpabuf_len(msg)) < 0 ||
+	    eloop_register_timeout(2, 0, hostapd_dpp_chirp_timeout,
+				   hapd, NULL) < 0)
+		hostapd_dpp_chirp_stop(hapd);
+}
+
+
+static struct hostapd_hw_modes *
+dpp_get_mode(struct hostapd_data *hapd,
+	     enum hostapd_hw_mode mode)
+{
+	struct hostapd_hw_modes *modes = hapd->iface->hw_features;
+	u16 num_modes = hapd->iface->num_hw_features;
+	u16 i;
+
+	for (i = 0; i < num_modes; i++) {
+		if (modes[i].mode != mode ||
+		    !modes[i].num_channels || !modes[i].channels)
+			continue;
+		return &modes[i];
+	}
+
+	return NULL;
+}
+
+
+static void
+hostapd_dpp_chirp_scan_res_handler(struct hostapd_iface *iface)
+{
+	struct hostapd_data *hapd = iface->bss[0];
+	struct wpa_scan_results *scan_res;
+	struct dpp_bootstrap_info *bi = hapd->dpp_chirp_bi;
+	unsigned int i;
+	struct hostapd_hw_modes *mode;
+	int c;
+	bool chan6 = hapd->iface->hw_features == NULL;
+
+	if (!bi)
+		return;
+
+	hapd->dpp_chirp_scan_done = 1;
+
+	scan_res = hostapd_driver_get_scan_results(hapd);
+
+	os_free(hapd->dpp_chirp_freqs);
+	hapd->dpp_chirp_freqs = NULL;
+
+	/* Channels from own bootstrapping info */
+	if (bi) {
+		for (i = 0; i < bi->num_freq; i++)
+			int_array_add_unique(&hapd->dpp_chirp_freqs,
+					     bi->freq[i]);
+	}
+
+	/* Preferred chirping channels */
+	mode = dpp_get_mode(hapd, HOSTAPD_MODE_IEEE80211G);
+	if (mode) {
+		for (c = 0; c < mode->num_channels; c++) {
+			struct hostapd_channel_data *chan = &mode->channels[c];
+
+			if (chan->flag & (HOSTAPD_CHAN_DISABLED |
+					  HOSTAPD_CHAN_RADAR) ||
+			    chan->freq != 2437)
+				continue;
+			chan6 = true;
+			break;
+		}
+	}
+	if (chan6)
+		int_array_add_unique(&hapd->dpp_chirp_freqs, 2437);
+
+	mode = dpp_get_mode(hapd, HOSTAPD_MODE_IEEE80211A);
+	if (mode) {
+		int chan44 = 0, chan149 = 0;
+
+		for (c = 0; c < mode->num_channels; c++) {
+			struct hostapd_channel_data *chan = &mode->channels[c];
+
+			if (chan->flag & (HOSTAPD_CHAN_DISABLED |
+					  HOSTAPD_CHAN_RADAR))
+				continue;
+			if (chan->freq == 5220)
+				chan44 = 1;
+			if (chan->freq == 5745)
+				chan149 = 1;
+		}
+		if (chan149)
+			int_array_add_unique(&hapd->dpp_chirp_freqs, 5745);
+		else if (chan44)
+			int_array_add_unique(&hapd->dpp_chirp_freqs, 5220);
+	}
+
+	mode = dpp_get_mode(hapd, HOSTAPD_MODE_IEEE80211AD);
+	if (mode) {
+		for (c = 0; c < mode->num_channels; c++) {
+			struct hostapd_channel_data *chan = &mode->channels[c];
+
+			if ((chan->flag & (HOSTAPD_CHAN_DISABLED |
+					   HOSTAPD_CHAN_RADAR)) ||
+			    chan->freq != 60480)
+				continue;
+			int_array_add_unique(&hapd->dpp_chirp_freqs, 60480);
+			break;
+		}
+	}
+
+	/* Add channels from scan results for APs that advertise Configurator
+	 * Connectivity element */
+	for (i = 0; scan_res && i < scan_res->num; i++) {
+		struct wpa_scan_res *bss = scan_res->res[i];
+		size_t ie_len = bss->ie_len;
+
+		if (!ie_len)
+			ie_len = bss->beacon_ie_len;
+		if (get_vendor_ie((const u8 *) (bss + 1), ie_len,
+				  DPP_CC_IE_VENDOR_TYPE))
+			int_array_add_unique(&hapd->dpp_chirp_freqs,
+					     bss->freq);
+	}
+
+	if (!hapd->dpp_chirp_freqs ||
+	    eloop_register_timeout(0, 0, hostapd_dpp_chirp_next,
+				   hapd, NULL) < 0)
+		hostapd_dpp_chirp_stop(hapd);
+
+	wpa_scan_results_free(scan_res);
+}
+
+
+static void hostapd_dpp_chirp_next(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	int i;
+
+	if (hapd->dpp_chirp_listen)
+		hostapd_dpp_listen_stop(hapd);
+
+	if (hapd->dpp_chirp_freq == 0) {
+		if (hapd->dpp_chirp_round % 4 == 0 &&
+		    !hapd->dpp_chirp_scan_done) {
+			struct wpa_driver_scan_params params;
+			int ret;
+
+			wpa_printf(MSG_DEBUG,
+				   "DPP: Update channel list for chirping");
+			os_memset(&params, 0, sizeof(params));
+			ret = hostapd_driver_scan(hapd, &params);
+			if (ret < 0) {
+				wpa_printf(MSG_DEBUG,
+					   "DPP: Failed to request a scan ret=%d (%s)",
+					   ret, strerror(-ret));
+				hostapd_dpp_chirp_scan_res_handler(hapd->iface);
+			} else {
+				hapd->iface->scan_cb =
+					hostapd_dpp_chirp_scan_res_handler;
+			}
+			return;
+		}
+		hapd->dpp_chirp_freq = hapd->dpp_chirp_freqs[0];
+		hapd->dpp_chirp_round++;
+		wpa_printf(MSG_DEBUG, "DPP: Start chirping round %d",
+			   hapd->dpp_chirp_round);
+	} else {
+		for (i = 0; hapd->dpp_chirp_freqs[i]; i++)
+			if (hapd->dpp_chirp_freqs[i] == hapd->dpp_chirp_freq)
+				break;
+		if (!hapd->dpp_chirp_freqs[i]) {
+			wpa_printf(MSG_DEBUG,
+				   "DPP: Previous chirp freq %d not found",
+				   hapd->dpp_chirp_freq);
+			return;
+		}
+		i++;
+		if (hapd->dpp_chirp_freqs[i]) {
+			hapd->dpp_chirp_freq = hapd->dpp_chirp_freqs[i];
+		} else {
+			hapd->dpp_chirp_iter--;
+			if (hapd->dpp_chirp_iter <= 0) {
+				wpa_printf(MSG_DEBUG,
+					   "DPP: Chirping iterations completed");
+				hostapd_dpp_chirp_stop(hapd);
+				return;
+			}
+			hapd->dpp_chirp_freq = 0;
+			hapd->dpp_chirp_scan_done = 0;
+			if (eloop_register_timeout(30, 0,
+						   hostapd_dpp_chirp_next,
+						   hapd, NULL) < 0) {
+				hostapd_dpp_chirp_stop(hapd);
+				return;
+			}
+			if (hapd->dpp_chirp_listen) {
+				wpa_printf(MSG_DEBUG,
+					   "DPP: Listen on %d MHz during chirp 30 second wait",
+					hapd->dpp_chirp_listen);
+				/* TODO: start listen on the channel */
+			} else {
+				wpa_printf(MSG_DEBUG,
+					   "DPP: Wait 30 seconds before starting the next chirping round");
+			}
+			return;
+		}
+	}
+
+	hostapd_dpp_chirp_start(hapd);
+}
+
+
+int hostapd_dpp_chirp(struct hostapd_data *hapd, const char *cmd)
+{
+	const char *pos;
+	int iter = 1, listen_freq = 0;
+	struct dpp_bootstrap_info *bi;
+
+	pos = os_strstr(cmd, " own=");
+	if (!pos)
+		return -1;
+	pos += 5;
+	bi = dpp_bootstrap_get_id(hapd->iface->interfaces->dpp, atoi(pos));
+	if (!bi) {
+		wpa_printf(MSG_DEBUG,
+			   "DPP: Identified bootstrap info not found");
+		return -1;
+	}
+
+	pos = os_strstr(cmd, " iter=");
+	if (pos) {
+		iter = atoi(pos + 6);
+		if (iter <= 0)
+			return -1;
+	}
+
+	pos = os_strstr(cmd, " listen=");
+	if (pos) {
+		listen_freq = atoi(pos + 8);
+		if (listen_freq <= 0)
+			return -1;
+	}
+
+	hostapd_dpp_chirp_stop(hapd);
+	hapd->dpp_allowed_roles = DPP_CAPAB_ENROLLEE;
+	hapd->dpp_qr_mutual = 0;
+	hapd->dpp_chirp_bi = bi;
+	hapd->dpp_presence_announcement = dpp_build_presence_announcement(bi);
+	if (!hapd->dpp_presence_announcement)
+		return -1;
+	hapd->dpp_chirp_iter = iter;
+	hapd->dpp_chirp_round = 0;
+	hapd->dpp_chirp_scan_done = 0;
+	hapd->dpp_chirp_listen = listen_freq;
+
+	return eloop_register_timeout(0, 0, hostapd_dpp_chirp_next, hapd, NULL);
+}
+
+
+void hostapd_dpp_chirp_stop(struct hostapd_data *hapd)
+{
+	if (hapd->dpp_presence_announcement) {
+		hostapd_drv_send_action_cancel_wait(hapd);
+		wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CHIRP_STOPPED);
+	}
+	hapd->dpp_chirp_bi = NULL;
+	wpabuf_free(hapd->dpp_presence_announcement);
+	hapd->dpp_presence_announcement = NULL;
+	if (hapd->dpp_chirp_listen)
+		hostapd_dpp_listen_stop(hapd);
+	hapd->dpp_chirp_listen = 0;
+	hapd->dpp_chirp_freq = 0;
+	os_free(hapd->dpp_chirp_freqs);
+	hapd->dpp_chirp_freqs = NULL;
+	eloop_cancel_timeout(hostapd_dpp_chirp_next, hapd, NULL);
+	eloop_cancel_timeout(hostapd_dpp_chirp_timeout, hapd, NULL);
+	if (hapd->iface->scan_cb == hostapd_dpp_chirp_scan_res_handler) {
+		/* TODO: abort ongoing scan */
+		hapd->iface->scan_cb = NULL;
+	}
+}
+
+
+static int handle_dpp_remove_bi(struct hostapd_iface *iface, void *ctx)
+{
+	struct dpp_bootstrap_info *bi = ctx;
+	size_t i;
+
+	for (i = 0; i < iface->num_bss; i++) {
+		struct hostapd_data *hapd = iface->bss[i];
+
+		if (bi == hapd->dpp_chirp_bi)
+			hostapd_dpp_chirp_stop(hapd);
+	}
+
+	return 0;
+}
+
+
+void hostapd_dpp_remove_bi(void *ctx, struct dpp_bootstrap_info *bi)
+{
+	struct hapd_interfaces *interfaces = ctx;
+
+	hostapd_for_each_interface(interfaces, handle_dpp_remove_bi, bi);
+}
+
+#endif /* CONFIG_DPP2 */

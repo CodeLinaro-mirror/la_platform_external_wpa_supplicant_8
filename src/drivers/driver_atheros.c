@@ -17,7 +17,6 @@
 #include "eloop.h"
 #include "common/ieee802_11_defs.h"
 #include "l2_packet/l2_packet.h"
-#include "p2p/p2p.h"
 
 #include "common.h"
 #ifndef _BYTE_ORDER
@@ -532,7 +531,7 @@ atheros_set_key(void *priv, struct wpa_driver_set_key_params *params)
 		cipher = IEEE80211_CIPHER_AES_GCM_256;
 		break;
 #endif /* ATH_GCM_SUPPORT */
-	case WPA_ALG_IGTK:
+	case WPA_ALG_BIP_CMAC_128:
 		cipher = IEEE80211_CIPHER_AES_CMAC;
 		break;
 #ifdef ATH_GCM_SUPPORT
