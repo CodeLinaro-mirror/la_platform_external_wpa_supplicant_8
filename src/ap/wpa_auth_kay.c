@@ -52,7 +52,7 @@ static int hapd_macsec_get_capability(void *priv, enum macsec_cap *cap)
 }
 
 
-static int hapd_enable_protect_frames(void *priv, Boolean enabled)
+static int hapd_enable_protect_frames(void *priv, bool enabled)
 {
 	struct hostapd_data *hapd = priv;
 
@@ -62,7 +62,7 @@ static int hapd_enable_protect_frames(void *priv, Boolean enabled)
 }
 
 
-static int hapd_enable_encrypt(void *priv, Boolean enabled)
+static int hapd_enable_encrypt(void *priv, bool enabled)
 {
 	struct hostapd_data *hapd = priv;
 
@@ -72,7 +72,7 @@ static int hapd_enable_encrypt(void *priv, Boolean enabled)
 }
 
 
-static int hapd_set_replay_protect(void *priv, Boolean enabled, u32 window)
+static int hapd_set_replay_protect(void *priv, bool enabled, u32 window)
 {
 	struct hostapd_data *hapd = priv;
 
@@ -93,7 +93,7 @@ static int hapd_set_current_cipher_suite(void *priv, u64 cs)
 }
 
 
-static int hapd_enable_controlled_port(void *priv, Boolean enabled)
+static int hapd_enable_controlled_port(void *priv, bool enabled)
 {
 	struct hostapd_data *hapd = priv;
 
@@ -138,7 +138,6 @@ static unsigned int conf_offset_val(enum confidentiality_offset co)
 	switch (co) {
 	case CONFIDENTIALITY_OFFSET_30:
 		return 30;
-		break;
 	case CONFIDENTIALITY_OFFSET_50:
 		return 50;
 	default:
@@ -329,7 +328,9 @@ int ieee802_1x_alloc_kay_sm_hapd(struct hostapd_data *hapd,
 				  hapd->conf->macsec_replay_protect,
 				  hapd->conf->macsec_replay_window,
 				  hapd->conf->macsec_port,
-				  hapd->conf->mka_priority, hapd->conf->iface,
+				  hapd->conf->mka_priority,
+				  hapd->conf->macsec_csindex,
+				  hapd->conf->iface,
 				  hapd->own_addr);
 	/* ieee802_1x_kay_init() frees kay_ctx on failure */
 	if (!res)
@@ -465,7 +466,7 @@ void * ieee802_1x_notify_create_actor_hapd(struct hostapd_data *hapd,
 	wpa_hexdump(MSG_DEBUG, "Derived CKN", ckn->name, ckn->len);
 
 	res = ieee802_1x_kay_create_mka(hapd->kay, ckn, cak, 0, EAP_EXCHANGE,
-					TRUE);
+					true);
 
 fail:
 	bin_clear_free(msk, sizeof(*msk));
@@ -507,7 +508,7 @@ void * ieee802_1x_create_preshared_mka_hapd(struct hostapd_data *hapd,
 	ckn->len = hapd->conf->mka_ckn_len;;
 	os_memcpy(ckn->name, hapd->conf->mka_ckn, ckn->len);
 
-	res = ieee802_1x_kay_create_mka(hapd->kay, ckn, cak, 0, PSK, TRUE);
+	res = ieee802_1x_kay_create_mka(hapd->kay, ckn, cak, 0, PSK, true);
 	if (res)
 		goto free_cak;
 

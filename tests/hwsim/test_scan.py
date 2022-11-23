@@ -15,11 +15,9 @@ import subprocess
 
 import hostapd
 from wpasupplicant import WpaSupplicant
-from utils import HwsimSkip, fail_test, alloc_fail, wait_fail_trigger, parse_ie
-from utils import clear_regdom_dev
+from utils import *
 from tshark import run_tshark
-from test_ap_csa import switch_channel, wait_channel_switch, csa_supported
-from test_wep import check_wep_capa
+from test_ap_csa import switch_channel, wait_channel_switch
 
 def check_scan(dev, params, other_started=False, test_busy=False):
     if not other_started:
@@ -264,6 +262,7 @@ def test_scan_bss_operations(dev, apdev):
     hostapd.add_ap(apdev[1], {"ssid": "test2-scan"})
     bssid2 = apdev[1]['bssid']
 
+    dev[0].flush_scan_cache()
     dev[0].scan(freq="2412")
     dev[0].scan(freq="2412")
     dev[0].scan(freq="2412")
@@ -656,6 +655,10 @@ def test_scan_reqs_with_non_scan_radio_work(dev, apdev):
 
 def test_scan_setband(dev, apdev):
     """Band selection for scan operations"""
+    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+    wpas.interface_add("wlan5")
+    devs = [ dev[0], dev[1], dev[2], wpas ]
+
     try:
         hapd = None
         hapd2 = None
@@ -680,21 +683,26 @@ def test_scan_setband(dev, apdev):
             raise Exception("Failed to set setband")
         if "OK" not in dev[2].request("SET setband 2G"):
             raise Exception("Failed to set setband")
+        if "OK" not in wpas.request("SET setband 2G,5G"):
+            raise Exception("Failed to set setband")
 
         # Allow a retry to avoid reporting errors during heavy load
         for j in range(5):
-            for i in range(3):
-                dev[i].request("SCAN only_new=1")
+            for d in devs:
+                d.request("SCAN only_new=1")
 
-            for i in range(3):
-                ev = dev[i].wait_event(["CTRL-EVENT-SCAN-RESULTS"], 15)
+            for d in devs:
+                ev = d.wait_event(["CTRL-EVENT-SCAN-RESULTS"], 15)
                 if ev is None:
                     raise Exception("Scan timed out")
 
             res0 = dev[0].request("SCAN_RESULTS")
             res1 = dev[1].request("SCAN_RESULTS")
             res2 = dev[2].request("SCAN_RESULTS")
-            if bssid in res0 and bssid2 in res0 and bssid in res1 and bssid2 in res2:
+            res3 = wpas.request("SCAN_RESULTS")
+            if bssid in res0 and bssid2 in res0 and \
+               bssid in res1 and bssid2 in res2 and \
+               bssid in res3 and bssid2 in res3:
                 break
 
         res = dev[0].request("SCAN_RESULTS")
@@ -712,15 +720,19 @@ def test_scan_setband(dev, apdev):
             raise Exception("Missing scan result(2)")
         if bssid in res:
             raise Exception("Unexpected scan result(2)")
+
+        res = wpas.request("SCAN_RESULTS")
+        if bssid not in res or bssid2 not in res:
+            raise Exception("Missing scan result(3)")
     finally:
         if hapd:
             hapd.request("DISABLE")
         if hapd2:
             hapd2.request("DISABLE")
         subprocess.call(['iw', 'reg', 'set', '00'])
-        for i in range(3):
-            dev[i].request("SET setband AUTO")
-            dev[i].flush_scan_cache()
+        for d in devs:
+            d.request("SET setband AUTO")
+            d.flush_scan_cache()
 
 @remote_compatible
 def test_scan_hidden_many(dev, apdev):
@@ -1139,7 +1151,7 @@ def test_scan_fail(dev, apdev):
     try:
         if "OK" not in dev[0].request("SET setband 2G"):
             raise Exception("SET setband failed")
-        with alloc_fail(dev[0], 1, "=wpa_setband_scan_freqs_list"):
+        with alloc_fail(dev[0], 1, "=wpa_add_scan_freqs_list"):
             # While the frequency list cannot be created due to memory
             # allocation failure, this scan is expected to be completed without
             # frequency filtering.
@@ -1168,6 +1180,7 @@ def test_scan_fail(dev, apdev):
 
     hapd = hostapd.add_ap(apdev[0], {"ssid": "open"})
     with alloc_fail(dev[0], 1, "wpa_bss_add"):
+        dev[0].flush_scan_cache()
         dev[0].scan_for_bss(apdev[0]['bssid'], freq="2412")
 
 def test_scan_fail_type_only(dev, apdev):
@@ -1276,11 +1289,6 @@ def test_scan_chan_switch(dev, apdev):
 
 def test_scan_new_only(dev, apdev):
     """Scan and only_new=1 multiple times"""
-    try:
-        _test_scan_new_only(dev, apdev)
-    finally:
-        dev[0].set("ignore_old_scan_res", "0")
-def _test_scan_new_only(dev, apdev):
     dev[0].flush_scan_cache()
     hapd = hostapd.add_ap(apdev[0], {"ssid": "test-scan"})
     dev[0].set("ignore_old_scan_res", "1")
@@ -1387,7 +1395,7 @@ def test_scan_parsing(dev, apdev):
              # Too long SSID
              "bssid=02:ff:00:00:00:01 ie=0033" + 33*'FF',
              # All parameters
-             "flags=ffffffff bssid=02:ff:00:00:00:02 freq=1234 beacon_int=102 caps=1234 qual=10 noise=10 level=10 tsf=1122334455667788 age=123456 est_throughput=100 snr=10 parent_tsf=1122334455667788 tsf_bssid=02:03:04:05:06:07 ie=000474657374 beacon_ie=000474657374",
+             "flags=ffffffff bssid=02:ff:00:00:00:02 freq=1234 beacon_int=102 caps=1234 qual=10 noise=10 level=10 tsf=1122334455667788 age=123 est_throughput=100 snr=10 parent_tsf=1122334455667788 tsf_bssid=02:03:04:05:06:07 ie=000474657374 beacon_ie=000474657374",
              # Beacon IEs truncated
              "bssid=02:ff:00:00:00:03 ie=0000 beacon_ie=0003ffff",
              # Probe Response IEs truncated
@@ -1981,6 +1989,9 @@ def test_scan_ssid_list(dev, apdev):
                 break
     finally:
         dev[0].request("VENDOR_ELEM_REMOVE 14 *")
+        hapd.disable()
+        dev[0].flush_scan_cache(freq=2432)
+        dev[0].flush_scan_cache()
 
     if not found:
         raise Exception("AP not found in scan results")
@@ -2006,6 +2017,9 @@ def test_scan_short_ssid_list(dev, apdev):
                 break
     finally:
         dev[0].request("VENDOR_ELEM_REMOVE 14 *")
+        hapd.disable()
+        dev[0].flush_scan_cache(freq=2432)
+        dev[0].flush_scan_cache()
 
     if not found:
         raise Exception("AP not found in scan results")

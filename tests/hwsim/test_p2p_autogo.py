@@ -378,7 +378,7 @@ def test_autogo_chan_switch_group_iface(dev):
 @remote_compatible
 def test_autogo_extra_cred(dev):
     """P2P autonomous GO sending two WPS credentials"""
-    if "FAIL" in dev[0].request("SET wps_testing_dummy_cred 1"):
+    if "FAIL" in dev[0].request("SET wps_testing_stub_cred 1"):
         raise Exception("Failed to enable test mode")
     autogo(dev[0], freq=2412)
     connect_cli(dev[0], dev[1], social=True, freq=2412)
@@ -922,3 +922,15 @@ def run_autogo_interworking(dev):
     dev[0].remove_group()
     if '6b03110203' not in bss['ie']:
         raise Exception("Interworking element not seen")
+
+def test_autogo_remove_iface(dev):
+    """P2P autonomous GO and interface being removed"""
+    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+    wpas.interface_add("wlan5")
+    wpas.global_request("SET p2p_no_group_iface 1")
+    wpas.set("p2p_group_idle", "1")
+    autogo(wpas)
+    wpas.global_request("P2P_SET disallow_freq 5000")
+    time.sleep(0.1)
+    wpas.global_request("INTERFACE_REMOVE " + wpas.ifname)
+    time.sleep(1)
