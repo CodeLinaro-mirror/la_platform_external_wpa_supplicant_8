@@ -1211,6 +1211,14 @@ static bool hostapd_config_check_bss_6g(struct hostapd_bss_config *bss)
 		return false;
 	}
 
+#ifdef CONFIG_SAE
+	if (wpa_key_mgmt_sae(bss->wpa_key_mgmt) &&
+	    bss->sae_pwe == SAE_PWE_HUNT_AND_PECK) {
+		wpa_printf(MSG_INFO, "SAE: Enabling SAE H2E on 6 GHz");
+		bss->sae_pwe = SAE_PWE_BOTH;
+	}
+#endif /* CONFIG_SAE */
+
 	return true;
 }
 
