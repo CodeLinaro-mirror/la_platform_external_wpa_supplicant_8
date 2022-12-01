@@ -5700,7 +5700,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 			break;
 		}
 	}
-#ifndef CONFIG_ADD_ASSOC_STA_OFFLOAD
+#ifdef CONFIG_ADD_ASSOC_STA_OFFLOAD
 	if (sta->flags & WLAN_STA_NONERP && !sta->nonerp_set) {
 		sta->nonerp_set = 1;
 		hapd->iface->num_sta_non_erp++;
@@ -5725,7 +5725,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 	else
 		sta->flags &= ~WLAN_STA_SHORT_PREAMBLE;
 
-#ifndef CONFIG_ADD_ASSOC_STA_OFFLOAD
+#ifdef CONFIG_ADD_ASSOC_STA_OFFLOAD
 	if (!(sta->capability & WLAN_CAPABILITY_SHORT_PREAMBLE) &&
 	    !sta->no_short_preamble_set) {
 		sta->no_short_preamble_set = 1;
@@ -5778,7 +5778,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 
  fail:
 
-#ifndef CONFIG_ADD_ASSOC_STA_OFFLOAD
+#ifdef CONFIG_ADD_ASSOC_STA_OFFLOAD
 
 	/*
 	 * In case of a successful response, add the station to the driver.
