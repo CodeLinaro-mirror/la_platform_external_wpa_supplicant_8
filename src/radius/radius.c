@@ -250,6 +250,8 @@ static const struct radius_attr_type radius_attrs[] =
 	{ RADIUS_ATTR_MOBILITY_DOMAIN_ID, "Mobility-Domain-Id",
 	  RADIUS_ATTR_INT32 },
 	{ RADIUS_ATTR_WLAN_HESSID, "WLAN-HESSID", RADIUS_ATTR_TEXT },
+	{ RADIUS_ATTR_WLAN_REASON_CODE, "WLAN-Reason-Code",
+	  RADIUS_ATTR_INT32 },
 	{ RADIUS_ATTR_WLAN_PAIRWISE_CIPHER, "WLAN-Pairwise-Cipher",
 	  RADIUS_ATTR_HEXDUMP },
 	{ RADIUS_ATTR_WLAN_GROUP_CIPHER, "WLAN-Group-Cipher",
@@ -607,7 +609,7 @@ static int radius_msg_add_attr_to_array(struct radius_msg *msg,
 {
 	if (msg->attr_used >= msg->attr_size) {
 		size_t *nattr_pos;
-		int nlen = msg->attr_size * 2;
+		size_t nlen = msg->attr_size * 2;
 
 		nattr_pos = os_realloc_array(msg->attr_pos, nlen,
 					     sizeof(*msg->attr_pos));

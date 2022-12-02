@@ -189,8 +189,9 @@ static void eapol_port_timers_tick(void *eloop_ctx, void *timeout_ctx)
 	}
 
 	if (sm->authWhile | sm->heldWhile | sm->startWhen | sm->idleWhile) {
-		eloop_register_timeout(1, 0, eapol_port_timers_tick, eloop_ctx,
-				       sm);
+		if (eloop_register_timeout(1, 0, eapol_port_timers_tick,
+					   eloop_ctx, sm) < 0)
+			sm->timer_tick_enabled = 0;
 	} else {
 		wpa_printf(MSG_DEBUG, "EAPOL: disable timer tick");
 		sm->timer_tick_enabled = 0;
@@ -199,14 +200,23 @@ static void eapol_port_timers_tick(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static int eapol_sm_confirm_auth(struct eapol_sm *sm)
+{
+	if (!sm->ctx->confirm_auth_cb)
+		return 0;
+
+	return sm->ctx->confirm_auth_cb(sm->ctx->ctx);
+}
+
+
 static void eapol_enable_timer_tick(struct eapol_sm *sm)
 {
 	if (sm->timer_tick_enabled)
 		return;
 	wpa_printf(MSG_DEBUG, "EAPOL: enable timer tick");
-	sm->timer_tick_enabled = 1;
 	eloop_cancel_timeout(eapol_port_timers_tick, NULL, sm);
-	eloop_register_timeout(1, 0, eapol_port_timers_tick, NULL, sm);
+	if (eloop_register_timeout(1, 0, eapol_port_timers_tick, NULL, sm) == 0)
+		sm->timer_tick_enabled = 1;
 }
 
 
@@ -315,6 +325,11 @@ SM_STATE(SUPP_PAE, AUTHENTICATED)
 
 SM_STATE(SUPP_PAE, RESTART)
 {
+	if (eapol_sm_confirm_auth(sm)) {
+		/* Don't process restart, we are already reconnecting */
+		return;
+	}
+
 	SM_ENTRY(SUPP_PAE, RESTART);
 	sm->eapRestart = TRUE;
 	if (sm->altAccept) {
@@ -503,10 +518,14 @@ SM_STATE(SUPP_BE, SUCCESS)
 			session_id = eap_proxy_get_eap_session_id(
 				sm->eap_proxy, &session_id_len);
 			emsk = eap_proxy_get_emsk(sm->eap_proxy, &emsk_len);
-			if (sm->config->erp && session_id && emsk)
+			if (sm->config->erp && session_id && emsk) {
 				eap_peer_erp_init(sm->eap, session_id,
 						  session_id_len, emsk,
 						  emsk_len);
+			} else {
+				os_free(session_id);
+				bin_clear_free(emsk, emsk_len);
+			}
 		}
 		return;
 	}
@@ -673,6 +692,7 @@ struct eap_key_data {
 
 static void eapol_sm_processKey(struct eapol_sm *sm)
 {
+#ifdef CONFIG_WEP
 #ifndef CONFIG_FIPS
 	struct ieee802_1x_hdr *hdr;
 	struct ieee802_1x_eapol_key *key;
@@ -823,7 +843,7 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 
 	if (sm->ctx->set_wep_key &&
 	    sm->ctx->set_wep_key(sm->ctx->ctx,
-				 key->key_index & IEEE8021X_KEY_INDEX_FLAG,
+				 !!(key->key_index & IEEE8021X_KEY_INDEX_FLAG),
 				 key->key_index & IEEE8021X_KEY_INDEX_MASK,
 				 datakey, key_len) < 0) {
 		wpa_printf(MSG_WARNING, "EAPOL: Failed to set WEP key to the "
@@ -847,6 +867,7 @@ static void eapol_sm_processKey(struct eapol_sm *sm)
 		}
 	}
 #endif /* CONFIG_FIPS */
+#endif /* CONFIG_WEP */
 }
 
 
@@ -1993,15 +2014,12 @@ static void eapol_sm_eap_param_needed(void *ctx, enum wpa_ctrl_req_type field,
 #define eapol_sm_eap_param_needed NULL
 #endif /* CONFIG_CTRL_IFACE || !CONFIG_NO_STDOUT_DEBUG */
 
-static void eapol_sm_notify_cert(void *ctx, int depth, const char *subject,
-				 const char *altsubject[],
-				 int num_altsubject, const char *cert_hash,
-				 const struct wpabuf *cert)
+static void eapol_sm_notify_cert(void *ctx, struct tls_cert_data *cert,
+				 const char *cert_hash)
 {
 	struct eapol_sm *sm = ctx;
 	if (sm->ctx->cert_cb)
-		sm->ctx->cert_cb(sm->ctx->ctx, depth, subject, altsubject,
-				 num_altsubject, cert_hash, cert);
+		sm->ctx->cert_cb(sm->ctx->ctx, cert, cert_hash);
 }
 
 
@@ -2012,6 +2030,15 @@ static void eapol_sm_notify_status(void *ctx, const char *status,
 
 	if (sm->ctx->status_cb)
 		sm->ctx->status_cb(sm->ctx->ctx, status, parameter);
+}
+
+
+static void eapol_sm_notify_eap_error(void *ctx, int error_code)
+{
+	struct eapol_sm *sm = ctx;
+
+	if (sm->ctx->eap_error_cb)
+		sm->ctx->eap_error_cb(sm->ctx->ctx, error_code);
 }
 
 
@@ -2062,6 +2089,7 @@ static const struct eapol_callbacks eapol_cb =
 	eapol_sm_eap_param_needed,
 	eapol_sm_notify_cert,
 	eapol_sm_notify_status,
+	eapol_sm_notify_eap_error,
 #ifdef CONFIG_EAP_PROXY
 	eapol_sm_eap_proxy_cb,
 	eapol_sm_eap_proxy_notify_sim_status,
@@ -2127,8 +2155,8 @@ struct eapol_sm *eapol_sm_init(struct eapol_ctx *ctx)
 	sm->initialize = FALSE;
 	eapol_sm_step(sm);
 
-	sm->timer_tick_enabled = 1;
-	eloop_register_timeout(1, 0, eapol_port_timers_tick, NULL, sm);
+	if (eloop_register_timeout(1, 0, eapol_port_timers_tick, NULL, sm) == 0)
+		sm->timer_tick_enabled = 1;
 
 	return sm;
 }

@@ -11,6 +11,8 @@
 
 #include "common/defs.h"
 
+struct tls_cert_data;
+
 typedef enum { Unauthorized, Authorized } PortStatus;
 typedef enum { Auto, ForceUnauthorized, ForceAuthorized } PortControl;
 
@@ -246,16 +248,11 @@ struct eapol_ctx {
 	/**
 	 * cert_cb - Notification of a peer certificate
 	 * @ctx: Callback context (ctx)
-	 * @depth: Depth in certificate chain (0 = server)
-	 * @subject: Subject of the peer certificate
-	 * @altsubject: Select fields from AltSubject of the peer certificate
-	 * @num_altsubject: Number of altsubject values
+	 * @cert: Certificate information
 	 * @cert_hash: SHA-256 hash of the certificate
-	 * @cert: Peer certificate
 	 */
-	void (*cert_cb)(void *ctx, int depth, const char *subject,
-			const char *altsubject[], int num_altsubject,
-			const char *cert_hash, const struct wpabuf *cert);
+	void (*cert_cb)(void *ctx, struct tls_cert_data *cert,
+			const char *cert_hash);
 
 	/**
 	 * cert_in_cb - Include server certificates in callback
@@ -270,6 +267,13 @@ struct eapol_ctx {
 	 */
 	void (*status_cb)(void *ctx, const char *status,
 			  const char *parameter);
+
+	/**
+	 * eap_error_cb - Notification of EAP method error
+	 * @ctx: Callback context (ctx)
+	 * @error_code: EAP method error code
+	 */
+	void (*eap_error_cb)(void *ctx, int error_code);
 
 #ifdef CONFIG_EAP_PROXY
 	/**
@@ -294,6 +298,15 @@ struct eapol_ctx {
 	 * @len: Length of anonymous identity in octets
 	 */
 	void (*set_anon_id)(void *ctx, const u8 *id, size_t len);
+
+	/**
+	 * confirm_auth_cb - Callback confirming if we can install a new PTK
+	 * @ctx: eapol_ctx from eap_peer_sm_init() call
+	 * Returns: 0 when authentication can continue, -1 when reconnecting
+	 *
+	 * Automatically triggers a reconnect when not.
+	 */
+	int (*confirm_auth_cb)(void *ctx);
 };
 
 

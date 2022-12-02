@@ -205,14 +205,19 @@ wpa_driver_privsep_get_scan_results2(void *priv)
 }
 
 
-static int wpa_driver_privsep_set_key(const char *ifname, void *priv,
-				      enum wpa_alg alg, const u8 *addr,
-				      int key_idx, int set_tx,
-				      const u8 *seq, size_t seq_len,
-				      const u8 *key, size_t key_len)
+static int wpa_driver_privsep_set_key(void *priv,
+				      struct wpa_driver_set_key_params *params)
 {
 	struct wpa_driver_privsep_data *drv = priv;
 	struct privsep_cmd_set_key cmd;
+	enum wpa_alg alg = params->alg;
+	const u8 *addr = params->addr;
+	int key_idx = params->key_idx;
+	int set_tx = params->set_tx;
+	const u8 *seq = params->seq;
+	size_t seq_len = params->seq_len;
+	const u8 *key = params->key;
+	size_t key_len = params->key_len;
 
 	wpa_printf(MSG_DEBUG, "%s: priv=%p alg=%d key_idx=%d set_tx=%d",
 		   __func__, priv, alg, key_idx, set_tx);
@@ -225,6 +230,7 @@ static int wpa_driver_privsep_set_key(const char *ifname, void *priv,
 		os_memset(cmd.addr, 0xff, ETH_ALEN);
 	cmd.key_idx = key_idx;
 	cmd.set_tx = set_tx;
+	cmd.key_flag = params->key_flag;
 	if (seq && seq_len > 0 && seq_len < sizeof(cmd.seq)) {
 		os_memcpy(cmd.seq, seq, seq_len);
 		cmd.seq_len = seq_len;
@@ -368,7 +374,7 @@ static int wpa_driver_privsep_get_ssid(void *priv, u8 *ssid)
 
 
 static int wpa_driver_privsep_deauthenticate(void *priv, const u8 *addr,
-					  int reason_code)
+					     u16 reason_code)
 {
 	//struct wpa_driver_privsep_data *drv = priv;
 	wpa_printf(MSG_DEBUG, "%s addr=" MACSTR " reason_code=%d",
@@ -483,19 +489,6 @@ static void wpa_driver_privsep_event_pmkid_candidate(void *ctx, u8 *buf,
 }
 
 
-static void wpa_driver_privsep_event_stkstart(void *ctx, u8 *buf, size_t len)
-{
-	union wpa_event_data data;
-
-	if (len != ETH_ALEN)
-		return;
-
-	os_memset(&data, 0, sizeof(data));
-	os_memcpy(data.stkstart.peer, buf, ETH_ALEN);
-	wpa_supplicant_event(ctx, EVENT_STKSTART, &data);
-}
-
-
 static void wpa_driver_privsep_event_ft_response(void *ctx, u8 *buf,
 						 size_t len)
 {
@@ -588,10 +581,6 @@ static void wpa_driver_privsep_receive(int sock, void *eloop_ctx,
 	case PRIVSEP_EVENT_PMKID_CANDIDATE:
 		wpa_driver_privsep_event_pmkid_candidate(drv->ctx, event_buf,
 							 event_len);
-		break;
-	case PRIVSEP_EVENT_STKSTART:
-		wpa_driver_privsep_event_stkstart(drv->ctx, event_buf,
-						  event_len);
 		break;
 	case PRIVSEP_EVENT_FT_RESPONSE:
 		wpa_driver_privsep_event_ft_response(drv->ctx, event_buf,
@@ -808,6 +797,8 @@ static int wpa_driver_privsep_get_capa(void *priv,
 	capa->extended_capa = NULL;
 	capa->extended_capa_mask = NULL;
 	capa->extended_capa_len = 0;
+	/* Control port is not yet supported */
+	capa->flags &= ~WPA_DRIVER_FLAGS_CONTROL_PORT;
 	return 0;
 }
 

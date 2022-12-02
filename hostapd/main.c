@@ -1,6 +1,6 @@
 /*
  * hostapd / main()
- * Copyright (c) 2002-2017, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -18,21 +18,19 @@
 #include "crypto/random.h"
 #include "crypto/tls.h"
 #include "common/version.h"
+#include "common/dpp.h"
 #include "drivers/driver.h"
 #include "eap_server/eap.h"
 #include "eap_server/tncs.h"
 #include "ap/hostapd.h"
 #include "ap/ap_config.h"
 #include "ap/ap_drv_ops.h"
+#include "ap/dpp_hostapd.h"
 #include "fst/fst.h"
 #include "config_file.h"
 #include "eap_register.h"
 #include "ctrl_iface.h"
 
-#ifdef ANDROID
-#include "wpa_debug.h"
-#include <cutils/properties.h>
-#endif /* ANDROID */
 
 struct hapd_global {
 	void **drv_priv;
@@ -82,9 +80,6 @@ static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
 		break;
 	case HOSTAPD_MODULE_DRIVER:
 		module_str = "DRIVER";
-		break;
-	case HOSTAPD_MODULE_IAPP:
-		module_str = "IAPP";
 		break;
 	case HOSTAPD_MODULE_MLME:
 		module_str = "MLME";
@@ -223,7 +218,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		struct wowlan_triggers *triggs;
 
 		iface->drv_flags = capa.flags;
-		iface->smps_modes = capa.smps_modes;
 		iface->probe_resp_offloads = capa.probe_resp_offloads;
 		/*
 		 * Use default extended capa values from per-radio information
@@ -256,7 +250,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
  *
  * This function is used to parse configuration file for a full interface (one
  * or more BSSes sharing the same radio) and allocate memory for the BSS
- * interfaces. No actiual driver operations are started.
+ * interfaces. No actual driver operations are started.
  */
 static struct hostapd_iface *
 hostapd_interface_init(struct hapd_interfaces *interfaces, const char *if_name,
@@ -265,7 +259,7 @@ hostapd_interface_init(struct hapd_interfaces *interfaces, const char *if_name,
 	struct hostapd_iface *iface;
 	int k;
 
-	wpa_printf(MSG_ERROR, "Configuration file: %s", config_fname);
+	wpa_printf(MSG_DEBUG, "Configuration file: %s", config_fname);
 	iface = hostapd_init(interfaces, config_fname);
 	if (!iface)
 		return NULL;
@@ -456,11 +450,12 @@ static int hostapd_global_run(struct hapd_interfaces *ifaces, int daemonize,
 static void show_version(void)
 {
 	fprintf(stderr,
-		"hostapd v" VERSION_STR "\n"
+		"hostapd v%s\n"
 		"User space daemon for IEEE 802.11 AP management,\n"
 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
-		"Copyright (c) 2002-2017, Jouni Malinen <j@w1.fi> "
-		"and contributors\n");
+		"Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi> "
+		"and contributors\n",
+		VERSION_STR);
 }
 
 
@@ -655,6 +650,9 @@ int main(int argc, char *argv[])
 	int start_ifaces_in_sync = 0;
 	char **if_names = NULL;
 	size_t if_names_size = 0;
+#ifdef CONFIG_DPP
+	struct dpp_global_config dpp_conf;
+#endif /* CONFIG_DPP */
 
 	if (os_program_init())
 		return -1;
@@ -673,6 +671,13 @@ int main(int argc, char *argv[])
 #ifdef CONFIG_ETH_P_OUI
 	dl_list_init(&interfaces.eth_p_oui);
 #endif /* CONFIG_ETH_P_OUI */
+#ifdef CONFIG_DPP
+	os_memset(&dpp_conf, 0, sizeof(dpp_conf));
+	/* TODO: dpp_conf.msg_ctx? */
+	interfaces.dpp = dpp_global_init(&dpp_conf);
+	if (!interfaces.dpp)
+		return -1;
+#endif /* CONFIG_DPP */
 
 	for (;;) {
 		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:");
@@ -763,7 +768,7 @@ int main(int argc, char *argv[])
 
 	if (log_file)
 		wpa_debug_open_file(log_file);
-	else
+	if (!log_file && !wpa_debug_syslog)
 		wpa_debug_setup_stdout();
 #ifdef CONFIG_DEBUG_SYSLOG
 	if (wpa_debug_syslog)
@@ -807,20 +812,6 @@ int main(int argc, char *argv[])
 	if (!fst_global_add_ctrl(fst_ctrl_cli))
 		wpa_printf(MSG_WARNING, "Failed to add CLI FST ctrl");
 #endif /* CONFIG_FST && CONFIG_CTRL_IFACE */
-
-    wpa_printf(MSG_ERROR, "debug, set loglevel");
-#ifdef ANDROID
-	char ifprop[PROPERTY_VALUE_MAX];
-	if (property_get("vendor.qcom.wifi.debug", ifprop, "0") != 0) {
-		wpa_printf(MSG_ERROR, "debug, ifprop = %s",ifprop);
-		if (os_strcmp("1",ifprop) == 0) {
-			set_log_level(1);
-		}
-		else {
-			set_log_level(0);
-		}
-	}
-#endif /* ANDROID */
 
 	/* Allocate and parse configuration for full interface files */
 	for (i = 0; i < interfaces.count; i++) {
@@ -887,27 +878,8 @@ int main(int argc, char *argv[])
 	 */
 	interfaces.terminate_on_error = interfaces.count;
 	for (i = 0; i < interfaces.count; i++) {
-		if (hostapd_driver_init(interfaces.iface[i]))
-			goto out;
-#ifdef CONFIG_MBO
-		for (j = 0; j < interfaces.iface[i]->num_bss; j++) {
-			struct hostapd_data *hapd = interfaces.iface[i]->bss[j];
-
-			if (hapd && (hapd->conf->oce & OCE_STA_CFON) &&
-			    (interfaces.iface[i]->drv_flags &
-			     WPA_DRIVER_FLAGS_OCE_STA_CFON))
-				hapd->enable_oce = OCE_STA_CFON;
-
-			if (hapd && (hapd->conf->oce & OCE_AP) &&
-			    (interfaces.iface[i]->drv_flags &
-			     WPA_DRIVER_FLAGS_OCE_STA_CFON)) {
-				/* TODO: Need to add OCE-AP support */
-				wpa_printf(MSG_ERROR,
-					   "OCE-AP feature is not yet supported");
-			}
-		}
-#endif /* CONFIG_MBO */
-		if (hostapd_setup_interface(interfaces.iface[i]))
+		if (hostapd_driver_init(interfaces.iface[i]) ||
+		    hostapd_setup_interface(interfaces.iface[i]))
 			goto out;
 	}
 
@@ -932,6 +904,10 @@ int main(int argc, char *argv[])
 		hostapd_interface_deinit_free(interfaces.iface[i]);
 	}
 	os_free(interfaces.iface);
+
+#ifdef CONFIG_DPP
+	dpp_global_deinit(interfaces.dpp);
+#endif /* CONFIG_DPP */
 
 	if (interfaces.eloop_initialized)
 		eloop_cancel_timeout(hostapd_periodic, &interfaces, NULL);

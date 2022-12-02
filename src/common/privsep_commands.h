@@ -82,6 +82,7 @@ struct privsep_cmd_set_key {
 	size_t seq_len;
 	u8 key[32];
 	size_t key_len;
+	enum key_flag key_flag;
 };
 
 enum privsep_event {
@@ -92,7 +93,6 @@ enum privsep_event {
 	PRIVSEP_EVENT_MICHAEL_MIC_FAILURE,
 	PRIVSEP_EVENT_INTERFACE_STATUS,
 	PRIVSEP_EVENT_PMKID_CANDIDATE,
-	PRIVSEP_EVENT_STKSTART,
 	PRIVSEP_EVENT_FT_RESPONSE,
 	PRIVSEP_EVENT_RX_EAPOL,
 	PRIVSEP_EVENT_SCAN_STARTED,
