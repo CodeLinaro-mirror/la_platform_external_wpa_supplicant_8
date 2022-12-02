@@ -167,10 +167,6 @@ void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s,
 		return;
 
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_ASSOC_STATUS_CODE);
-
-#ifdef CONFIG_HIDL
-	wpas_hidl_notify_assoc_reject(wpa_s, bssid, timed_out);
-#endif
 }
 
 void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s) {
@@ -215,10 +211,6 @@ void wpas_notify_bss_tm_status(struct wpa_supplicant *wpa_s)
 		return;
 
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_BSS_TM_STATUS);
-
-#if defined(CONFIG_WNM) && defined(CONFIG_HIDL)
-	wpas_hidl_notify_bss_tm_status(wpa_s);
-#endif /*CONFIG_WNM CONFIG_HIDL */
 }
 
 
@@ -1300,10 +1292,6 @@ void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 {
 	if (!wpa_s)
 		return;
-
-#ifdef CONFIG_HIDL
-	wpas_hidl_notify_pmk_cache_added(wpa_s, entry);
-#endif /* CONFIG_DPP2 */
 }
 
 //Vendor DPP notifications

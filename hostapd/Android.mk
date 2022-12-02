@@ -16,8 +16,8 @@ ifeq ($(WPA_BUILD_HOSTAPD),true)
 
 include $(LOCAL_PATH)/android.config
 
-ifeq ($(TARGET_BOARD_PLATFORM), lahaina)
-  CONFIG_SAE_LOOP_AND_H2E=y
+ifeq ($(filter $(TARGET_BOARD_PLATFORM), lahaina sm6150),$(TARGET_BOARD_PLATFORM))
+CONFIG_SAE_LOOP_AND_H2E=y
 endif
 
 # To ignore possible wrong network configurations
@@ -1150,7 +1150,6 @@ LOCAL_MODULE := hostapd
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_VINTF_FRAGMENTS := android.hardware.wifi.hostapd.xml
 ifdef CONFIG_DRIVER_CUSTOM
 LOCAL_STATIC_LIBRARIES := libCustomWifi
 endif
@@ -1168,13 +1167,13 @@ endif
 ifeq ($(HOSTAPD_USE_HIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.0
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.1
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.2
-LOCAL_SHARED_LIBRARIES += libbase libhidlbase libutils
+LOCAL_SHARED_LIBRARIES += libbase libhidlbase libhidltransport libhwbinder libutils
 LOCAL_STATIC_LIBRARIES += libhostapd_hidl
 ifdef HOSTAPD_USE_VENDOR_HIDL
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.0 \
     vendor.qti.hardware.wifi.hostapd@1.1 \
-    vendor.qti.hardware.wifi.hostapd@1.2
+    vendor.qti.hardware.wifi.hostapd@1.2 \
+    libqsap_sdk
 endif
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1216,16 +1215,17 @@ LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
-HIDL_INTERFACE_VERSION = 1.2
+HIDL_INTERFACE_VERSION = 1.1
 LOCAL_SRC_FILES := \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/hostapd.cpp
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.hostapd@1.0 \
     android.hardware.wifi.hostapd@1.1 \
-    android.hardware.wifi.hostapd@1.2 \
     libbase \
     libhidlbase \
+    libhidltransport \
+    libhwbinder \
     libutils \
     liblog
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
@@ -1240,11 +1240,14 @@ LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/sdk/softap/include
 endif
 
 LOCAL_SRC_FILES += \
+    hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/qsap_handler.cpp \
     hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/hostapd_vendor.cpp
 LOCAL_SHARED_LIBRARIES += \
     vendor.qti.hardware.wifi.hostapd@1.0 \
     vendor.qti.hardware.wifi.hostapd@1.1 \
-    vendor.qti.hardware.wifi.hostapd@1.2
+    vendor.qti.hardware.wifi.hostapd@1.2 \
+    libqsap_sdk
+LOCAL_HEADER_LIBRARIES := libqsap_headers
 endif
 
 include $(BUILD_STATIC_LIBRARY)
