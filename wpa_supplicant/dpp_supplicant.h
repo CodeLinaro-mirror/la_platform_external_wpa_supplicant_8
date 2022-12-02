@@ -5,12 +5,16 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef DPP_SUPPLICANT_H
 #define DPP_SUPPLICANT_H
 
-enum dpp_status_error;
+//enum dpp_status_error;
 
 int wpas_dpp_qr_code(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_dpp_nfc_uri(struct wpa_supplicant *wpa_s, const char *cmd);
@@ -34,7 +38,7 @@ int wpas_dpp_check_connect(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 int wpas_dpp_controller_start(struct wpa_supplicant *wpa_s, const char *cmd);
 void wpas_dpp_connected(struct wpa_supplicant *wpa_s);
 void wpas_dpp_send_conn_status_result(struct wpa_supplicant *wpa_s,
-				      enum dpp_status_error result);
+				      int /*enum dpp_status_error*/ result);
 int wpas_dpp_chirp(struct wpa_supplicant *wpa_s, const char *cmd);
 void wpas_dpp_chirp_stop(struct wpa_supplicant *wpa_s);
 

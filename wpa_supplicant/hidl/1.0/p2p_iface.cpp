@@ -6,6 +6,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "hidl_manager.h"
@@ -706,11 +710,12 @@ std::pair<SupplicantStatus, std::string> P2pIface::connectInternal(
 		wps_method = WPS_PIN_KEYPAD;
 		break;
 	}
+	int he = wpa_s->conf->p2p_go_he;
 	const char* pin = pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	int new_pin = wpas_p2p_connect(
 	    wpa_s, peer_address.data(), pin, wps_method,
 	    persistent, false, join_existing_group, false, go_intent_signed, 0, 0, -1,
-	    false, false, false, VHT_CHANWIDTH_USE_HT, nullptr, 0);
+	    false, false, false, CHANWIDTH_USE_HT, he, 0, nullptr, 0);
 	if (new_pin < 0) {
 		return {{SupplicantStatusCode::FAILURE_UNKNOWN, ""}, {}};
 	}
@@ -761,6 +766,7 @@ SupplicantStatus P2pIface::addGroupInternal(
     bool persistent, SupplicantNetworkId persistent_network_id)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 	struct wpa_ssid* ssid =
@@ -768,7 +774,7 @@ SupplicantStatus P2pIface::addGroupInternal(
 	if (ssid == NULL) {
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, 0, 0, ht40, vht,
-			VHT_CHANWIDTH_USE_HT)) {
+			CHANWIDTH_USE_HT, he, 0)) {
 			return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 		} else {
 			return {SupplicantStatusCode::SUCCESS, ""};
@@ -776,7 +782,7 @@ SupplicantStatus P2pIface::addGroupInternal(
 	} else if (ssid->disabled == 2) {
 		if (wpas_p2p_group_add_persistent(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
-			VHT_CHANWIDTH_USE_HT, NULL, 0, 0)) {
+			CHANWIDTH_USE_HT, he, 0, NULL, 0, 0)) {
 			return {SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN,
 				""};
 		} else {
@@ -831,6 +837,7 @@ SupplicantStatus P2pIface::reinvokeInternal(
     const std::array<uint8_t, 6>& peer_address)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 	struct wpa_ssid* ssid =
@@ -840,7 +847,7 @@ SupplicantStatus P2pIface::reinvokeInternal(
 	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
-		VHT_CHANWIDTH_USE_HT, 0)) {
+		CHANWIDTH_USE_HT, 0, he, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};
@@ -1054,7 +1061,7 @@ SupplicantStatus P2pIface::startWpsPbcInternal(
 		return {SupplicantStatusCode::SUCCESS, ""};
 	}
 #endif /* CONFIG_AP */
-	if (wpas_wps_start_pbc(wpa_group_s, bssid_addr, 0)) {
+	if (wpas_wps_start_pbc(wpa_group_s, bssid_addr, 0, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};

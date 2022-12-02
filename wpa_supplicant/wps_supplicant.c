@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "includes.h"
@@ -2274,7 +2278,7 @@ void wpas_wps_update_mac_addr(struct wpa_supplicant *wpa_s)
 #ifdef CONFIG_WPS_NFC
 
 #ifdef CONFIG_WPS_ER
-static struct wpabuf *
+struct wpabuf *
 wpas_wps_network_config_token(struct wpa_supplicant *wpa_s, int ndef,
 			      struct wpa_ssid *ssid)
 {

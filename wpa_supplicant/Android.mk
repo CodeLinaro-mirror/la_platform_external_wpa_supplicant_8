@@ -14,6 +14,8 @@ endif
 
 include $(LOCAL_PATH)/android.config
 
+HIDL_INTERFACE_VERSION = 1.0
+
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
 
@@ -24,6 +26,9 @@ L_CFLAGS += -DANDROID_LOG_NAME=\"wpa_supplicant\"
 
 # Disable unused parameter warnings
 L_CFLAGS += -Wno-unused-parameter
+
+# Disable redefined macro warnings
+L_CFLAGS += -Wno-macro-redefined
 
 # Set Android extended P2P functionality
 L_CFLAGS += -DANDROID_P2P
@@ -49,8 +54,8 @@ ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
 endif
 
-# C++ flags for binder interface
-L_CPPFLAGS := -std=c++11 -Wall -Werror
+# C++ flags for hidl interface
+L_CPPFLAGS := -Wall -Werror
 # TODO: Remove these allowed warnings later.
 L_CPPFLAGS += -Wno-unused-variable -Wno-unused-parameter
 L_CPPFLAGS += -Wno-unused-private-field
@@ -79,6 +84,7 @@ else
 INCLUDES += external/libnl-headers
 endif
 endif
+INCLUDES += $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 
 ifdef CONFIG_FIPS
 CONFIG_NO_RANDOM_POOL=
@@ -1456,9 +1462,15 @@ endif
 L_CFLAGS += $(DBUS_INCLUDE)
 endif
 
-ifdef CONFIG_CTRL_IFACE_BINDER
-WPA_SUPPLICANT_USE_BINDER=y
-L_CFLAGS += -DCONFIG_BINDER -DCONFIG_CTRL_IFACE_BINDER
+ifdef CONFIG_CTRL_IFACE_HIDL
+WPA_SUPPLICANT_USE_HIDL=y
+L_CFLAGS += -DCONFIG_HIDL -DCONFIG_CTRL_IFACE_HIDL
+endif
+
+ifdef CONFIG_SUPPLICANT_VENDOR_HIDL
+SUPPLICANT_VENDOR_HIDL=y
+SUPPLICANT_VENDOR_HIDL_VERSION=2.0
+L_CFLAGS += -DSUPPLICANT_VENDOR_HIDL
 endif
 
 ifdef CONFIG_READLINE
@@ -1684,12 +1696,20 @@ LOCAL_STATIC_LIBRARIES += $(LIB_STATIC_EAP_PROXY)
 LOCAL_SHARED_LIBRARIES += $(LIB_SHARED_EAP_PROXY)
 endif
 ifeq ($(CONFIG_TLS), openssl)
+ifdef CONFIG_CTRL_IFACE_HIDL
+ LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
+else
 LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore_binder
+endif
 endif
 
 # With BoringSSL we need libkeystore-engine in order to provide access to
 # keystore keys.
+ifdef CONFIG_CTRL_IFACE_HIDL
+ LOCAL_SHARED_LIBRARIES += libkeystore-engine-wifi-hidl
+else
 LOCAL_SHARED_LIBRARIES += libkeystore-engine
+endif
 
 ifdef CONFIG_DRIVER_NL80211
 ifneq ($(wildcard external/libnl),)
@@ -1704,9 +1724,15 @@ LOCAL_C_INCLUDES := $(INCLUDES)
 ifeq ($(DBUS), y)
 LOCAL_SHARED_LIBRARIES += libdbus
 endif
-ifeq ($(WPA_SUPPLICANT_USE_BINDER), y)
-LOCAL_SHARED_LIBRARIES += libbinder libutils
-LOCAL_STATIC_LIBRARIES += libwpa_binder libwpa_binder_interface
+ifeq ($(WPA_SUPPLICANT_USE_HIDL), y)
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.0
+ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.0
+endif
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@1.0_vendor
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@1.1_vendor
+LOCAL_SHARED_LIBRARIES += libhidlbase libhidltransport libhwbinder libutils
+LOCAL_STATIC_LIBRARIES += libwpa_hidl
 endif
 include $(BUILD_EXECUTABLE)
 
@@ -1747,41 +1773,44 @@ LOCAL_COPY_HEADERS := src/common/wpa_ctrl.h
 LOCAL_COPY_HEADERS += src/common/qca-vendor.h
 include $(BUILD_SHARED_LIBRARY)
 
-ifeq ($(WPA_SUPPLICANT_USE_BINDER), y)
-### Binder interface library ###
+ifeq ($(WPA_SUPPLICANT_USE_HIDL), y)
+### Hidl service library ###
 ########################
-
 include $(CLEAR_VARS)
-LOCAL_MODULE := libwpa_binder_interface
-LOCAL_AIDL_INCLUDES := \
-    $(LOCAL_PATH)/binder \
-    frameworks/native/aidl/binder
-LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/binder
-LOCAL_CPPFLAGS := $(L_CPPFLAGS)
-LOCAL_SRC_FILES := \
-    binder/binder_constants.cpp \
-    binder/fi/w1/wpa_supplicant/ISupplicant.aidl \
-    binder/fi/w1/wpa_supplicant/ISupplicantCallbacks.aidl \
-    binder/fi/w1/wpa_supplicant/IIface.aidl
-LOCAL_SHARED_LIBRARIES := libbinder
-include $(BUILD_STATIC_LIBRARY)
-
-### Binder service library ###
-########################
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libwpa_binder
+LOCAL_MODULE := libwpa_hidl
+LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_SRC_FILES := \
-    binder/binder.cpp binder/binder_manager.cpp \
-    binder/supplicant.cpp binder/iface.cpp
+    hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/hidl_manager.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/iface_config_utils.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/p2p_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/p2p_network.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/sta_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/sta_network.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/supplicant.cpp
+ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+LOCAL_SRC_FILES += \
+    hidl/$(HIDL_INTERFACE_VERSION)/vendorsta_iface.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/vendorsta_network.cpp \
+    hidl/$(HIDL_INTERFACE_VERSION)/supplicantvendor.cpp
+endif
 LOCAL_SHARED_LIBRARIES := \
-    libbinder \
-    libutils
-LOCAL_STATIC_LIBRARIES := libwpa_binder_interface
+    android.hardware.wifi.supplicant@$(HIDL_INTERFACE_VERSION) \
+    vendor.qti.hardware.wifi.supplicant@$(HIDL_INTERFACE_VERSION)_vendor \
+    vendor.qti.hardware.wifi.supplicant@1.1_vendor \
+    libhidlbase \
+    libhidltransport \
+    libhwbinder \
+    libutils \
+    liblog
+ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+LOCAL_SHARED_LIBRARIES += \
+    vendor.qti.hardware.wifi.supplicant@2.0
+endif
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 include $(BUILD_STATIC_LIBRARY)
-
-endif # BINDER == y
+endif # WPA_SUPPLICANT_USE_HIDL == y

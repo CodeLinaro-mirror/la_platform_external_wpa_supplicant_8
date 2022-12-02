@@ -5,6 +5,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "hidl_manager.h"
@@ -181,7 +185,7 @@ std::pair<SupplicantStatus, bool> P2pNetwork::isGoInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	return {{SupplicantStatusCode::SUCCESS, ""},
-		(wpa_ssid->mode == wpa_ssid::wpas_mode::WPAS_MODE_P2P_GO)};
+		(wpa_ssid->mode == WPAS_MODE_P2P_GO)};
 }
 
 SupplicantStatus P2pNetwork::setClientListInternal(

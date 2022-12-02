@@ -8,6 +8,10 @@
  * This file implements functions for registering and unregistering
  * %wpa_supplicant interfaces. In addition, this file contains number of
  * functions for managing network connections.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "includes.h"
@@ -7319,7 +7323,7 @@ int wpa_supplicant_ctrl_iface_ctrl_rsp_handle(struct wpa_supplicant *wpa_s,
 					      const char *value)
 {
 #ifdef IEEE8021X_EAPOL
-	struct eap_peer_config *eap = &ssid->eap;
+	enum wpa_ctrl_req_type rtype;
 
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: response handle field=%s", field);
 	wpa_hexdump_ascii_key(MSG_DEBUG, "CTRL_IFACE: response value",

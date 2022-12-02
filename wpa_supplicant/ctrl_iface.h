@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef CTRL_IFACE_H
@@ -114,6 +118,10 @@ void wpa_supplicant_global_ctrl_iface_deinit(
 	struct ctrl_iface_global_priv *priv);
 
 void wpas_ctrl_radio_work_flush(struct wpa_supplicant *wpa_s);
+
+int wpa_supplicant_ctrl_iface_get_capability(
+	struct wpa_supplicant *wpa_s, const char *_field, char *buf,
+	size_t buflen);
 
 #else /* CONFIG_CTRL_IFACE */
 

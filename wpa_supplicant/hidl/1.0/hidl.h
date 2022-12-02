@@ -5,6 +5,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef WPA_SUPPLICANT_HIDL_HIDL_H
@@ -21,6 +25,7 @@ extern "C" {
  */
 struct wpas_hidl_priv;
 struct wpa_global;
+struct wpa_bss_anqp;
 
 struct wpas_hidl_priv *wpas_hidl_init(struct wpa_global *global);
 void wpas_hidl_deinit(struct wpas_hidl_priv *priv);
@@ -93,6 +98,26 @@ void wpas_hidl_notify_ap_sta_authorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr);
 void wpas_hidl_notify_ap_sta_deauthorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr);
+void wpas_hidl_notify_eap_error(
+    struct wpa_supplicant *wpa_s, int error_code);
+//DPP Notifications
+void wpas_hidl_notify_dpp_auth_success(
+    struct wpa_supplicant *wpa_s, int initiator);
+void wpas_hidl_notify_dpp_not_compatible(
+    struct wpa_supplicant *wpa_s, u8 capab, int initiator);
+void wpas_hidl_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s);
+void wpas_hidl_notify_dpp_scan_peer_qrcode(
+    struct wpa_supplicant *wpa_s, const u8* i_bootstrap,
+    uint16_t i_bootstrap_len);
+void wpas_hidl_notify_dpp_conf(
+    struct wpa_supplicant *wpa_s, u8 type, u8* ssid, u8 ssid_len,
+    const char *connector, struct wpabuf *c_sign, struct wpabuf *net_access,
+    uint32_t net_access_expiry, const char *passphrase, uint32_t psk_set,
+    u8 *psk);
+void wpas_hidl_notify_dpp_missing_auth(
+    struct wpa_supplicant *wpa_s, u8 dpp_auth_param);
+void wpas_hidl_notify_dpp_net_id(
+    struct wpa_supplicant *wpa_s, uint32_t net_id);
 #else   // CONFIG_CTRL_IFACE_HIDL
 static inline int wpas_hidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -212,6 +237,41 @@ static void wpas_hidl_notify_ap_sta_authorized(
 }
 static void wpas_hidl_notify_ap_sta_deauthorized(
     struct wpa_supplicant *wpa_s, const u8 *sta, const u8 *p2p_dev_addr)
+{
+}
+static void wpas_hidl_notify_eap_error(
+    struct wpa_supplicant *wpa_s, int error_code)
+{
+}
+static void wpas_hidl_notify_dpp_auth_success(
+    struct wpa_supplicant *wpa_s, int initiator)
+{
+}
+static void wpas_hidl_notify_dpp_not_compatible(
+    struct wpa_supplicant *wpa_s, u8 capab, int initiator)
+{
+}
+static void wpas_hidl_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s)
+{
+}
+static void wpas_hidl_notify_dpp_scan_peer_qrcode(
+    struct wpa_supplicant *wpa_s, const u8* i_bootstrap,
+    uint16_t i_bootstrap_len)
+{
+}
+static void wpas_hidl_notify_dpp_conf(
+    struct wpa_supplicant *wpa_s, u8 type, u8* ssid, u8 ssid_len,
+    const char *connector, struct wpabuf *c_sign, struct wpabuf *net_access,
+    uint32_t net_access_expiry, const char *passphrase, uint32_t psk_set,
+    u8 *psk)
+{
+}
+static void wpas_hidl_notify_dpp_missing_auth(
+    struct wpa_supplicant *wpa_s, u8 dpp_auth_param)
+{
+}
+static void wpas_hidl_notify_dpp_net_id(
+    struct wpa_supplicant *wpa_s, uint32_t net_id)
 {
 }
 #endif  // CONFIG_CTRL_IFACE_HIDL

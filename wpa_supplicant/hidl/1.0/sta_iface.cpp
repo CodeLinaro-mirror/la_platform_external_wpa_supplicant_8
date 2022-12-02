@@ -5,6 +5,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "hidl_manager.h"
@@ -497,22 +501,6 @@ Return<void> StaIface::enableAutoReconnect(
 	    &StaIface::enableAutoReconnectInternal, _hidl_cb, enable);
 }
 
-Return<void> StaIface::filsHlpFlushRequest(filsHlpFlushRequest_cb _hidl_cb)
-{
-	return validateAndCall(
-	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-	    &StaIface::filsHlpFlushRequestInternal, _hidl_cb);
-}
-
-Return<void> StaIface::filsHlpAddRequest(
-    const hidl_array<uint8_t, 6> &dst_mac, const hidl_vec<uint8_t> &pkt,
-    filsHlpAddRequest_cb _hidl_cb)
-{
-	return validateAndCall(
-	    this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-	    &StaIface::filsHlpAddRequestInternal, _hidl_cb, dst_mac, pkt);
-}
-
 std::pair<SupplicantStatus, std::string> StaIface::getNameInternal()
 {
 	return {{SupplicantStatusCode::SUCCESS, ""}, ifname_};
@@ -526,7 +514,7 @@ std::pair<SupplicantStatus, IfaceType> StaIface::getTypeInternal()
 std::pair<SupplicantStatus, sp<ISupplicantNetwork>>
 StaIface::addNetworkInternal()
 {
-	android::sp<ISupplicantVendorStaNetwork> network;
+	android::sp<V1_0::ISupplicantStaNetwork> network;
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *ssid = wpa_supplicant_add_network(wpa_s);
 	if (!ssid) {
@@ -557,7 +545,7 @@ SupplicantStatus StaIface::removeNetworkInternal(SupplicantNetworkId id)
 std::pair<SupplicantStatus, sp<ISupplicantNetwork>>
 StaIface::getNetworkInternal(SupplicantNetworkId id)
 {
-	android::sp<ISupplicantVendorStaNetwork> network;
+	android::sp<V1_0::ISupplicantStaNetwork> network;
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *ssid = wpa_config_get_network(wpa_s->conf, id);
 	if (!ssid) {
@@ -863,7 +851,7 @@ SupplicantStatus StaIface::startWpsPbcInternal(
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	const uint8_t *bssid_addr =
 	    is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
-	if (wpas_wps_start_pbc(wpa_s, bssid_addr, 0)) {
+	if (wpas_wps_start_pbc(wpa_s, bssid_addr, 0, 0)) {
 		return {SupplicantStatusCode::FAILURE_UNKNOWN, ""};
 	}
 	return {SupplicantStatusCode::SUCCESS, ""};

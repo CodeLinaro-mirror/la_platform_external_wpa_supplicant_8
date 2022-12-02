@@ -5,6 +5,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef WPA_SUPPLICANT_HIDL_STA_IFACE_H
@@ -16,11 +20,8 @@
 #include <android-base/macros.h>
 
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIface.h>
-#include <vendor/qti/hardware/wifi/supplicant/1.1/ISupplicantVendorStaIface.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaIfaceCallback.h>
-#include <vendor/qti/hardware/wifi/supplicant/1.0/ISupplicantVendorStaIfaceCallback.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantStaNetwork.h>
-#include <vendor/qti/hardware/wifi/supplicant/1.1/ISupplicantVendorStaNetwork.h>
 
 extern "C" {
 #include "utils/common.h"
@@ -38,15 +39,14 @@ namespace supplicant {
 namespace V1_0 {
 namespace implementation {
 
-using vendor::qti::hardware::wifi::supplicant::V1_0::ISupplicantVendorStaIfaceCallback;
+using namespace android::hardware::wifi::supplicant::V1_0;
 
 /**
  * Implementation of StaIface hidl object. Each unique hidl
  * object is used for control operations on a specific interface
  * controlled by wpa_supplicant.
  */
-class StaIface
-    : public vendor::qti::hardware::wifi::supplicant::V1_1::ISupplicantVendorStaIface
+class StaIface : public ISupplicantStaIface
 {
 public:
 	StaIface(struct wpa_global* wpa_global, const char ifname[]);
@@ -160,11 +160,6 @@ public:
 	    uint32_t id, removeExtRadioWork_cb _hidl_cb) override;
 	Return<void> enableAutoReconnect(
 	    bool enable, enableAutoReconnect_cb _hidl_cb) override;
-	Return<void> filsHlpFlushRequest(
-	    filsHlpFlushRequest_cb _hidl_cb) override;
-	Return<void> filsHlpAddRequest(
-	    const hidl_array<uint8_t, 6>& dst_mac, const hidl_vec<uint8_t>& pkt,
-	    filsHlpAddRequest_cb _hidl_cb) override;
 
 private:
 	// Corresponding worker functions for the HIDL methods.
