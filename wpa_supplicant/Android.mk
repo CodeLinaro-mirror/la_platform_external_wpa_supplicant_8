@@ -18,6 +18,16 @@ endif
 
 include $(LOCAL_PATH)/android.config
 
+ifeq ($(call is-board-platform-in-list,msm8909 msm8937 msm8953 msm8996 msm8998 sdm660 sdm710 sdm845 $(MSMSTEPPE) $(TRINKET) msmnile lito atoll bengal kona),true)
+  $(warning "Disabling OCV support in wpa_supplicant for $(TARGET_BOARD_PLATFORM)")
+  CONFIG_OCV=n
+endif
+
+ifeq ($(call is-board-platform-in-list,msm8909 msm8937 msm8953 msm8996 msm8998 sdm660 sdm710 sdm845 $(MSMSTEPPE) $(TRINKET) msmnile atoll),true)
+  $(warning "Disabling H2E support in wpa_supplicant for $(TARGET_BOARD_PLATFORM)")
+  CONFIG_SAE_LOOP_AND_H2E=n
+endif
+
 ifeq ($(call is-board-platform-in-list,msm8998 msm8953 msm8937 sdm710 sdm845),true)
   $(warning "Disabling SuiteB-192 support in wpa_supplicant for $(TARGET_BOARD_PLATFORM)")
   CONFIG_SUITEB192=n
@@ -25,6 +35,10 @@ endif
 
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
+
+ifeq ($(CONFIG_SAE_LOOP_AND_H2E),y)
+L_CFLAGS += -DCONFIG_SAE_LOOP_AND_H2E
+endif
 
 L_CFLAGS += -DVERSION_STR_POSTFIX=\"-$(PLATFORM_VERSION)\"
 
@@ -105,7 +119,6 @@ INCLUDES += $(LOCAL_PATH)/src/eap_common
 INCLUDES += $(LOCAL_PATH)/src/eapol_supp
 INCLUDES += $(LOCAL_PATH)/src/eap_peer
 INCLUDES += $(LOCAL_PATH)/src/eap_server
-INCLUDES += $(LOCAL_PATH)/src/hlr_auc_gw
 INCLUDES += $(LOCAL_PATH)/src/l2_packet
 INCLUDES += $(LOCAL_PATH)/src/radius
 INCLUDES += $(LOCAL_PATH)/src/rsn_supp
@@ -139,6 +152,7 @@ OBJS += src/utils/crc32.c
 OBJS += wmm_ac.c
 OBJS += op_classes.c
 OBJS += rrm.c
+OBJS += robust_av.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
 OBJS_p += src/utils/wpa_debug.c
@@ -207,6 +221,10 @@ ifdef CONFIG_VHT_OVERRIDES
 L_CFLAGS += -DCONFIG_VHT_OVERRIDES
 endif
 
+ifdef CONFIG_HE_OVERRIDES
+L_CFLAGS += -DCONFIG_HE_OVERRIDES
+endif
+
 ifndef CONFIG_BACKEND
 CONFIG_BACKEND=file
 endif
@@ -248,7 +266,7 @@ L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
 
-ifdef CONFIG_OCV
+ifeq ($(CONFIG_OCV),y)
 L_CFLAGS += -DCONFIG_OCV
 OBJS += src/common/ocv.c
 endif
@@ -284,6 +302,12 @@ endif
 ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
+OBJS += src/common/dpp_auth.c
+OBJS += src/common/dpp_backup.c
+OBJS += src/common/dpp_crypto.c
+OBJS += src/common/dpp_pkex.c
+OBJS += src/common/dpp_reconfig.c
+OBJS += src/common/dpp_tcp.c
 OBJS += dpp_supplicant.c
 NEED_AES_SIV=y
 NEED_HMAC_SHA256_KDF=y
@@ -309,6 +333,10 @@ NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
 NEED_SHA384=y
 NEED_SHA512=y
+endif
+
+ifdef CONFIG_WAPI_INTERFACE
+L_CFLAGS += -DCONFIG_WAPI_INTERFACE
 endif
 
 ifdef CONFIG_FILS
@@ -418,6 +446,14 @@ endif
 ifdef CONFIG_CTRL_IFACE
 OBJS += src/fst/fst_ctrl_iface.c
 endif
+endif
+
+ifdef CONFIG_WEP
+L_CFLAGS += -DCONFIG_WEP
+endif
+
+ifdef CONFIG_NO_TKIP
+L_CFLAGS += -DCONFIG_NO_TKIP
 endif
 
 
@@ -905,14 +941,12 @@ OBJS += src/ap/bss_load.c
 OBJS += src/ap/eap_user_db.c
 OBJS += src/ap/neighbor_db.c
 OBJS += src/ap/rrm.c
-ifdef CONFIG_IEEE80211N
 OBJS += src/ap/ieee802_11_ht.c
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
 endif
 ifdef CONFIG_IEEE80211AX
 OBJS += src/ap/ieee802_11_he.c
-endif
 endif
 ifdef CONFIG_WNM_AP
 L_CFLAGS += -DCONFIG_WNM_AP
@@ -933,14 +967,11 @@ OBJS += src/eap_server/eap_server.c
 OBJS += src/eap_server/eap_server_identity.c
 OBJS += src/eap_server/eap_server_methods.c
 
-ifdef CONFIG_IEEE80211N
-L_CFLAGS += -DCONFIG_IEEE80211N
 ifdef CONFIG_IEEE80211AC
 L_CFLAGS += -DCONFIG_IEEE80211AC
 endif
 ifdef CONFIG_IEEE80211AX
 L_CFLAGS += -DCONFIG_IEEE80211AX
-endif
 endif
 
 ifdef NEED_AP_MLME
@@ -1503,6 +1534,7 @@ endif
 ifdef CONFIG_CTRL_IFACE_HIDL
 WPA_SUPPLICANT_USE_HIDL=y
 L_CFLAGS += -DCONFIG_HIDL -DCONFIG_CTRL_IFACE_HIDL
+HIDL_INTERFACE_VERSION := 1.3
 endif
 
 ifdef CONFIG_SUPPLICANT_VENDOR_HIDL
@@ -1719,19 +1751,6 @@ LOCAL_SRC_FILES := $(OBJS_c)
 LOCAL_C_INCLUDES := $(INCLUDES)
 include $(BUILD_EXECUTABLE)
 
-#####################################
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := move_wifi_data.sh
-LOCAL_MODULE_CLASS := EXECUTABLES
-LOCAL_MODULE := $(LOCAL_SRC_FILES)
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_OWNER := qti
-LOCAL_MODULE := move_wifi_data.sh
-
-include $(BUILD_PREBUILT)
-
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := wpa_supplicant
@@ -1774,13 +1793,18 @@ ifeq ($(WPA_SUPPLICANT_USE_HIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.0
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.1
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.2
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.3
 ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.0
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.1
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.2
 endif
-LOCAL_SHARED_LIBRARIES += libhidlbase libhidltransport libhwbinder libutils libbase
+LOCAL_SHARED_LIBRARIES += libhidlbase libutils libbase
 LOCAL_STATIC_LIBRARIES += libwpa_hidl
+LOCAL_VINTF_FRAGMENTS := hidl/$(HIDL_INTERFACE_VERSION)/manifest.xml
+ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
+LOCAL_INIT_RC=hidl/$(HIDL_INTERFACE_VERSION)/android.hardware.wifi.supplicant-service.rc
+endif
 endif
 include $(BUILD_EXECUTABLE)
 
@@ -1831,7 +1855,6 @@ LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
-HIDL_INTERFACE_VERSION = 1.2
 LOCAL_SRC_FILES := \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl_manager.cpp \
@@ -1854,9 +1877,9 @@ LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.supplicant@1.0 \
     android.hardware.wifi.supplicant@1.1 \
     android.hardware.wifi.supplicant@1.2 \
+    android.hardware.wifi.supplicant@1.3 \
     libbase \
     libhidlbase \
-    libhidltransport \
     libutils \
     liblog \
     libssl

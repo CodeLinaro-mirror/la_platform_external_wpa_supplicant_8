@@ -54,23 +54,33 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 	bss->logger_syslog = (unsigned int) -1;
 	bss->logger_stdout = (unsigned int) -1;
 
+#ifdef CONFIG_WEP
 	bss->auth_algs = WPA_AUTH_ALG_OPEN | WPA_AUTH_ALG_SHARED;
 
 	bss->wep_rekeying_period = 300;
 	/* use key0 in individual key and key1 in broadcast key */
 	bss->broadcast_key_idx_min = 1;
 	bss->broadcast_key_idx_max = 2;
+#else /* CONFIG_WEP */
+	bss->auth_algs = WPA_AUTH_ALG_OPEN;
+#endif /* CONFIG_WEP */
 	bss->eap_reauth_period = 3600;
 
 	bss->wpa_group_rekey = 600;
 	bss->wpa_gmk_rekey = 86400;
+	bss->wpa_deny_ptk0_rekey = PTK0_REKEY_ALLOW_ALWAYS;
 	bss->wpa_group_update_count = 4;
 	bss->wpa_pairwise_update_count = 4;
 	bss->wpa_disable_eapol_key_retries =
 		DEFAULT_WPA_DISABLE_EAPOL_KEY_RETRIES;
 	bss->wpa_key_mgmt = WPA_KEY_MGMT_PSK;
+#ifdef CONFIG_NO_TKIP
+	bss->wpa_pairwise = WPA_CIPHER_CCMP;
+	bss->wpa_group = WPA_CIPHER_CCMP;
+#else /* CONFIG_NO_TKIP */
 	bss->wpa_pairwise = WPA_CIPHER_TKIP;
 	bss->wpa_group = WPA_CIPHER_TKIP;
+#endif /* CONFIG_NO_TKIP */
 	bss->rsn_pairwise = 0;
 
 	bss->max_num_sta = MAX_STA_COUNT;
@@ -251,6 +261,10 @@ struct hostapd_config * hostapd_config_defaults(void)
 		HE_OPERATION_RTS_THRESHOLD_OFFSET;
 	/* Set default basic MCS/NSS set to single stream MCS 0-7 */
 	conf->he_op.he_basic_mcs_nss_set = 0xfffc;
+	conf->he_op.he_bss_color_disabled = 1;
+	conf->he_op.he_bss_color_partial = 0;
+	conf->he_op.he_bss_color = os_random() % 63 + 1;
+	conf->he_op.he_twt_responder = 1;
 #endif /* CONFIG_IEEE80211AX */
 
 	/* The third octet of the country string uses an ASCII space character
@@ -301,6 +315,7 @@ static int hostapd_config_read_wpa_psk(const char *fname,
 
 	while (fgets(buf, sizeof(buf), f)) {
 		int vlan_id = 0;
+		int wps = 0;
 
 		line++;
 
@@ -331,6 +346,8 @@ static int hostapd_config_read_wpa_psk(const char *fname,
 				value = "";
 			if (!os_strcmp(name, "keyid")) {
 				keyid = value;
+			} else if (!os_strcmp(name, "wps")) {
+				wps = atoi(value);
 			} else if (!os_strcmp(name, "vlanid")) {
 				vlan_id = atoi(value);
 			} else {
@@ -348,8 +365,9 @@ static int hostapd_config_read_wpa_psk(const char *fname,
 		if (!token)
 			token = "";
 		if (hwaddr_aton(token, addr)) {
-			wpa_printf(MSG_ERROR, "Invalid MAC address '%s' on "
-				   "line %d in '%s'", token, line, fname);
+			wpa_printf(MSG_ERROR,
+				   "Invalid MAC address '%s' on line %d in '%s'",
+				   token, line, fname);
 			ret = -1;
 			break;
 		}
@@ -377,16 +395,17 @@ static int hostapd_config_read_wpa_psk(const char *fname,
 
 		ok = 0;
 		len = os_strlen(pos);
-		if (len == 64 && hexstr2bin(pos, psk->psk, PMK_LEN) == 0)
+		if (len == 2 * PMK_LEN &&
+		    hexstr2bin(pos, psk->psk, PMK_LEN) == 0)
 			ok = 1;
-		else if (len >= 8 && len < 64) {
-			pbkdf2_sha1(pos, ssid->ssid, ssid->ssid_len,
-				    4096, psk->psk, PMK_LEN);
+		else if (len >= 8 && len < 64 &&
+			 pbkdf2_sha1(pos, ssid->ssid, ssid->ssid_len,
+				     4096, psk->psk, PMK_LEN) == 0)
 			ok = 1;
-		}
 		if (!ok) {
-			wpa_printf(MSG_ERROR, "Invalid PSK '%s' on line %d in "
-				   "'%s'", pos, line, fname);
+			wpa_printf(MSG_ERROR,
+				   "Invalid PSK '%s' on line %d in '%s'",
+				   pos, line, fname);
 			os_free(psk);
 			ret = -1;
 			break;
@@ -403,6 +422,8 @@ static int hostapd_config_read_wpa_psk(const char *fname,
 				break;
 			}
 		}
+
+		psk->wps = wps;
 
 		psk->next = ssid->wpa_psk;
 		ssid->wpa_psk = psk;
@@ -625,6 +646,7 @@ void hostapd_config_free_eap_users(struct hostapd_eap_user *user)
 }
 
 
+#ifdef CONFIG_WEP
 static void hostapd_config_free_wep(struct hostapd_wep_keys *keys)
 {
 	int i;
@@ -633,6 +655,7 @@ static void hostapd_config_free_wep(struct hostapd_wep_keys *keys)
 		keys->key[i] = NULL;
 	}
 }
+#endif /* CONFIG_WEP */
 
 
 void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **l)
@@ -721,7 +744,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 
 	str_clear_free(conf->ssid.wpa_passphrase);
 	os_free(conf->ssid.wpa_psk_file);
+#ifdef CONFIG_WEP
 	hostapd_config_free_wep(&conf->ssid.wep);
+#endif /* CONFIG_WEP */
 #ifdef CONFIG_FULL_DYNAMIC_VLAN
 	os_free(conf->ssid.vlan_tagged_interface);
 #endif /* CONFIG_FULL_DYNAMIC_VLAN */
@@ -883,7 +908,10 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 #ifdef CONFIG_TESTING_OPTIONS
 	wpabuf_free(conf->own_ie_override);
 	wpabuf_free(conf->sae_commit_override);
+	wpabuf_free(conf->rsne_override_eapol);
 	wpabuf_free(conf->rsnxe_override_eapol);
+	wpabuf_free(conf->rsne_override_ft);
+	wpabuf_free(conf->rsnxe_override_ft);
 	wpabuf_free(conf->gtk_rsc_override);
 	wpabuf_free(conf->igtk_rsc_override);
 #endif /* CONFIG_TESTING_OPTIONS */
@@ -1095,6 +1123,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 		return -1;
 	}
 
+#ifdef CONFIG_WEP
 	if (bss->wpa) {
 		int wep, i;
 
@@ -1112,6 +1141,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 			return -1;
 		}
 	}
+#endif /* CONFIG_WEP */
 
 	if (full_config && bss->wpa &&
 	    bss->wpa_psk_radius != PSK_RADIUS_IGNORED &&
@@ -1159,7 +1189,6 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 	}
 #endif /* CONFIG_IEEE80211R_AP */
 
-#ifdef CONFIG_IEEE80211N
 	if (full_config && conf->ieee80211n &&
 	    conf->hw_mode == HOSTAPD_MODE_IEEE80211B) {
 		bss->disable_11n = 1;
@@ -1167,12 +1196,14 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 			   "allowed, disabling HT capabilities");
 	}
 
+#ifdef CONFIG_WEP
 	if (full_config && conf->ieee80211n &&
 	    bss->ssid.security_policy == SECURITY_STATIC_WEP) {
 		bss->disable_11n = 1;
 		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) with WEP is not "
 			   "allowed, disabling HT capabilities");
 	}
+#endif /* CONFIG_WEP */
 
 	if (full_config && conf->ieee80211n && bss->wpa &&
 	    !(bss->wpa_pairwise & WPA_CIPHER_CCMP) &&
@@ -1184,15 +1215,16 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 			   "requires CCMP/GCMP to be enabled, disabling HT "
 			   "capabilities");
 	}
-#endif /* CONFIG_IEEE80211N */
 
 #ifdef CONFIG_IEEE80211AC
+#ifdef CONFIG_WEP
 	if (full_config && conf->ieee80211ac &&
 	    bss->ssid.security_policy == SECURITY_STATIC_WEP) {
 		bss->disable_11ac = 1;
 		wpa_printf(MSG_ERROR,
 			   "VHT (IEEE 802.11ac) with WEP is not allowed, disabling VHT capabilities");
 	}
+#endif /* CONFIG_WEP */
 
 	if (full_config && conf->ieee80211ac && bss->wpa &&
 	    !(bss->wpa_pairwise & WPA_CIPHER_CCMP) &&
@@ -1212,12 +1244,14 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 		bss->wps_state = 0;
 	}
 
+#ifdef CONFIG_WEP
 	if (full_config && bss->wps_state &&
 	    bss->ssid.wep.keys_set && bss->wpa == 0) {
 		wpa_printf(MSG_INFO, "WPS: WEP configuration forced WPS to be "
 			   "disabled");
 		bss->wps_state = 0;
 	}
+#endif /* CONFIG_WEP */
 
 	if (full_config && bss->wps_state && bss->wpa &&
 	    (!(bss->wpa & 2) ||
@@ -1341,11 +1375,13 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
 void hostapd_set_security_params(struct hostapd_bss_config *bss,
 				 int full_config)
 {
+#ifdef CONFIG_WEP
 	if (bss->individual_wep_key_len == 0) {
 		/* individual keys are not use; can use key idx0 for
 		 * broadcast keys */
 		bss->broadcast_key_idx_min = 0;
 	}
+#endif /* CONFIG_WEP */
 
 	if ((bss->wpa & 2) && bss->rsn_pairwise == 0)
 		bss->rsn_pairwise = bss->wpa_pairwise;
@@ -1371,6 +1407,7 @@ void hostapd_set_security_params(struct hostapd_bss_config *bss,
 	} else if (bss->ieee802_1x) {
 		int cipher = WPA_CIPHER_NONE;
 		bss->ssid.security_policy = SECURITY_IEEE_802_1X;
+#ifdef CONFIG_WEP
 		bss->ssid.wep.default_len = bss->default_wep_key_len;
 		if (full_config && bss->default_wep_key_len) {
 			cipher = bss->default_wep_key_len >= 13 ?
@@ -1381,11 +1418,13 @@ void hostapd_set_security_params(struct hostapd_bss_config *bss,
 			else
 				cipher = WPA_CIPHER_WEP40;
 		}
+#endif /* CONFIG_WEP */
 		bss->wpa_group = cipher;
 		bss->wpa_pairwise = cipher;
 		bss->rsn_pairwise = cipher;
 		if (full_config)
 			bss->wpa_key_mgmt = WPA_KEY_MGMT_IEEE8021X_NO_WPA;
+#ifdef CONFIG_WEP
 	} else if (bss->ssid.wep.keys_set) {
 		int cipher = WPA_CIPHER_WEP40;
 		if (bss->ssid.wep.len[0] >= 13)
@@ -1396,6 +1435,7 @@ void hostapd_set_security_params(struct hostapd_bss_config *bss,
 		bss->rsn_pairwise = cipher;
 		if (full_config)
 			bss->wpa_key_mgmt = WPA_KEY_MGMT_NONE;
+#endif /* CONFIG_WEP */
 	} else if (bss->osen) {
 		bss->ssid.security_policy = SECURITY_OSEN;
 		bss->wpa_group = WPA_CIPHER_CCMP;
