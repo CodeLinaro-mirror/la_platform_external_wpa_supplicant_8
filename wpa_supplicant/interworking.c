@@ -421,6 +421,11 @@ static const u8 * nai_realm_parse_eap(struct nai_realm_eap *e, const u8 *pos,
 			case NAI_REALM_INNER_NON_EAP_MSCHAPV2:
 				wpa_printf(MSG_DEBUG, "EAP-TTLS/MSCHAPV2");
 				break;
+			default:
+				wpa_printf(MSG_DEBUG,
+					   "Unsupported EAP-TTLS inner method %u",
+					   *pos);
+				break;
 			}
 			break;
 		case NAI_REALM_EAP_AUTH_INNER_AUTH_EAP_METHOD:
@@ -1062,6 +1067,18 @@ static int interworking_connect_3gpp(struct wpa_supplicant *wpa_s,
 		if (wpa_s->conf->pcsc_pin &&
 		    wpa_config_set_quoted(ssid, "pin", wpa_s->conf->pcsc_pin)
 		    < 0)
+			goto fail;
+	}
+
+	if (cred->imsi_privacy_cert && cred->imsi_privacy_cert[0]) {
+		if (wpa_config_set_quoted(ssid, "imsi_privacy_cert",
+					  cred->imsi_privacy_cert) < 0)
+			goto fail;
+	}
+
+	if (cred->imsi_privacy_attr && cred->imsi_privacy_attr[0]) {
+		if (wpa_config_set_quoted(ssid, "imsi_privacy_attr",
+					  cred->imsi_privacy_attr) < 0)
 			goto fail;
 	}
 
