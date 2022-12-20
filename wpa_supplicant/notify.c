@@ -89,8 +89,10 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 	if (wpa_s->p2p_mgmt)
 		return;
 
+	/* skip connected, will be done in wpa_supplicant_check_ip */
+	if (wpa_s->wpa_state != WPA_COMPLETED)
 	/* notify the new DBus API */
-	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_STATE);
+		wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_STATE);
 
 #ifdef CONFIG_FST
 	if (wpa_s->fst && !is_zero_ether_addr(wpa_s->bssid)) {

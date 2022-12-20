@@ -5265,6 +5265,7 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(pasn_corrupt_mic, 0, 1), 0 },
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN */
+	{ INT_RANGE(delay_sta_connect_dbus, 0, 1), 0},
 };
 
 #undef FUNC

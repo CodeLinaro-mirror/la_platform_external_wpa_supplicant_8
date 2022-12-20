@@ -1699,6 +1699,15 @@ struct wpa_config {
 
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN*/
+
+	/*
+	 * Notify the connected event with dbus interface only after got IP
+	 * address.
+	 *
+	 * 0 = Disable this feature, sta connected event notified normally
+	 * 1 = Enable this feature, delay the sta connected event
+	 */
+	int delay_sta_connect_dbus;
 };
 
 

@@ -69,6 +69,8 @@
 #include "ap/hostapd.h"
 #endif /* CONFIG_MESH */
 
+#include "dbus/dbus_new.h"
+
 const char *const wpa_supplicant_version =
 "wpa_supplicant v" VERSION_STR "\n"
 "Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi> and contributors";
@@ -906,6 +908,28 @@ void wpa_supplicant_reinit_autoscan(struct wpa_supplicant *wpa_s)
 }
 
 
+static void wpa_supplicant_check_ip(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	int ret = 0;
+	char tmp[30];
+
+	wpa_printf(MSG_DEBUG, "waiting for ip address...state=%d", wpa_s->wpa_state);
+	ret = l2_packet_get_ip_addr(wpa_s->l2, tmp, sizeof(tmp));
+	if (ret >= 0) {
+		wpa_printf(MSG_DEBUG, "got ip address=%s", tmp);
+		/* notify the new DBus API */
+		if (wpa_s->wpa_state == WPA_COMPLETED)
+			wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_STATE);
+
+		eloop_cancel_timeout(wpa_supplicant_check_ip, wpa_s, NULL);
+		return;
+	}
+	if (wpa_s->wpa_state == WPA_COMPLETED)
+		eloop_register_timeout(0, 500*1000, wpa_supplicant_check_ip, wpa_s, NULL);
+}
+
+
 /**
  * wpa_supplicant_set_state - Set current connection state
  * @wpa_s: Pointer to wpa_supplicant data
@@ -1045,13 +1069,20 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 	if (state > WPA_SCANNING)
 		wpa_supplicant_stop_autoscan(wpa_s);
 
-	if (state == WPA_DISCONNECTED || state == WPA_INACTIVE)
+	if (state == WPA_DISCONNECTED || state == WPA_INACTIVE) {
 		wpa_supplicant_start_autoscan(wpa_s);
+		if (wpa_s->conf->delay_sta_connect_dbus)
+			eloop_cancel_timeout(wpa_supplicant_check_ip, wpa_s, NULL);
+	}
 
 	if (old_state >= WPA_ASSOCIATED && wpa_s->wpa_state < WPA_ASSOCIATED)
 		wmm_ac_notify_disassoc(wpa_s);
 
 	if (wpa_s->wpa_state != old_state) {
+
+		if (wpa_s->conf->delay_sta_connect_dbus && wpa_s->wpa_state == WPA_COMPLETED)
+			eloop_register_timeout(0, 500*1000, wpa_supplicant_check_ip, wpa_s, NULL);
+
 		wpas_notify_state_changed(wpa_s, wpa_s->wpa_state, old_state);
 
 		/*
