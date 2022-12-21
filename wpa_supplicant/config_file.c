@@ -213,8 +213,22 @@ static struct wpa_ssid * wpa_config_read_network(FILE *f, int *line, int id)
 			}
 		}
 
-		if (wpa_config_set(ssid, pos, pos2, *line) < 0)
+		if (wpa_config_set(ssid, pos, pos2, *line) < 0) {
+#ifndef CONFIG_WEP
+			if (os_strcmp(pos, "wep_key0") == 0 ||
+			    os_strcmp(pos, "wep_key1") == 0 ||
+			    os_strcmp(pos, "wep_key2") == 0 ||
+			    os_strcmp(pos, "wep_key3") == 0 ||
+			    os_strcmp(pos, "wep_tx_keyidx") == 0) {
+				wpa_printf(MSG_ERROR,
+					   "Line %d: unsupported WEP parameter",
+					   *line);
+				ssid->disabled = 1;
+				continue;
+			}
+#endif /* CONFIG_WEP */
 			errors++;
+		}
 	}
 
 	if (!end) {
@@ -653,6 +667,7 @@ static void write_eap(FILE *f, struct wpa_ssid *ssid)
 #endif /* IEEE8021X_EAPOL */
 
 
+#ifdef CONFIG_WEP
 static void write_wep_key(FILE *f, int idx, struct wpa_ssid *ssid)
 {
 	char field[20], *value;
@@ -667,6 +682,7 @@ static void write_wep_key(FILE *f, int idx, struct wpa_ssid *ssid)
 		os_free(value);
 	}
 }
+#endif /* CONFIG_WEP */
 
 
 #ifdef CONFIG_P2P
@@ -741,8 +757,6 @@ static void write_mka_ckn(FILE *f, struct wpa_ssid *ssid)
 
 static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 {
-	int i;
-
 #define STR(t) write_str(f, #t, ssid)
 #define INT(t) write_int(f, #t, ssid->t, 0)
 #define INTe(t, m) write_int(f, #t, ssid->eap.m, 0)
@@ -759,6 +773,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(mem_only_psk);
 	STR(sae_password);
 	STR(sae_password_id);
+	write_int(f, "sae_pwe", ssid->sae_pwe, DEFAULT_SAE_PWE);
 	write_proto(f, ssid);
 	write_key_mgmt(f, ssid);
 	INT_DEF(bg_scan_period, DEFAULT_BG_SCAN_PERIOD);
@@ -831,9 +846,15 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(openssl_ciphers);
 	INTe(erp, erp);
 #endif /* IEEE8021X_EAPOL */
-	for (i = 0; i < 4; i++)
-		write_wep_key(f, i, ssid);
-	INT(wep_tx_keyidx);
+#ifdef CONFIG_WEP
+	{
+		int i;
+
+		for (i = 0; i < 4; i++)
+			write_wep_key(f, i, ssid);
+		INT(wep_tx_keyidx);
+	}
+#endif /* CONFIG_WEP */
 	INT(priority);
 #ifdef IEEE8021X_EAPOL
 	INT_DEF(eap_workaround, DEFAULT_EAP_WORKAROUND);
@@ -900,6 +921,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT_DEF(mesh_rssi_threshold, DEFAULT_MESH_RSSI_THRESHOLD);
 #endif /* CONFIG_MESH */
 	INT(wpa_ptk_rekey);
+	INT(wpa_deny_ptk0_rekey);
 	INT(group_rekey);
 	INT(ignore_broadcast_ssid);
 #ifdef CONFIG_DPP
@@ -907,12 +929,15 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(dpp_netaccesskey);
 	INT(dpp_netaccesskey_expiry);
 	STR(dpp_csign);
+	INT(dpp_pfs);
 #endif /* CONFIG_DPP */
 	INT(owe_group);
 	INT(owe_only);
 	INT(owe_ptk_workaround);
 	INT(multi_ap_backhaul_sta);
 	INT(ft_eap_pmksa_caching);
+	INT(beacon_prot);
+	INT(transition_disable);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
 	INT_DEF(disable_ht40, DEFAULT_DISABLE_HT40);
@@ -947,6 +972,9 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT_DEF(vht_tx_mcs_nss_7, -1);
 	INT_DEF(vht_tx_mcs_nss_8, -1);
 #endif /* CONFIG_VHT_OVERRIDES */
+#ifdef CONFIG_HE_OVERRIDES
+	INT(disable_he);
+#endif /* CONFIG_HE_OVERRIDES */
 
 #undef STR
 #undef INT
@@ -1305,6 +1333,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_go_freq_change_policy != DEFAULT_P2P_GO_FREQ_MOVE)
 		fprintf(f, "p2p_go_freq_change_policy=%u\n",
 			config->p2p_go_freq_change_policy);
+
+	if (config->p2p_6ghz_disable)
+		fprintf(f, "p2p_6ghz_disable=%d\n", config->p2p_6ghz_disable);
+
 	if (WPA_GET_BE32(config->ip_addr_go))
 		fprintf(f, "ip_addr_go=%u.%u.%u.%u\n",
 			config->ip_addr_go[0], config->ip_addr_go[1],
@@ -1572,12 +1604,17 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_interface_random_mac_addr)
 		fprintf(f, "p2p_interface_random_mac_addr=%d\n",
 			config->p2p_interface_random_mac_addr);
-	if (config->disable_btm)
-		fprintf(f, "disable_btm=1\n");
 	if (config->bss_no_flush_when_down)
 		fprintf(f, "bss_no_flush_when_down=%d\n",
 			config->bss_no_flush_when_down);
-
+	if (config->disable_btm)
+		fprintf(f, "disable_btm=1\n");
+	if (config->extended_key_id != DEFAULT_EXTENDED_KEY_ID)
+		fprintf(f, "extended_key_id=%d\n",
+			config->extended_key_id);
+	if (config->wowlan_disconnect_on_deinit)
+		fprintf(f, "wowlan_disconnect_on_deinit=%d\n",
+			config->wowlan_disconnect_on_deinit);
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */
@@ -1594,9 +1631,16 @@ int wpa_config_write(const char *name, struct wpa_config *config)
 #endif /* CONFIG_NO_CONFIG_BLOBS */
 	int ret = 0;
 	const char *orig_name = name;
-	int tmp_len = os_strlen(name) + 5; /* allow space for .tmp suffix */
-	char *tmp_name = os_malloc(tmp_len);
+	int tmp_len;
+	char *tmp_name;
 
+	if (!name) {
+		wpa_printf(MSG_ERROR, "No configuration file for writing");
+		return -1;
+	}
+
+	tmp_len = os_strlen(name) + 5; /* allow space for .tmp suffix */
+	tmp_name = os_malloc(tmp_len);
 	if (tmp_name) {
 		os_snprintf(tmp_name, tmp_len, "%s.tmp", name);
 		name = tmp_name;
@@ -1624,8 +1668,11 @@ int wpa_config_write(const char *name, struct wpa_config *config)
 	for (ssid = config->ssid; ssid; ssid = ssid->next) {
 		if (ssid->key_mgmt == WPA_KEY_MGMT_WPS || ssid->temporary)
 			continue; /* do not save temporary networks */
-		if (wpa_key_mgmt_wpa_psk(ssid->key_mgmt) && !ssid->psk_set &&
-		    !ssid->passphrase)
+		if (wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt) &&
+		    !ssid->psk_set && !ssid->passphrase)
+			continue; /* do not save invalid network */
+		if (wpa_key_mgmt_sae(ssid->key_mgmt) &&
+		    !ssid->passphrase && !ssid->sae_password)
 			continue; /* do not save invalid network */
 		fprintf(f, "\nnetwork={\n");
 		wpa_config_write_network(f, ssid);

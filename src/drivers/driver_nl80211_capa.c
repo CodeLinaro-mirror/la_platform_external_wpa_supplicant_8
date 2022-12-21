@@ -616,10 +616,29 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_CONTROL_PORT_OVER_NL80211))
 		capa->flags |= WPA_DRIVER_FLAGS_CONTROL_PORT;
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_CONTROL_PORT_NO_PREAUTH))
+		capa->flags2 |= WPA_DRIVER_FLAGS2_CONTROL_PORT_RX;
 
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_VLAN_OFFLOAD))
 		capa->flags |= WPA_DRIVER_FLAGS_VLAN_OFFLOAD;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_CAN_REPLACE_PTK0))
+		capa->flags |= WPA_DRIVER_FLAGS_SAFE_PTK0_REKEYS;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_BEACON_PROTECTION))
+		capa->flags |= WPA_DRIVER_FLAGS_BEACON_PROTECTION;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_EXT_KEY_ID))
+		capa->flags |= WPA_DRIVER_FLAGS_EXTENDED_KEY_ID;
+
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_MULTICAST_REGISTRATIONS))
+		info->drv->multicast_registrations = 1;
 }
 
 
@@ -665,12 +684,6 @@ static void wiphy_info_feature_flags(struct wiphy_info_data *info,
 
 	if (flags & NL80211_FEATURE_SCHED_SCAN_RANDOM_MAC_ADDR)
 		info->mac_addr_rand_sched_scan_supported = 1;
-
-	if (flags & NL80211_FEATURE_STATIC_SMPS)
-		capa->smps_modes |= WPA_DRIVER_SMPS_MODE_STATIC;
-
-	if (flags & NL80211_FEATURE_DYNAMIC_SMPS)
-		capa->smps_modes |= WPA_DRIVER_SMPS_MODE_DYNAMIC;
 
 	if (flags & NL80211_FEATURE_SUPPORTS_WMM_ADMISSION)
 		info->wmm_ac_supported = 1;
@@ -976,6 +989,9 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 				case QCA_NL80211_VENDOR_SUBCMD_ADD_STA_NODE:
 					drv->add_sta_node_vendor_cmd_avail = 1;
 					break;
+				case QCA_NL80211_VENDOR_SUBCMD_GET_STA_INFO:
+					drv->get_sta_info_vendor_cmd_avail = 1;
+					break;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 				}
 			}
@@ -1150,6 +1166,7 @@ static void qca_nl80211_check_dfs_capa(struct wpa_driver_nl80211_data *drv)
 		drv->capa.flags |= WPA_DRIVER_FLAGS_DFS_OFFLOAD;
 }
 
+
 struct features_info {
 	u8 *flags;
 	size_t flags_len;
@@ -1252,6 +1269,10 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 		drv->capa.flags |= WPA_DRIVER_FLAGS_OCE_AP;
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_OCE_STA_CFON, &info))
 		drv->capa.flags |= WPA_DRIVER_FLAGS_OCE_STA_CFON;
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_ADAPTIVE_11R, &info)) {
+		wpa_printf(MSG_INFO, "Driver support of Enabled Adaptive 11r");
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS_ADAPTIVE_11R;
+	}
 	os_free(info.flags);
 }
 
@@ -1393,6 +1414,12 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 		drv->capa.flags &= ~WPA_DRIVER_FLAGS_OFFCHANNEL_SIMULTANEOUS;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: key_mgmt=0x%x enc=0x%x auth=0x%x flags=0x%llx rrm_flags=0x%x probe_resp_offloads=0x%x max_stations=%u max_remain_on_chan=%u max_scan_ssids=%d",
+		   drv->capa.key_mgmt, drv->capa.enc, drv->capa.auth,
+		   (unsigned long long) drv->capa.flags, drv->capa.rrm_flags,
+		   drv->capa.probe_resp_offloads, drv->capa.max_stations,
+		   drv->capa.max_remain_on_chan, drv->capa.max_scan_ssids);
 	return 0;
 }
 
@@ -1856,19 +1883,6 @@ static int phy_info_band(struct phy_info_arg *phy_info, struct nlattr *nl_band)
 	if (ret != NL_OK) {
 		phy_info->failed = 1;
 		return ret;
-	}
-
-	if (tb_band[NL80211_BAND_ATTR_IFTYPE_DATA]) {
-		struct nlattr *nl_iftype;
-		int rem_band;
-
-		nla_for_each_nested(nl_iftype,
-				    tb_band[NL80211_BAND_ATTR_IFTYPE_DATA],
-				    rem_band) {
-			ret = phy_info_iftype(mode, nl_iftype);
-			if (ret != NL_OK)
-				return ret;
-		}
 	}
 
 	if (tb_band[NL80211_BAND_ATTR_IFTYPE_DATA]) {

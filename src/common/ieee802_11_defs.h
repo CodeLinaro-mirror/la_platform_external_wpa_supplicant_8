@@ -458,7 +458,7 @@
 #define WLAN_EID_EXT_FILS_HLP_CONTAINER 5
 #define WLAN_EID_EXT_FILS_IP_ADDR_ASSIGN 6
 #define WLAN_EID_EXT_KEY_DELIVERY 7
-#define WLAN_EID_EXT_FILS_WRAPPED_DATA 8
+#define WLAN_EID_EXT_WRAPPED_DATA 8
 #define WLAN_EID_EXT_FTM_SYNC_INFO 9
 #define WLAN_EID_EXT_EXTENDED_REQUEST 10
 #define WLAN_EID_EXT_ESTIMATED_SERVICE_PARAMS 11
@@ -473,8 +473,11 @@
 #define WLAN_EID_EXT_SPATIAL_REUSE 39
 #define WLAN_EID_EXT_OCV_OCI 54
 #define WLAN_EID_EXT_SHORT_SSID_LIST 58
+#define WLAN_EID_EXT_HE_6GHZ_BAND_CAP 59
 #define WLAN_EID_EXT_EDMG_CAPABILITIES 61
 #define WLAN_EID_EXT_EDMG_OPERATION 62
+#define WLAN_EID_EXT_MSCS_DESCRIPTOR 88
+#define WLAN_EID_EXT_TCLAS_MASK 89
 #define WLAN_EID_EXT_REJECTED_GROUPS 92
 #define WLAN_EID_EXT_ANTI_CLOGGING_TOKEN 93
 
@@ -558,6 +561,8 @@
 #define WLAN_EXT_CAPAB_COMPLETE_NON_TX_BSSID_PROFILE 80
 #define WLAN_EXT_CAPAB_SAE_PW_ID 81
 #define WLAN_EXT_CAPAB_SAE_PW_ID_EXCLUSIVELY 82
+#define WLAN_EXT_CAPAB_BEACON_PROTECTION 84
+#define WLAN_EXT_CAPAB_MSCS 85
 
 /* Extended RSN Capabilities */
 /* bits 0-3: Field length (n-1) */
@@ -1104,6 +1109,12 @@ struct ieee80211_vht_operation {
 	le16 vht_basic_mcs_set;
 } STRUCT_PACKED;
 
+struct ieee80211_vht_operation_info {
+	u8 vht_op_info_chwidth;
+	u8 vht_op_info_chan_center_freq_seg0_idx;
+	u8 vht_op_info_chan_center_freq_seg1_idx;
+} STRUCT_PACKED;
+
 struct ieee80211_ampe_ie {
 	u8 selected_pairwise_suite[4];
 	u8 local_nonce[32];
@@ -1315,6 +1326,12 @@ struct ieee80211_ampe_ie {
 #define OWE_IE_VENDOR_TYPE 0x506f9a1c
 #define OWE_OUI_TYPE 28
 #define MULTI_AP_OUI_TYPE 0x1B
+#define DPP_CC_IE_VENDOR_TYPE 0x506f9a1e
+#define DPP_CC_OUI_TYPE 0x1e
+#define QM_IE_VENDOR_TYPE 0x506f9a22
+#define QM_IE_OUI_TYPE 0x22
+#define WFA_CAPA_IE_VENDOR_TYPE 0x506f9a23
+#define WFA_CAPA_OUI_TYPE 0x23
 
 #define ADAPTIVE_11R_IE_VENDOR_TYPE 0x0040962c
 
@@ -1460,7 +1477,7 @@ enum wmm_ac {
 #define HS20_PPS_MO_ID_PRESENT 0x02
 #define HS20_ANQP_DOMAIN_ID_PRESENT 0x04
 #ifndef HS20_VERSION
-#define HS20_VERSION 0x10 /* Release 2 */
+#define HS20_VERSION 0x20 /* Release 3 */
 #endif /* HS20_VERSION */
 
 /* WNM-Notification WFA vendors specific subtypes */
@@ -1614,6 +1631,7 @@ enum p2p_attr_id {
 #define P2P_DEV_CAPAB_INFRA_MANAGED BIT(3)
 #define P2P_DEV_CAPAB_DEVICE_LIMIT BIT(4)
 #define P2P_DEV_CAPAB_INVITATION_PROCEDURE BIT(5)
+#define P2P_DEV_CAPAB_6GHZ_BAND_CAPABLE BIT(6)
 
 /* P2P Capability - Group Capability bitmap */
 #define P2P_GROUP_CAPAB_GROUP_OWNER BIT(0)
@@ -1876,7 +1894,15 @@ enum wnm_sleep_mode_response_status {
 /* WNM-Sleep Mode subelement IDs */
 enum wnm_sleep_mode_subelement_id {
 	WNM_SLEEP_SUBELEM_GTK = 0,
-	WNM_SLEEP_SUBELEM_IGTK = 1
+	WNM_SLEEP_SUBELEM_IGTK = 1,
+	WNM_SLEEP_SUBELEM_BIGTK = 2,
+};
+
+/* WNM notification type (IEEE P802.11-REVmd/D3.0, Table 9-430) */
+enum wnm_notification_Type {
+	WNM_NOTIF_TYPE_FIRMWARE_UPDATE = 0,
+	WNM_NOTIF_TYPE_BEACON_PROTECTION_FAILURE = 2,
+	WNM_NOTIF_TYPE_VENDOR_SPECIFIC = 221,
 };
 
 /* Channel Switch modes (802.11h) */
@@ -2092,7 +2118,7 @@ enum phy_type {
 	PHY_TYPE_VHT = 9,
 };
 
-/* IEEE P802.11-REVmc/D5.0, 9.4.2.37 - Neighbor Report element */
+/* IEEE P802.11-REVmd/D3.0, 9.4.2.36 - Neighbor Report element */
 /* BSSID Information Field */
 #define NEI_REP_BSSID_INFO_AP_NOT_REACH BIT(0)
 #define NEI_REP_BSSID_INFO_AP_UNKNOWN_REACH BIT(1)
@@ -2109,6 +2135,7 @@ enum phy_type {
 #define NEI_REP_BSSID_INFO_HT BIT(11)
 #define NEI_REP_BSSID_INFO_VHT BIT(12)
 #define NEI_REP_BSSID_INFO_FTM BIT(13)
+#define NEI_REP_BSSID_INFO_HE BIT(14)
 
 /*
  * IEEE P802.11-REVmc/D5.0 Table 9-152 - HT/VHT Operation Information
@@ -2126,20 +2153,59 @@ enum nr_chan_width {
 struct ieee80211_he_capabilities {
 	u8 he_mac_capab_info[6];
 	u8 he_phy_capab_info[11];
-	/* Followed by 4, 8, or 12 octets of Supported HE-MCS And NSS Set field
+	struct {
+		le16 rx_map;
+		le16 tx_map;
+	} he_basic_supported_mcs_set;
+	/* Followed by 0, 4, or 8 octets of optional supported HE-MCS And NSS Set field
 	* and optional variable length PPE Thresholds field. */
-	u8 optional[37];
+	u8 optional[33];
 } STRUCT_PACKED;
 
 struct ieee80211_he_operation {
 	le32 he_oper_params; /* HE Operation Parameters[3] and
 			      * BSS Color Information[1] */
 	le16 he_mcs_nss_set;
-	u8 vht_op_info_chwidth;
-	u8 vht_op_info_chan_center_freq_seg0_idx;
-	u8 vht_op_info_chan_center_freq_seg1_idx;
-	/* Followed by conditional MaxBSSID Indicator subfield (u8) */
+	/* Followed by conditional VHT Operation Information (3 octets),
+	 * Max Co-Hosted BSSID Indicator subfield (1 octet), and/or 6 GHz
+	 * Operation Information subfield (5 octets). */
 } STRUCT_PACKED;
+#define IEEE80211_HE_CAPAB_MIN_LEN (6 + 11)
+
+/* IEEE P802.11ax/D6.0, Figure 9-787k - 6 GHz Operation Information field */
+struct ieee80211_he_6ghz_oper_info {
+	u8 primary_chan;
+	u8 control;
+	u8 chan_center_freq_seg0;
+	u8 chan_center_freq_seg1;
+	u8 min_rate;
+} STRUCT_PACKED;
+
+#define HE_6GHZ_OPER_INFO_CTRL_CHAN_WIDTH_MASK	(BIT(0) | BIT(1))
+#define HE_6GHZ_OPER_INFO_CTRL_DUP_BEACON	BIT(2)
+
+/* IEEE P802.11ax/D6.0, 9.4.2.261 HE 6 GHz Band Capabilities element */
+struct ieee80211_he_6ghz_band_cap {
+	 /* Minimum MPDU Start Spacing B0..B2
+	  * Maximum A-MPDU Length Exponent B3..B5
+	  * Maximum MPDU Length B6..B7 */
+	u8 a_mpdu_params; /* B0..B7 */
+	u8 info; /* B8..B15 */
+} STRUCT_PACKED;
+
+#define HE_6GHZ_BAND_CAP_MIN_MPDU_START_SPACE_MASK		0x7
+#define HE_6GHZ_BAND_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK	0x7
+#define HE_6GHZ_BAND_CAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT	3
+#define HE_6GHZ_BAND_CAP_MAX_MPDU_LENGTH_MASK			0x3
+#define HE_6GHZ_BAND_CAP_MAX_MPDU_LENGTH_SHIFT			6
+
+#define HE_6GHZ_BAND_CAP_SMPS_MASK			  (BIT(1) | BIT(2))
+#define HE_6GHZ_BAND_CAP_SMPS_STATIC			  0
+#define HE_6GHZ_BAND_CAP_SMPS_DYNAMIC			  BIT(1)
+#define HE_6GHZ_BAND_CAP_SMPS_DISABLED			  (BIT(1) | BIT(2))
+#define HE_6GHZ_BAND_CAP_RD_RESPONDER			  BIT(3)
+#define HE_6GHZ_BAND_CAP_RX_ANTENNA_PATTERN		  BIT(4)
+#define HE_6GHZ_BAND_CAP_TX_ANTENNA_PATTERN		  BIT(5)
 
 /*
  * IEEE P802.11ax/D4.0, 9.4.2.246 Spatial Reuse Parameter Set element
@@ -2156,8 +2222,18 @@ struct ieee80211_spatial_reuse {
 	u8 params[19];
 } STRUCT_PACKED;
 
-/* HE Capabilities Information defines */
+struct ieee80211_6ghz_operation_info {
+	u8 primary_chan;
+	u8 control;
+	u8 chan_center_freq_seg0_idx;
+	u8 chan_center_freq_seg1_idx;
+	u8 minimum_rate;
+} STRUCT_PACKED;
 
+#define HE_CAPABILITIES_IE_MIN_LEN 21
+
+/* HE Capabilities Information defines */
+#define HE_MACCAP_TWT_RESPONDER			((u8) BIT(2))
 #define HE_PHYCAP_CHANNEL_WIDTH_SET_IDX		0
 #define HE_PHYCAP_CHANNEL_WIDTH_MASK		((u8) (BIT(1) | BIT(2) | \
 						      BIT(3) | BIT(4)))
@@ -2200,9 +2276,15 @@ struct ieee80211_spatial_reuse {
 #define HE_OPERATION_BSS_COLOR_MASK		((u32) (BIT(24) | BIT(25) | \
 							BIT(26) | BIT(27) | \
 							BIT(28) | BIT(29)))
-#define HE_OPERATION_PARTIAL_BSS_COLOR		((u32) BIT(30))
+#define HE_OPERATION_BSS_COLOR_PARTIAL		((u32) BIT(30))
 #define HE_OPERATION_BSS_COLOR_DISABLED		((u32) BIT(31))
 #define HE_OPERATION_BSS_COLOR_OFFSET		24
+
+/* HE operation fields length*/
+#define HE_OPERATION_IE_MIN_LEN 6
+#define HE_OPERATION_VHT_OPER_INFO_LEN 3
+#define HE_OPERATION_COHOSTED_BSSID_INDICATOR_LEN 1
+#define HE_OPERATION_6GHZ_OPER_INFO_LEN 5
 
 /* Spatial Reuse defines */
 #define SPATIAL_REUSE_SRP_DISALLOWED		BIT(0)
@@ -2210,6 +2292,10 @@ struct ieee80211_spatial_reuse {
 #define SPATIAL_REUSE_NON_SRG_OFFSET_PRESENT	BIT(2)
 #define SPATIAL_REUSE_SRG_INFORMATION_PRESENT	BIT(3)
 #define SPATIAL_REUSE_HESIGA_SR_VAL15_ALLOWED	BIT(4)
+
+/* 6GHz operation control field defines*/
+#define SIX_GHZ_CONTROL_CHANNEL_WIDTH_MASK 	((u8) BIT(0) | BIT(1))
+#define SIX_GHZ_CONTROL_DUPLICATE_BEACON 	BIT(2)
 
 struct ieee80211_he_mu_edca_parameter_set {
 	u8 he_qos_info;
@@ -2279,5 +2365,57 @@ enum edmg_bw_config {
 
 /* DPP Public Action frame identifiers - OUI_WFA */
 #define DPP_OUI_TYPE 0x1A
+
+/* Robust AV streaming Action field values */
+enum robust_av_streaming_action {
+	ROBUST_AV_SCS_REQ = 0,
+	ROBUST_AV_SCS_RESP = 1,
+	ROBUST_AV_GROUP_MEMBERSHIP_REQ = 2,
+	ROBUST_AV_GROUP_MEMBERSHIP_RESP = 3,
+	ROBUST_AV_MSCS_REQ = 4,
+	ROBUST_AV_MSCS_RESP = 5,
+};
+
+enum scs_request_type {
+	SCS_REQ_ADD = 0,
+	SCS_REQ_REMOVE = 1,
+	SCS_REQ_CHANGE = 2,
+};
+
+/* Optional subelement IDs for MSCS Descriptor element */
+enum mscs_description_subelem {
+	MCSC_SUBELEM_STATUS = 1,
+};
+
+/* Protected Vendor-specific QoS Management Action frame identifiers - WFA */
+#define QM_ACTION_VENDOR_TYPE 0x506f9a1a
+#define QM_ACTION_OUI_TYPE 0x1a
+
+/* QoS Management Action frame OUI subtypes */
+#define QM_DSCP_POLICY_QUERY 0
+#define QM_DSCP_POLICY_REQ 1
+#define QM_DSCP_POLICY_RESP 2
+
+/* QoS Management attributes */
+enum qm_attr_id {
+	QM_ATTR_PORT_RANGE = 1,
+	QM_ATTR_DSCP_POLICY = 2,
+	QM_ATTR_TCLAS = 3,
+	QM_ATTR_DOMAIN_NAME = 4,
+};
+
+/* DSCP Policy attribute - Request Type */
+enum dscp_policy_request_type {
+	DSCP_POLICY_REQ_ADD = 0, /* ADD/UPDATE */
+	DSCP_POLICY_REQ_REMOVE = 1,
+};
+
+/* Request/Response Control field of DSCP Policy Request/Response frame */
+#define DSCP_POLICY_CTRL_MORE	BIT(0)
+#define DSCP_POLICY_CTRL_RESET	BIT(1)
+
+/* Wi-Fi Alliance Capabilities element - Capabilities field */
+#define WFA_CAPA_QM_DSCP_POLICY BIT(0)
+#define WFA_CAPA_QM_UNSOLIC_DSCP BIT(1)
 
 #endif /* IEEE802_11_DEFS_H */

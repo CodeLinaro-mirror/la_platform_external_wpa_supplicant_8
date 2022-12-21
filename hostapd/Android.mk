@@ -16,15 +16,16 @@ ifeq ($(WPA_BUILD_HOSTAPD),true)
 
 include $(LOCAL_PATH)/android.config
 
-ifeq ($(call is-board-platform-in-list,msm8909 msm8937 msm8953 msm8996 msm8998 sdm660 sdm710 sdm845 $(MSMSTEPPE) $(TRINKET) msmnile lito atoll bengal),true)
-  $(warning "Disabling WPA3 support in hostapd for $(TARGET_BOARD_PLATFORM)")
-  CONFIG_OWE=n
-  CONFIG_DPP=n
-  CONFIG_SUITEB192=n
+ifeq ($(TARGET_BOARD_PLATFORM), lahaina)
+  CONFIG_SAE_LOOP_AND_H2E=y
 endif
 
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
+
+ifeq ($(CONFIG_SAE_LOOP_AND_H2E),y)
+L_CFLAGS += -DCONFIG_SAE_LOOP_AND_H2E
+endif
 
 L_CFLAGS += -DVERSION_STR_POSTFIX=\"-$(PLATFORM_VERSION)\"
 
@@ -50,6 +51,10 @@ L_CFLAGS += -DANDROID_P2P
 
 ifeq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 L_CFLAGS += -DANDROID_LIB_STUB
+endif
+
+ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB_EVENT),)
+L_CFLAGS += -DANDROID_LIB_EVENT
 endif
 
 # Use Android specific directory for control interface sockets
@@ -285,6 +290,10 @@ NEED_SHA384=y
 NEED_SHA512=y
 endif
 
+ifdef CONFIG_WAPI_INTERFACE
+L_CFLAGS += -DCONFIG_WAPI_INTERFACE
+endif
+
 ifdef CONFIG_FILS
 L_CFLAGS += -DCONFIG_FILS
 OBJS += src/ap/fils_hlp.c
@@ -299,10 +308,6 @@ endif
 ifdef CONFIG_WNM
 L_CFLAGS += -DCONFIG_WNM -DCONFIG_WNM_AP
 OBJS += src/ap/wnm_ap.c
-endif
-
-ifdef CONFIG_IEEE80211N
-L_CFLAGS += -DCONFIG_IEEE80211N
 endif
 
 ifdef CONFIG_IEEE80211AC
@@ -331,6 +336,14 @@ endif
 ifndef CONFIG_NO_CTRL_IFACE
 OBJS += src/fst/fst_ctrl_iface.c
 endif
+endif
+
+ifdef CONFIG_WEP
+L_CFLAGS += -DCONFIG_WEP
+endif
+
+ifdef CONFIG_NO_TKIP
+L_CFLAGS += -DCONFIG_NO_TKIP
 endif
 
 
@@ -552,6 +565,12 @@ endif
 ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
+OBJS += src/common/dpp_auth.c
+OBJS += src/common/dpp_backup.c
+OBJS += src/common/dpp_crypto.c
+OBJS += src/common/dpp_pkex.c
+OBJS += src/common/dpp_reconfig.c
+OBJS += src/common/dpp_tcp.c
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AES_SIV=y
@@ -1019,9 +1038,7 @@ OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
 L_CFLAGS += -DNEED_AP_MLME
 endif
-ifdef CONFIG_IEEE80211N
 OBJS += src/ap/ieee802_11_ht.c
-endif
 
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
@@ -1133,6 +1150,7 @@ LOCAL_MODULE := hostapd
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_VINTF_FRAGMENTS := android.hardware.wifi.hostapd.xml
 ifdef CONFIG_DRIVER_CUSTOM
 LOCAL_STATIC_LIBRARIES := libCustomWifi
 endif
@@ -1150,13 +1168,13 @@ endif
 ifeq ($(HOSTAPD_USE_HIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.0
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.1
-LOCAL_SHARED_LIBRARIES += libbase libhidlbase libhidltransport libhwbinder libutils
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.2
+LOCAL_SHARED_LIBRARIES += libbase libhidlbase libutils
 LOCAL_STATIC_LIBRARIES += libhostapd_hidl
 ifdef HOSTAPD_USE_VENDOR_HIDL
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.0 \
     vendor.qti.hardware.wifi.hostapd@1.1 \
-    vendor.qti.hardware.wifi.hostapd@1.2 \
-    libqsap_sdk
+    vendor.qti.hardware.wifi.hostapd@1.2
 endif
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1198,17 +1216,16 @@ LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
-HIDL_INTERFACE_VERSION = 1.1
+HIDL_INTERFACE_VERSION = 1.2
 LOCAL_SRC_FILES := \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/hostapd.cpp
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.hostapd@1.0 \
     android.hardware.wifi.hostapd@1.1 \
+    android.hardware.wifi.hostapd@1.2 \
     libbase \
     libhidlbase \
-    libhidltransport \
-    libhwbinder \
     libutils \
     liblog
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
@@ -1223,14 +1240,11 @@ LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/sdk/softap/include
 endif
 
 LOCAL_SRC_FILES += \
-    hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/qsap_handler.cpp \
     hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/hostapd_vendor.cpp
 LOCAL_SHARED_LIBRARIES += \
     vendor.qti.hardware.wifi.hostapd@1.0 \
     vendor.qti.hardware.wifi.hostapd@1.1 \
-    vendor.qti.hardware.wifi.hostapd@1.2 \
-    libqsap_sdk
-LOCAL_HEADER_LIBRARIES := libqsap_headers
+    vendor.qti.hardware.wifi.hostapd@1.2
 endif
 
 include $(BUILD_STATIC_LIBRARY)
