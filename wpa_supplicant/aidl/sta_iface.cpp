@@ -452,9 +452,9 @@ void setUsdDevIks(struct wpa_supplicant *wpa_s, const UsdBaseConfig& base) {
 				wpas_pr_set_dev_ik(wpa_s, peerKey->data.data(),
 						   nullptr, nullptr, 0, false /* peer */);
 			} else {
-				wpa_printf(MSG_WARNING,
-					   "USD: peerDevIk size mismatch (%zu != %d), skipping",
-					   peerKey->data.size(), DEVICE_IDENTITY_KEY_LEN);
+			wpa_printf(MSG_WARNING,
+				   "USD: peerDevIk size mismatch (%zu != %d), skipping",
+				   peerKey->data.size(), DEVICE_IDENTITY_KEY_LEN);
 			}
 		}
 	}
@@ -2847,6 +2847,7 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 		setUsdDevIks(wpa_s, usdPublishConfig.usdBaseConfig);
 	}
 
+
 	int publishId = wpas_nan_publish(
 		wpa_s, usdPublishConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
@@ -2890,6 +2891,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	if (nanSubscribeParams.proximity_ranging) {
 		setUsdDevIks(wpa_s, usdSubscribeConfig.usdBaseConfig);
 	}
+
 
 	int subscribeId = wpas_nan_subscribe(
 		wpa_s, usdSubscribeConfig.usdBaseConfig.serviceName.c_str(),
