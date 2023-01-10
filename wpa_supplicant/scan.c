@@ -1387,6 +1387,8 @@ scan:
 		for (i = 0; i < wpa_s->hw.num_modes; i++) {
 			if (wpa_s->hw.modes[i].num_channels == 0)
 				continue;
+			if (is_6ghz_freq(wpa_s->hw.modes[i].channels[0].freq))
+				continue;
 			if (wpa_s->hw.modes[i].mode == HOSTAPD_MODE_IEEE80211G)
 				wpa_add_scan_freqs_list(
 					wpa_s, HOSTAPD_MODE_IEEE80211G,
