@@ -970,9 +970,13 @@ static void hostapd_determine_mode(struct hostapd_iface *iface)
 
 	for (i = 0; i < iface->num_hw_features; i++) {
 		struct hostapd_hw_modes *mode;
+		int chan;
 
 		mode = &iface->hw_features[i];
 		if (mode->mode == target_mode) {
+			if (iface->freq > 0 &&
+			    !hw_mode_get_channel(mode, iface->freq, &chan))
+				continue;
 			iface->current_mode = mode;
 			iface->conf->hw_mode = mode->mode;
 			break;
@@ -1101,17 +1105,19 @@ int hostapd_select_hw_mode(struct hostapd_iface *iface)
 	}
 
 	iface->current_mode = NULL;
-	for (i = 0; i < iface->num_hw_features; i++) {
-		struct hostapd_hw_modes *mode = &iface->hw_features[i];
-		int chan;
+	if (iface->freq > 0)
+	{
+		for (i = 0; i < iface->num_hw_features; i++) {
+			struct hostapd_hw_modes *mode = &iface->hw_features[i];
+			int chan;
 
-		if (mode->mode == iface->conf->hw_mode) {
-			if (iface->freq > 0 &&
-			    !hw_mode_get_channel(mode, iface->freq, &chan))
-				continue;
+			if (mode->mode == iface->conf->hw_mode) {
+				if (!hw_mode_get_channel(mode, iface->freq, &chan))
+					continue;
 
-			iface->current_mode = mode;
-			break;
+				iface->current_mode = mode;
+				break;
+			}
 		}
 	}
 
