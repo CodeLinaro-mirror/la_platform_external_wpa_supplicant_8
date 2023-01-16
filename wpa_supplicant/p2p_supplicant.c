@@ -8553,6 +8553,10 @@ int wpas_p2p_in_progress(struct wpa_supplicant *wpa_s)
 				"in group formation",
 				wpa_s->global->p2p_group_formation->ifname);
 			ret = 1;
+		} else if (wpa_s->global->p2p_group_formation == wpa_s) {
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"P2P: Skip Extended Listen timeout and allow scans on current interface for group formation");
+			ret = 2;
 		}
 	}
 
@@ -9742,9 +9746,12 @@ static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
 		goto out;
 	}
 
-	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"P2P CSA: CSA to a different band is not supported");
+	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode &&
+	    (wpa_s->ap_iface->current_mode->mode != HOSTAPD_MODE_IEEE80211A ||
+	     conf->hw_mode != HOSTAPD_MODE_IEEE80211G)) {
+		wpa_dbg(wpa_s, MSG_INFO,
+			"P2P CSA: CSA from Hardware mode %d to %d is not supported",
+			wpa_s->ap_iface->current_mode->mode, conf->hw_mode);
 		ret = -1;
 		goto out;
 	}
