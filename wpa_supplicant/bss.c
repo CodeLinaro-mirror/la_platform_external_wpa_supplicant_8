@@ -350,10 +350,30 @@ static int wpa_bss_is_wps_candidate(struct wpa_supplicant *wpa_s,
 	return 0;
 }
 
+static int is_p2p_pending_bss(struct wpa_supplicant *wpa_s,
+			      struct wpa_bss *bss)
+{
+#ifdef CONFIG_P2P
+	u8 addr[ETH_ALEN];
+
+	if (os_memcmp(bss->bssid, wpa_s->pending_join_iface_addr,
+		      ETH_ALEN) == 0)
+		return true;
+	if (!is_zero_ether_addr(wpa_s->pending_join_dev_addr) &&
+	    p2p_parse_dev_addr((const u8 *)(bss + 1), bss->ie_len,
+				addr) == 0 &&
+	    os_memcmp(addr, wpa_s->pending_join_dev_addr, ETH_ALEN) == 0)
+		return true;
+#endif /* CONFIG_P2P */
+	return false;
+}
 
 static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 {
 	struct wpa_ssid *ssid;
+
+	if (is_p2p_pending_bss(wpa_s, bss))
+		return 1;
 
 	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
 		if (ssid->ssid == NULL || ssid->ssid_len == 0)
@@ -906,7 +926,7 @@ void wpa_bss_update_end(struct wpa_supplicant *wpa_s, struct scan_info *info,
 		}
 	}
 
-	wpa_printf(MSG_DEBUG, "BSS: last_scan_res_used=%u/%u",
+	wpa_printf(MSG_DEBUG, "BSS: last_scan_res_used=%zu/%zu",
 		   wpa_s->last_scan_res_used, wpa_s->last_scan_res_size);
 }
 
@@ -1354,6 +1374,8 @@ const u8 * wpa_bss_get_fils_cache_id(struct wpa_bss *bss)
 
 int wpa_bss_ext_capab(const struct wpa_bss *bss, unsigned int capab)
 {
+	if (!bss)
+		return 0;
 	return ieee802_11_ext_capab(wpa_bss_get_ie(bss, WLAN_EID_EXT_CAPAB),
 				    capab);
 }

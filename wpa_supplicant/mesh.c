@@ -268,6 +268,7 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 		return -ENOMEM;
 
 	ifmsh->drv_flags = wpa_s->drv_flags;
+	ifmsh->drv_flags2 = wpa_s->drv_flags2;
 	ifmsh->num_bss = 1;
 	ifmsh->bss = os_calloc(wpa_s->ifmsh->num_bss,
 			       sizeof(struct hostapd_data *));
@@ -331,30 +332,6 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_ERROR, "Unsupported mesh mode frequency: %d MHz",
 			   frequency);
 		goto out_free;
-	}
-	if (ssid->ht40)
-		conf->secondary_channel = ssid->ht40;
-	if (conf->hw_mode == HOSTAPD_MODE_IEEE80211A && ssid->vht) {
-		if (ssid->max_oper_chwidth != DEFAULT_MAX_OPER_CHWIDTH)
-			conf->vht_oper_chwidth = ssid->max_oper_chwidth;
-		switch (conf->vht_oper_chwidth) {
-		case CHANWIDTH_80MHZ:
-		case CHANWIDTH_80P80MHZ:
-			ieee80211_freq_to_chan(
-				frequency,
-				&conf->vht_oper_centr_freq_seg0_idx);
-			conf->vht_oper_centr_freq_seg0_idx += ssid->ht40 * 2;
-			break;
-		case CHANWIDTH_160MHZ:
-			ieee80211_freq_to_chan(
-				frequency,
-				&conf->vht_oper_centr_freq_seg0_idx);
-			conf->vht_oper_centr_freq_seg0_idx += ssid->ht40 * 2;
-			conf->vht_oper_centr_freq_seg0_idx += 40 / 5;
-			break;
-		}
-		ieee80211_freq_to_chan(ssid->vht_center_freq2,
-				       &conf->vht_oper_centr_freq_seg1_idx);
 	}
 
 	if (ssid->mesh_basic_rates == NULL) {
