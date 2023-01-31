@@ -502,6 +502,7 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 		"ignore_auth_resp",
 #endif /* CONFIG_TESTING_OPTIONS */
 		"relative_rssi", "relative_band_adjust",
+		"extended_key_id",
 	};
 	int i, num_fields = ARRAY_SIZE(fields);
 
@@ -593,7 +594,7 @@ static char ** wpa_cli_complete_get(const char *str, int pos)
 		"tdls_external_control", "osu_dir", "wowlan_triggers",
 		"p2p_search_delay", "mac_addr", "rand_addr_lifetime",
 		"preassoc_mac_addr", "key_mgmt_offload", "passive_scan",
-		"reassoc_same_bss_optim"
+		"reassoc_same_bss_optim", "extended_key_id"
 	};
 	int i, num_fields = ARRAY_SIZE(fields);
 
@@ -1441,6 +1442,7 @@ static const char *network_fields[] = {
 	"dot11MeshHoldingTimeout",
 #endif /* CONFIG_MESH */
 	"wpa_ptk_rekey", "bgscan", "ignore_broadcast_ssid",
+	"wpa_deny_ptk0_rekey",
 	"enable_edmg", "edmg_channel",
 #ifdef CONFIG_P2P
 	"go_p2p_dev_addr", "p2p_client_list", "psk_list",
@@ -1458,6 +1460,9 @@ static const char *network_fields[] = {
 	"vht_tx_mcs_nss_3", "vht_tx_mcs_nss_4", "vht_tx_mcs_nss_5",
 	"vht_tx_mcs_nss_6", "vht_tx_mcs_nss_7", "vht_tx_mcs_nss_8",
 #endif /* CONFIG_VHT_OVERRIDES */
+#ifdef CONFIG_HE_OVERRIDES
+	"disable_he",
+#endif /* CONFIG_HE_OVERRIDES */
 	"ap_max_inactivity", "dtim_period", "beacon_int",
 #ifdef CONFIG_MACSEC
 	"macsec_policy",
@@ -1813,7 +1818,7 @@ static int wpa_cli_cmd_interface(struct wpa_ctrl *ctrl, int argc, char *argv[])
 	}
 
 	if (wpa_cli_open_connection(ctrl_ifname, 1) == 0) {
-		printf("Connected to interface '%s.\n", ctrl_ifname);
+		printf("Connected to interface '%s'.\n", ctrl_ifname);
 	} else {
 		printf("Could not connect to interface '%s' - re-trying\n",
 		       ctrl_ifname);
@@ -3126,6 +3131,30 @@ static int wpa_cli_cmd_all_bss(struct wpa_ctrl *ctrl, int argc, char *argv[])
 }
 
 
+static int wpa_cli_cmd_mscs(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "MSCS", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_scs(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "SCS", 2, argc, argv);
+}
+
+
+static int wpa_cli_cmd_dscp_resp(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "DSCP_RESP", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_dscp_query(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "DSCP_QUERY", 1, argc, argv);
+}
+
+
 enum wpa_cli_cmd_flags {
 	cli_cmd_flag_none		= 0x00,
 	cli_cmd_flag_sensitive		= 0x01
@@ -3787,6 +3816,18 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 #endif /* CONFIG_DPP */
 	{ "all_bss", wpa_cli_cmd_all_bss, NULL, cli_cmd_flag_none,
 	  "= list all BSS entries (scan results)" },
+	{ "mscs", wpa_cli_cmd_mscs, NULL,
+	  cli_cmd_flag_none,
+	  "<add|remove|change> [up_bitmap=<hex byte>] [up_limit=<integer>] [stream_timeout=<in TUs>] [frame_classifier=<hex bytes>] = Configure MSCS request" },
+	{ "scs", wpa_cli_cmd_scs, NULL,
+	  cli_cmd_flag_none,
+	  "[scs_id=<decimal number>] <add|remove|change> [scs_up=<0-7>] [classifier_type=<4|10>] [classifier params based on classifier type] [tclas_processing=<0|1>] [scs_id=<decimal number>] ... = Send SCS request" },
+	{ "dscp_resp", wpa_cli_cmd_dscp_resp, NULL,
+	  cli_cmd_flag_none,
+	  "<[reset]>/<[solicited] [policy_id=1 status=0...]> [more] = Send DSCP response" },
+	{ "dscp_query", wpa_cli_cmd_dscp_query, NULL,
+	  cli_cmd_flag_none,
+	  "wildcard/domain_name=<string> = Send DSCP Query" },
 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
 };
 
