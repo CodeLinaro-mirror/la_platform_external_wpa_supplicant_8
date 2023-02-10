@@ -16,7 +16,8 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 			     struct wpa_ssid *ssid);
 void wpa_supplicant_ap_deinit(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_ap_rx_eapol(struct wpa_supplicant *wpa_s,
-				const u8 *src_addr, const u8 *buf, size_t len);
+				const u8 *src_addr, const u8 *buf, size_t len,
+				enum frame_encryption encrypted);
 int wpa_supplicant_ap_wps_pbc(struct wpa_supplicant *wpa_s, const u8 *bssid,
 			      const u8 *p2p_dev_addr);
 int wpa_supplicant_ap_wps_pin(struct wpa_supplicant *wpa_s, const u8 *bssid,
@@ -40,13 +41,10 @@ int ap_ctrl_iface_sta_disassociate(struct wpa_supplicant *wpa_s,
 				   const char *txtaddr);
 int ap_ctrl_iface_wpa_get_status(struct wpa_supplicant *wpa_s, char *buf,
 				 size_t buflen, int verbose);
-#ifdef CONFIG_WNM_AP
 int ap_ctrl_iface_disassoc_imminent(struct wpa_supplicant *wpa_s,
 				    const char *buf);
 int ap_ctrl_iface_ess_disassoc(struct wpa_supplicant *wpa_s, const char *buf);
 int ap_ctrl_iface_bss_tm_req(struct wpa_supplicant *wpa_s, const char *buf);
-#endif /* CONFIG_WNM_AP */
-
 int ap_ctrl_iface_acl_add_mac(struct wpa_supplicant *wpa_s,
 			      enum macaddr_acl acl_type, const char *buf);
 int ap_ctrl_iface_acl_del_mac(struct wpa_supplicant *wpa_s,

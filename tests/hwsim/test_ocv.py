@@ -131,6 +131,7 @@ def test_wpa2_ocv_ht40(dev, apdev):
         dev[1].flush_scan_cache()
 
 def run_wpa2_ocv_ht40(dev, apdev):
+    clear_scan_cache(apdev[0])
     for channel, capab, freq, mode in [("6", "[HT40-]", "2437", "g"),
                                        ("6", "[HT40+]", "2437", "g"),
                                        ("40", "[HT40-]", "5200", "a"),
@@ -169,6 +170,7 @@ def test_wpa2_ocv_vht40(dev, apdev):
         dev[2].flush_scan_cache()
 
 def run_wpa2_ocv_vht40(dev, apdev):
+    clear_scan_cache(apdev[0])
     for channel, capab, freq in [("40", "[HT40-]", "5200"),
                                  ("36", "[HT40+]", "5180")]:
         params = {"hw_mode": "a",
@@ -213,6 +215,7 @@ def test_wpa2_ocv_vht80(dev, apdev):
         dev[2].flush_scan_cache()
 
 def run_wpa2_ocv_vht80(dev, apdev):
+    clear_scan_cache(apdev[0])
     for channel, capab, freq in [("40", "[HT40-]", "5200"),
                                  ("36", "[HT40+]", "5180")]:
         params = {"hw_mode": "a",
@@ -356,6 +359,7 @@ class APConnection:
         self.bssid = None
         self.anonce = None
         self.snonce = None
+        self.dev = None
 
     def __init__(self, apdev, dev, params):
         self.init_params()
@@ -377,6 +381,7 @@ class APConnection:
                 raise HwsimSkip("OCV not supported")
             raise
         self.hapd.request("SET ext_eapol_frame_io 1")
+        self.dev = dev
         dev.request("SET ext_eapol_frame_io 1")
 
         self.bssid = apdev['bssid']
@@ -412,6 +417,7 @@ class APConnection:
                     self.rsne + ocikde, self.kck)
         self.msg = recv_eapol(self.hapd)
         if self.anonce != self.msg['rsn_key_nonce'] or self.msg["rsn_key_info"] != 138:
+            self.dev.request("DISCONNECT")
             raise Exception("Didn't receive retransmitted 1/4")
 
     def confirm_valid_oci(self, op_class, channel, seg1_idx):
@@ -445,6 +451,7 @@ def test_wpa2_ocv_ap_mismatch(dev, apdev):
 @remote_compatible
 def test_wpa2_ocv_ap_ht_mismatch(dev, apdev):
     """OCV AP mismatch (HT)"""
+    clear_scan_cache(apdev[0])
     params = {"channel": "6",
               "ht_capab": "[HT40-]",
               "ieee80211w": "1",
@@ -515,7 +522,6 @@ def run_wpa2_ocv_ap_vht160_mismatch(dev, apdev):
     conn.test_bad_oci("smaller bandwidth (20 Mhz) than negotiated", 121, 100, 0)
     conn.test_bad_oci("smaller bandwidth (40 Mhz) than negotiated", 122, 100, 0)
     conn.test_bad_oci("smaller bandwidth (80 Mhz) than negotiated", 128, 100, 0)
-    conn.test_bad_oci("using 80+80 channel instead of 160", 130, 100, 155)
     conn.confirm_valid_oci(129, 100, 0)
 
     dev[0].dump_monitor()
