@@ -27,7 +27,7 @@
 #include "config_ssid.h"
 #include "wmm_ac.h"
 #include <netinet/in.h>
-#include <netinet/in6.h>
+
 #include "pasn/pasn_common.h"
 
 extern const char *const wpa_supplicant_version;

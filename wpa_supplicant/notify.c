@@ -31,7 +31,7 @@
 #include "p2p_supplicant.h"
 #include "sme.h"
 #include "notify.h"
-#include "aidl.h"
+#include "aidl/aidl.h"
 #include "vendor_aidl/aidl_vendor.h"
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global)
@@ -692,12 +692,13 @@ void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
 
 	/* Notify a new peer has been detected*/
 	wpas_dbus_signal_peer_device_found(wpa_s, info->p2p_device_addr);
-
+#ifdef CONFIG_AIDL
 	wpas_aidl_notify_p2p_device_found(wpa_s, addr, info,
 					  peer_wfd_device_info,
 					  peer_wfd_device_info_len,
 					  peer_wfd_r2_device_info,
 					  peer_wfd_r2_device_info_len);
+#endif //CONFIG_AIDL
 }
 
 
