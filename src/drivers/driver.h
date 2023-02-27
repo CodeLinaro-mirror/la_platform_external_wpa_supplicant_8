@@ -5140,6 +5140,13 @@ enum wpa_event_type {
 	EVENT_UNPROT_BEACON,
 
 	/**
+	 * EVENT_THERMAL_CHANGED - Thermal event from driver/kernel
+	 *
+	 * This event is called when thermal state changed in driver/kernel.
+	 */
+	EVENT_THERMAL_CHANGED,
+
+	/**
 	 * EVENT_TX_WAIT_EXPIRE - TX wait timed out
 	 *
 	 * This event is used to indicate when the driver has completed
@@ -5147,6 +5154,13 @@ enum wpa_event_type {
 	 * non-zero wait time and that has not been explicitly cancelled.
 	 */
 	EVENT_TX_WAIT_EXPIRE,
+
+    /**
+	 * EVENT_CONGESTION_REPORT - Congestion event from driver/kernel
+	 *
+	 * This event is called when congestion event detected in driver/kernel
+	 */
+	EVENT_CONGESTION_REPORT,
 };
 
 
@@ -5992,6 +6006,19 @@ union wpa_event_data {
 			P2P_LO_STOPPED_REASON_NOT_SUPPORTED,
 		} reason_code;
 	} p2p_lo_stop;
+
+	/**
+	 * struct thermal_info - Thermal level for thermal event
+	 * @level: Thermal level in enum qca_wlan_vendor_thermal_level.
+	 */
+	struct thermal_info {
+		u32 level;
+	} thermal_info;
+
+	/* For EVENT_CONGESTION_REPORT */
+	struct congestion_info {
+		u8 percentage;
+	} congestion_info;
 
 	/* For EVENT_EXTERNAL_AUTH */
 	struct external_auth external_auth;

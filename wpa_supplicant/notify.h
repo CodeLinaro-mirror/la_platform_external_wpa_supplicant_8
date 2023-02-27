@@ -218,5 +218,8 @@ void wpas_notify_qos_policy_reset(struct wpa_supplicant *wpa_s);
 void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 		struct dscp_policy_data *policies, int num_policies);
 void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency);
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
+#endif
 
 #endif /* NOTIFY_H */
