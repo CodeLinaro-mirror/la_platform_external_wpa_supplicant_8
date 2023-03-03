@@ -714,8 +714,8 @@ struct wpa_supplicant {
 	unsigned int assoc_freq;
 	u8 ap_mld_addr[ETH_ALEN];
 	u8 mlo_assoc_link_id;
-	u8 valid_links; /* bitmap of valid MLO link IDs */
-	struct {
+	u16 valid_links; /* bitmap of valid MLO link IDs */
+	struct ml_sta_link_info {
 		u8 addr[ETH_ALEN];
 		u8 bssid[ETH_ALEN];
 		unsigned int freq;
@@ -1011,6 +1011,9 @@ struct wpa_supplicant {
 		struct wpa_ssid *ext_auth_wpa_ssid;
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
+		int ext_auth_key_mgmt;
+		u8 ext_auth_ap_mld_addr[ETH_ALEN];
+		bool ext_ml_auth;
 		int *sae_rejected_groups;
 #endif /* CONFIG_SAE */
 	} sme;
@@ -1782,6 +1785,7 @@ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
 int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 					   struct wpa_bss *current_bss,
 					   struct wpa_bss *seleceted);
+void wpas_reset_mlo_info(struct wpa_supplicant *wpa_s);
 
 /* eap_register.c */
 int eap_register_methods(void);

@@ -611,18 +611,18 @@ static void nl80211_get_basic_mle_links_info(const u8 *mle, size_t mle_len,
 		if (pos[0] == MULTI_LINK_SUB_ELEM_ID_PER_STA_PROFILE) {
 			u8 link_id;
 			const u8 *sta_profile;
+			u16 sta_ctrl;
 
 			if (pos[1] < BASIC_MLE_STA_PROF_STA_MAC_IDX + ETH_ALEN)
 				goto next_subelem;
 
 			sta_profile = &pos[2];
-			link_id = sta_profile[0] &
-				BASIC_MLE_STA_CTRL0_LINK_ID_MASK;
+			sta_ctrl = WPA_GET_LE16(sta_profile);
+			link_id = sta_ctrl & BASIC_MLE_STA_CTRL_LINK_ID_MASK;
 			if (link_id >= MAX_NUM_MLD_LINKS)
 				goto next_subelem;
 
-			if (!(sta_profile[0] &
-			      BASIC_MLE_STA_CTRL0_PRES_STA_MAC))
+			if (!(sta_ctrl & BASIC_MLE_STA_CTRL_PRES_STA_MAC))
 				goto next_subelem;
 
 			info->non_assoc_links |= BIT(link_id);
@@ -715,7 +715,13 @@ static int nl80211_update_rejected_links_info(struct driver_sta_mlo_info *mlo,
 
 static int nl80211_get_assoc_link_id(const u8 *data, u8 len)
 {
-	if (!(data[0] & BASIC_MULTI_LINK_CTRL0_PRES_LINK_ID))
+	u16 control;
+
+	if (len < 2)
+		return -1;
+
+	control = WPA_GET_LE16(data);
+	if (!(control & BASIC_MULTI_LINK_CTRL_PRES_LINK_ID))
 		return -1;
 
 #define BASIC_ML_IE_COMMON_INFO_LINK_ID_IDX \
@@ -3152,6 +3158,7 @@ static void nl80211_external_auth(struct wpa_driver_nl80211_data *drv,
 {
 	union wpa_event_data event;
 	enum nl80211_external_auth_action act;
+	char mld_addr[50];
 
 	if (!tb[NL80211_ATTR_AKM_SUITES] ||
 	    !tb[NL80211_ATTR_EXTERNAL_AUTH_ACTION] ||
@@ -3182,10 +3189,21 @@ static void nl80211_external_auth(struct wpa_driver_nl80211_data *drv,
 
 	event.external_auth.bssid = nla_data(tb[NL80211_ATTR_BSSID]);
 
+	mld_addr[0] = '\0';
+	if (tb[NL80211_ATTR_MLD_ADDR]) {
+		event.external_auth.mld_addr =
+			nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+		os_snprintf(mld_addr, sizeof(mld_addr), ", MLD ADDR: " MACSTR,
+			    MAC2STR(event.external_auth.mld_addr));
+	}
+
 	wpa_printf(MSG_DEBUG,
-		   "nl80211: External auth action: %u, AKM: 0x%x",
+		   "nl80211: External auth action: %u, AKM: 0x%x, SSID: %s, BSSID: " MACSTR "%s",
 		   event.external_auth.action,
-		   event.external_auth.key_mgmt_suite);
+		   event.external_auth.key_mgmt_suite,
+		   wpa_ssid_txt(event.external_auth.ssid,
+				event.external_auth.ssid_len),
+		   MAC2STR(event.external_auth.bssid), mld_addr);
 	wpa_supplicant_event(drv->ctx, EVENT_EXTERNAL_AUTH, &event);
 }
 
