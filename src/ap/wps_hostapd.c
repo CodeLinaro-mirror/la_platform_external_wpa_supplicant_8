@@ -1069,10 +1069,11 @@ static void hostapd_free_wps(struct wps_context *wps)
 	for (i = 0; i < MAX_WPS_VENDOR_EXTENSIONS; i++)
 		wpabuf_free(wps->dev.vendor_ext[i]);
 	wps_device_data_free(&wps->dev);
-	os_free(wps->network_key);
+	bin_clear_free(wps->network_key, wps->network_key_len);
 	hostapd_wps_nfc_clear(wps);
 	wpabuf_free(wps->dh_pubkey);
 	wpabuf_free(wps->dh_privkey);
+	forced_memzero(wps->psk, sizeof(wps->psk));
 	os_free(wps);
 }
 
@@ -1962,6 +1963,11 @@ int hostapd_wps_config_ap(struct hostapd_data *hapd, const char *ssid,
 		    hexstr2bin(key, cred.key, len / 2))
 			return -1;
 		cred.key_len = len / 2;
+	}
+
+	if (!hapd->wps) {
+		wpa_printf(MSG_ERROR, "WPS: WPS config does not exist");
+		return -1;
 	}
 
 	return wps_registrar_config_ap(hapd->wps->registrar, &cred);

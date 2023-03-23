@@ -429,7 +429,9 @@ static struct p2p_device * p2p_create_device(struct p2p_data *p2p,
 			oldest = dev;
 	}
 	if (count + 1 > p2p->cfg->max_peers && oldest) {
-		p2p_dbg(p2p, "Remove oldest peer entry to make room for a new peer");
+		p2p_dbg(p2p,
+			"Remove oldest peer entry to make room for a new peer "
+			MACSTR, MAC2STR(oldest->info.p2p_device_addr));
 		dl_list_del(&oldest->list);
 		p2p_device_free(p2p, oldest);
 	}
@@ -439,6 +441,7 @@ static struct p2p_device * p2p_create_device(struct p2p_data *p2p,
 		return NULL;
 	dl_list_add(&p2p->devices, &dev->list);
 	os_memcpy(dev->info.p2p_device_addr, addr, ETH_ALEN);
+	dev->support_6ghz = false;
 
 	return dev;
 }
@@ -608,6 +611,8 @@ static void p2p_copy_wps_info(struct p2p_data *p2p, struct p2p_device *dev,
 		dev->info.group_capab = msg->capability[1];
 	}
 
+	p2p_update_peer_6ghz_capab(dev, msg);
+
 	if (msg->ext_listen_timing) {
 		dev->ext_listen_period = WPA_GET_LE16(msg->ext_listen_timing);
 		dev->ext_listen_interval =
@@ -628,6 +633,15 @@ static void p2p_copy_wps_info(struct p2p_data *p2p, struct p2p_device *dev,
 			dev->info.config_methods = new_config_methods;
 		}
 	}
+}
+
+
+void p2p_update_peer_6ghz_capab(struct p2p_device *dev,
+				const struct p2p_message *msg)
+{
+	if (msg->capability &&
+	    (msg->capability[0] & P2P_DEV_CAPAB_6GHZ_BAND_CAPABLE))
+		dev->support_6ghz = true;
 }
 
 
@@ -1326,7 +1340,9 @@ void p2p_stop_find_for_freq(struct p2p_data *p2p, int freq)
 
 void p2p_stop_listen_for_freq(struct p2p_data *p2p, int freq)
 {
-	if (freq > 0 && p2p->drv_in_listen == freq && p2p->in_listen) {
+	if (freq > 0 &&
+	    ((p2p->drv_in_listen == freq && p2p->in_listen) ||
+	     p2p->pending_listen_freq == (unsigned int) freq)) {
 		p2p_dbg(p2p, "Skip stop_listen since we are on correct channel for response");
 		return;
 	}
@@ -2078,6 +2094,7 @@ static void p2p_add_dev_from_probe_req(struct p2p_data *p2p, const u8 *addr,
 			}
 		}
 
+		p2p_update_peer_6ghz_capab(dev, &msg);
 		os_get_reltime(&dev->last_seen);
 		p2p_parse_free(&msg);
 		return; /* already known */
@@ -4006,6 +4023,10 @@ static void p2p_timeout_wait_peer_idle(struct p2p_data *p2p)
 
 	p2p_dbg(p2p, "Go to Listen state while waiting for the peer to become ready for GO Negotiation");
 	p2p->cfg->stop_listen(p2p->cfg->cb_ctx);
+	if (p2p->pending_listen_freq) {
+		p2p_dbg(p2p, "Clear pending_listen_freq for %s", __func__);
+		p2p->pending_listen_freq = 0;
+	}
 	p2p_set_state(p2p, P2P_WAIT_PEER_CONNECT);
 	p2p_listen_in_find(p2p, 0);
 }
@@ -5530,7 +5551,7 @@ void p2p_go_neg_wait_timeout(void *eloop_ctx, void *timeout_ctx)
 
 
 void p2p_set_own_pref_freq_list(struct p2p_data *p2p,
-				const unsigned int *pref_freq_list,
+				const struct weighted_pcl *pref_freq_list,
 				unsigned int size)
 {
 	unsigned int i;
@@ -5538,10 +5559,11 @@ void p2p_set_own_pref_freq_list(struct p2p_data *p2p,
 	if (size > P2P_MAX_PREF_CHANNELS)
 		size = P2P_MAX_PREF_CHANNELS;
 	p2p->num_pref_freq = size;
+	os_memcpy(p2p->pref_freq_list, pref_freq_list,
+		  size * sizeof(struct weighted_pcl));
 	for (i = 0; i < size; i++) {
-		p2p->pref_freq_list[i] = pref_freq_list[i];
 		p2p_dbg(p2p, "Own preferred frequency list[%u]=%u MHz",
-			i, p2p->pref_freq_list[i]);
+			i, p2p->pref_freq_list[i].freq);
 	}
 }
 
@@ -5593,7 +5615,7 @@ bool p2p_is_peer_6ghz_capab(struct p2p_data *p2p, const u8 *addr)
 	if (!dev)
 		return false;
 
-	return !!(dev->info.dev_capab & P2P_DEV_CAPAB_6GHZ_BAND_CAPABLE);
+	return dev->support_6ghz;
 }
 
 

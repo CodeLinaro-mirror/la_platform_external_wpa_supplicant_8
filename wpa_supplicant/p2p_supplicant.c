@@ -104,6 +104,9 @@
  */
 #define P2P_RECONSIDER_GO_MOVE_DELAY 30
 
+/* Check if frequency is 2GHz */
+#define	IS_2GHZ(n)	(n >= 2412 && n <= 2484)
+
 enum p2p_group_removal_reason {
 	P2P_GROUP_REMOVAL_UNKNOWN,
 	P2P_GROUP_REMOVAL_SILENT,
@@ -126,7 +129,7 @@ static int wpas_p2p_join_start(struct wpa_supplicant *wpa_s, int freq,
 			       const u8 *ssid, size_t ssid_len);
 static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				int *force_freq, int *pref_freq, int go,
-				unsigned int *pref_freq_list,
+				struct weighted_pcl *pref_freq_list,
 				unsigned int *num_pref_freq);
 static void wpas_p2p_join_scan_req(struct wpa_supplicant *wpa_s, int freq,
 				   const u8 *ssid, size_t ssid_len);
@@ -162,6 +165,17 @@ wpas_p2p_consider_moving_gos(struct wpa_supplicant *wpa_s,
 			     struct wpa_used_freq_data *freqs, unsigned int num,
 			     enum wpas_p2p_channel_update_trig trig);
 static void wpas_p2p_reconsider_moving_go(void *eloop_ctx, void *timeout_ctx);
+
+
+static int wpas_get_6ghz_he_chwidth_capab(struct hostapd_hw_modes *mode)
+{
+	int he_capab = 0;
+
+	if (mode)
+		he_capab = mode->he_capab[WPAS_MODE_INFRA].phy_cap[
+			HE_PHYCAP_CHANNEL_WIDTH_SET_IDX];
+	return he_capab;
+}
 
 
 /*
@@ -691,7 +705,8 @@ static u8 p2ps_group_capability(void *ctx, u8 incoming, u8 role,
 	struct wpa_supplicant *go_wpa_s, *cli_wpa_s;
 	struct wpa_ssid *persistent_go;
 	int p2p_no_group_iface;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	wpa_printf(MSG_DEBUG, "P2P: Conncap - in:%d role:%d", incoming, role);
 
@@ -1027,6 +1042,7 @@ static int wpas_p2p_group_delete(struct wpa_supplicant *wpa_s,
 	wpa_s->p2p_group_common_freqs = NULL;
 	wpa_s->p2p_group_common_freqs_num = 0;
 	wpa_s->p2p_go_do_acs = 0;
+	wpa_s->p2p_go_allow_dfs = 0;
 
 	wpa_s->waiting_presence_resp = 0;
 
@@ -1404,11 +1420,13 @@ static void wpas_group_formation_completed(struct wpa_supplicant *wpa_s,
 			persistent = ssid->p2p_persistent_group;
 			os_memcpy(go_dev_addr, wpa_s->global->p2p_dev_addr,
 				  ETH_ALEN);
-		} else
+		} else {
+			os_memset(go_dev_addr, 0, ETH_ALEN);
 			persistent = wpas_p2p_persistent_group(wpa_s,
 							       go_dev_addr,
 							       ssid->ssid,
 							       ssid->ssid_len);
+		}
 	} else {
 		client = wpa_s->p2p_group_interface ==
 			P2P_GROUP_INTERFACE_CLIENT;
@@ -2069,6 +2087,8 @@ static void wpas_start_wps_go(struct wpa_supplicant *wpa_s,
 	    is_p2p_6ghz_capable(wpa_s->global->p2p)) {
 		ssid->auth_alg |= WPA_AUTH_ALG_SAE;
 		ssid->key_mgmt = WPA_KEY_MGMT_SAE;
+		ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
+		ssid->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
 		wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Use SAE auth_alg and key_mgmt");
 	} else {
 		p2p_set_6ghz_dev_capab(wpa_s->global->p2p, false);
@@ -2157,6 +2177,8 @@ do {                                    \
 	d->disassoc_low_ack = s->disassoc_low_ack;
 	d->disable_scan_offload = s->disable_scan_offload;
 	d->passive_scan = s->passive_scan;
+	d->pmf = s->pmf;
+	d->p2p_6ghz_disable = s->p2p_6ghz_disable;
 
 	if (s->wps_nfc_dh_privkey && s->wps_nfc_dh_pubkey &&
 	    !d->wps_nfc_pw_from_config) {
@@ -3582,9 +3604,9 @@ static int wpas_p2p_default_channels(struct wpa_supplicant *wpa_s,
 }
 
 
-static int has_channel(struct wpa_global *global,
-			struct hostapd_hw_modes *mode, u8 op_class,
-			u8 chan, int *flags)
+static enum chan_allowed has_channel(struct wpa_global *global,
+				     struct hostapd_hw_modes *mode, u8 op_class,
+				     u8 chan, int *flags)
 {
 	int i;
 	unsigned int freq;
@@ -3597,12 +3619,12 @@ static int has_channel(struct wpa_global *global,
 		if ((unsigned int) mode->channels[i].freq == freq) {
 			if (flags)
 				*flags = mode->channels[i].flag;
-			if (mode->channels[i].flag &
-			    (HOSTAPD_CHAN_DISABLED |
-			     HOSTAPD_CHAN_RADAR))
+			if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED)
 				return NOT_ALLOWED;
 			if (mode->channels[i].flag & HOSTAPD_CHAN_NO_IR)
 				return NO_IR;
+			if (mode->channels[i].flag & HOSTAPD_CHAN_RADAR)
+				return RADAR;
 			return ALLOWED;
 		}
 	}
@@ -3662,7 +3684,8 @@ static enum chan_allowed wpas_p2p_verify_80mhz(struct wpa_supplicant *wpa_s,
 						chans, num_chans);
 	if (!center_chan)
 		return NOT_ALLOWED;
-	if (!is_6ghz && center_chan >= 58 && center_chan <= 138)
+	if (!wpa_s->p2p_go_allow_dfs &&
+	    !is_6ghz && center_chan >= 58 && center_chan <= 138)
 		return NOT_ALLOWED; /* Do not allow DFS channels for P2P */
 
 	/* check all the channels are available */
@@ -3673,17 +3696,24 @@ static enum chan_allowed wpas_p2p_verify_80mhz(struct wpa_supplicant *wpa_s,
 				  &flags);
 		if (res == NOT_ALLOWED)
 			return NOT_ALLOWED;
+		if (res == RADAR)
+			ret = RADAR;
 		if (res == NO_IR)
 			ret = NO_IR;
-
-		if (i == 0 && !(flags & HOSTAPD_CHAN_VHT_10_70))
+		if (!is_6ghz) {
+			if (i == 0 && !(flags & HOSTAPD_CHAN_VHT_10_70))
+				return NOT_ALLOWED;
+			if (i == 1 && !(flags & HOSTAPD_CHAN_VHT_30_50))
+				return NOT_ALLOWED;
+			if (i == 2 && !(flags & HOSTAPD_CHAN_VHT_50_30))
+				return NOT_ALLOWED;
+			if (i == 3 && !(flags & HOSTAPD_CHAN_VHT_70_10))
+				return NOT_ALLOWED;
+		} else if (is_6ghz &&
+			   (!(wpas_get_6ghz_he_chwidth_capab(mode) &
+			      HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G))) {
 			return NOT_ALLOWED;
-		if (i == 1 && !(flags & HOSTAPD_CHAN_VHT_30_50))
-			return NOT_ALLOWED;
-		if (i == 2 && !(flags & HOSTAPD_CHAN_VHT_50_30))
-			return NOT_ALLOWED;
-		if (i == 3 && !(flags & HOSTAPD_CHAN_VHT_70_10))
-			return NOT_ALLOWED;
+		}
 	}
 
 	return ret;
@@ -3749,25 +3779,33 @@ static enum chan_allowed wpas_p2p_verify_160mhz(struct wpa_supplicant *wpa_s,
 		if (res == NOT_ALLOWED)
 			return NOT_ALLOWED;
 
+		if (res == RADAR)
+			ret = RADAR;
 		if (res == NO_IR)
 			ret = NO_IR;
 
-		if (i == 0 && !(flags & HOSTAPD_CHAN_VHT_10_150))
+		if (!is_6ghz_op_class(op_class)) {
+			if (i == 0 && !(flags & HOSTAPD_CHAN_VHT_10_150))
+				return NOT_ALLOWED;
+			if (i == 1 && !(flags & HOSTAPD_CHAN_VHT_30_130))
+				return NOT_ALLOWED;
+			if (i == 2 && !(flags & HOSTAPD_CHAN_VHT_50_110))
+				return NOT_ALLOWED;
+			if (i == 3 && !(flags & HOSTAPD_CHAN_VHT_70_90))
+				return NOT_ALLOWED;
+			if (i == 4 && !(flags & HOSTAPD_CHAN_VHT_90_70))
+				return NOT_ALLOWED;
+			if (i == 5 && !(flags & HOSTAPD_CHAN_VHT_110_50))
+				return NOT_ALLOWED;
+			if (i == 6 && !(flags & HOSTAPD_CHAN_VHT_130_30))
+				return NOT_ALLOWED;
+			if (i == 7 && !(flags & HOSTAPD_CHAN_VHT_150_10))
+				return NOT_ALLOWED;
+		} else if (is_6ghz_op_class(op_class) &&
+			   (!(wpas_get_6ghz_he_chwidth_capab(mode) &
+			      HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G))) {
 			return NOT_ALLOWED;
-		if (i == 1 && !(flags & HOSTAPD_CHAN_VHT_30_130))
-			return NOT_ALLOWED;
-		if (i == 2 && !(flags & HOSTAPD_CHAN_VHT_50_110))
-			return NOT_ALLOWED;
-		if (i == 3 && !(flags & HOSTAPD_CHAN_VHT_70_90))
-			return NOT_ALLOWED;
-		if (i == 4 && !(flags & HOSTAPD_CHAN_VHT_90_70))
-			return NOT_ALLOWED;
-		if (i == 5 && !(flags & HOSTAPD_CHAN_VHT_110_50))
-			return NOT_ALLOWED;
-		if (i == 6 && !(flags & HOSTAPD_CHAN_VHT_130_30))
-			return NOT_ALLOWED;
-		if (i == 7 && !(flags & HOSTAPD_CHAN_VHT_150_10))
-			return NOT_ALLOWED;
+		}
 	}
 
 	return ret;
@@ -3806,6 +3844,15 @@ static enum chan_allowed wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 			return NOT_ALLOWED;
 		res2 = has_channel(wpa_s->global, mode, op_class, channel + 4,
 				   NULL);
+	} else if (is_6ghz_op_class(op_class) && bw == BW40) {
+		if (mode->mode != HOSTAPD_MODE_IEEE80211A)
+			return NOT_ALLOWED;
+		if (get_6ghz_sec_channel(channel) < 0)
+			res2 = has_channel(wpa_s->global, mode, op_class,
+					   channel - 4, NULL);
+		else
+			res2 = has_channel(wpa_s->global, mode, op_class,
+					   channel + 4, NULL);
 	} else if (bw == BW80) {
 		res2 = wpas_p2p_verify_80mhz(wpa_s, mode, op_class, channel,
 					     bw);
@@ -3820,6 +3867,8 @@ static enum chan_allowed wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 		return NOT_ALLOWED;
 	if (res == NO_IR || res2 == NO_IR)
 		return NO_IR;
+	if (res == RADAR || res2 == RADAR)
+		return RADAR;
 	return res;
 }
 
@@ -3843,7 +3892,7 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 
 	for (op = 0; global_op_class[op].op_class; op++) {
 		const struct oper_class_map *o = &global_op_class[op];
-		u8 ch;
+		unsigned int ch;
 		struct p2p_reg_class *reg = NULL, *cli_reg = NULL;
 
 		if (o->p2p == NO_P2P_SUPP ||
@@ -3916,30 +3965,56 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 }
 
 
-int wpas_p2p_get_ht40_mode(struct wpa_supplicant *wpa_s,
-			   struct hostapd_hw_modes *mode, u8 channel)
+int wpas_p2p_get_sec_channel_offset_40mhz(struct wpa_supplicant *wpa_s,
+					  struct hostapd_hw_modes *mode,
+					  u8 channel)
 {
 	int op;
 	enum chan_allowed ret;
 
 	for (op = 0; global_op_class[op].op_class; op++) {
 		const struct oper_class_map *o = &global_op_class[op];
-		u8 ch;
+		u16 ch = 0;
 
-		if (o->p2p == NO_P2P_SUPP ||
+		/* Allow DFS channels marked as NO_P2P_SUPP to be used with
+		 * driver offloaded DFS. */
+		if ((o->p2p == NO_P2P_SUPP &&
+		     (!is_dfs_global_op_class(o->op_class) ||
+		      !wpa_s->p2p_go_allow_dfs)) ||
 		    (is_6ghz_op_class(o->op_class) &&
 		     wpa_s->conf->p2p_6ghz_disable))
 			continue;
 
-		for (ch = o->min_chan; ch <= o->max_chan; ch += o->inc) {
+		/* IEEE Std 802.11ax-2021 26.17.2.3.2: "A 6 GHz-only AP should
+		 * set up the BSS with a primary 20 MHz channel that coincides
+		 * with a preferred scanning channel (PSC)."
+		 * 6 GHz BW40 operation class 132 in wpa_supplicant uses the
+		 * lowest 20 MHz channel for simplicity, so increase ch by 4 to
+		 * match the PSC.
+		 */
+		if (is_6ghz_op_class(o->op_class) && o->bw == BW40 &&
+		    get_6ghz_sec_channel(channel) < 0)
+			ch = 4;
+
+		for (ch += o->min_chan; ch <= o->max_chan; ch += o->inc) {
 			if (o->mode != HOSTAPD_MODE_IEEE80211A ||
-			    (o->bw != BW40PLUS && o->bw != BW40MINUS) ||
+			    (o->bw != BW40PLUS && o->bw != BW40MINUS &&
+			     o->bw != BW40) ||
 			    ch != channel)
 				continue;
 			ret = wpas_p2p_verify_channel(wpa_s, mode, o->op_class,
 						      ch, o->bw);
-			if (ret == ALLOWED)
+			if (ret == ALLOWED) {
+				if (is_6ghz_op_class(o->op_class) &&
+				    o->bw == BW40)
+					return get_6ghz_sec_channel(channel);
 				return (o->bw == BW40MINUS) ? -1 : 1;
+			}
+			if (ret == RADAR && wpa_s->p2p_go_allow_dfs) {
+				/* Allow RADAR channels used for driver
+				 * offloaded DFS */
+				return (o->bw == BW40MINUS) ? -1 : 1;
+			}
 		}
 	}
 	return 0;
@@ -3952,8 +4027,10 @@ int wpas_p2p_get_vht80_center(struct wpa_supplicant *wpa_s,
 {
 	const u8 *chans;
 	size_t num_chans;
+	enum chan_allowed ret;
 
-	if (!wpas_p2p_verify_channel(wpa_s, mode, op_class, channel, BW80))
+	ret = wpas_p2p_verify_channel(wpa_s, mode, op_class, channel, BW80);
+	if (!(ret == ALLOWED || (ret == RADAR && wpa_s->p2p_go_allow_dfs)))
 		return 0;
 
 	if (is_6ghz_op_class(op_class)) {
@@ -3974,8 +4051,10 @@ int wpas_p2p_get_vht160_center(struct wpa_supplicant *wpa_s,
 {
 	const u8 *chans;
 	size_t num_chans;
+	enum chan_allowed ret;
 
-	if (!wpas_p2p_verify_channel(wpa_s, mode, op_class, channel, BW160))
+	ret = wpas_p2p_verify_channel(wpa_s, mode, op_class, channel, BW160);
+	if (!(ret == ALLOWED || (ret == RADAR && wpa_s->p2p_go_allow_dfs)))
 		return 0;
 	if (is_6ghz_op_class(op_class)) {
 		chans = center_channels_6ghz_160mhz;
@@ -4660,7 +4739,7 @@ static int wpas_prov_disc_resp_cb(void *ctx)
 
 static int wpas_p2p_get_pref_freq_list(void *ctx, int go,
 				       unsigned int *len,
-				       unsigned int *freq_list)
+				       struct weighted_pcl *freq_list)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -5636,12 +5715,13 @@ static int wpas_p2p_join_start(struct wpa_supplicant *wpa_s, int freq,
 
 static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				int *force_freq, int *pref_freq, int go,
-				unsigned int *pref_freq_list,
+				struct weighted_pcl *pref_freq_list,
 				unsigned int *num_pref_freq)
 {
 	struct wpa_used_freq_data *freqs;
 	int res, best_freq, num_unused;
 	unsigned int freq_in_use = 0, num, i, max_pref_freq;
+	int p2p_pref_freq;
 
 	max_pref_freq = *num_pref_freq;
 	*num_pref_freq = 0;
@@ -5710,50 +5790,71 @@ static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 
 	best_freq = wpas_p2p_pick_best_used_freq(wpa_s, freqs, num);
 
-	if (!wpa_s->conf->num_p2p_pref_chan && *pref_freq == 0) {
-		enum wpa_driver_if_type iface_type;
-
-		if (go)
-			iface_type = WPA_IF_P2P_GO;
-		else
-			iface_type = WPA_IF_P2P_CLIENT;
-
-		wpa_printf(MSG_DEBUG, "P2P: best_freq=%d, go=%d",
-			   best_freq, go);
-
-		res = wpa_drv_get_pref_freq_list(wpa_s, iface_type,
-						 &max_pref_freq,
-						 pref_freq_list);
-		if (!is_p2p_allow_6ghz(wpa_s->global->p2p))
-			max_pref_freq = p2p_remove_6ghz_channels(pref_freq_list,
-								 max_pref_freq);
-
-		if (!res && max_pref_freq > 0) {
-			*num_pref_freq = max_pref_freq;
+	if (*pref_freq == 0) {
+		if (wpa_s->conf->num_p2p_pref_chan && IS_2GHZ(best_freq)) {
 			i = 0;
-			while (i < *num_pref_freq &&
-			       (!p2p_supported_freq(wpa_s->global->p2p,
-						    pref_freq_list[i]) ||
-				wpas_p2p_disallowed_freq(wpa_s->global,
-							 pref_freq_list[i]))) {
-				wpa_printf(MSG_DEBUG,
-					   "P2P: preferred_freq_list[%d]=%d is disallowed",
-					   i, pref_freq_list[i]);
+			while (i < wpa_s->conf->num_p2p_pref_chan) {
+				p2p_pref_freq = ieee80211_chan_to_freq(NULL,
+					wpa_s->conf->p2p_pref_chan[i].op_class,
+					wpa_s->conf->p2p_pref_chan[i].chan);
+
+				if (p2p_supported_freq(wpa_s->global->p2p, p2p_pref_freq) &&
+					!wpas_p2p_disallowed_freq(wpa_s->global, p2p_pref_freq)) {
+					best_freq = p2p_pref_freq;
+					wpa_printf(MSG_DEBUG, "P2P: Using frequency (%u MHz) "
+						"from P2P preferred channel list", best_freq);
+					break;
+				} else {
+					wpa_printf(MSG_MSGDUMP, "P2P: Skipping preferred "
+						"frequency (%u MHz) ", p2p_pref_freq);
+				}
 				i++;
 			}
-			if (i != *num_pref_freq) {
-				best_freq = pref_freq_list[i];
-				wpa_printf(MSG_DEBUG,
-					   "P2P: Using preferred_freq_list[%d]=%d",
-					   i, best_freq);
+		} else if (!wpa_s->conf->num_p2p_pref_chan) {
+			enum wpa_driver_if_type iface_type;
+
+			if (go)
+				iface_type = WPA_IF_P2P_GO;
+			else
+				iface_type = WPA_IF_P2P_CLIENT;
+
+			wpa_printf(MSG_DEBUG, "P2P: best_freq=%d, go=%d",
+				best_freq, go);
+
+			res = wpa_drv_get_pref_freq_list(wpa_s, iface_type,
+						 &max_pref_freq,
+						 pref_freq_list);
+			if (!res && max_pref_freq > 0) {
+				*num_pref_freq = max_pref_freq;
+				i = 0;
+				while (i < *num_pref_freq &&
+					(!p2p_supported_freq(wpa_s->global->p2p,
+						    pref_freq_list[i].freq) ||
+					  wpas_p2p_disallowed_freq(
+						wpa_s->global,
+						pref_freq_list[i].freq) ||
+					  !p2p_pref_freq_allowed(&pref_freq_list[i],
+						       go))) {
+					wpa_printf(MSG_DEBUG,
+						"P2P: preferred_freq_list[%d]=%d is disallowed",
+					   	 i, pref_freq_list[i].freq);
+					i++;
+				}
+				if (i != *num_pref_freq) {
+					best_freq = pref_freq_list[i].freq;
+					wpa_printf(MSG_DEBUG,
+						"P2P: Using preferred_freq_list[%d]=%d",
+						i, best_freq);
+				} else {
+					wpa_printf(MSG_DEBUG,
+						"P2P: All driver preferred frequencies are "
+						"disallowed for P2P use");
+					*num_pref_freq = 0;
+				}
 			} else {
 				wpa_printf(MSG_DEBUG,
-					   "P2P: All driver preferred frequencies are disallowed for P2P use");
-				*num_pref_freq = 0;
+					"P2P: No preferred frequency list available");
 			}
-		} else {
-			wpa_printf(MSG_DEBUG,
-				   "P2P: No preferred frequency list available");
 		}
 	}
 
@@ -5864,7 +5965,8 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	enum wpa_driver_if_type iftype;
 	const u8 *if_addr;
 	struct wpa_ssid *ssid = NULL;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return -1;
@@ -6149,7 +6251,7 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 
 	if (!wpa_s->conf->num_p2p_pref_chan && !freq) {
 		unsigned int i, size = P2P_MAX_PREF_CHANNELS;
-		unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS];
+		struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
 		int res;
 
 		res = wpa_drv_get_pref_freq_list(wpa_s, WPA_IF_P2P_GO,
@@ -6161,16 +6263,19 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 			i = 0;
 			while (i < size &&
 			       (!p2p_supported_freq(wpa_s->global->p2p,
-						    pref_freq_list[i]) ||
-				wpas_p2p_disallowed_freq(wpa_s->global,
-							 pref_freq_list[i]))) {
+						    pref_freq_list[i].freq) ||
+				wpas_p2p_disallowed_freq(
+					wpa_s->global,
+					pref_freq_list[i].freq) ||
+				!p2p_pref_freq_allowed(&pref_freq_list[i],
+						       true))) {
 				wpa_printf(MSG_DEBUG,
 					   "P2P: preferred_freq_list[%d]=%d is disallowed",
-					   i, pref_freq_list[i]);
+					   i, pref_freq_list[i].freq);
 				i++;
 			}
 			if (i != size) {
-				freq = pref_freq_list[i];
+				freq = pref_freq_list[i].freq;
 				wpa_printf(MSG_DEBUG,
 					   "P2P: Using preferred_freq_list[%d]=%d",
 					   i, freq);
@@ -6196,7 +6301,25 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 		} else {
 			if (os_get_random((u8 *) &r, sizeof(r)) < 0)
 				return -1;
-			freq = 2412 + (r % 3) * 25;
+			int possible_2g_freqs[] = {
+				/* operating class 81 */
+				2412, 2437, 2462,
+			};
+			int possible_2g_freqs_num =
+			    sizeof(possible_2g_freqs)/sizeof(possible_2g_freqs[0]);
+			int i;
+			for (i = 0; i < possible_2g_freqs_num; i++, r++) {
+				freq = possible_2g_freqs[r % possible_2g_freqs_num];
+				if (p2p_supported_freq_go(wpa_s->global->p2p, freq)) {
+					break;
+				}
+			}
+
+			if (i >= possible_2g_freqs_num) {
+				wpa_printf(MSG_DEBUG, "P2P: Could not select "
+					   "2.4 GHz channel for P2P group");
+				return -1;
+			}
 			wpa_printf(MSG_DEBUG, "P2P: Use random 2.4 GHz band "
 				   "channel: %d MHz", freq);
 		}
@@ -6212,6 +6335,14 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 			wpa_printf(MSG_DEBUG, "P2P: Use best 5 GHz band "
 				   "channel: %d MHz", freq);
 		} else {
+			const int freqs[] = {
+				/* operating class 115 */
+				5180, 5200, 5220, 5240,
+				/* operating class 124 */
+				5745, 5765, 5785, 5805,
+			};
+			unsigned int i, num_freqs = ARRAY_SIZE(freqs);
+
 			if (os_get_random((u8 *) &r, sizeof(r)) < 0)
 				return -1;
 
@@ -6228,7 +6359,6 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 			int possible_5g_freqs_num =
 			    sizeof(possible_5g_freqs)/sizeof(possible_5g_freqs[0]);
 
-			int i;
 			for (i = 0; i < possible_5g_freqs_num; i++, r++) {
 				if (p2p_supported_freq_go(
 				    wpa_s->global->p2p,
@@ -6292,34 +6422,26 @@ static void wpas_p2p_select_go_freq_no_pref(struct wpa_supplicant *wpa_s,
 	/* try all channels in operating class 115 */
 	for (i = 0; i < 4; i++) {
 		params->freq = 5180 + i * 20;
-		if (!wpas_p2p_disallowed_freq(wpa_s->global, params->freq) &&
-		    freq_included(wpa_s, channels, params->freq) &&
-		    p2p_supported_freq(wpa_s->global->p2p, params->freq))
+		if (wpas_p2p_supported_freq_go(wpa_s, channels, params->freq))
 			goto out;
 	}
 
 	/* try all channels in operating class 124 */
 	for (i = 0; i < 4; i++) {
 		params->freq = 5745 + i * 20;
-		if (!wpas_p2p_disallowed_freq(wpa_s->global, params->freq) &&
-		    freq_included(wpa_s, channels, params->freq) &&
-		    p2p_supported_freq(wpa_s->global->p2p, params->freq))
+		if (wpas_p2p_supported_freq_go(wpa_s, channels, params->freq))
 			goto out;
 	}
 
 	/* try social channel class 180 channel 2 */
 	params->freq = 58320 + 1 * 2160;
-	if (!wpas_p2p_disallowed_freq(wpa_s->global, params->freq) &&
-	    freq_included(wpa_s, channels, params->freq) &&
-	    p2p_supported_freq(wpa_s->global->p2p, params->freq))
+	if (wpas_p2p_supported_freq_go(wpa_s, channels, params->freq))
 		goto out;
 
 	/* try all channels in reg. class 180 */
 	for (i = 0; i < 4; i++) {
 		params->freq = 58320 + i * 2160;
-		if (!wpas_p2p_disallowed_freq(wpa_s->global, params->freq) &&
-		    freq_included(wpa_s, channels, params->freq) &&
-		    p2p_supported_freq(wpa_s->global->p2p, params->freq))
+		if (wpas_p2p_supported_freq_go(wpa_s, channels, params->freq))
 			goto out;
 	}
 
@@ -6632,8 +6754,8 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 
 			if (!is_6ghz &&
 			    ieee80211_freq_to_channel_ext(
-				    cand, -1, CHANWIDTH_USE_HT, &op_class,
-				    &chan) != NUM_HOSTAPD_MODES &&
+				    cand, -1, CONF_OPER_CHWIDTH_USE_HT,
+				    &op_class, &chan) != NUM_HOSTAPD_MODES &&
 			    wpas_p2p_verify_channel(
 				    wpa_s, hwmode, op_class, chan,
 				    BW40MINUS) == ALLOWED)
@@ -6641,8 +6763,8 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 
 			if (!supported && !is_6ghz &&
 			    ieee80211_freq_to_channel_ext(
-				    cand, 1, CHANWIDTH_USE_HT, &op_class,
-				    &chan) != NUM_HOSTAPD_MODES &&
+				    cand, 1, CONF_OPER_CHWIDTH_USE_HT,
+				    &op_class, &chan) != NUM_HOSTAPD_MODES &&
 			    wpas_p2p_verify_channel(
 				    wpa_s, hwmode, op_class, chan,
 				    BW40PLUS) == ALLOWED)
@@ -6752,6 +6874,11 @@ wpas_p2p_get_group_iface(struct wpa_supplicant *wpa_s, int addr_allocated,
 		group_wpa_s->p2p_go_do_acs = wpa_s->p2p_go_do_acs;
 		group_wpa_s->p2p_go_acs_band = wpa_s->p2p_go_acs_band;
 		wpa_s->p2p_go_do_acs = 0;
+	}
+
+	if (go && wpa_s->p2p_go_allow_dfs) {
+		group_wpa_s->p2p_go_allow_dfs = wpa_s->p2p_go_allow_dfs;
+		wpa_s->p2p_go_allow_dfs = 0;
 	}
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Use separate group interface %s",
@@ -7523,7 +7650,8 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	int force_freq = 0;
 	int res;
 	int no_pref_freq_given = pref_freq == 0;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	if (wpas_p2p_check_6ghz(wpa_s, NULL, allow_6ghz, freq))
 		return -1;
@@ -7612,7 +7740,8 @@ int wpas_p2p_invite_group(struct wpa_supplicant *wpa_s, const char *ifname,
 	int persistent;
 	int freq = 0, force_freq = 0, pref_freq = 0;
 	int res;
-	unsigned int pref_freq_list[P2P_MAX_PREF_CHANNELS], size;
+	struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+	unsigned int size;
 
 	wpa_s->p2p_persistent_go_freq = 0;
 	wpa_s->p2p_go_ht40 = 0;
@@ -8424,6 +8553,10 @@ int wpas_p2p_in_progress(struct wpa_supplicant *wpa_s)
 				"in group formation",
 				wpa_s->global->p2p_group_formation->ifname);
 			ret = 1;
+		} else if (wpa_s->global->p2p_group_formation == wpa_s) {
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"P2P: Skip Extended Listen timeout and allow scans on current interface for group formation");
+			ret = 2;
 		}
 	}
 
@@ -8785,7 +8918,7 @@ static void wpas_p2p_remove_client_go(struct wpa_supplicant *wpa_s,
 				hapd->conf->ssid.wpa_psk = psk->next;
 			rem = psk;
 			psk = psk->next;
-			os_free(rem);
+			bin_clear_free(rem, sizeof(*rem));
 		} else {
 			prev = psk;
 			psk = psk->next;
@@ -9546,9 +9679,6 @@ static void wpas_p2p_optimize_listen_channel(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->conf->p2p_optimize_listen_chan)
 		return;
 
-	if (!wpa_s->current_ssid || wpa_s->wpa_state != WPA_COMPLETED)
-		return;
-
 	curr_chan = p2p_get_listen_channel(wpa_s->global->p2p);
 	for (i = 0, cand = 0; i < num; i++) {
 		ieee80211_freq_to_chan(freqs[i].freq, &chan);
@@ -9616,9 +9746,12 @@ static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
 		goto out;
 	}
 
-	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"P2P CSA: CSA to a different band is not supported");
+	if (conf->hw_mode != wpa_s->ap_iface->current_mode->mode &&
+	    (wpa_s->ap_iface->current_mode->mode != HOSTAPD_MODE_IEEE80211A ||
+	     conf->hw_mode != HOSTAPD_MODE_IEEE80211G)) {
+		wpa_dbg(wpa_s, MSG_INFO,
+			"P2P CSA: CSA from Hardware mode %d to %d is not supported",
+			wpa_s->ap_iface->current_mode->mode, conf->hw_mode);
 		ret = -1;
 		goto out;
 	}
@@ -9667,12 +9800,14 @@ static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
 		csa_settings.freq_params.center_freq2 = freq2;
 
 		switch (conf->vht_oper_chwidth) {
-		case CHANWIDTH_80MHZ:
-		case CHANWIDTH_80P80MHZ:
+		case CONF_OPER_CHWIDTH_80MHZ:
+		case CONF_OPER_CHWIDTH_80P80MHZ:
 			csa_settings.freq_params.bandwidth = 80;
 			break;
-		case CHANWIDTH_160MHZ:
+		case CONF_OPER_CHWIDTH_160MHZ:
 			csa_settings.freq_params.bandwidth = 160;
+			break;
+		default:
 			break;
 		}
 	}

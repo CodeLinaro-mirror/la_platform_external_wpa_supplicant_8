@@ -13,6 +13,7 @@
 #include <assert.h>
 
 #include "common.h"
+#include "crypto/crypto.h"
 #include "config.h"
 #include "eapol_supp/eapol_supp_sm.h"
 #include "eloop.h"
@@ -130,7 +131,7 @@ static int wpa_supplicant_get_bssid(void *wpa_s, u8 *bssid)
 }
 
 
-static int wpa_supplicant_set_key(void *wpa_s, enum wpa_alg alg,
+static int wpa_supplicant_set_key(void *wpa_s, int link_id, enum wpa_alg alg,
 				  const u8 *addr, int key_idx, int set_tx,
 				  const u8 *seq, size_t seq_len,
 				  const u8 *key, size_t key_len,
@@ -220,7 +221,7 @@ static void eapol_test_poll(void *eloop_ctx, void *timeout_ctx)
 }
 
 
-static struct wpa_driver_ops dummy_driver;
+static struct wpa_driver_ops stub_driver;
 
 
 static void wpa_init_conf(struct wpa_supplicant *wpa_s, const char *ifname)
@@ -228,8 +229,8 @@ static void wpa_init_conf(struct wpa_supplicant *wpa_s, const char *ifname)
 	struct l2_packet_data *l2;
 	struct wpa_sm_ctx *ctx;
 
-	os_memset(&dummy_driver, 0, sizeof(dummy_driver));
-	wpa_s->driver = &dummy_driver;
+	os_memset(&stub_driver, 0, sizeof(stub_driver));
+	wpa_s->driver = &stub_driver;
 
 	ctx = os_zalloc(sizeof(*ctx));
 	assert(ctx != NULL);
@@ -365,6 +366,7 @@ int main(int argc, char *argv[])
 
 	eloop_destroy();
 
+	crypto_unload();
 	os_program_deinit();
 
 	return ret;
