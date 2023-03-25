@@ -18,6 +18,7 @@
 #define DEFAULT_USER_MPM 1
 #define DEFAULT_MAX_PEER_LINKS 99
 #define DEFAULT_MESH_MAX_INACTIVITY 300
+#define DEFAULT_MESH_FWDING 1
 /*
  * The default dot11RSNASAERetransPeriod is defined as 40 ms in the standard,
  * but use 1000 ms in practice to avoid issues on low power CPUs.
@@ -179,6 +180,41 @@ struct wpa_cred {
 	 *	<Ki>:<OPc>:<SQN> format
 	 */
 	char *milenage;
+
+	/**
+	 * imsi_privacy_key - IMSI privacy key (PEM encoded X.509v3 certificate)
+	 *
+	 * This field is used with EAP-SIM/AKA/AKA' to encrypt the permanent
+	 * identity (IMSI) to improve privacy. The X.509v3 certificate needs to
+	 * include a 2048-bit RSA public key and this is from the operator who
+	 * authenticates the SIM/USIM.
+	 */
+	char *imsi_privacy_key;
+
+	/**
+	 * engine - Use an engine for private key operations
+	 */
+	int engine;
+
+	/**
+	 * engine_id - String identifying the engine to use
+	 */
+	char *engine_id;
+
+	/**
+	 * ca_cert_id - The CA certificate identifier when using an engine
+	 */
+	char *ca_cert_id;
+
+	/**
+	 * cert_id - The certificate identifier when using an engine
+	 */
+	char *cert_id;
+
+	/**
+	 * key_id - The private key identifier when using an engine
+	 */
+	char *key_id;
 
 	/**
 	 * domain_suffix_match - Constraint for server domain name
@@ -1210,7 +1246,7 @@ struct wpa_config {
 	 * 1 = hash-to-element only
 	 * 2 = both hunting-and-pecking loop and hash-to-element enabled
 	 */
-	int sae_pwe;
+	enum sae_pwe sae_pwe;
 
 	/**
 	 * sae_pmkid_in_assoc - Whether to include PMKID in SAE Assoc Req
@@ -1242,6 +1278,17 @@ struct wpa_config {
 	 * elements (id+len+payload for one or more elements).
 	 */
 	struct wpabuf *ap_vendor_elements;
+
+	/**
+	 * ap_assocresp_elements: Vendor specific elements for (Re)Association
+	 * Response frames
+	 *
+	 * This parameter can be used to define additional vendor specific
+	 * elements for (Re)Association Response frames in AP/P2P GO mode. The
+	 * format for these element(s) is a hexdump of the raw information
+	 * elements (id+len+payload for one or more elements).
+	 */
+	struct wpabuf *ap_assocresp_elements;
 
 	/**
 	 * ignore_old_scan_res - Ignore scan results older than request
@@ -1378,6 +1425,14 @@ struct wpa_config {
 	 * By default: 300 seconds.
 	 */
 	int mesh_max_inactivity;
+
+	/**
+	 * mesh_fwding - Mesh network layer-2 forwarding (dot11MeshForwarding)
+	 *
+	 * This controls whether to enable layer-2 forwarding.
+	 * By default: 1: enabled
+	 */
+	int mesh_fwding;
 
 	/**
 	 * dot11RSNASAERetransPeriod - Timeout to retransmit SAE Auth frame
@@ -1665,6 +1720,10 @@ struct wpa_config {
 	 * secure LTF. Allow forcing KDK derivation for testing purposes.
 	 */
 	int force_kdk_derivation;
+
+	/* If set, corrupt the MIC in the 3rd Authentication frame of PASN */
+	int pasn_corrupt_mic;
+
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN*/
 };

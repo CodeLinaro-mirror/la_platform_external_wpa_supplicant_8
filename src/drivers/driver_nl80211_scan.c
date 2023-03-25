@@ -397,7 +397,7 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
 	drv->scan_state = SCAN_REQUESTED;
 	/* Not all drivers generate "scan completed" wireless event, so try to
 	 * read results after a timeout. */
-	timeout = 10;
+	timeout = drv->uses_6ghz ? 15 : 10;
 	if (drv->scan_complete_events) {
 		/*
 		 * The driver seems to deliver events to notify when scan is
@@ -713,6 +713,7 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 		[NL80211_BSS_STATUS] = { .type = NLA_U32 },
 		[NL80211_BSS_SEEN_MS_AGO] = { .type = NLA_U32 },
 		[NL80211_BSS_BEACON_IES] = { .type = NLA_UNSPEC },
+		[NL80211_BSS_BEACON_TSF] = { .type = NLA_U64 },
 		[NL80211_BSS_PARENT_TSF] = { .type = NLA_U64 },
 		[NL80211_BSS_PARENT_BSSID] = { .type = NLA_UNSPEC },
 		[NL80211_BSS_LAST_SEEN_BOOTTIME] = { .type = NLA_U64 },
@@ -774,8 +775,10 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
 		r->tsf = nla_get_u64(bss[NL80211_BSS_TSF]);
 	if (bss[NL80211_BSS_BEACON_TSF]) {
 		u64 tsf = nla_get_u64(bss[NL80211_BSS_BEACON_TSF]);
-		if (tsf > r->tsf)
+		if (tsf > r->tsf) {
 			r->tsf = tsf;
+			r->beacon_newer = true;
+		}
 	}
 	if (bss[NL80211_BSS_SEEN_MS_AGO])
 		r->age = nla_get_u32(bss[NL80211_BSS_SEEN_MS_AGO]);
@@ -870,7 +873,7 @@ static void clear_state_mismatch(struct wpa_driver_nl80211_data *drv,
 		wpa_driver_nl80211_mlme(drv, addr,
 					NL80211_CMD_DEAUTHENTICATE,
 					WLAN_REASON_PREV_AUTH_NOT_VALID, 1,
-					get_connect_handle(drv->first_bss));
+					drv->first_bss);
 	}
 }
 
@@ -893,8 +896,21 @@ static void nl80211_check_bss_status(struct wpa_driver_nl80211_data *drv,
 			   "nl80211: Local state (associated with " MACSTR
 			   ") does not match with BSS state",
 			   MAC2STR(drv->bssid));
-		clear_state_mismatch(drv, r->bssid);
-		clear_state_mismatch(drv, drv->bssid);
+
+		if (os_memcmp(drv->sta_mlo_info.ap_mld_addr, drv->bssid,
+			      ETH_ALEN) != 0) {
+			clear_state_mismatch(drv, r->bssid);
+
+			if (!is_zero_ether_addr(drv->sta_mlo_info.ap_mld_addr))
+				clear_state_mismatch(
+					drv, drv->sta_mlo_info.ap_mld_addr);
+			else
+				clear_state_mismatch(drv, drv->bssid);
+
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: BSSID is the MLD address");
+		}
 	}
 }
 
