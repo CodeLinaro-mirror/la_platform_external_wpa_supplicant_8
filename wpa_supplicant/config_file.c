@@ -297,8 +297,8 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp)
 	struct wpa_ssid *ssid, *tail, *head;
 	struct wpa_cred *cred, *cred_tail, *cred_head;
 	struct wpa_config *config;
-	int id = 0;
-	int cred_id = 0;
+	static int id = 0;
+	static int cred_id = 0;
 
 	if (name == NULL)
 		return NULL;
@@ -675,6 +675,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(mem_only_psk);
 	STR(sae_password);
 	STR(sae_password_id);
+	write_int(f, "sae_pwe", ssid->sae_pwe, DEFAULT_SAE_PWE);
 	write_proto(f, ssid);
 	write_key_mgmt(f, ssid);
 	INT_DEF(bg_scan_period, DEFAULT_BG_SCAN_PERIOD);
@@ -698,7 +699,6 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(client_cert);
 	STR(private_key);
 	STR(private_key_passwd);
-	STR(dh_file);
 	STR(subject_match);
 	STR(check_cert_subject);
 	STR(altsubject_match);
@@ -709,7 +709,6 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(client_cert2);
 	STR(private_key2);
 	STR(private_key2_passwd);
-	STR(dh_file2);
 	STR(subject_match2);
 	STR(check_cert_subject2);
 	STR(altsubject_match2);
@@ -720,7 +719,6 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(machine_client_cert);
 	STR(machine_private_key);
 	STR(machine_private_key_passwd);
-	STR(machine_dh_file);
 	STR(machine_subject_match);
 	STR(machine_check_cert_subject);
 	STR(machine_altsubject_match);
@@ -768,6 +766,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #endif /* IEEE8021X_EAPOL */
 	INT(mode);
 	INT(no_auto_peer);
+	INT(mesh_fwding);
 	INT(frequency);
 	INT(enable_edmg);
 	INT(edmg_channel);
@@ -808,6 +807,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(macsec_replay_window);
 	INT(macsec_port);
 	INT_DEF(mka_priority, DEFAULT_PRIO_NOT_KEY_SERVER);
+	INT(macsec_csindex);
 #endif /* CONFIG_MACSEC */
 #ifdef CONFIG_HS20
 	INT(update_identifier);
@@ -879,6 +879,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #ifdef CONFIG_HE_OVERRIDES
 	INT(disable_he);
 #endif /* CONFIG_HE_OVERRIDES */
+	INT(disable_eht);
 
 #undef STR
 #undef INT
@@ -1025,6 +1026,17 @@ static void wpa_config_write_cred(FILE *f, struct wpa_cred *cred)
 
 	if (cred->sim_num != DEFAULT_USER_SELECTED_SIM)
 		fprintf(f, "\tsim_num=%d\n", cred->sim_num);
+
+	if (cred->engine)
+		fprintf(f, "\tengine=%d\n", cred->engine);
+	if (cred->engine_id)
+		fprintf(f, "\tengine_id=\"%s\"\n", cred->engine_id);
+	if (cred->key_id)
+		fprintf(f, "\tkey_id=\"%s\"\n", cred->key_id);
+	if (cred->cert_id)
+		fprintf(f, "\tcert_id=\"%s\"\n", cred->cert_id);
+	if (cred->ca_cert_id)
+		fprintf(f, "\tca_cert_id=\"%s\"\n", cred->ca_cert_id);
 }
 
 
@@ -1364,6 +1376,18 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		}
 	}
 
+	if (config->ap_assocresp_elements) {
+		int i, len = wpabuf_len(config->ap_assocresp_elements);
+		const u8 *p = wpabuf_head_u8(config->ap_assocresp_elements);
+
+		if (len > 0) {
+			fprintf(f, "ap_assocresp_elements=");
+			for (i = 0; i < len; i++)
+				fprintf(f, "%02x", *p++);
+			fprintf(f, "\n");
+		}
+	}
+
 	if (config->ignore_old_scan_res)
 		fprintf(f, "ignore_old_scan_res=%d\n",
 			config->ignore_old_scan_res);
@@ -1448,6 +1472,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->mesh_max_inactivity != DEFAULT_MESH_MAX_INACTIVITY)
 		fprintf(f, "mesh_max_inactivity=%d\n",
 			config->mesh_max_inactivity);
+
+	if (config->mesh_fwding != DEFAULT_MESH_FWDING)
+		fprintf(f, "mesh_fwding=%d\n", config->mesh_fwding);
 
 	if (config->dot11RSNASAERetransPeriod !=
 	    DEFAULT_DOT11_RSNA_SAE_RETRANS_PERIOD)

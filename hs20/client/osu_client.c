@@ -10,7 +10,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #ifdef ANDROID
-#include "private/android_filesystem_config.h"
+#include "cutils/android_filesystem_config.h"
 #endif /* ANDROID */
 
 #include "common.h"
@@ -1235,8 +1235,7 @@ static void set_pps_cred_home_sp_oi(struct hs20_osu_client *ctx, int id,
 			     homeoi) < 0)
 			wpa_printf(MSG_INFO, "Failed to set cred required_roaming_consortium");
 	} else {
-		if (set_cred_quoted(ctx->ifname, id, "roaming_consortium",
-				    homeoi) < 0)
+		if (set_cred(ctx->ifname, id, "roaming_consortium", homeoi) < 0)
 			wpa_printf(MSG_INFO, "Failed to set cred roaming_consortium");
 	}
 
@@ -1466,10 +1465,92 @@ static void set_pps_cred_able_to_share(struct hs20_osu_client *ctx, int id,
 }
 
 
+static void set_pps_cred_eap_method_eap_type(struct hs20_osu_client *ctx,
+					     int id, xml_node_t *node)
+{
+	char *str = xml_node_get_text(ctx->xml, node);
+	int type;
+	const char *eap_method = NULL;
+
+	if (!str)
+		return;
+	wpa_printf(MSG_INFO,
+		   "- Credential/UsernamePassword/EAPMethod/EAPType = %s", str);
+	type = atoi(str);
+	switch (type) {
+	case EAP_TYPE_TLS:
+		eap_method = "TLS";
+		break;
+	case EAP_TYPE_TTLS:
+		eap_method = "TTLS";
+		break;
+	case EAP_TYPE_PEAP:
+		eap_method = "PEAP";
+		break;
+	case EAP_TYPE_PWD:
+		eap_method = "PWD";
+		break;
+	}
+	xml_node_get_text_free(ctx->xml, str);
+	if (!eap_method) {
+		wpa_printf(MSG_INFO, "Unknown EAPType value");
+		return;
+	}
+
+	if (set_cred(ctx->ifname, id, "eap", eap_method) < 0)
+		wpa_printf(MSG_INFO, "Failed to set cred eap");
+}
+
+
+static void set_pps_cred_eap_method_inner_method(struct hs20_osu_client *ctx,
+						 int id, xml_node_t *node)
+{
+	char *str = xml_node_get_text(ctx->xml, node);
+	const char *phase2 = NULL;
+
+	if (!str)
+		return;
+	wpa_printf(MSG_INFO,
+		   "- Credential/UsernamePassword/EAPMethod/InnerMethod = %s",
+		   str);
+	if (os_strcmp(str, "PAP") == 0)
+		phase2 = "auth=PAP";
+	else if (os_strcmp(str, "CHAP") == 0)
+		phase2 = "auth=CHAP";
+	else if (os_strcmp(str, "MS-CHAP") == 0)
+		phase2 = "auth=MSCHAP";
+	else if (os_strcmp(str, "MS-CHAP-V2") == 0)
+		phase2 = "auth=MSCHAPV2";
+	xml_node_get_text_free(ctx->xml, str);
+	if (!phase2) {
+		wpa_printf(MSG_INFO, "Unknown InnerMethod value");
+		return;
+	}
+
+	if (set_cred_quoted(ctx->ifname, id, "phase2", phase2) < 0)
+		wpa_printf(MSG_INFO, "Failed to set cred phase2");
+}
+
+
 static void set_pps_cred_eap_method(struct hs20_osu_client *ctx, int id,
 				    xml_node_t *node)
 {
-	wpa_printf(MSG_INFO, "- Credential/UsernamePassword/EAPMethod - TODO");
+	xml_node_t *child;
+	const char *name;
+
+	wpa_printf(MSG_INFO, "- Credential/UsernamePassword/EAPMethod");
+
+	xml_node_for_each_child(ctx->xml, child, node) {
+		xml_node_for_each_check(ctx->xml, child);
+		name = xml_node_get_localname(ctx->xml, child);
+		if (os_strcasecmp(name, "EAPType") == 0)
+			set_pps_cred_eap_method_eap_type(ctx, id, child);
+		else if (os_strcasecmp(name, "InnerMethod") == 0)
+			set_pps_cred_eap_method_inner_method(ctx, id, child);
+		else
+			wpa_printf(MSG_INFO, "Unknown Credential/UsernamePassword/EAPMethod node '%s'",
+				   name);
+	}
 }
 
 
@@ -2830,20 +2911,27 @@ static int osu_cert_cb(void *_ctx, struct http_cert *cert)
 	int found;
 	char *host = NULL;
 
-	wpa_printf(MSG_INFO, "osu_cert_cb(osu_cert_validation=%d, url=%s)",
-		   !ctx->no_osu_cert_validation, ctx->server_url);
+	wpa_printf(MSG_INFO, "osu_cert_cb(osu_cert_validation=%d, url=%s server_url=%s)",
+		   !ctx->no_osu_cert_validation, cert->url ? cert->url : "N/A",
+		   ctx->server_url);
 
-	host = get_hostname(ctx->server_url);
+	if (ctx->no_osu_cert_validation && cert->url)
+		host = get_hostname(cert->url);
+	else
+		host = get_hostname(ctx->server_url);
 
-	for (i = 0; i < ctx->server_dnsname_count; i++)
-		os_free(ctx->server_dnsname[i]);
-	os_free(ctx->server_dnsname);
-	ctx->server_dnsname = os_calloc(cert->num_dnsname, sizeof(char *));
-	ctx->server_dnsname_count = 0;
+	if (!ctx->no_osu_cert_validation) {
+		for (i = 0; i < ctx->server_dnsname_count; i++)
+			os_free(ctx->server_dnsname[i]);
+		os_free(ctx->server_dnsname);
+		ctx->server_dnsname = os_calloc(cert->num_dnsname,
+						sizeof(char *));
+		ctx->server_dnsname_count = 0;
+	}
 
 	found = 0;
 	for (i = 0; i < cert->num_dnsname; i++) {
-		if (ctx->server_dnsname) {
+		if (!ctx->no_osu_cert_validation && ctx->server_dnsname) {
 			ctx->server_dnsname[ctx->server_dnsname_count] =
 				os_strdup(cert->dnsname[i]);
 			if (ctx->server_dnsname[ctx->server_dnsname_count])
@@ -3168,7 +3256,6 @@ int main(int argc, char *argv[])
 		default:
 			usage();
 			exit(0);
-			break;
 		}
 	}
 

@@ -1,6 +1,6 @@
 /*
  * hostapd / main()
- * Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2022, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -15,6 +15,7 @@
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/uuid.h"
+#include "crypto/crypto.h"
 #include "crypto/random.h"
 #include "crypto/tls.h"
 #include "common/version.h"
@@ -30,9 +31,9 @@
 #include "config_file.h"
 #include "eap_register.h"
 #include "ctrl_iface.h"
-#ifdef CONFIG_CTRL_IFACE_HIDL
-#include "hidl.h"
-#endif /* CONFIG_CTRL_IFACE_HIDL */
+#ifdef CONFIG_CTRL_IFACE_AIDL
+#include "aidl.h"
+#endif /* CONFIG_CTRL_IFACE_AIDL */
 
 struct hapd_global {
 	void **drv_priv;
@@ -242,6 +243,9 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 				wpa_printf(MSG_ERROR, "set_wowlan failed");
 		}
 		os_free(triggs);
+
+		iface->mbssid_max_interfaces = capa.mbssid_max_interfaces;
+		iface->ema_max_periodicity = capa.ema_max_periodicity;
 	}
 
 	return 0;
@@ -456,7 +460,7 @@ static void show_version(void)
 		"hostapd v%s\n"
 		"User space daemon for IEEE 802.11 AP management,\n"
 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
-		"Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi> "
+		"Copyright (c) 2002-2022, Jouni Malinen <j@w1.fi> "
 		"and contributors\n",
 		VERSION_STR);
 }
@@ -725,7 +729,6 @@ int main(int argc, char *argv[])
 		case 'v':
 			show_version();
 			exit(1);
-			break;
 		case 'g':
 			if (hostapd_get_global_ctrl_iface(&interfaces, optarg))
 				return -1;
@@ -760,9 +763,9 @@ int main(int argc, char *argv[])
 							&if_names_size, optarg))
 				goto out;
 			break;
-#ifdef CONFIG_CTRL_IFACE_HIDL
+#ifdef CONFIG_CTRL_IFACE_AIDL
 		case 'j':
-			interfaces.hidl_service_name = strdup(optarg);
+			interfaces.aidl_service_name = strdup(optarg);
 			break;
 #endif
 		default:
@@ -771,7 +774,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-#ifndef CONFIG_CTRL_IFACE_HIDL
+#ifndef CONFIG_CTRL_IFACE_AIDL
 	if (optind == argc && interfaces.global_iface_path == NULL &&
 	    num_bss_configs == 0)
 		usage();
@@ -898,12 +901,12 @@ int main(int argc, char *argv[])
 	}
 
 	hostapd_global_ctrl_iface_init(&interfaces);
-#ifdef CONFIG_CTRL_IFACE_HIDL
-	if (hostapd_hidl_init(&interfaces)) {
-		wpa_printf(MSG_ERROR, "Failed to initialize HIDL interface");
+#ifdef CONFIG_CTRL_IFACE_AIDL
+	if (hostapd_aidl_init(&interfaces)) {
+		wpa_printf(MSG_ERROR, "Failed to initialize AIDL interface");
 		goto out;
 	}
-#endif /* CONFIG_CTRL_IFACE_HIDL */
+#endif /* CONFIG_CTRL_IFACE_AIDL */
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file)) {
 		wpa_printf(MSG_ERROR, "Failed to start eloop");
@@ -913,9 +916,9 @@ int main(int argc, char *argv[])
 	ret = 0;
 
  out:
-#ifdef CONFIG_CTRL_IFACE_HIDL
-	hostapd_hidl_deinit(&interfaces);
-#endif /* CONFIG_CTRL_IFACE_HIDL */
+#ifdef CONFIG_CTRL_IFACE_AIDL
+	hostapd_aidl_deinit(&interfaces);
+#endif /* CONFIG_CTRL_IFACE_AIDL */
 	hostapd_global_ctrl_iface_deinit(&interfaces);
 	/* Deinitialize all interfaces */
 	for (i = 0; i < interfaces.count; i++) {
@@ -953,6 +956,7 @@ int main(int argc, char *argv[])
 
 	fst_global_deinit();
 
+	crypto_unload();
 	os_program_deinit();
 
 	return ret;

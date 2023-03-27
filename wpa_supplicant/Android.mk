@@ -8,6 +8,8 @@
 LOCAL_PATH := $(call my-dir)
 PKG_CONFIG ?= pkg-config
 
+$(eval $(call declare-copy-files-license-metadata,external/wpa_supplicant_8/wpa_supplicant,.conf,SPDX-license-identifier-BSD-3-Clause,notice,external/wpa_supplicant_8/LICENSE,))
+
 ifneq ($(BOARD_WPA_SUPPLICANT_DRIVER),)
   CONFIG_DRIVER_$(BOARD_WPA_SUPPLICANT_DRIVER) := y
 endif
@@ -86,7 +88,7 @@ L_CFLAGS += -mabi=aapcs-linux
 L_CFLAGS += -DARCH_ARM_32
 endif
 
-# C++ flags for hidl interface
+# C++ flags for aidl interface
 L_CPPFLAGS := -Wall -Werror
 # TODO: Remove these allowed warnings later.
 L_CPPFLAGS += -Wno-unused-variable -Wno-unused-parameter
@@ -107,6 +109,7 @@ INCLUDES += $(LOCAL_PATH)/src/rsn_supp
 INCLUDES += $(LOCAL_PATH)/src/tls
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += $(LOCAL_PATH)/src/wps
+INCLUDES += $(LOCAL_PATH)/src/pasn
 INCLUDES += system/security/keystore/include
 ifdef CONFIG_DRIVER_NL80211
 ifneq ($(wildcard external/libnl),)
@@ -118,7 +121,6 @@ endif
 
 ifdef CONFIG_FIPS
 CONFIG_NO_RANDOM_POOL=
-CONFIG_OPENSSL_CMAC=y
 endif
 
 OBJS = config.c
@@ -135,6 +137,7 @@ OBJS += src/utils/crc32.c
 OBJS += wmm_ac.c
 OBJS += op_classes.c
 OBJS += rrm.c
+OBJS += twt.c
 OBJS += robust_av.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
@@ -310,6 +313,9 @@ NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
 endif
+ifdef CONFIG_DPP3
+L_CFLAGS += -DCONFIG_DPP3
+endif
 endif
 
 ifeq ($(CONFIG_OWE),y)
@@ -401,11 +407,10 @@ CONFIG_AP=y
 ifdef CONFIG_P2P_STRICT
 L_CFLAGS += -DCONFIG_P2P_STRICT
 endif
-endif
-
 ifdef CONFIG_WIFI_DISPLAY
 L_CFLAGS += -DCONFIG_WIFI_DISPLAY
 OBJS += wifi_display.c
+endif
 endif
 
 ifdef CONFIG_PASN
@@ -416,6 +421,7 @@ NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
 OBJS += src/common/ptksa_cache.c
+OBJS += src/pasn/pasn_initiator.c
 OBJS += pasn_supplicant.c
 endif
 
@@ -511,6 +517,9 @@ OBJS += src/eap_peer/eap_tls.c
 endif
 TLS_FUNCS=y
 CONFIG_IEEE8021X_EAPOL=y
+ifdef CONFIG_EAP_TLSV1_3
+L_CFLAGS += -DEAP_TLSV1_3
+endif
 endif
 
 ifdef CONFIG_EAP_UNAUTH_TLS
@@ -776,6 +785,7 @@ OBJS += src/eap_peer/eap_pwd.c src/eap_common/eap_pwd_common.c
 CONFIG_IEEE8021X_EAPOL=y
 NEED_ECC=y
 NEED_DRAGONFLY=y
+MS_FUNCS=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -946,6 +956,9 @@ endif
 ifdef CONFIG_IEEE80211AX
 OBJS += src/ap/ieee802_11_he.c
 endif
+ifdef CONFIG_IEEE80211BE
+OBJS += src/ap/ieee802_11_eht.c
+endif
 ifdef CONFIG_WNM_AP
 L_CFLAGS += -DCONFIG_WNM_AP
 OBJS += src/ap/wnm_ap.c
@@ -979,6 +992,8 @@ endif
 ifdef NEED_AP_MLME
 OBJS += src/ap/wmm.c
 OBJS += src/ap/ap_list.c
+OBJS += src/ap/comeback_token.c
+OBJS += src/pasn/pasn_responder.c
 OBJS += src/ap/ieee802_11.c
 OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
@@ -1104,6 +1119,7 @@ L_CFLAGS += -DCONFIG_TLSV12
 endif
 
 ifeq ($(CONFIG_TLS), openssl)
+L_CFLAGS += -DCRYPTO_RSA_OAEP_SHA256
 ifdef TLS_FUNCS
 L_CFLAGS += -DEAP_TLS_OPENSSL
 OBJS += src/crypto/tls_openssl.c
@@ -1308,9 +1324,7 @@ ifdef NEED_AES_ENCBLOCK
 AESOBJS += src/crypto/aes-encblock.c
 endif
 NEED_AES_ENC=y
-ifdef CONFIG_OPENSSL_CMAC
-L_CFLAGS += -DCONFIG_OPENSSL_CMAC
-else
+ifneq ($(CONFIG_TLS), openssl)
 AESOBJS += src/crypto/aes-omac1.c
 endif
 ifdef NEED_AES_WRAP
@@ -1401,6 +1415,17 @@ ifdef CONFIG_INTERNAL_RC4
 ifndef CONFIG_NO_RC4
 OBJS += src/crypto/rc4.c
 endif
+endif
+endif
+
+ifdef CONFIG_SAE
+ifdef NEED_SHA384
+# Need to add HMAC-SHA384 KDF as well, if SHA384 was enabled.
+NEED_HMAC_SHA384_KDF=y
+endif
+ifdef NEED_SHA512
+# Need to add HMAC-SHA512 KDF as well, if SHA512 was enabled.
+NEED_HMAC_SHA512_KDF=y
 endif
 endif
 
@@ -1533,16 +1558,14 @@ endif
 L_CFLAGS += $(DBUS_INCLUDE)
 endif
 
-ifdef CONFIG_CTRL_IFACE_HIDL
-WPA_SUPPLICANT_USE_HIDL=y
-L_CFLAGS += -DCONFIG_HIDL -DCONFIG_CTRL_IFACE_HIDL
-HIDL_INTERFACE_VERSION := 1.4
+ifdef CONFIG_CTRL_IFACE_AIDL
+WPA_SUPPLICANT_USE_AIDL=y
+L_CFLAGS += -DCONFIG_AIDL -DCONFIG_CTRL_IFACE_AIDL
 endif
 
-ifdef CONFIG_SUPPLICANT_VENDOR_HIDL
-SUPPLICANT_VENDOR_HIDL=y
-SUPPLICANT_VENDOR_HIDL_VERSION=2.2
-L_CFLAGS += -DSUPPLICANT_VENDOR_HIDL
+ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
+SUPPLICANT_VENDOR_AIDL=y
+L_CFLAGS += -DCONFIG_SUPPLICANT_VENDOR_AIDL
 endif
 
 ifdef CONFIG_READLINE
@@ -1748,13 +1771,149 @@ ifndef LDO
 LDO=$(CC)
 endif
 
+PASNOBJS =
+PASNOBJS += src/utils/$(CONFIG_ELOOP).c
+PASNOBJS += src/utils/wpa_debug.c
+PASNOBJS += src/utils/wpabuf.c
+PASNOBJS += src/utils/os_$(CONFIG_OS).c
+PASNOBJS += src/utils/config.c
+PASNOBJS += src/utils/common.c
+
+ifdef NEED_BASE64
+PASNOBJS += src/utils/base64.c
+endif
+
+ifdef CONFIG_WPA_TRACE
+PASNOBJS += src/utils/trace.c
+endif
+
+ifdef CONFIG_EXT_PASSWORD_FILE
+PASNOBJS += src/utils/ext_password_file.c
+endif
+
+ifdef CONFIG_EXT_PASSWORD_TEST
+PASNOBJS += src/utils/ext_password_test.c
+endif
+
+ifdef NEED_EXT_PASSWORD
+PASNOBJS += src/utils/ext_password.c
+endif
+
+ifdef CONFIG_SAE
+PASNOBJS += src/common/sae.c
+endif
+
+ifdef CONFIG_SAE_PK
+PASNOBJS += src/common/sae_pk.c
+endif
+
+ifndef CONFIG_NO_WPA
+PASNOBJS += src/common/wpa_common.c
+endif
+
+PASNOBJS += src/common/ieee802_11_common.c
+
+ifdef NEED_DRAGONFLY
+PASNOBJS += src/common/dragonfly.c
+endif
+
+PASNOBJS += src/common/ptksa_cache.c
+
+ifndef CONFIG_NO_WPA
+PASNOBJS += src/rsn_supp/pmksa_cache.c
+PASNOBJS += src/rsn_supp/wpa_ie.c
+endif
+
+PASNOBJS += src/ap/comeback_token.c
+PASNOBJS += src/ap/pmksa_cache_auth.c
+
+ifdef NEED_EAP_COMMON
+PASNOBJS += src/eap_common/eap_common.c
+endif
+
+ifdef CHAP
+PASNOBJS += src/eap_common/chap.c
+endif
+
+ifdef CONFIG_IEEE8021X_EAPOL
+PASNOBJS += src/eap_peer/eap.c
+PASNOBJS += src/eap_peer/eap_methods.c
+PASNOBJS += src/eapol_supp/eapol_supp_sm.c
+endif
+
+ifeq ($(CONFIG_TLS), openssl)
+PASNOBJS += src/crypto/crypto_openssl.c
+ifdef TLS_FUNCS
+PASNOBJS += src/crypto/tls_openssl.c
+PASNOBJS += src/crypto/tls_openssl_ocsp.c
+NEED_TLS_PRF_SHA256=y
+endif
+endif
+
+ifeq ($(CONFIG_TLS), gnutls)
+PASNOBJS += src/crypto/crypto_$(CONFIG_CRYPTO).c
+ifdef TLS_FUNCS
+PASNOBJS += src/crypto/tls_gnutls.c
+PASNOBJS += -lgnutls -lgpg-error
+PASNOBJS += -lgcrypt
+endif
+endif
+
+ifdef NEED_TLS_PRF_SHA256
+PASNOBJS += src/crypto/sha256-tlsprf.c
+endif
+
+ifdef NEED_SHA512
+PASNOBJS += src/crypto/sha512-prf.c
+endif
+
+ifdef NEED_SHA384
+PASNOBJS += src/crypto/sha384-prf.c
+endif
+
+PASNOBJS += src/crypto/sha256-prf.c
+
+ifdef NEED_HMAC_SHA512_KDF
+PASNOBJS += src/crypto/sha512-kdf.c
+endif
+
+ifdef NEED_HMAC_SHA384_KDF
+PASNOBJS += src/crypto/sha384-kdf.c
+endif
+
+ifdef NEED_HMAC_SHA256_KDF
+PASNOBJS += src/crypto/sha256-kdf.c
+endif
+
+ifdef NEED_DH_GROUPS
+PASNOBJS += src/crypto/dh_groups.c
+endif
+
+ifdef NEED_AES_SIV
+PASNOBJS += src/crypto/aes-siv.c
+endif
+
+ifdef NEED_AES_CTR
+PASNOBJS += src/crypto/aes-ctr.c
+endif
+
+ifdef NEED_SHA1
+PASNOBJS += src/crypto/sha1-prf.c
+ifdef NEED_TLS_PRF
+PASNOBJS += src/crypto/sha1-tlsprf.c
+endif
+endif
+
+PASNOBJS += src/pasn/pasn_initiator.c
+PASNOBJS += src/pasn/pasn_responder.c
+
 ########################
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := wpa_cli
 LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
 LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1767,7 +1926,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := wpa_supplicant
 LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
 LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
 ifdef CONFIG_DRIVER_CUSTOM
@@ -1803,22 +1962,17 @@ LOCAL_C_INCLUDES := $(INCLUDES)
 ifeq ($(DBUS), y)
 LOCAL_SHARED_LIBRARIES += libdbus
 endif
-ifeq ($(WPA_SUPPLICANT_USE_HIDL), y)
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.0
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.1
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.2
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.3
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant@1.4
-ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
-LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.0
-LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.1
-LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant@2.2
+ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V1-ndk
+LOCAL_SHARED_LIBRARIES += libutils libbase
+LOCAL_SHARED_LIBRARIES += libbinder_ndk
+LOCAL_STATIC_LIBRARIES += libwpa_aidl
+LOCAL_VINTF_FRAGMENTS := aidl/android.hardware.wifi.supplicant.xml
+ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant-V1-ndk
 endif
-LOCAL_SHARED_LIBRARIES += libhidlbase libutils libbase
-LOCAL_STATIC_LIBRARIES += libwpa_hidl
-LOCAL_VINTF_FRAGMENTS := hidl/$(HIDL_INTERFACE_VERSION)/android.hardware.wifi.supplicant.xml
 ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
-LOCAL_INIT_RC=hidl/$(HIDL_INTERFACE_VERSION)/android.hardware.wifi.supplicant-service.rc
+LOCAL_INIT_RC=aidl/android.hardware.wifi.supplicant-service.rc
 endif
 endif
 include $(BUILD_EXECUTABLE)
@@ -1853,65 +2007,72 @@ include $(CLEAR_VARS)
 LOCAL_MODULE = libwpa_client
 LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
 LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_CFLAGS = $(L_CFLAGS)
 LOCAL_SRC_FILES = src/common/wpa_ctrl.c src/utils/os_$(CONFIG_OS).c
 LOCAL_C_INCLUDES = $(INCLUDES)
 LOCAL_SHARED_LIBRARIES := libcutils liblog
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/wpa_client_include $(LOCAL_PATH)/wpa_client_include/libwpa_client
-LOCAL_COPY_HEADERS_TO := libwpa_client
-LOCAL_COPY_HEADERS := src/common/wpa_ctrl.h
 include $(BUILD_SHARED_LIBRARY)
 
-ifeq ($(WPA_SUPPLICANT_USE_HIDL), y)
-### Hidl service library ###
+ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
+### Aidl service library ###
 ########################
 include $(CLEAR_VARS)
-LOCAL_MODULE := libwpa_hidl
+LOCAL_MODULE := libwpa_aidl
 LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
 LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_SRC_FILES := \
-    hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/hidl_manager.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/iface_config_utils.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/p2p_iface.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/p2p_network.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/sta_iface.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/sta_network.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/supplicant.cpp
-
-ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+    aidl/aidl.cpp \
+    aidl/aidl_manager.cpp \
+    aidl/iface_config_utils.cpp \
+    aidl/p2p_iface.cpp \
+    aidl/p2p_network.cpp \
+    aidl/sta_iface.cpp \
+    aidl/sta_network.cpp \
+    aidl/supplicant.cpp
+ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
 LOCAL_SRC_FILES += \
-    hidl/$(HIDL_INTERFACE_VERSION)/vendorsta_iface.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/vendorsta_network.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/vendorp2p_iface.cpp \
-    hidl/$(HIDL_INTERFACE_VERSION)/supplicantvendor.cpp
+    vendor_aidl/aidl_vendor.cpp \
+    vendor_aidl/aidl_vendor_manager.cpp \
+    vendor_aidl/vendorsta_iface.cpp \
+    vendor_aidl/supplicantvendor.cpp
 endif
 
 LOCAL_SHARED_LIBRARIES := \
-    android.hardware.wifi.supplicant@1.0 \
-    android.hardware.wifi.supplicant@1.1 \
-    android.hardware.wifi.supplicant@1.2 \
-    android.hardware.wifi.supplicant@1.3 \
-    android.hardware.wifi.supplicant@1.4 \
+    android.hardware.wifi.supplicant-V1-ndk \
+    libbinder_ndk \
     libbase \
-    libhidlbase \
     libutils \
     liblog \
     libssl
-ifeq ($(SUPPLICANT_VENDOR_HIDL), y)
+ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
 LOCAL_SHARED_LIBRARIES += \
-    vendor.qti.hardware.wifi.supplicant@2.0 \
-    vendor.qti.hardware.wifi.supplicant@2.1 \
-    vendor.qti.hardware.wifi.supplicant@2.2
+    vendor.qti.hardware.wifi.supplicant-V1-ndk
 endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
+    $(LOCAL_PATH)/aidl
 include $(BUILD_STATIC_LIBRARY)
-endif # WPA_SUPPLICANT_USE_HIDL == y
+endif # WPA_SUPPLICANT_USE_AIDL == y
+
+include $(CLEAR_VARS)
+LOCAL_MODULE = libpasn
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
+LOCAL_VENDOR_MODULE := true
+LOCAL_CFLAGS = $(L_CFLAGS)
+LOCAL_SRC_FILES = $(PASNOBJS)
+LOCAL_C_INCLUDES = $(INCLUDES)
+LOCAL_SHARED_LIBRARIES := libc libcutils liblog
+ifeq ($(CONFIG_TLS), openssl)
+LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
+LOCAL_SHARED_LIBRARIES += libkeystore-engine-wifi-hidl
+endif
+include $(BUILD_SHARED_LIBRARY)
