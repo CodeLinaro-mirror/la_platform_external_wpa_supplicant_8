@@ -295,6 +295,9 @@ static unsigned int get_akm_suites_info(struct nlattr *tb)
 		case RSN_AUTH_KEY_MGMT_FT_SAE:
 			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE;
 			break;
+		case RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY:
+			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE_EXT_KEY;
+			break;
 		case RSN_AUTH_KEY_MGMT_FT_802_1X_SHA384:
 			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384;
 			break;
@@ -330,6 +333,9 @@ static unsigned int get_akm_suites_info(struct nlattr *tb)
 			break;
 		case RSN_AUTH_KEY_MGMT_SAE:
 			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_SAE;
+			break;
+		case RSN_AUTH_KEY_MGMT_SAE_EXT_KEY:
+			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY;
 			break;
 		}
 	}
@@ -1778,12 +1784,14 @@ static int phy_info_rates(struct hostapd_hw_modes *mode, struct nlattr *tb)
 }
 
 
-static void phy_info_iftype_copy(struct he_capabilities *he_capab,
+static void phy_info_iftype_copy(struct hostapd_hw_modes *mode,
 				 enum ieee80211_op_mode opmode,
 				 struct nlattr **tb, struct nlattr **tb_flags)
 {
 	enum nl80211_iftype iftype;
 	size_t len;
+	struct he_capabilities *he_capab = &mode->he_capab[opmode];
+	struct eht_capabilities *eht_capab = &mode->eht_capab[opmode];
 
 	switch (opmode) {
 	case IEEE80211_MODE_INFRA:
@@ -1853,6 +1861,47 @@ static void phy_info_iftype_copy(struct he_capabilities *he_capab,
 		capa = nla_get_u16(tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA]);
 		he_capab->he_6ghz_capa = le_to_host16(capa);
 	}
+
+	if (!tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MAC] ||
+	    !tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY])
+		return;
+
+	eht_capab->eht_supported = true;
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MAC] &&
+	    nla_len(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MAC]) >= 2) {
+		    const u8 *pos;
+
+		    pos = nla_data(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MAC]);
+		    eht_capab->mac_cap = WPA_GET_LE16(pos);
+	}
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY]) {
+		len = nla_len(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY]);
+		if (len > sizeof(eht_capab->phy_cap))
+			len = sizeof(eht_capab->phy_cap);
+		os_memcpy(eht_capab->phy_cap,
+			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY]),
+			  len);
+	}
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MCS_SET]) {
+		len = nla_len(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MCS_SET]);
+		if (len > sizeof(eht_capab->mcs))
+			len = sizeof(eht_capab->mcs);
+		os_memcpy(eht_capab->mcs,
+			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MCS_SET]),
+			  len);
+	}
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PPE]) {
+		len = nla_len(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PPE]);
+		if (len > sizeof(eht_capab->ppet))
+			len = sizeof(eht_capab->ppet);
+		os_memcpy(&eht_capab->ppet,
+			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PPE]),
+			  len);
+	}
 }
 
 
@@ -1874,7 +1923,7 @@ static int phy_info_iftype(struct hostapd_hw_modes *mode,
 		return NL_STOP;
 
 	for (i = 0; i < IEEE80211_MODE_NUM; i++)
-		phy_info_iftype_copy(&mode->he_capab[i], i, tb, tb_flags);
+		phy_info_iftype_copy(mode, i, tb, tb_flags);
 
 	return NL_OK;
 }
@@ -2426,7 +2475,8 @@ static const char * modestr(enum hostapd_hw_mode mode)
 }
 
 
-static void nl80211_dump_chan_list(struct hostapd_hw_modes *modes,
+static void nl80211_dump_chan_list(struct wpa_driver_nl80211_data *drv,
+				   struct hostapd_hw_modes *modes,
 				   u16 num_modes)
 {
 	int i;
@@ -2436,7 +2486,7 @@ static void nl80211_dump_chan_list(struct hostapd_hw_modes *modes,
 
 	for (i = 0; i < num_modes; i++) {
 		struct hostapd_hw_modes *mode = &modes[i];
-		char str[200];
+		char str[1000];
 		char *pos = str;
 		char *end = pos + sizeof(str);
 		int j, res;
@@ -2444,6 +2494,9 @@ static void nl80211_dump_chan_list(struct hostapd_hw_modes *modes,
 		for (j = 0; j < mode->num_channels; j++) {
 			struct hostapd_channel_data *chan = &mode->channels[j];
 
+			if (chan->freq >= 5925 && chan->freq <= 7125 &&
+			    !(chan->flag & HOSTAPD_CHAN_DISABLED))
+				drv->uses_6ghz = true;
 			res = os_snprintf(pos, end - pos, " %d%s%s%s",
 					  chan->freq,
 					  (chan->flag & HOSTAPD_CHAN_DISABLED) ?
@@ -2515,7 +2568,7 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
 
 		modes = wpa_driver_nl80211_postprocess_modes(result.modes,
 							     num_modes);
-		nl80211_dump_chan_list(modes, *num_modes);
+		nl80211_dump_chan_list(drv, modes, *num_modes);
 		return modes;
 	}
 
