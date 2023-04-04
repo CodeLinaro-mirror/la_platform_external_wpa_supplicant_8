@@ -392,6 +392,29 @@ wpa_supplicant_build_filter_ssids(struct wpa_config *conf, size_t *num_ssids)
 }
 
 
+#ifdef CONFIG_P2P
+static bool is_6ghz_supported(struct wpa_supplicant *wpa_s)
+{
+	struct hostapd_channel_data *chnl;
+	int i, j;
+
+	for (i = 0; i < wpa_s->hw.num_modes; i++) {
+		if (wpa_s->hw.modes[i].mode == HOSTAPD_MODE_IEEE80211A) {
+			chnl = wpa_s->hw.modes[i].channels;
+			for (j = 0; j < wpa_s->hw.modes[i].num_channels; j++) {
+				if (chnl[j].flag & HOSTAPD_CHAN_DISABLED)
+					continue;
+				if (is_6ghz_freq(chnl[j].freq))
+					return true;
+			}
+		}
+	}
+
+	return false;
+}
+#endif /* CONFIG_P2P */
+
+
 static void wpa_supplicant_optimize_freqs(
 	struct wpa_supplicant *wpa_s, struct wpa_driver_scan_params *params)
 {
@@ -686,7 +709,8 @@ static int non_p2p_network_enabled(struct wpa_supplicant *wpa_s)
 
 int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
 			    enum hostapd_hw_mode band,
-			    struct wpa_driver_scan_params *params, bool is_6ghz)
+			    struct wpa_driver_scan_params *params,
+			    bool is_6ghz, bool only_6ghz_psc)
 {
 	/* Include only supported channels for the specified band */
 	struct hostapd_hw_modes *mode;
@@ -694,7 +718,7 @@ int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
 	int *freqs, i;
 
 	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, band, is_6ghz);
-	if (!mode)
+	if (!mode || !mode->num_channels)
 		return -1;
 
 	if (params->freqs) {
@@ -711,6 +735,11 @@ int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < mode->num_channels; i++) {
 		if (mode->channels[i].flag & HOSTAPD_CHAN_DISABLED)
 			continue;
+
+		if (is_6ghz && only_6ghz_psc &&
+		    !is_6ghz_psc_frequency(mode->channels[i].freq))
+			continue;
+
 		params->freqs[num_chans++] = mode->channels[i].freq;
 	}
 	params->freqs[num_chans] = 0;
@@ -729,13 +758,13 @@ static void wpa_setband_scan_freqs(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->setband_mask & WPA_SETBAND_5G)
 		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, params,
-					0);
+					false, false);
 	if (wpa_s->setband_mask & WPA_SETBAND_2G)
 		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211G, params,
-					0);
+					false, false);
 	if (wpa_s->setband_mask & WPA_SETBAND_6G)
 		wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, params,
-					1);
+					true, false);
 }
 
 
@@ -1350,6 +1379,10 @@ scan:
 			}
 		}
 	}
+
+	if (!params.freqs && is_6ghz_supported(wpa_s) &&
+	    (wpa_s->p2p_in_invitation || wpa_s->p2p_in_provisioning))
+		wpas_p2p_scan_freqs(wpa_s, &params, true);
 #endif /* CONFIG_P2P */
 
 	ret = wpa_supplicant_trigger_scan(wpa_s, scan_params);
@@ -2670,6 +2703,7 @@ wpa_scan_clone_params(const struct wpa_driver_scan_params *src)
 	params->relative_rssi = src->relative_rssi;
 	params->relative_adjust_band = src->relative_adjust_band;
 	params->relative_adjust_rssi = src->relative_adjust_rssi;
+	params->p2p_include_6ghz = src->p2p_include_6ghz;
 	return params;
 
 failed:

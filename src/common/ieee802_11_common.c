@@ -1893,18 +1893,21 @@ const struct oper_class_map global_op_class[] = {
 
 	/*
 	 * IEEE P802.11ax/D8.0 Table E-4 actually talks about channel center
-	 * frequency index 42, 58, 106, 122, 138, 155, 171 with channel spacing
-	 * of 80 MHz, but currently use the following definition for simplicity
+	 * frequency index for operation classes 128, 129, 130, 132, 133, 134,
+	 * and 135, but currently use the lowest 20 MHz channel for simplicity
 	 * (these center frequencies are not actual channels, which makes
-	 * wpas_p2p_verify_channel() fail). wpas_p2p_verify_80mhz() should take
-	 * care of removing invalid channels.
+	 * wpas_p2p_verify_channel() fail).
+	 * Specially for the operation class 136, it is also defined to use the
+	 * channel center frequency index value, but it happens to be a 20 MHz
+	 * channel and the channel number in the channel set would match the
+	 * value in for the frequency center
 	 */
 	{ HOSTAPD_MODE_IEEE80211A, 128, 36, 177, 4, BW80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 129, 36, 177, 4, BW160, P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, NO_P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 132, 1, 233, 8, BW40, NO_P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 133, 1, 233, 16, BW80, NO_P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 134, 1, 233, 32, BW160, NO_P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 132, 1, 233, 8, BW40, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 133, 1, 233, 16, BW80, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 134, 1, 233, 32, BW160, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 135, 1, 233, 16, BW80P80, NO_P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 136, 2, 2, 4, BW20, NO_P2P_SUPP },
 
@@ -2294,6 +2297,30 @@ bool is_6ghz_psc_frequency(int freq)
 		return true;
 
 	return false;
+}
+
+
+/**
+ * get_6ghz_sec_channel - Get the relative position of the secondary channel
+ * to the primary channel in 6 GHz
+ * @channel: Primary channel to be checked for (in global op class 131)
+ * Returns: 1 = secondary channel above, -1 = secondary channel below
+ */
+
+int get_6ghz_sec_channel(int channel)
+{
+	/*
+	 * In the 6 GHz band, primary channels are numbered as 1, 5, 9, 13.., so
+	 * the 40 MHz channels are formed with the channel pairs as (1,5),
+	 * (9,13), (17,21)..
+	 * The secondary channel for a given primary channel is below the
+	 * primary channel for the channels 5, 13, 21.. and it is above the
+	 * primary channel for the channels 1, 9, 17..
+	 */
+
+	if (((channel - 1) / 4) % 2)
+		return -1;
+	return 1;
 }
 
 
