@@ -5154,6 +5154,13 @@ enum wpa_event_type {
 	 * non-zero wait time and that has not been explicitly cancelled.
 	 */
 	EVENT_TX_WAIT_EXPIRE,
+
+    /**
+	 * EVENT_CONGESTION_REPORT - Congestion event from driver/kernel
+	 *
+	 * This event is called when congestion event detected in driver/kernel
+	 */
+	EVENT_CONGESTION_REPORT,
 };
 
 
@@ -6007,6 +6014,11 @@ union wpa_event_data {
 	struct thermal_info {
 		u32 level;
 	} thermal_info;
+
+	/* For EVENT_CONGESTION_REPORT */
+	struct congestion_info {
+		u8 percentage;
+	} congestion_info;
 
 	/* For EVENT_EXTERNAL_AUTH */
 	struct external_auth external_auth;

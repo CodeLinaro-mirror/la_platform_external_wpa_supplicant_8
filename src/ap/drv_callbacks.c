@@ -2092,6 +2092,15 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		if (hapd->ctrl_event_aidl_cb) {
 			hapd->ctrl_event_aidl_cb(
 				hapd->ctrl_event_aidl_cb_ctx, event_msg);
+        }
+		break;
+	case EVENT_CONGESTION_REPORT:
+		os_snprintf(event_msg, sizeof(event_msg),
+			WPA_EVENT_CONGESTION_REPORT "percentage=%d", data->congestion_info.percentage);
+		wpa_msg(hapd->msg_ctx, MSG_INFO, "%s", event_msg);
+		if (hapd->ctrl_event_aidl_cb) {
+			hapd->ctrl_event_aidl_cb(
+				hapd->ctrl_event_aidl_cb_ctx, event_msg);
 		}
 		break;
 	default:
