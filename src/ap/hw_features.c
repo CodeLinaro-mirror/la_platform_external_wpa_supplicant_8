@@ -1171,6 +1171,35 @@ const char * hostapd_hw_mode_txt(int mode)
 	}
 }
 
+void hostapd_change_hw_mode(struct hostapd_data *hapd, int freq){
+	int i;
+	enum hostapd_hw_mode target_mode;
+	struct hostapd_hw_modes *mode = NULL;
+
+	if (freq < 4000)
+		target_mode = HOSTAPD_MODE_IEEE80211G;
+	else if (freq > 50000)
+		target_mode = HOSTAPD_MODE_IEEE80211AD;
+	else
+		target_mode = HOSTAPD_MODE_IEEE80211A;
+
+	for (i = 0; i < hapd->iface->num_hw_features; i++) {
+		int chan;
+
+		mode = &hapd->iface->hw_features[i];
+		if (mode && (mode->mode == target_mode)) {
+			if (freq > 0 &&
+			    !hw_mode_get_channel(mode, freq, &chan))
+				continue;
+			hapd->iface->current_mode = mode;
+			hapd->iface->conf->hw_mode = mode->mode;
+			break;
+		}
+	}
+	if(!mode)
+		wpa_printf(MSG_ERROR, "channel switch: Can not change hw mode");
+
+}
 
 int hostapd_hw_get_freq(struct hostapd_data *hapd, int chan)
 {

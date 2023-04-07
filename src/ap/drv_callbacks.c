@@ -1005,6 +1005,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	if (!finished)
 		return;
 
+	hostapd_change_hw_mode(hapd,hapd->iface->freq);
+
 	if (hapd->csa_in_progress &&
 	    freq == hapd->cs_freq_params.freq) {
 		hostapd_cleanup_cs_params(hapd);
