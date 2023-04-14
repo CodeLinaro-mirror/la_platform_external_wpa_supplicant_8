@@ -53,7 +53,7 @@ static void p2p_scan_timeout(void *eloop_ctx, void *timeout_ctx);
 void p2p_expire_peers(struct p2p_data *p2p)
 {
 	struct p2p_device *dev, *n;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 	size_t i;
 
 	os_get_reltime(&now);
@@ -4292,7 +4292,7 @@ int p2p_get_peer_info_txt(const struct p2p_peer_info *info,
 	struct p2p_device *dev;
 	int res;
 	char *pos, *end;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	if (info == NULL)
 		return -1;

@@ -5062,7 +5062,7 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 	}
 
 	if (mask & WPA_BSS_MASK_AGE) {
-		struct os_reltime now;
+		struct os_reltime now = {0};
 
 		os_get_reltime(&now);
 		ret = os_snprintf(pos, end - pos, "age=%d\n",
