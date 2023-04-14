@@ -954,7 +954,7 @@ static int hostapd_is_usable_chans(struct hostapd_iface *iface)
 
 static void hostapd_determine_mode(struct hostapd_iface *iface)
 {
-	int i;
+	int i, chan;
 	enum hostapd_hw_mode target_mode;
 
 	if (iface->current_mode ||
@@ -973,6 +973,10 @@ static void hostapd_determine_mode(struct hostapd_iface *iface)
 
 		mode = &iface->hw_features[i];
 		if (mode->mode == target_mode) {
+			if (iface->freq > 0 &&
+			    !hw_mode_get_channel(mode, iface->freq, &chan))
+				continue;
+
 			iface->current_mode = mode;
 			iface->conf->hw_mode = mode->mode;
 			break;
