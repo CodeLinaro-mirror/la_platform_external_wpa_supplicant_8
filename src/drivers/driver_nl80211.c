@@ -4135,7 +4135,7 @@ send_frame_cmd:
 
 static int nl80211_put_basic_rates(struct nl_msg *msg, const int *basic_rates)
 {
-	u8 rates[NL80211_MAX_SUPP_RATES];
+	u8 rates[NL80211_MAX_SUPP_RATES] = {0};
 	u8 rates_len = 0;
 	int i;
 
