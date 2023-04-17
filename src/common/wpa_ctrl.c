@@ -158,9 +158,14 @@ try_again:
 		return NULL;
 	}
 
+	/*
+	 * Set client socket file permissions to make sure the server
+	 * side (wpa_supplicant or hostapd) can reply to the control
+	 * interface messages.
+	 */
+	chmod(ctrl->local.sun_path, S_IRWXU | S_IRWXG | S_IRWXO);
 #ifdef ANDROID
 	/* Set group even if we do not have privileges to change owner */
-	chmod(ctrl->local.sun_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 	grp_wifi = getgrnam("wifi");
 	gid_wifi = grp_wifi ? grp_wifi->gr_gid : 0;
 	pwd_system = getpwnam("system");
