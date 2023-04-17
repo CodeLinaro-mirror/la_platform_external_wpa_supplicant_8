@@ -1998,7 +1998,7 @@ static char ** hostapd_cli_edit_completion_cb(void *ctx, const char *str,
 static void hostapd_cli_interactive(void)
 {
 	char *hfile = NULL;
-	char *home;
+	const char *home;
 
 	printf("\nInteractive mode\n\n");
 
