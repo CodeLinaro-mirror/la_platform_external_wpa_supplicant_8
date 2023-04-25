@@ -121,6 +121,15 @@ int ieee802_11_send_wnmsleep_req(struct wpa_supplicant *wpa_s,
 			os_free(wnmtfs_ie);
 			return -1;
 		}
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_s->oci_freq_override_wnm_sleep) {
+			wpa_printf(MSG_INFO,
+				   "TEST: Override OCI KDE frequency %d -> %d MHz",
+				   ci.frequency,
+				   wpa_s->oci_freq_override_wnm_sleep);
+			ci.frequency = wpa_s->oci_freq_override_wnm_sleep;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 		oci_ie_len = OCV_OCI_EXTENDED_LEN;
 		oci_ie = os_zalloc(oci_ie_len);
@@ -271,7 +280,6 @@ static void wnm_sleep_mode_exit_success(struct wpa_supplicant *wpa_s,
 				WNM_SLEEP_SUBELEM_GTK,
 				ptr);
 			ptr += 13 + gtk_len;
-#ifdef CONFIG_IEEE80211W
 		} else if (*ptr == WNM_SLEEP_SUBELEM_IGTK) {
 			if (ptr[1] < 2 + 6 + WPA_IGTK_LEN) {
 				wpa_printf(MSG_DEBUG, "WNM: Too short IGTK "
@@ -281,7 +289,15 @@ static void wnm_sleep_mode_exit_success(struct wpa_supplicant *wpa_s,
 			wpa_wnmsleep_install_key(wpa_s->wpa,
 						 WNM_SLEEP_SUBELEM_IGTK, ptr);
 			ptr += 10 + WPA_IGTK_LEN;
-#endif /* CONFIG_IEEE80211W */
+		} else if (*ptr == WNM_SLEEP_SUBELEM_BIGTK) {
+			if (ptr[1] < 2 + 6 + WPA_BIGTK_LEN) {
+				wpa_printf(MSG_DEBUG,
+					   "WNM: Too short BIGTK subelem");
+				break;
+			}
+			wpa_wnmsleep_install_key(wpa_s->wpa,
+						 WNM_SLEEP_SUBELEM_BIGTK, ptr);
+			ptr += 10 + WPA_BIGTK_LEN;
 		} else
 			break; /* skip the loop */
 	}
@@ -367,8 +383,9 @@ static void ieee802_11_rx_wnmsleep_resp(struct wpa_supplicant *wpa_s,
 
 		if (ocv_verify_tx_params(oci_ie, oci_ie_len, &ci,
 					 channel_width_to_int(ci.chanwidth),
-					 ci.seg1_idx) != 0) {
-			wpa_msg(wpa_s, MSG_WARNING, "WNM: %s", ocv_errorstr);
+					 ci.seg1_idx) != OCI_SUCCESS) {
+			wpa_msg(wpa_s, MSG_WARNING, "WNM: OCV failed: %s",
+				ocv_errorstr);
 			return;
 		}
 	}
@@ -452,7 +469,8 @@ static void wnm_parse_neighbor_report_elem(struct neighbor_report *rep,
 		break;
 	case WNM_NEIGHBOR_BSS_TERMINATION_DURATION:
 		if (elen < 10) {
-			wpa_printf(MSG_DEBUG, "WNM: Too short bss_term_tsf");
+			wpa_printf(MSG_DEBUG,
+				   "WNM: Too short BSS termination duration");
 			break;
 		}
 		rep->bss_term_tsf = WPA_GET_LE64(pos);
@@ -534,7 +552,7 @@ static int wnm_nei_get_chan(struct wpa_supplicant *wpa_s, u8 op_class, u8 chan)
 			freq = 2407 + chan * 5;
 		else if (chan == 14)
 			freq = 2484;
-		else if (chan >= 36 && chan <= 169)
+		else if (chan >= 36 && chan <= 177)
 			freq = 5000 + chan * 5;
 	}
 	return freq;
@@ -924,9 +942,9 @@ static int wnm_nei_rep_add_bss(struct wpa_supplicant *wpa_s,
 	if (ie && ie[1] >= 1) {
 		vht_oper = (struct ieee80211_vht_operation *) (ie + 2);
 
-		if (vht_oper->vht_op_info_chwidth == VHT_CHANWIDTH_80MHZ ||
-		    vht_oper->vht_op_info_chwidth == VHT_CHANWIDTH_160MHZ ||
-		    vht_oper->vht_op_info_chwidth == VHT_CHANWIDTH_80P80MHZ)
+		if (vht_oper->vht_op_info_chwidth == CHANWIDTH_80MHZ ||
+		    vht_oper->vht_op_info_chwidth == CHANWIDTH_160MHZ ||
+		    vht_oper->vht_op_info_chwidth == CHANWIDTH_80P80MHZ)
 			vht = vht_oper->vht_op_info_chwidth;
 	}
 
@@ -1379,6 +1397,10 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_MBO
 	wpa_s->wnm_mbo_trans_reason_present = 0;
 	wpa_s->wnm_mbo_transition_reason = 0;
+	wpa_s->wnm_mbo_cell_pref_present = 0;
+	wpa_s->wnm_mbo_cell_preference = 0;
+	wpa_s->wnm_mbo_assoc_retry_delay_present = 0;
+	wpa_s->wnm_mbo_assoc_retry_delay_sec = 0;
 #endif /* CONFIG_MBO */
 
 	if (wpa_s->current_bss)
@@ -1439,6 +1461,20 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 			wpa_s->wnm_dissoc_timer * beacon_int * 128 / 125, url);
 	}
 
+#ifdef CONFIG_MBO
+	vendor = get_ie(pos, end - pos, WLAN_EID_VENDOR_SPECIFIC);
+	if (vendor) {
+		wpas_mbo_ie_trans_req(wpa_s, vendor + 2, vendor[1]);
+	}
+#endif /* CONFIG_MBO */
+	if (wpa_s->conf->btm_offload) {
+		wpa_printf(MSG_INFO,
+			"WNM: BTM offload enabled. Notify status and return");
+		wpa_s->bss_tm_status = WNM_BSS_TM_ACCEPT;
+		wpas_notify_bss_tm_status(wpa_s);
+		return;
+	}
+
 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
 		wpa_msg(wpa_s, MSG_INFO, "WNM: Disassociation Imminent - "
 			"Disassociation Timer %u", wpa_s->wnm_dissoc_timer);
@@ -1449,12 +1485,6 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 			wpa_supplicant_req_scan(wpa_s, 0, 0);
 		}
 	}
-
-#ifdef CONFIG_MBO
-	vendor = get_ie(pos, end - pos, WLAN_EID_VENDOR_SPECIFIC);
-	if (vendor)
-		wpas_mbo_ie_trans_req(wpa_s, vendor + 2, vendor[1]);
-#endif /* CONFIG_MBO */
 
 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED) {
 		unsigned int valid_ms;

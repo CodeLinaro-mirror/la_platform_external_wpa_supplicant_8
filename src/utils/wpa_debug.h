@@ -14,9 +14,7 @@
 extern int wpa_debug_level;
 extern int wpa_debug_show_keys;
 extern int wpa_debug_timestamp;
-#ifdef CONFIG_DEBUG_SYSLOG
 extern int wpa_debug_syslog;
-#endif /* CONFIG_DEBUG_SYSLOG */
 
 /* Debugging function - conditional printf and hex dump. Driver wrappers can
  * use these for debugging purposes. */
@@ -169,6 +167,7 @@ void wpa_hexdump_ascii_key(int level, const char *title, const void *buf,
 #define wpa_msg_no_global(args...) do { } while (0)
 #define wpa_msg_global_only(args...) do { } while (0)
 #define wpa_msg_register_cb(f) do { } while (0)
+#define wpa_msg_register_hidl_cb(f) do { } while (0)
 #define wpa_msg_register_ifname_cb(f) do { } while (0)
 #else /* CONFIG_NO_WPA_MSG */
 /**
@@ -276,7 +275,7 @@ typedef void (*wpa_msg_cb_func)(void *ctx, int level, enum wpa_msg_type type,
  * @func: Callback function (%NULL to unregister)
  */
 void wpa_msg_register_cb(wpa_msg_cb_func func);
-
+void wpa_msg_register_hidl_cb(wpa_msg_cb_func func);
 typedef const char * (*wpa_msg_get_ifname_func)(void *ctx);
 void wpa_msg_register_ifname_cb(wpa_msg_get_ifname_func func);
 
@@ -305,7 +304,6 @@ void hostapd_logger_register_cb(hostapd_logger_cb_func func);
 #define HOSTAPD_MODULE_RADIUS		0x00000004
 #define HOSTAPD_MODULE_WPA		0x00000008
 #define HOSTAPD_MODULE_DRIVER		0x00000010
-#define HOSTAPD_MODULE_IAPP		0x00000020
 #define HOSTAPD_MODULE_MLME		0x00000040
 
 enum hostapd_logger_level {

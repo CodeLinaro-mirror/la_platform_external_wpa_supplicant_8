@@ -11,10 +11,13 @@
 
 #include "p2p/p2p.h"
 #include "bss.h"
+#include "rsn_supp/pmksa_cache.h"
+#include "src/common/dpp.h"
 
 struct wps_credential;
 struct wps_event_m2d;
 struct wps_event_fail;
+struct tls_cert_data;
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global);
 void wpas_notify_supplicant_deinitialized(struct wpa_global *global);
@@ -25,7 +28,8 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 			       enum wpa_states old_state);
 void wpas_notify_disconnect_reason(struct wpa_supplicant *wpa_s);
 void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s);
-void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s);
+void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s,
+				   const u8 *bssid, u8 timed_out);
 void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s);
 void wpas_notify_roam_time(struct wpa_supplicant *wpa_s);
 void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s);
@@ -135,10 +139,9 @@ void wpas_notify_persistent_group_removed(struct wpa_supplicant *wpa_s,
 void wpas_notify_p2p_wps_failed(struct wpa_supplicant *wpa_s,
 				struct wps_event_fail *fail);
 
-void wpas_notify_certification(struct wpa_supplicant *wpa_s, int depth,
-			       const char *subject, const char *altsubject[],
-			       int num_altsubject, const char *cert_hash,
-			       const struct wpabuf *cert);
+void wpas_notify_certification(struct wpa_supplicant *wpa_s,
+			       struct tls_cert_data *cert,
+			       const char *cert_hash);
 void wpas_notify_preq(struct wpa_supplicant *wpa_s,
 		      const u8 *addr, const u8 *dst, const u8 *bssid,
 		      const u8 *ie, size_t ie_len, u32 ssi_signal);
@@ -156,11 +159,11 @@ void wpas_notify_mesh_group_started(struct wpa_supplicant *wpa_s,
 				    struct wpa_ssid *ssid);
 void wpas_notify_mesh_group_removed(struct wpa_supplicant *wpa_s,
 				    const u8 *meshid, u8 meshid_len,
-				    int reason_code);
+				    u16 reason_code);
 void wpas_notify_mesh_peer_connected(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_addr);
 void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
-					const u8 *peer_addr, int reason_code);
+					const u8 *peer_addr, u16 reason_code);
 void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
 				 const char* result,
 				 const struct wpa_bss_anqp *anqp);
@@ -173,6 +176,8 @@ void wpas_notify_hs20_rx_subscription_remediation(struct wpa_supplicant *wpa_s,
 void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 						u8 code, u16 reauth_delay,
 						const char *url);
+void wpas_notify_hs20_rx_terms_and_conditions_acceptance(
+		struct wpa_supplicant *wpa_s, const char *url);
 void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 	    struct wpa_ssid *ssid);
 void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s);
@@ -184,6 +189,18 @@ void wpas_notify_dpp_configuration_failure(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_timeout(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
+		enum dpp_status_error status, const char *ssid,
+		const char *channel_list, unsigned short band_list[], int size);
+void wpas_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s);
+void wpas_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s);
+void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
+				 struct rsn_pmksa_cache_entry *entry);
+void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
+				    struct wpa_ssid *ssid,
+				    u8 bitmap);
+void wpas_notify_network_not_found(struct wpa_supplicant *wpa_s);
 
 //Vendor dpp notification
 void wpas_notify_dpp_conf(void *msg_ctx, u8 type, u8* ssid,

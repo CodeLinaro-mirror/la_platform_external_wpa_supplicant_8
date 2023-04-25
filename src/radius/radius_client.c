@@ -457,7 +457,7 @@ static int radius_client_retransmit(struct radius_client_data *radius,
 	}
 
 	/* retransmit; remove entry if too many attempts */
-	if (entry->accu_attempts > RADIUS_CLIENT_MAX_FAILOVER *
+	if (entry->accu_attempts >= RADIUS_CLIENT_MAX_FAILOVER *
 	    RADIUS_CLIENT_NUM_FAILOVER * num_servers) {
 		wpa_printf(MSG_INFO,
 			   "RADIUS: Removing un-ACKed message due to too many failed retransmit attempts");
@@ -507,7 +507,7 @@ static void radius_client_timer(void *eloop_ctx, void *timeout_ctx)
 		if (now.sec >= entry->next_try) {
 			s = entry->msg_type == RADIUS_AUTH ? radius->auth_sock :
 				radius->acct_sock;
-			if (entry->attempts > RADIUS_CLIENT_NUM_FAILOVER ||
+			if (entry->attempts >= RADIUS_CLIENT_NUM_FAILOVER ||
 			    (s < 0 && entry->attempts > 0)) {
 				if (entry->msg_type == RADIUS_ACCT ||
 				    entry->msg_type == RADIUS_ACCT_INTERIM)
@@ -816,7 +816,9 @@ static void radius_client_receive(int sock, void *eloop_ctx, void *sock_ctx)
 	struct hostapd_radius_servers *conf = radius->conf;
 	RadiusType msg_type = (RadiusType) sock_ctx;
 	int len, roundtrip;
-	unsigned char buf[3000];
+	unsigned char buf[RADIUS_MAX_MSG_LEN];
+	struct msghdr msghdr = {0};
+	struct iovec iov;
 	struct radius_msg *msg;
 	struct radius_hdr *hdr;
 	struct radius_rx_handler *handlers;
@@ -836,15 +838,22 @@ static void radius_client_receive(int sock, void *eloop_ctx, void *sock_ctx)
 		rconf = conf->auth_server;
 	}
 
-	len = recv(sock, buf, sizeof(buf), MSG_DONTWAIT);
+	iov.iov_base = buf;
+	iov.iov_len = RADIUS_MAX_MSG_LEN;
+	msghdr.msg_iov = &iov;
+	msghdr.msg_iovlen = 1;
+	msghdr.msg_flags = 0;
+	len = recvmsg(sock, &msghdr, MSG_DONTWAIT);
 	if (len < 0) {
-		wpa_printf(MSG_INFO, "recv[RADIUS]: %s", strerror(errno));
+		wpa_printf(MSG_INFO, "recvmsg[RADIUS]: %s", strerror(errno));
 		return;
 	}
+
 	hostapd_logger(radius->ctx, NULL, HOSTAPD_MODULE_RADIUS,
 		       HOSTAPD_LEVEL_DEBUG, "Received %d bytes from RADIUS "
 		       "server", len);
-	if (len == sizeof(buf)) {
+
+	if (msghdr.msg_flags & MSG_TRUNC) {
 		wpa_printf(MSG_INFO, "RADIUS: Possibly too long UDP frame for our buffer - dropping it");
 		return;
 	}
@@ -1116,7 +1125,7 @@ radius_change_server(struct radius_client_data *radius,
 		    (!auth && entry->msg_type != RADIUS_ACCT))
 			continue;
 		entry->next_try = entry->first_try + RADIUS_CLIENT_FIRST_WAIT;
-		entry->attempts = 1;
+		entry->attempts = 0;
 		entry->next_wait = RADIUS_CLIENT_FIRST_WAIT * 2;
 	}
 

@@ -21,6 +21,7 @@
 #endif /* CONFIG_OPENSSL_CMAC */
 #ifdef CONFIG_ECC
 #include <openssl/ec.h>
+#include <openssl/x509.h>
 #endif /* CONFIG_ECC */
 
 #include "common.h"
@@ -77,6 +78,14 @@ static void EVP_MD_CTX_free(EVP_MD_CTX *ctx)
 		return;
 	EVP_MD_CTX_cleanup(ctx);
 	bin_clear_free(ctx, sizeof(*ctx));
+}
+
+
+static EC_KEY * EVP_PKEY_get0_EC_KEY(EVP_PKEY *pkey)
+{
+	if (pkey->type != EVP_PKEY_EC)
+		return NULL;
+	return pkey->pkey.ec;
 }
 
 #endif /* OpenSSL version < 1.1.0 */
@@ -570,8 +579,8 @@ int crypto_dh_derive_secret(u8 generator, const u8 *prime, size_t prime_len,
 		failed = !q || !ctx || !tmp ||
 			!BN_mod_exp(tmp, pub, q, p, ctx) ||
 			!BN_is_one(tmp);
-		BN_clear(q);
-		BN_clear(tmp);
+		BN_clear_free(q);
+		BN_clear_free(tmp);
 		BN_CTX_free(ctx);
 		if (failed)
 			goto fail;
@@ -580,8 +589,8 @@ int crypto_dh_derive_secret(u8 generator, const u8 *prime, size_t prime_len,
 	res = crypto_mod_exp(pubkey, pubkey_len, privkey, privkey_len,
 			     prime, prime_len, secret, len);
 fail:
-	BN_clear(pub);
-	BN_clear(p);
+	BN_clear_free(pub);
+	BN_clear_free(p);
 	return res;
 }
 
@@ -1283,6 +1292,24 @@ struct crypto_bignum * crypto_bignum_init_set(const u8 *buf, size_t len)
 }
 
 
+struct crypto_bignum * crypto_bignum_init_uint(unsigned int val)
+{
+	BIGNUM *bn;
+
+	if (TEST_FAIL())
+		return NULL;
+
+	bn = BN_new();
+	if (!bn)
+		return NULL;
+	if (BN_set_word(bn, val) != 1) {
+		BN_free(bn);
+		return NULL;
+	}
+	return (struct crypto_bignum *) bn;
+}
+
+
 void crypto_bignum_deinit(struct crypto_bignum *n, int clear)
 {
 	if (clear)
@@ -1302,6 +1329,18 @@ int crypto_bignum_to_bin(const struct crypto_bignum *a,
 
 	if (padlen > buflen)
 		return -1;
+
+	if (padlen) {
+#ifdef OPENSSL_IS_BORINGSSL
+		if (BN_bn2bin_padded(buf, padlen, (const BIGNUM *) a) == 0)
+			return -1;
+		return padlen;
+#else /* OPENSSL_IS_BORINGSSL */
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
+		return BN_bn2binpad((const BIGNUM *) a, buf, padlen);
+#endif
+#endif
+	}
 
 	num_bytes = BN_num_bytes((const BIGNUM *) a);
 	if ((size_t) num_bytes > buflen)
@@ -1437,6 +1476,28 @@ int crypto_bignum_div(const struct crypto_bignum *a,
 }
 
 
+int crypto_bignum_addmod(const struct crypto_bignum *a,
+			 const struct crypto_bignum *b,
+			 const struct crypto_bignum *c,
+			 struct crypto_bignum *d)
+{
+	int res;
+	BN_CTX *bnctx;
+
+	if (TEST_FAIL())
+		return -1;
+
+	bnctx = BN_CTX_new();
+	if (!bnctx)
+		return -1;
+	res = BN_mod_add((BIGNUM *) d, (const BIGNUM *) a, (const BIGNUM *) b,
+			 (const BIGNUM *) c, bnctx);
+	BN_CTX_free(bnctx);
+
+	return res ? 0 : -1;
+}
+
+
 int crypto_bignum_mulmod(const struct crypto_bignum *a,
 			 const struct crypto_bignum *b,
 			 const struct crypto_bignum *c,
@@ -1460,6 +1521,27 @@ int crypto_bignum_mulmod(const struct crypto_bignum *a,
 }
 
 
+int crypto_bignum_sqrmod(const struct crypto_bignum *a,
+			 const struct crypto_bignum *b,
+			 struct crypto_bignum *c)
+{
+	int res;
+	BN_CTX *bnctx;
+
+	if (TEST_FAIL())
+		return -1;
+
+	bnctx = BN_CTX_new();
+	if (!bnctx)
+		return -1;
+	res = BN_mod_sqr((BIGNUM *) c, (const BIGNUM *) a, (const BIGNUM *) b,
+			 bnctx);
+	BN_CTX_free(bnctx);
+
+	return res ? 0 : -1;
+}
+
+
 int crypto_bignum_rshift(const struct crypto_bignum *a, int n,
 			 struct crypto_bignum *r)
 {
@@ -1473,12 +1555,6 @@ int crypto_bignum_cmp(const struct crypto_bignum *a,
 		      const struct crypto_bignum *b)
 {
 	return BN_cmp((const BIGNUM *) a, (const BIGNUM *) b);
-}
-
-
-int crypto_bignum_bits(const struct crypto_bignum *a)
-{
-	return BN_num_bits((const BIGNUM *) a);
 }
 
 
@@ -1676,6 +1752,18 @@ const struct crypto_bignum * crypto_ec_get_order(struct crypto_ec *e)
 }
 
 
+const struct crypto_bignum * crypto_ec_get_a(struct crypto_ec *e)
+{
+	return (const struct crypto_bignum *) e->a;
+}
+
+
+const struct crypto_bignum * crypto_ec_get_b(struct crypto_ec *e)
+{
+	return (const struct crypto_bignum *) e->b;
+}
+
+
 void crypto_ec_point_deinit(struct crypto_ec_point *p, int clear)
 {
 	if (clear)
@@ -1870,7 +1958,7 @@ struct crypto_ecdh * crypto_ecdh_init(int group)
 {
 	struct crypto_ecdh *ecdh;
 	EVP_PKEY *params = NULL;
-	EC_KEY *ec_params;
+	EC_KEY *ec_params = NULL;
 	EVP_PKEY_CTX *kctx = NULL;
 
 	ecdh = os_zalloc(sizeof(*ecdh));
@@ -1913,6 +2001,7 @@ struct crypto_ecdh * crypto_ecdh_init(int group)
 	}
 
 done:
+	EC_KEY_free(ec_params);
 	EVP_PKEY_free(params);
 	EVP_PKEY_CTX_free(kctx);
 
@@ -2052,13 +2141,17 @@ struct wpabuf * crypto_ecdh_set_peerkey(struct crypto_ecdh *ecdh, int inc_y,
 	secret = wpabuf_alloc(secret_len);
 	if (!secret)
 		goto fail;
-	if (EVP_PKEY_derive(ctx, wpabuf_put(secret, secret_len),
-			    &secret_len) != 1) {
+	if (EVP_PKEY_derive(ctx, wpabuf_put(secret, 0), &secret_len) != 1) {
 		wpa_printf(MSG_ERROR,
 			   "OpenSSL: EVP_PKEY_derive(2) failed: %s",
 			   ERR_error_string(ERR_get_error(), NULL));
 		goto fail;
 	}
+	if (secret->size != secret_len)
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: EVP_PKEY_derive(2) changed secret_len %d -> %d",
+			   (int) secret->size, (int) secret_len);
+	wpabuf_put(secret, secret_len);
 
 done:
 	BN_free(x);
@@ -2082,6 +2175,172 @@ void crypto_ecdh_deinit(struct crypto_ecdh *ecdh)
 		EVP_PKEY_free(ecdh->pkey);
 		os_free(ecdh);
 	}
+}
+
+
+size_t crypto_ecdh_prime_len(struct crypto_ecdh *ecdh)
+{
+	return crypto_ec_prime_len(ecdh->ec);
+}
+
+
+struct crypto_ec_key {
+	EVP_PKEY *pkey;
+	EC_KEY *eckey;
+};
+
+
+struct crypto_ec_key * crypto_ec_key_parse_priv(const u8 *der, size_t der_len)
+{
+	struct crypto_ec_key *key;
+
+	key = os_zalloc(sizeof(*key));
+	if (!key)
+		return NULL;
+
+	key->eckey = d2i_ECPrivateKey(NULL, &der, der_len);
+	if (!key->eckey) {
+		wpa_printf(MSG_INFO, "OpenSSL: d2i_ECPrivateKey() failed: %s",
+			   ERR_error_string(ERR_get_error(), NULL));
+		goto fail;
+	}
+	EC_KEY_set_conv_form(key->eckey, POINT_CONVERSION_COMPRESSED);
+
+	key->pkey = EVP_PKEY_new();
+	if (!key->pkey || EVP_PKEY_assign_EC_KEY(key->pkey, key->eckey) != 1) {
+		EC_KEY_free(key->eckey);
+		key->eckey = NULL;
+		goto fail;
+	}
+
+	return key;
+fail:
+	crypto_ec_key_deinit(key);
+	return NULL;
+}
+
+
+struct crypto_ec_key * crypto_ec_key_parse_pub(const u8 *der, size_t der_len)
+{
+	struct crypto_ec_key *key;
+
+	key = os_zalloc(sizeof(*key));
+	if (!key)
+		return NULL;
+
+	key->pkey = d2i_PUBKEY(NULL, &der, der_len);
+	if (!key->pkey) {
+		wpa_printf(MSG_INFO, "OpenSSL: d2i_PUBKEY() failed: %s",
+			   ERR_error_string(ERR_get_error(), NULL));
+		goto fail;
+	}
+
+	key->eckey = EVP_PKEY_get0_EC_KEY(key->pkey);
+	if (!key->eckey)
+		goto fail;
+	return key;
+fail:
+	crypto_ec_key_deinit(key);
+	return NULL;
+}
+
+
+void crypto_ec_key_deinit(struct crypto_ec_key *key)
+{
+	if (key) {
+		EVP_PKEY_free(key->pkey);
+		os_free(key);
+	}
+}
+
+
+struct wpabuf * crypto_ec_key_get_subject_public_key(struct crypto_ec_key *key)
+{
+	unsigned char *der = NULL;
+	int der_len;
+	struct wpabuf *buf;
+
+	der_len = i2d_PUBKEY(key->pkey, &der);
+	if (der_len <= 0) {
+		wpa_printf(MSG_INFO, "OpenSSL: i2d_PUBKEY() failed: %s",
+			   ERR_error_string(ERR_get_error(), NULL));
+		return NULL;
+	}
+
+	buf = wpabuf_alloc_copy(der, der_len);
+	OPENSSL_free(der);
+	return buf;
+}
+
+
+struct wpabuf * crypto_ec_key_sign(struct crypto_ec_key *key, const u8 *data,
+				   size_t len)
+{
+	EVP_PKEY_CTX *pkctx;
+	struct wpabuf *sig_der;
+	size_t sig_len;
+
+	sig_len = EVP_PKEY_size(key->pkey);
+	sig_der = wpabuf_alloc(sig_len);
+	if (!sig_der)
+		return NULL;
+
+	pkctx = EVP_PKEY_CTX_new(key->pkey, NULL);
+	if (!pkctx ||
+	    EVP_PKEY_sign_init(pkctx) <= 0 ||
+	    EVP_PKEY_sign(pkctx, wpabuf_put(sig_der, 0), &sig_len,
+			  data, len) <= 0) {
+		wpabuf_free(sig_der);
+		sig_der = NULL;
+	} else {
+		wpabuf_put(sig_der, sig_len);
+	}
+
+	EVP_PKEY_CTX_free(pkctx);
+	return sig_der;
+}
+
+
+int crypto_ec_key_verify_signature(struct crypto_ec_key *key, const u8 *data,
+				   size_t len, const u8 *sig, size_t sig_len)
+{
+	EVP_PKEY_CTX *pkctx;
+	int ret;
+
+	pkctx = EVP_PKEY_CTX_new(key->pkey, NULL);
+	if (!pkctx || EVP_PKEY_verify_init(pkctx) <= 0) {
+		EVP_PKEY_CTX_free(pkctx);
+		return -1;
+	}
+
+	ret = EVP_PKEY_verify(pkctx, sig, sig_len, data, len);
+	EVP_PKEY_CTX_free(pkctx);
+	if (ret == 1)
+		return 1; /* signature ok */
+	if (ret == 0)
+		return 0; /* incorrect signature */
+	return -1;
+}
+
+
+int crypto_ec_key_group(struct crypto_ec_key *key)
+{
+	const EC_GROUP *group;
+	int nid;
+
+	group = EC_KEY_get0_group(key->eckey);
+	if (!group)
+		return -1;
+	nid = EC_GROUP_get_curve_name(group);
+	switch (nid) {
+	case NID_X9_62_prime256v1:
+		return 19;
+	case NID_secp384r1:
+		return 20;
+	case NID_secp521r1:
+		return 21;
+	}
+	return -1;
 }
 
 #endif /* CONFIG_ECC */

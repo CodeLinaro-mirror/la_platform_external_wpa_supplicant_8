@@ -16,14 +16,6 @@ ifeq ($(WPA_BUILD_HOSTAPD),true)
 
 include $(LOCAL_PATH)/android.config
 
-ifeq ($(call is-board-platform-in-list,msm8909 msm8937 msm8953 msm8996 msm8998 sdm660 sdm710 sdm845 $(MSMSTEPPE) $(TRINKET) msmnile lito atoll bengal),true)
-  $(warning "Disabling WPA3 support in hostapd for $(TARGET_BOARD_PLATFORM)")
-  CONFIG_OWE=n
-  CONFIG_DPP=n
-  CONFIG_SAE=n
-  CONFIG_SUITEB192=n
-endif
-
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
 
@@ -53,6 +45,10 @@ ifeq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 L_CFLAGS += -DANDROID_LIB_STUB
 endif
 
+ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB_EVENT),)
+L_CFLAGS += -DANDROID_LIB_EVENT
+endif
+
 # Use Android specific directory for control interface sockets
 L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/hostapd/sockets\"
 L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/hostapd/ctrl\"
@@ -78,6 +74,10 @@ INCLUDES += external/libnl-headers
 endif
 endif
 
+ifdef CONFIG_TESTING_OPTIONS
+L_CFLAGS += -DCONFIG_TESTING_OPTIONS
+CONFIG_WPS_TESTING=y
+endif
 
 ifndef CONFIG_OS
 ifdef CONFIG_NATIVE_WINDOWS
@@ -165,6 +165,7 @@ OBJS += src/utils/wpa_debug.c
 OBJS += src/utils/wpabuf.c
 OBJS += src/utils/os_$(CONFIG_OS).c
 OBJS += src/utils/ip_addr.c
+OBJS += src/utils/crc32.c
 
 OBJS += src/common/ieee802_11_common.c
 OBJS += src/common/wpa_common.c
@@ -225,18 +226,12 @@ endif
 
 L_CFLAGS += -DCONFIG_CTRL_IFACE -DCONFIG_CTRL_IFACE_UNIX
 
-ifdef CONFIG_IAPP
-L_CFLAGS += -DCONFIG_IAPP
-OBJS += src/ap/iapp.c
-endif
-
 ifdef CONFIG_RSN_PREAUTH
 L_CFLAGS += -DCONFIG_RSN_PREAUTH
 CONFIG_L2_PACKET=y
 endif
 
 ifdef CONFIG_HS20
-NEED_AES_OMAC1=y
 CONFIG_PROXYARP=y
 endif
 
@@ -246,8 +241,6 @@ endif
 
 ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 endif
 
 ifeq ($(CONFIG_SUITEB192),y)
@@ -258,24 +251,14 @@ endif
 ifdef CONFIG_OCV
 L_CFLAGS += -DCONFIG_OCV
 OBJS += src/common/ocv.c
-CONFIG_IEEE80211W=y
-endif
-
-ifdef CONFIG_IEEE80211W
-L_CFLAGS += -DCONFIG_IEEE80211W
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_IEEE80211R
 L_CFLAGS += -DCONFIG_IEEE80211R -DCONFIG_IEEE80211R_AP
 OBJS += src/ap/wpa_auth_ft.c
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 NEED_AES_UNWRAP=y
 NEED_AES_SIV=y
 NEED_ETH_P_OUI=y
-NEED_SHA256=y
 NEED_HMAC_SHA256_KDF=y
 endif
 
@@ -287,8 +270,14 @@ endif
 ifeq ($(CONFIG_SAE),y)
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
+ifdef CONFIG_SAE_PK
+L_CFLAGS += -DCONFIG_SAE_PK
+OBJS += src/common/sae_pk.c
+endif
 NEED_ECC=y
 NEED_DH_GROUPS=y
+NEED_HMAC_SHA256_KDF=y
+NEED_DRAGONFLY=y
 endif
 
 ifeq ($(CONFIG_OWE),y)
@@ -297,9 +286,12 @@ NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
-NEED_SHA256=y
 NEED_SHA384=y
 NEED_SHA512=y
+endif
+
+ifdef CONFIG_WAPI_INTERFACE
+L_CFLAGS += -DCONFIG_WAPI_INTERFACE
 endif
 
 ifdef CONFIG_FILS
@@ -316,10 +308,6 @@ endif
 ifdef CONFIG_WNM
 L_CFLAGS += -DCONFIG_WNM -DCONFIG_WNM_AP
 OBJS += src/ap/wnm_ap.c
-endif
-
-ifdef CONFIG_IEEE80211N
-L_CFLAGS += -DCONFIG_IEEE80211N
 endif
 
 ifdef CONFIG_IEEE80211AC
@@ -348,6 +336,14 @@ endif
 ifndef CONFIG_NO_CTRL_IFACE
 OBJS += src/fst/fst_ctrl_iface.c
 endif
+endif
+
+ifdef CONFIG_WEP
+L_CFLAGS += -DCONFIG_WEP
+endif
+
+ifdef CONFIG_NO_TKIP
+L_CFLAGS += -DCONFIG_NO_TKIP
 endif
 
 
@@ -432,7 +428,6 @@ ifdef CONFIG_EAP_AKA
 L_CFLAGS += -DEAP_SERVER_AKA
 OBJS += src/eap_server/eap_server_aka.c
 CONFIG_EAP_SIM_COMMON=y
-NEED_SHA256=y
 NEED_AES_CBC=y
 endif
 
@@ -443,7 +438,7 @@ endif
 ifdef CONFIG_EAP_SIM_COMMON
 OBJS += src/eap_common/eap_sim_common.c
 # Example EAP-SIM/AKA interface for GSM/UMTS authentication. This can be
-# replaced with another file implementating the interface specified in
+# replaced with another file implementing the interface specified in
 # eap_sim_db.h.
 OBJS += src/eap_server/eap_sim_db.c
 NEED_FIPS186_2_PRF=y
@@ -457,7 +452,6 @@ endif
 ifdef CONFIG_EAP_PSK
 L_CFLAGS += -DEAP_SERVER_PSK
 OBJS += src/eap_server/eap_server_psk.c src/eap_common/eap_psk_common.c
-NEED_AES_OMAC1=y
 NEED_AES_ENCBLOCK=y
 NEED_AES_EAX=y
 endif
@@ -473,15 +467,13 @@ OBJS += src/eap_server/eap_server_gpsk.c src/eap_common/eap_gpsk_common.c
 ifdef CONFIG_EAP_GPSK_SHA256
 L_CFLAGS += -DEAP_GPSK_SHA256
 endif
-NEED_SHA256=y
-NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_EAP_PWD
 L_CFLAGS += -DEAP_SERVER_PWD
 OBJS += src/eap_server/eap_server_pwd.c src/eap_common/eap_pwd_common.c
-NEED_SHA256=y
 NEED_ECC=y
+NEED_DRAGONFLY=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -505,6 +497,18 @@ NEED_T_PRF=y
 NEED_AES_UNWRAP=y
 endif
 
+ifdef CONFIG_EAP_TEAP
+L_CFLAGS += -DEAP_SERVER_TEAP
+OBJS += src/eap_server/eap_server_teap.c
+OBJS += src/eap_common/eap_teap_common.c
+TLS_FUNCS=y
+NEED_T_PRF=y
+NEED_SHA384=y
+NEED_TLS_PRF_SHA256=y
+NEED_TLS_PRF_SHA384=y
+NEED_AES_UNWRAP=y
+endif
+
 ifdef CONFIG_WPS
 L_CFLAGS += -DCONFIG_WPS -DEAP_SERVER_WSC
 OBJS += src/utils/uuid.c
@@ -519,7 +523,6 @@ OBJS += src/wps/wps_dev_attr.c
 OBJS += src/wps/wps_enrollee.c
 OBJS += src/wps/wps_registrar.c
 NEED_DH_GROUPS=y
-NEED_SHA256=y
 NEED_BASE64=y
 NEED_AES_CBC=y
 NEED_MODEXP=y
@@ -562,21 +565,38 @@ endif
 ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
+OBJS += src/common/dpp_auth.c
+OBJS += src/common/dpp_backup.c
+OBJS += src/common/dpp_crypto.c
+OBJS += src/common/dpp_pkex.c
+OBJS += src/common/dpp_reconfig.c
+OBJS += src/common/dpp_tcp.c
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AES_SIV=y
 NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
-NEED_SHA256=y
 NEED_SHA384=y
 NEED_SHA512=y
+NEED_ECC=y
 NEED_JSON=y
 NEED_GAS=y
 NEED_BASE64=y
+NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
 endif
+endif
+
+ifdef CONFIG_PASN
+L_CFLAGS += -DCONFIG_PASN
+L_CFLAGS += -DCONFIG_PTKSA_CACHE
+NEED_HMAC_SHA256_KDF=y
+NEED_HMAC_SHA384_KDF=y
+NEED_SHA256=y
+NEED_SHA384=y
+OBJS += src/common/ptksa_cache.c
 endif
 
 ifdef CONFIG_EAP_IKEV2
@@ -615,6 +635,10 @@ ifdef CONFIG_PKCS12
 L_CFLAGS += -DPKCS12_FUNCS
 endif
 
+ifdef NEED_DRAGONFLY
+OBJS += src/common/dragonfly.c
+endif
+
 ifdef MS_FUNCS
 OBJS += src/crypto/ms_funcs.c
 NEED_DES=y
@@ -643,7 +667,6 @@ endif
 
 ifdef CONFIG_TLSV12
 L_CFLAGS += -DCONFIG_TLSV12
-NEED_SHA256=y
 endif
 
 ifeq ($(CONFIG_TLS), openssl)
@@ -657,7 +680,6 @@ HOBJS += src/crypto/crypto_openssl.c
 ifdef NEED_FIPS186_2_PRF
 OBJS += src/crypto/fips_prf_openssl.c
 endif
-NEED_SHA256=y
 NEED_TLS_PRF_SHA256=y
 LIBS += -lcrypto
 LIBS_h += -lcrypto
@@ -709,13 +731,12 @@ OBJS += src/tls/tlsv1_cred.c
 OBJS += src/tls/tlsv1_server.c
 OBJS += src/tls/tlsv1_server_write.c
 OBJS += src/tls/tlsv1_server_read.c
-OBJS += src/tls/asn1.c
 OBJS += src/tls/rsa.c
 OBJS += src/tls/x509v3.c
 OBJS += src/tls/pkcs1.c
 OBJS += src/tls/pkcs5.c
 OBJS += src/tls/pkcs8.c
-NEED_SHA256=y
+NEED_ASN1=y
 NEED_BASE64=y
 NEED_TLS_PRF=y
 ifdef CONFIG_TLSV12
@@ -810,12 +831,10 @@ endif
 ifdef NEED_AES_EAX
 AESOBJS += src/crypto/aes-eax.c
 NEED_AES_CTR=y
-NEED_AES_OMAC1=y
 endif
 ifdef NEED_AES_SIV
 AESOBJS += src/crypto/aes-siv.c
 NEED_AES_CTR=y
-NEED_AES_OMAC1=y
 endif
 ifdef NEED_AES_CTR
 AESOBJS += src/crypto/aes-ctr.c
@@ -823,9 +842,7 @@ endif
 ifdef NEED_AES_ENCBLOCK
 AESOBJS += src/crypto/aes-encblock.c
 endif
-ifdef NEED_AES_OMAC1
 AESOBJS += src/crypto/aes-omac1.c
-endif
 ifdef NEED_AES_UNWRAP
 ifneq ($(CONFIG_TLS), openssl)
 NEED_AES_DEC=y
@@ -913,7 +930,6 @@ endif
 endif
 endif
 
-ifdef NEED_SHA256
 L_CFLAGS += -DCONFIG_SHA256
 ifneq ($(CONFIG_TLS), openssl)
 ifneq ($(CONFIG_TLS), gnutls)
@@ -927,6 +943,9 @@ endif
 ifdef NEED_TLS_PRF_SHA256
 OBJS += src/crypto/sha256-tlsprf.c
 endif
+ifdef NEED_TLS_PRF_SHA384
+OBJS += src/crypto/sha384-tlsprf.c
+endif
 ifdef NEED_HMAC_SHA256_KDF
 OBJS += src/crypto/sha256-kdf.c
 endif
@@ -935,7 +954,6 @@ OBJS += src/crypto/sha384-kdf.c
 endif
 ifdef NEED_HMAC_SHA512_KDF
 OBJS += src/crypto/sha512-kdf.c
-endif
 endif
 ifdef NEED_SHA384
 L_CFLAGS += -DCONFIG_SHA384
@@ -966,6 +984,10 @@ endif
 ifdef CONFIG_INTERNAL_SHA512
 L_CFLAGS += -DCONFIG_INTERNAL_SHA512
 OBJS += src/crypto/sha512-internal.c
+endif
+
+ifdef NEED_ASN1
+OBJS += src/tls/asn1.c
 endif
 
 ifdef NEED_DH_GROUPS
@@ -1026,9 +1048,7 @@ OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
 L_CFLAGS += -DNEED_AP_MLME
 endif
-ifdef CONFIG_IEEE80211N
 OBJS += src/ap/ieee802_11_ht.c
-endif
 
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
@@ -1127,6 +1147,9 @@ endif
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd_cli
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1137,9 +1160,13 @@ include $(BUILD_EXECUTABLE)
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_VINTF_FRAGMENTS := android.hardware.wifi.hostapd.xml
 ifdef CONFIG_DRIVER_CUSTOM
 LOCAL_STATIC_LIBRARIES := libCustomWifi
 endif
@@ -1157,12 +1184,14 @@ endif
 ifeq ($(HOSTAPD_USE_HIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.0
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.1
-LOCAL_SHARED_LIBRARIES += libbase libhidlbase libhidltransport libhwbinder libutils
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.2
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd@1.3
+LOCAL_SHARED_LIBRARIES += libbase libhidlbase libutils
 LOCAL_STATIC_LIBRARIES += libhostapd_hidl
 ifdef HOSTAPD_USE_VENDOR_HIDL
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd@1.0 \
     vendor.qti.hardware.wifi.hostapd@1.1 \
-    libqsap_sdk
+    vendor.qti.hardware.wifi.hostapd@1.2
 endif
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1174,6 +1203,9 @@ include $(BUILD_EXECUTABLE)
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd_nohidl
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
 ifdef CONFIG_DRIVER_CUSTOM
@@ -1200,28 +1232,31 @@ ifeq ($(HOSTAPD_USE_HIDL), y)
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := libhostapd_hidl
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
 LOCAL_VENDOR_MODULE := true
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
-HIDL_INTERFACE_VERSION = 1.1
+HIDL_INTERFACE_VERSION = 1.3
 LOCAL_SRC_FILES := \
     hidl/$(HIDL_INTERFACE_VERSION)/hidl.cpp \
     hidl/$(HIDL_INTERFACE_VERSION)/hostapd.cpp
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.hostapd@1.0 \
     android.hardware.wifi.hostapd@1.1 \
+    android.hardware.wifi.hostapd@1.2 \
+    android.hardware.wifi.hostapd@1.3 \
     libbase \
     libhidlbase \
-    libhidltransport \
-    libhwbinder \
     libutils \
     liblog
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 
 ifdef HOSTAPD_USE_VENDOR_HIDL
-VENDOR_HIDL_INTERFACE_VERSION = 1.1
+VENDOR_HIDL_INTERFACE_VERSION = 1.2
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/hidl/$(HIDL_INTERFACE_VERSION)
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)
 ifeq ($(BOARD_HAS_QCOM_WLAN), true)
@@ -1229,13 +1264,11 @@ LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/sdk/softap/include
 endif
 
 LOCAL_SRC_FILES += \
-    hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/qsap_handler.cpp \
     hidl/vendor/$(VENDOR_HIDL_INTERFACE_VERSION)/hostapd_vendor.cpp
 LOCAL_SHARED_LIBRARIES += \
     vendor.qti.hardware.wifi.hostapd@1.0 \
     vendor.qti.hardware.wifi.hostapd@1.1 \
-    libqsap_sdk
-LOCAL_HEADER_LIBRARIES := libqsap_headers
+    vendor.qti.hardware.wifi.hostapd@1.2
 endif
 
 include $(BUILD_STATIC_LIBRARY)
