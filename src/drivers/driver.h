@@ -1299,12 +1299,12 @@ struct wpa_driver_associate_params {
 	 */
 	struct wpa_driver_mld_params mld_params;
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/**
 	 * td_policy - Transition Disable Policy
 	 */
 	u32 td_policy;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 };
 
 enum hide_ssid {
@@ -2697,9 +2697,9 @@ enum wpa_drv_update_connect_params_mask {
 	WPA_DRV_UPDATE_ASSOC_IES	= BIT(0),
 	WPA_DRV_UPDATE_FILS_ERP_INFO	= BIT(1),
 	WPA_DRV_UPDATE_AUTH_TYPE	= BIT(2),
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	WPA_DRV_UPDATE_TD_POLICY	= BIT(3),
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 };
 
 /**
@@ -2720,6 +2720,7 @@ enum wpa_drv_update_connect_params_mask {
  *	the real status code for failures. Used only for the request interface
  *	from user space to the driver.
  * @pmkid: Generated PMKID as part of external auth exchange (e.g., SAE).
+ * @mld_addr: AP's MLD address or %NULL if MLO is not used
  */
 struct external_auth {
 	enum {
@@ -2732,6 +2733,7 @@ struct external_auth {
 	unsigned int key_mgmt_suite;
 	u16 status;
 	const u8 *pmkid;
+	const u8 *mld_addr;
 };
 
 #define WPAS_MAX_PASN_PEERS 10
@@ -4936,6 +4938,15 @@ struct wpa_driver_ops {
 	 */
 	int (*get_sta_mlo_info)(void *priv,
 				struct driver_sta_mlo_info *mlo_info);
+
+	/**
+	 * link_add - Add a link to the AP MLD interface
+	 * @priv: Private driver interface data
+	 * @link_id: The link ID
+	 * @addr: The MAC address to use for the link
+	 * Returns: 0 on success, negative value on failure
+	 */
+	int (*link_add)(void *priv, u8 link_id, const u8 *addr);
 
 #ifdef CONFIG_TESTING_OPTIONS
 	int (*register_frame)(void *priv, u16 type,

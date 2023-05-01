@@ -634,8 +634,7 @@ std::string CreateHostapdConfig(
 #ifdef CONFIG_OCV
 		"ocv=2\n"
 #endif
-		"beacon_prot=1\n"
-		"acs_exclude_6ghz_non_psc=1",
+		"beacon_prot=1\n",
 		iface_params.name.c_str(), ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
@@ -716,6 +715,9 @@ bool forceStaDisconnection(struct hostapd_data* hapd,
 			   const std::vector<uint8_t>& client_address,
 			   const uint16_t reason_code) {
 	struct sta_info *sta;
+	if (client_address.size() != ETH_ALEN) {
+		return false;
+	}
 	for (sta = hapd->sta_list; sta; sta = sta->next) {
 		int res;
 		res = memcmp(sta->addr, client_address.data(), ETH_ALEN);

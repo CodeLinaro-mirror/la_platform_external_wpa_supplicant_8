@@ -393,7 +393,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 }
 
 
-static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
+static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
 {
 	struct wpa_ie_data ie;
 	int pmksa_set = -1;
@@ -417,6 +417,8 @@ static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
 						    NULL, NULL, 0, NULL, 0);
 		if (pmksa_set == 0) {
 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
+			if (authorized)
+				wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
 			break;
 		}
 	}
@@ -1406,9 +1408,9 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	     is_6ghz_freq(bss->freq) || ssid->sae_password_id) &&
 	    wpa_s->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK &&
 	    wpa_key_mgmt_sae(ssid->key_mgmt) &&
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	    !(wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt)) &&
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	    !(rsnxe_capa & BIT(WLAN_RSNX_CAPAB_SAE_H2E))) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
@@ -3012,9 +3014,9 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 	const u8 *p;
 	u8 bssid[ETH_ALEN];
 	bool bssid_known;
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	struct wpa_ie_data ie;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Association info event");
 	bssid_known = wpa_drv_get_bssid(wpa_s, bssid) == 0;
@@ -3163,7 +3165,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
 				break;
 			found = 1;
-			wpa_find_assoc_pmkid(wpa_s);
+			wpa_find_assoc_pmkid(wpa_s,
+					     data->assoc_info.authorized);
 		}
 		if (!found_x && p[0] == WLAN_EID_RSNX) {
 			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
@@ -3178,7 +3181,7 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 	if (!found_x && data->assoc_info.req_ies)
 		wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/* The WPA/RSN IE has been updated at this point. Since the Firmware could have roamed
 	 * to a different security type, update the current supplicant configuration to use the AKM
 	 * and pairwise suites from the assoc IE passed by the driver.
@@ -3222,7 +3225,7 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			// TODO: Notify the framework about security type change b/230766005
 		}
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 #ifdef CONFIG_FILS
 #ifdef CONFIG_SME
@@ -3246,7 +3249,9 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_OWE
 	if (wpa_s->key_mgmt == WPA_KEY_MGMT_OWE &&
 	    (!bssid_known ||
-	     owe_process_assoc_resp(wpa_s->wpa, bssid,
+	     owe_process_assoc_resp(wpa_s->wpa,
+				    wpa_s->valid_links ?
+				    wpa_s->ap_mld_addr : bssid,
 				    data->assoc_info.resp_ies,
 				    data->assoc_info.resp_ies_len) < 0)) {
 		wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_UNSPECIFIED);
@@ -5086,7 +5091,10 @@ static void wpa_supplicant_event_assoc_auth(struct wpa_supplicant *wpa_s,
 					       data->assoc_info.fils_pmk,
 					       data->assoc_info.fils_pmk_len,
 					       data->assoc_info.fils_pmkid,
-					       wpa_s->bssid, fils_cache_id);
+					       wpa_s->valid_links ?
+					       wpa_s->ap_mld_addr :
+					       wpa_s->bssid,
+					       fils_cache_id);
 		} else if (data->assoc_info.fils_pmkid) {
 			/* Update the current PMKSA used for this connection */
 			pmksa_cache_set_current(wpa_s->wpa,
@@ -5390,6 +5398,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 		}
 #endif /* CONFIG_TESTING_OPTIONS */
+		if (wpa_s->disconnected) {
+			wpa_printf(MSG_INFO,
+				   "Ignore unexpected EVENT_ASSOC in disconnected state");
+			break;
+		}
 		wpa_supplicant_event_assoc(wpa_s, data);
 		wpa_s->assoc_status_code = WLAN_STATUS_SUCCESS;
 		if (data &&

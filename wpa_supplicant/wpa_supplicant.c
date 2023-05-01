@@ -17,6 +17,7 @@
 #endif /* CONFIG_MATCH_IFACE */
 
 #include "common.h"
+#include "crypto/crypto.h"
 #include "crypto/random.h"
 #include "crypto/sha1.h"
 #include "eapol_supp/eapol_supp_sm.h"
@@ -2068,16 +2069,17 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DENY_PTK0_REKEY, 0);
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if ((wpa_s->key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) &&
 		IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt) &&
 		(wpa_s->group_cipher == WPA_CIPHER_CCMP) &&
-		(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP)) {
+		(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP) &&
+		(wpa_s->wpa_proto == WPA_PROTO_RSN)) {
 		wpa_s->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK;
 		wpa_dbg(wpa_s, MSG_INFO,
 			"WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
 	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
@@ -3161,7 +3163,13 @@ static u8 * wpas_populate_assoc_ies(
 		const u8 *cache_id = NULL;
 		const u8 *addr = bss->bssid;
 
-		if (wpa_s->valid_links)
+		if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
+		    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_MLO) &&
+		    !is_zero_ether_addr(bss->mld_addr))
+			addr = bss->mld_addr;
+
+		if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
+		    wpa_s->valid_links)
 			addr = wpa_s->ap_mld_addr;
 
 		try_opportunistic = (ssid->proactive_key_caching < 0 ?
@@ -4111,11 +4119,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK) &&
 	    (
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	     (params.key_mgmt_suite & WPA_KEY_MGMT_PSK) ||
 #else
 	     params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
 	     (params.allowed_key_mgmts &
 	      (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_FT_PSK)))) {
@@ -8270,6 +8278,24 @@ int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 	    !(wpa_key_mgmt_sae(ssid->key_mgmt) && ssid->sae_password) &&
 	    !ssid->mem_only_psk)
 		return 1;
+
+#ifdef CRYPTO_RSA_OAEP_SHA256
+	if (ssid->eap.imsi_privacy_cert) {
+		struct crypto_rsa_key *key;
+		bool failed = false;
+
+		key = crypto_rsa_key_read(ssid->eap.imsi_privacy_cert, false);
+		if (!key)
+			failed = true;
+		crypto_rsa_key_free(key);
+		if (failed) {
+			wpa_printf(MSG_DEBUG,
+				   "Invalid imsi_privacy_cert (%s) - disable network",
+				   ssid->eap.imsi_privacy_cert);
+			return 1;
+		}
+	}
+#endif /* CRYPTO_RSA_OAEP_SHA256 */
 
 	return 0;
 }
