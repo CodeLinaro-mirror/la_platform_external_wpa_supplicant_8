@@ -298,29 +298,37 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		EAPOL_SUPP_RESULT_EXPECTED_FAILURE;
 
 	if (result != EAPOL_SUPP_RESULT_SUCCESS) {
+		int timeout = 2;
 		/*
 		 * Make sure we do not get stuck here waiting for long EAPOL
 		 * timeout if the AP does not disconnect in case of
 		 * authentication failure.
 		 */
-		wpa_supplicant_req_auth_timeout(wpa_s, 2, 0);
+		if (wpa_s->eapol_failed) {
+			wpa_printf(MSG_DEBUG,
+				   "EAPOL authentication failed again and AP did not disconnect us");
+			timeout = 0;
+		}
+		wpa_s->eapol_failed = 1;
+		wpa_supplicant_req_auth_timeout(wpa_s, timeout, 0);
 	} else {
+		wpa_s->eapol_failed = 0;
 		ieee802_1x_notify_create_actor(wpa_s, wpa_s->last_eapol_src);
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM                                                            
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (result != EAPOL_SUPP_RESULT_SUCCESS)                          
 #else                                                                     
 	if (result != EAPOL_SUPP_RESULT_SUCCESS ||                        
 		!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X))  
-#endif /* CONFIG_DRIVER_NL80211_BRCM */                                                      
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 		return;                                                   
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (wpa_ft_is_ft_protocol(wpa_s->wpa)) {
 		return;
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	if (!wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt))
 		return;
@@ -1366,7 +1374,7 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 		changed = 1;
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/* driver call for transition disable */
 	{
 		struct wpa_driver_associate_params params;
@@ -1375,7 +1383,7 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 		params.td_policy = bitmap;
 		wpa_drv_update_connect_params(wpa_s, &params, WPA_DRV_UPDATE_TD_POLICY);
 	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	wpas_notify_transition_disable(wpa_s, ssid, bitmap);
 

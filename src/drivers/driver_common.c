@@ -93,6 +93,10 @@ const char * event_to_string(enum wpa_event_type event)
 	E2S(TX_WAIT_EXPIRE);
 	E2S(THERMAL_CHANGED);
 	E2S(CONGESTION_REPORT);
+	E2S(BSS_COLOR_COLLISION);
+	E2S(CCA_STARTED_NOTIFY);
+	E2S(CCA_ABORTED_NOTIFY);
+	E2S(CCA_NOTIFY);
 	}
 
 	return "UNKNOWN";
