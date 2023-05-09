@@ -135,6 +135,13 @@ OBJS += ../src/utils/os_$(CONFIG_OS).o
 OBJS_p += ../src/utils/os_$(CONFIG_OS).o
 OBJS_c += ../src/utils/os_$(CONFIG_OS).o
 
+ifeq ($(CONFIG_OS), unix)
+OBJS += ../src/utils/os_unix_mem.o
+OBJS_p += ../src/utils/os_unix_mem.o
+OBJS_c += ../src/utils/os_unix_mem.o
+CFLAGS += -DOS_MEM_DEFINES
+endif
+
 ifdef CONFIG_WPA_TRACE
 CFLAGS += -DWPA_TRACE
 OBJS += ../src/utils/trace.o
