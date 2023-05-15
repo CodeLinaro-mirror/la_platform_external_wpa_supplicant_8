@@ -58,7 +58,7 @@ static void pmksa_cache_free_entry(struct rsn_pmksa_cache *pmksa,
 static void pmksa_cache_expire(void *eloop_ctx, void *timeout_ctx)
 {
 	struct rsn_pmksa_cache *pmksa = eloop_ctx;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 	struct rsn_pmksa_cache_entry *prev = NULL, *tmp;
 	struct rsn_pmksa_cache_entry *entry = pmksa->pmksa;
 
@@ -106,7 +106,7 @@ static void pmksa_cache_set_expiration(struct rsn_pmksa_cache *pmksa)
 {
 	int sec;
 	struct rsn_pmksa_cache_entry *entry;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	eloop_cancel_timeout(pmksa_cache_expire, pmksa, NULL);
 	eloop_cancel_timeout(pmksa_cache_reauth, pmksa, NULL);
@@ -176,7 +176,7 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 		const u8 *cache_id)
 {
 	struct rsn_pmksa_cache_entry *entry;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	if (pmk_len > PMK_LEN_MAX)
 		return NULL;
@@ -716,7 +716,7 @@ pmksa_cache_init(void (*free_cb)(struct rsn_pmksa_cache_entry *entry,
 void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa)
 {
 	struct rsn_pmksa_cache_entry *entry;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	if (!pmksa || !pmksa->pmksa)
 		return;

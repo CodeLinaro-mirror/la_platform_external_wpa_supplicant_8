@@ -931,7 +931,7 @@ void wpa_bss_update_end(struct wpa_supplicant *wpa_s, struct scan_info *info,
 void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age)
 {
 	struct wpa_bss *bss, *n;
-	struct os_reltime t;
+	struct os_reltime t = {0};
 
 	if (dl_list_empty(&wpa_s->bss))
 		return;
