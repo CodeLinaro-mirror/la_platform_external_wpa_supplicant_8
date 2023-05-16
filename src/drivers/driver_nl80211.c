@@ -10622,6 +10622,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 	int ret = -ENOBUFS;
 	int csa_off_len = 0;
 	int i;
+	int link_id = bss->link_id;
 
 	wpa_printf(MSG_DEBUG,
 		   "nl80211: Channel switch request (cs_count=%u block_tx=%u freq=%d channel=%d sec_channel_offset=%d width=%d cf1=%d cf2=%d puncturing_bitmap=0x%04x%s%s%s)",
@@ -10733,6 +10734,10 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 		goto fail;
 
 	nla_nest_end(msg, beacon_csa);
+
+	if (link_id >= 0 && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id))
+		goto fail;
+
 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "nl80211: switch_channel failed err=%d (%s)",
