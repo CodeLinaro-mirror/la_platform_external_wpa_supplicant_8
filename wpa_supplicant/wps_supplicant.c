@@ -2874,7 +2874,7 @@ out:
 static void wpas_wps_dump_ap_info(struct wpa_supplicant *wpa_s)
 {
 	size_t i;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	if (wpa_debug_level > MSG_DEBUG)
 		return;

@@ -104,7 +104,7 @@ static void random_mix_pool(const void *buf, size_t len)
 static void random_extract(u8 *out)
 {
 	unsigned int i;
-	u8 hash[SHA1_MAC_LEN];
+	u8 hash[SHA1_MAC_LEN] = {0};
 	u32 *hash_ptr;
 	u32 buf[POOL_WORDS / 2];
 
