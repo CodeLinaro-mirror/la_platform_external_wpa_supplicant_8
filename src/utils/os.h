@@ -4,6 +4,12 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following
+ * license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #ifndef OS_H
@@ -499,6 +505,12 @@ char * os_strdup(const char *s);
 #endif
 #endif /* WPA_TRACE */
 
+#ifdef OS_MEM_DEFINES
+void * os_memcpy(void *dest, const void *src, size_t n);
+void * os_memmove(void *dest, const void *src, size_t n);
+void * os_memset(void *s, int c, size_t n);
+int os_memcmp(const void *s1, const void *s2, size_t n);
+#else
 #ifndef os_memcpy
 #define os_memcpy(d, s, n) memcpy((d), (s), (n))
 #endif
@@ -510,6 +522,7 @@ char * os_strdup(const char *s);
 #endif
 #ifndef os_memcmp
 #define os_memcmp(s1, s2, n) memcmp((s1), (s2), (n))
+#endif
 #endif
 
 #ifndef os_strlen
