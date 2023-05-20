@@ -4650,7 +4650,7 @@ static int edit_started = 0;
 
 static void start_edit(void)
 {
-	char *home;
+	const char *home;
 	char *ps = NULL;
 
 #ifdef CONFIG_CTRL_IFACE_UDP_REMOTE

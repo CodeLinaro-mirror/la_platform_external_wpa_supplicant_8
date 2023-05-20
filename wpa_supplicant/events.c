@@ -63,7 +63,7 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 
 int wpas_temp_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 {
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	if (ssid == NULL || ssid->disabled_until.sec == 0)
 		return 0;
