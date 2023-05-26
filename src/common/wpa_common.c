@@ -3038,7 +3038,7 @@ int wpa_select_ap_group_cipher(int wpa, int wpa_pairwise, int rsn_pairwise)
 #ifdef CONFIG_FILS
 int fils_domain_name_hash(const char *domain, u8 *hash)
 {
-	char buf[255], *wpos = buf;
+	char buf[255] = {0}, *wpos = buf;
 	const char *pos = domain;
 	size_t len;
 	const u8 *addr[1];

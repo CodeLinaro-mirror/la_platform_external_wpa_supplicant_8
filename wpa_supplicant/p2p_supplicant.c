@@ -6209,7 +6209,7 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 
 	if (!wpa_s->conf->num_p2p_pref_chan && !freq) {
 		unsigned int i, size = P2P_MAX_PREF_CHANNELS;
-		struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS];
+		struct weighted_pcl pref_freq_list[P2P_MAX_PREF_CHANNELS] = {0};
 		int res;
 
 		res = wpa_drv_get_pref_freq_list(wpa_s, WPA_IF_P2P_GO,
@@ -9598,7 +9598,7 @@ static void wpas_p2p_optimize_listen_channel(struct wpa_supplicant *wpa_s,
 					     struct wpa_used_freq_data *freqs,
 					     unsigned int num)
 {
-	u8 curr_chan, cand, chan;
+	u8 curr_chan, cand, chan = 0;
 	unsigned int i;
 
 	/*
