@@ -2570,6 +2570,7 @@ struct beacon_data {
  * @beacon_after: Next beacon/probe resp/asooc resp info
  * @counter_offset_beacon: Offset to the count field in beacon's tail
  * @counter_offset_presp: Offset to the count field in probe resp.
+ * @punct_bitmap - Preamble puncturing bitmap
  */
 struct csa_settings {
 	u8 cs_count;
@@ -2581,6 +2582,8 @@ struct csa_settings {
 
 	u16 counter_offset_beacon[2];
 	u16 counter_offset_presp[2];
+
+	u16 punct_bitmap;
 };
 
 /**
