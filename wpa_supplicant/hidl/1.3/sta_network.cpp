@@ -2182,8 +2182,8 @@ SupplicantStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& ser
 	ss.write((char *) serializedEntry.data(), std::streamsize(serializedEntry.size()));
 	if (misc_utils::deserializePmkCacheEntry(ss, new_entry) < 0) {
 		os_free(new_entry);
-		return createStatusWithMsg(SupplicantStatusCode::FAILURE_ARGS_INVALID,
-		 "Invalid pmk length");
+		return {SupplicantStatusCode::FAILURE_ARGS_INVALID,
+		 "Invalid pmk length"};
 	}
 	new_entry->network_ctx = wpa_ssid;
 	new_entry->external = true;
