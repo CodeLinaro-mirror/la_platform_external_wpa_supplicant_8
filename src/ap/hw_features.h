@@ -18,6 +18,7 @@ int hostapd_get_hw_features(struct hostapd_iface *iface);
 int hostapd_acs_completed(struct hostapd_iface *iface, int err);
 int hostapd_select_hw_mode(struct hostapd_iface *iface);
 const char * hostapd_hw_mode_txt(int mode);
+void hostapd_change_hw_mode(struct hostapd_data *hapd, int freq);
 int hostapd_hw_get_freq(struct hostapd_data *hapd, int chan);
 int hostapd_hw_get_channel(struct hostapd_data *hapd, int freq);
 int hostapd_check_ht_capab(struct hostapd_iface *iface);

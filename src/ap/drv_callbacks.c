@@ -1005,6 +1005,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	if (!finished)
 		return;
 
+	hostapd_change_hw_mode(hapd,hapd->iface->freq);
+
 	if (hapd->csa_in_progress &&
 	    freq == hapd->cs_freq_params.freq) {
 		hostapd_cleanup_cs_params(hapd);
@@ -1090,13 +1092,11 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 		for (i = 0; i < hapd->iface->num_hw_features; i++) {
 			struct hostapd_hw_modes *mode =
 				&hapd->iface->hw_features[i];
+			int chan;
 
 			if (mode->mode == acs_res->hw_mode) {
 				if (hapd->iface->freq > 0 &&
-				    !hw_get_chan(mode->mode,
-						 hapd->iface->freq,
-						 hapd->iface->hw_features,
-						 hapd->iface->num_hw_features))
+						!hw_mode_get_channel(mode, hapd->iface->freq, &chan))
 					continue;
 				hapd->iface->current_mode = mode;
 				break;
@@ -1187,6 +1187,7 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 		hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, 0);
 	}
 #endif /* CONFIG_IEEE80211BE */
+
 
 out:
 	ret = hostapd_acs_completed(hapd->iface, err);
