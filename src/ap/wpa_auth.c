@@ -137,6 +137,19 @@ static inline int wpa_auth_get_msk(struct wpa_authenticator *wpa_auth,
 }
 
 
+static inline int wpa_auth_mlo_set_key(struct wpa_authenticator *wpa_auth,
+				   int link_id, int vlan_id,
+				   enum wpa_alg alg, const u8 *addr, int idx,
+				   u8 *key, size_t key_len,
+				   enum key_flag key_flag)
+{
+	if (!wpa_auth->cb->mlo_set_key)
+		return -1;
+	return wpa_auth->cb->mlo_set_key(wpa_auth->cb_ctx, link_id, vlan_id, alg, addr, idx,
+				     key, key_len, key_flag);
+}
+
+
 static inline int wpa_auth_set_key(struct wpa_authenticator *wpa_auth,
 				   int vlan_id,
 				   enum wpa_alg alg, const u8 *addr, int idx,
@@ -165,13 +178,14 @@ static inline int wpa_auth_set_ltf_keyseed(struct wpa_authenticator *wpa_auth,
 
 
 static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
-				      const u8 *addr, int idx, u8 *seq)
+				      int link_id, const u8 *addr, int idx,
+				      u8 *seq)
 {
 	int res;
 
 	if (!wpa_auth->cb->get_seqnum)
 		return -1;
-	res = wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, addr, idx, seq);
+	res = wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, link_id, addr, idx, seq);
 #ifdef CONFIG_TESTING_OPTIONS
 	if (!addr && idx < 4 && wpa_auth->conf.gtk_rsc_override_set) {
 		wpa_printf(MSG_DEBUG,
@@ -665,7 +679,7 @@ int wpa_reconfig(struct wpa_authenticator *wpa_auth,
 
 struct wpa_state_machine *
 wpa_auth_sta_init(struct wpa_authenticator *wpa_auth, const u8 *addr,
-		  const u8 *p2p_dev_addr)
+		  const u8 *link_addr, const u8 *p2p_dev_addr)
 {
 	struct wpa_state_machine *sm;
 
@@ -678,6 +692,10 @@ wpa_auth_sta_init(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	os_memcpy(sm->addr, addr, ETH_ALEN);
 	if (p2p_dev_addr)
 		os_memcpy(sm->p2p_dev_addr, p2p_dev_addr, ETH_ALEN);
+	if (link_addr) {
+		os_memcpy(sm->link_addr, link_addr, ETH_ALEN);
+		sm->is_mld = true;
+	}
 
 	sm->wpa_auth = wpa_auth;
 	sm->group = wpa_auth->group;
@@ -1125,7 +1143,10 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
 		msgtxt = "2/2 Group";
 	} else if (key_data_length == 0 ||
 		   (mic_len == 0 && (key_info & WPA_KEY_INFO_ENCR_KEY_DATA) &&
-		    key_data_length == AES_BLOCK_SIZE)) {
+		    key_data_length == AES_BLOCK_SIZE) ||
+		   (sm->is_mld &&
+		    (key_info & WPA_KEY_INFO_SECURE) &&
+		     key_data_length != 0 && mic_len != 0)) {
 		msg = PAIRWISE_4;
 		msgtxt = "4/4 Pairwise";
 	} else {
@@ -2224,8 +2245,8 @@ SM_STATE(WPA_PTK, INITPSK)
 
 SM_STATE(WPA_PTK, PTKSTART)
 {
-	u8 buf[2 + RSN_SELECTOR_LEN + PMKID_LEN], *pmkid = NULL;
-	size_t pmkid_len = 0;
+	u8 buf[2 * (2 + RSN_SELECTOR_LEN) + PMKID_LEN + ETH_ALEN], *kde = NULL;
+	size_t kde_len = 0;
 
 	SM_ENTRY_MA(WPA_PTK, PTKSTART, wpa_ptk);
 	sm->PTKRequest = false;
@@ -2261,35 +2282,35 @@ SM_STATE(WPA_PTK, PTKSTART)
 	     (sm->wpa_key_mgmt == WPA_KEY_MGMT_OWE && sm->pmksa) ||
 	     wpa_key_mgmt_sae(sm->wpa_key_mgmt)) &&
 	    sm->wpa_key_mgmt != WPA_KEY_MGMT_OSEN) {
-		pmkid = buf;
-		pmkid_len = 2 + RSN_SELECTOR_LEN + PMKID_LEN;
-		pmkid[0] = WLAN_EID_VENDOR_SPECIFIC;
-		pmkid[1] = RSN_SELECTOR_LEN + PMKID_LEN;
-		RSN_SELECTOR_PUT(&pmkid[2], RSN_KEY_DATA_PMKID);
+		kde = buf;
+		kde_len = 2 + RSN_SELECTOR_LEN + PMKID_LEN;
+		kde[0] = WLAN_EID_VENDOR_SPECIFIC;
+		kde[1] = RSN_SELECTOR_LEN + PMKID_LEN;
+		RSN_SELECTOR_PUT(&kde[2], RSN_KEY_DATA_PMKID);
 		if (sm->pmksa) {
 			wpa_hexdump(MSG_DEBUG,
 				    "RSN: Message 1/4 PMKID from PMKSA entry",
 				    sm->pmksa->pmkid, PMKID_LEN);
-			os_memcpy(&pmkid[2 + RSN_SELECTOR_LEN],
+			os_memcpy(&kde[2 + RSN_SELECTOR_LEN],
 				  sm->pmksa->pmkid, PMKID_LEN);
 		} else if (wpa_key_mgmt_suite_b(sm->wpa_key_mgmt)) {
 			/* No KCK available to derive PMKID */
 			wpa_printf(MSG_DEBUG,
 				   "RSN: No KCK available to derive PMKID for message 1/4");
-			pmkid = NULL;
+			kde = NULL;
 #ifdef CONFIG_FILS
 		} else if (wpa_key_mgmt_fils(sm->wpa_key_mgmt)) {
 			if (sm->pmkid_set) {
 				wpa_hexdump(MSG_DEBUG,
 					    "RSN: Message 1/4 PMKID from FILS/ERP",
 					    sm->pmkid, PMKID_LEN);
-				os_memcpy(&pmkid[2 + RSN_SELECTOR_LEN],
+				os_memcpy(&kde[2 + RSN_SELECTOR_LEN],
 					  sm->pmkid, PMKID_LEN);
 			} else {
 				/* No PMKID available */
 				wpa_printf(MSG_DEBUG,
 					   "RSN: No FILS/ERP PMKID available for message 1/4");
-				pmkid = NULL;
+				kde = NULL;
 			}
 #endif /* CONFIG_FILS */
 #ifdef CONFIG_IEEE80211R_AP
@@ -2297,7 +2318,7 @@ SM_STATE(WPA_PTK, PTKSTART)
 			   sm->ft_completed) {
 			wpa_printf(MSG_DEBUG,
 				   "FT: No PMKID in message 1/4 when using FT protocol");
-			pmkid = NULL;
+			kde = NULL;
 #endif /* CONFIG_IEEE80211R_AP */
 #ifdef CONFIG_SAE
 		} else if (wpa_key_mgmt_sae(sm->wpa_key_mgmt)) {
@@ -2305,13 +2326,13 @@ SM_STATE(WPA_PTK, PTKSTART)
 				wpa_hexdump(MSG_DEBUG,
 					    "RSN: Message 1/4 PMKID from SAE",
 					    sm->pmkid, PMKID_LEN);
-				os_memcpy(&pmkid[2 + RSN_SELECTOR_LEN],
+				os_memcpy(&kde[2 + RSN_SELECTOR_LEN],
 					  sm->pmkid, PMKID_LEN);
 			} else {
 				/* No PMKID available */
 				wpa_printf(MSG_DEBUG,
 					   "RSN: No SAE PMKID available for message 1/4");
-				pmkid = NULL;
+				kde = NULL;
 			}
 #endif /* CONFIG_SAE */
 		} else {
@@ -2320,18 +2341,29 @@ SM_STATE(WPA_PTK, PTKSTART)
 			 * available with pre-calculated PMKID.
 			 */
 			rsn_pmkid(sm->PMK, sm->pmk_len, sm->wpa_auth->addr,
-				  sm->addr, &pmkid[2 + RSN_SELECTOR_LEN],
+				  sm->addr, &kde[2 + RSN_SELECTOR_LEN],
 				  sm->wpa_key_mgmt);
 			wpa_hexdump(MSG_DEBUG,
 				    "RSN: Message 1/4 PMKID derived from PMK",
-				    &pmkid[2 + RSN_SELECTOR_LEN], PMKID_LEN);
+				    &kde[2 + RSN_SELECTOR_LEN], PMKID_LEN);
 		}
 	}
-	if (!pmkid)
-		pmkid_len = 0;
+
+	if (!kde)
+		kde_len = 0;
+
+	if (sm->is_mld) {
+		if (!kde)
+			kde = buf;
+
+		wpa_add_kde(&kde[kde_len], RSN_KEY_DATA_MAC_ADDR,
+			    sm->wpa_auth->addr, ETH_ALEN, NULL, 0);
+		kde_len += 2 + RSN_SELECTOR_LEN + ETH_ALEN;
+	}
+
 	wpa_send_eapol(sm->wpa_auth, sm,
 		       WPA_KEY_INFO_ACK | WPA_KEY_INFO_KEY_TYPE, NULL,
-		       sm->ANonce, pmkid, pmkid_len, 0, 0);
+		       sm->ANonce, kde, kde_len, 0, 0);
 }
 
 
@@ -2869,7 +2901,7 @@ static struct wpabuf * fils_prepare_plainbuf(struct wpa_state_machine *sm,
 	wpabuf_put_u8(plain, WLAN_EID_EXTENSION); /* Element ID */
 	len = wpabuf_put(plain, 1);
 	wpabuf_put_u8(plain, WLAN_EID_EXT_KEY_DELIVERY);
-	wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN,
+	wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN,
 			    wpabuf_put(plain, WPA_KEY_RSC_LEN));
 	/* GTK KDE */
 	gtk = gsm->GTK[gsm->GN - 1];
@@ -3346,6 +3378,9 @@ static int ieee80211w_kde_len(struct wpa_state_machine *sm)
 {
 	size_t len = 0;
 
+	if (sm->is_mld)
+		return 0;
+
 	if (sm->mgmt_frame_prot) {
 		len += 2 + RSN_SELECTOR_LEN + WPA_IGTK_KDE_PREFIX_LEN;
 		len += wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
@@ -3368,13 +3403,13 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
 	struct wpa_auth_config *conf = &sm->wpa_auth->conf;
 	size_t len = wpa_cipher_key_len(conf->group_mgmt_cipher);
 
-	if (!sm->mgmt_frame_prot)
+	if (sm->is_mld || !sm->mgmt_frame_prot)
 		return pos;
 
 	igtk.keyid[0] = gsm->GN_igtk;
 	igtk.keyid[1] = 0;
 	if (gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
-	    wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN_igtk, rsc) < 0)
+	    wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN_igtk, rsc) < 0)
 		os_memset(igtk.pn, 0, sizeof(igtk.pn));
 	else
 		os_memcpy(igtk.pn, rsc, sizeof(igtk.pn));
@@ -3398,7 +3433,7 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
 	bigtk.keyid[0] = gsm->GN_bigtk;
 	bigtk.keyid[1] = 0;
 	if (gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
-	    wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN_bigtk, rsc) < 0)
+	    wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN_bigtk, rsc) < 0)
 		os_memset(bigtk.pn, 0, sizeof(bigtk.pn));
 	else
 		os_memcpy(bigtk.pn, rsc, sizeof(bigtk.pn));
@@ -3492,16 +3527,222 @@ static u8 * replace_ie(const char *name, const u8 *old_buf, size_t *len, u8 eid,
 #endif /* CONFIG_TESTING_OPTIONS */
 
 
+static u8 * ieee80211w_mlo_kde_add(struct wpa_authenticator *wpa_auth,
+				   struct wpa_state_machine *sm,
+				   u8 *pos)
+{
+	struct rsn_mlo_igtk_kde igtk;
+	struct rsn_mlo_bigtk_kde bigtk;
+	struct wpa_group *gsm = wpa_auth->group;
+	u8 rsc[WPA_KEY_RSC_LEN];
+	struct wpa_auth_config *conf = &wpa_auth->conf;
+	size_t len = wpa_cipher_key_len(conf->group_mgmt_cipher);
+
+	if (!sm->mgmt_frame_prot)
+		return pos;
+
+	igtk.keyid[0] = gsm->GN_igtk;
+	igtk.keyid[1] = 0;
+	if (gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
+	    wpa_auth_get_seqnum(wpa_auth, wpa_auth->conf.link_id, NULL, gsm->GN_igtk, rsc) < 0)
+		os_memset(igtk.pn, 0, sizeof(igtk.pn));
+	else
+		os_memcpy(igtk.pn, rsc, sizeof(igtk.pn));
+	os_memcpy(igtk.igtk, gsm->IGTK[gsm->GN_igtk - 4], len);
+	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+		/*
+		 * Provide unique random IGTK to each STA to prevent use of
+		 * IGTK in the BSS.
+		 */
+		if (random_get_bytes(igtk.igtk, len) < 0)
+			return pos;
+	}
+
+	igtk.prefix8 = (wpa_auth->conf.link_id & 0x0f) <<
+		       RSN_MLO_IGTK_KDE_PREFIX8_LINK_ID_SHIFT;
+	pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_IGTK,
+			  (const u8 *) &igtk, RSN_MLO_IGTK_KDE_PREFIX_LENGTH + len,
+			  NULL, 0);
+
+	if (!conf->beacon_prot)
+		return pos;
+
+	bigtk.keyid[0] = gsm->GN_bigtk;
+	bigtk.keyid[1] = 0;
+	if (gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
+	    wpa_auth_get_seqnum(wpa_auth, wpa_auth->conf.link_id, NULL, gsm->GN_bigtk, rsc) < 0)
+		os_memset(bigtk.pn, 0, sizeof(bigtk.pn));
+	else
+		os_memcpy(bigtk.pn, rsc, sizeof(bigtk.pn));
+	os_memcpy(bigtk.bigtk, gsm->BIGTK[gsm->GN_bigtk - 6], len);
+	if (sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+		/*
+		 * Provide unique random BIGTK to each OSEN STA to prevent use
+		 * of BIGTK in the BSS.
+		 */
+		if (random_get_bytes(bigtk.bigtk, len) < 0)
+			return pos;
+	}
+	bigtk.prefix8 = (wpa_auth->conf.link_id & 0x0f) <<
+			RSN_MLO_IGTK_KDE_PREFIX8_LINK_ID_SHIFT;
+	pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK,
+			  (const u8 *) &bigtk, RSN_MLO_BIGTK_KDE_PREFIX_LENGTH + len,
+			  NULL, 0);
+
+	return pos;
+}
+
+
+struct mlo_kde_data {
+	u8 *wpa_auth_mld_addr;
+	struct wpa_state_machine *sm;
+	struct wpa_authenticator *wpa_auth;
+	u8 *buf;
+	u8 *pos;
+	size_t kde_len;
+	bool has_gtk;
+};
+
+
+static int mlo_link_kde_len(struct wpa_state_machine *sm,
+			    struct mlo_kde_data *data)
+{
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
+	struct wpa_group *gsm = wpa_auth->group;
+
+	if (sm->wpa == WPA_VERSION_WPA2) {
+		data->has_gtk = true;
+		data->kde_len += 2 +
+				 RSN_SELECTOR_LEN +
+				 RSN_MLO_GTK_KDE_PREFIX_LENGTH +
+				 gsm->GTK_len;
+	}
+
+	if (sm->mgmt_frame_prot) {
+		data->kde_len += 2 +
+				 RSN_SELECTOR_LEN +
+				 RSN_MLO_IGTK_KDE_PREFIX_LENGTH +
+				 wpa_cipher_key_len(
+					wpa_auth->conf.group_mgmt_cipher);
+	}
+
+	if (sm->mgmt_frame_prot && wpa_auth->conf.beacon_prot) {
+		data->kde_len += 2 +
+				 RSN_SELECTOR_LEN +
+				 RSN_MLO_BIGTK_KDE_PREFIX_LENGTH +
+				 wpa_cipher_key_len(
+					wpa_auth->conf.group_mgmt_cipher);
+	}
+
+	if (sm->wpa_ptk_group_state == WPA_PTK_GROUP_REKEYNEGOTIATING) {
+		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
+				"skip calculate link info len in group rekey");
+	} else {
+		data->kde_len += 2 +
+				 RSN_SELECTOR_LEN +
+				 1 + /* Link Info */
+				 6 + /* Link MAC addr */
+				 wpa_auth->wpa_ie_len;
+	}
+
+
+	return 0;
+}
+
+
+static int mlo_link_kde_add(struct wpa_state_machine *sm,
+			    struct mlo_kde_data *data)
+{
+	struct wpa_authenticator *wpa_auth = sm->wpa_auth;
+	struct wpa_group *gsm = wpa_auth->group;
+	u8 rsc[WPA_KEY_RSC_LEN], *pos = data->pos;
+	size_t wpa_ie_len;
+	u8 *wpa_ie;
+	u8 hdr[2 + ETH_ALEN];
+
+	if (sm->wpa == WPA_VERSION_WPA2) {
+		wpa_auth_get_seqnum(wpa_auth, wpa_auth->conf.link_id, NULL, gsm->GN, rsc);
+		hdr[0] = gsm->GN & 0x03;
+		hdr[0] |= (wpa_auth->conf.link_id & 0xF) <<
+			  RSN_MLO_GTK_KDE_PREFIX0_LINK_ID_SHIFT;
+		os_memcpy(&hdr[1], rsc, 6);
+		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_GTK, hdr, 7,
+				  gsm->GTK[gsm->GN - 1], gsm->GTK_len);
+	}
+
+	pos = ieee80211w_mlo_kde_add(wpa_auth, sm, pos);
+
+	if (sm->wpa_ptk_group_state == WPA_PTK_GROUP_REKEYNEGOTIATING) {
+		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
+				"skip add MLO link KDE in group rekey");
+	} else {
+		/* If FT is used, wpa_auth->wpa_ie includes both RSNIE and MDIE */
+		// TODO: Handling removing MDIE from wpa_ie when FT is used
+		wpa_ie = wpa_auth->wpa_ie;
+		wpa_ie_len = wpa_auth->wpa_ie_len;
+		hdr[0] = wpa_auth->conf.link_id & 0xF;
+		hdr[0] |= 0x10;
+		if (get_ie(wpa_ie, wpa_ie_len, WLAN_EID_RSNX))
+			 hdr[0] |= 0x20;
+		os_memcpy(&hdr[1], wpa_auth->addr, ETH_ALEN);
+		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_LINK, hdr, 7,
+				  wpa_ie, wpa_ie_len);
+	}
+	data->pos = pos;
+	return 0;
+}
+
+
+static int mlo_kde_info(struct wpa_state_machine *sm,
+			struct mlo_kde_data *data)
+{
+
+	data->kde_len = 0;
+
+	if (sm->wpa_ptk_group_state == WPA_PTK_GROUP_REKEYNEGOTIATING) {
+		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
+				"skip add mld mac kde len in group rekey");
+	} else {
+		// AP MLD address KDE
+		data->kde_len += 2 + RSN_SELECTOR_LEN + ETH_ALEN;
+	}
+
+	// GTK + IGTK + BIGTK + MLO Link KDEs for each link
+	mlo_link_kde_len(sm, data);
+
+	data->buf = os_malloc(data->kde_len);
+	if (!data->buf)
+		return -1;
+
+	if (sm->wpa_ptk_group_state == WPA_PTK_GROUP_REKEYNEGOTIATING) {
+		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
+				"skip add mld mac kde in group rekey");
+		data->pos = data->buf;
+	} else {
+		// MLD Addr KDE
+		data->pos = wpa_add_kde(data->buf, RSN_KEY_DATA_MAC_ADDR,
+					sm->wpa_auth->addr, ETH_ALEN,
+					NULL, 0);
+	}
+	// GTK + IGTK + BIGTK + MLO Link KDEs for each link
+	// GTK + IGTK + BIGTK in Group Key rekey
+	mlo_link_kde_add(sm, data);
+
+	return 0;
+}
+
+
 SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 {
 	u8 rsc[WPA_KEY_RSC_LEN], *_rsc, *gtk, *kde = NULL, *pos, stub_gtk[32];
-	size_t gtk_len, kde_len = 0, wpa_ie_len;
+	size_t gtk_len, kde_len = 0, wpa_ie_len = 0;
 	struct wpa_group *gsm = sm->group;
-	u8 *wpa_ie;
+	u8 *wpa_ie = NULL;
 	int secure, gtkidx, encr = 0;
 	u8 *wpa_ie_buf = NULL, *wpa_ie_buf2 = NULL;
 	u8 hdr[2];
 	struct wpa_auth_config *conf = &sm->wpa_auth->conf;
+	struct mlo_kde_data ml_kde_data;
 
 	SM_ENTRY_MA(WPA_PTK, PTKINITNEGOTIATING, wpa_ptk);
 	sm->TimeoutEvt = false;
@@ -3521,22 +3762,30 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 	   GTK[GN], IGTK, [BIGTK], [FTIE], [TIE * 2])
 	 */
 	os_memset(rsc, 0, WPA_KEY_RSC_LEN);
-	wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN, rsc);
-	/* If FT is used, wpa_auth->wpa_ie includes both RSNIE and MDIE */
-	wpa_ie = sm->wpa_auth->wpa_ie;
-	wpa_ie_len = sm->wpa_auth->wpa_ie_len;
-	if (sm->wpa == WPA_VERSION_WPA && (conf->wpa & WPA_PROTO_RSN) &&
-	    wpa_ie_len > wpa_ie[1] + 2U && wpa_ie[0] == WLAN_EID_RSN) {
-		/* WPA-only STA, remove RSN IE and possible MDIE */
-		wpa_ie = wpa_ie + wpa_ie[1] + 2;
-		if (wpa_ie[0] == WLAN_EID_RSNX)
+	os_memset(&ml_kde_data, 0, sizeof(ml_kde_data));
+
+	if (sm->is_mld) {
+		if (mlo_kde_info(sm, &ml_kde_data))
+			goto done;
+	} else {
+		wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL,
+				    gsm->GN, rsc);
+		/* If FT is used, wpa_auth->wpa_ie includes both RSNIE and MDIE */
+		wpa_ie = sm->wpa_auth->wpa_ie;
+		wpa_ie_len = sm->wpa_auth->wpa_ie_len;
+		if (sm->wpa == WPA_VERSION_WPA && (conf->wpa & WPA_PROTO_RSN) &&
+		    wpa_ie_len > wpa_ie[1] + 2U && wpa_ie[0] == WLAN_EID_RSN) {
+			/* WPA-only STA, remove RSN IE and possible MDIE */
 			wpa_ie = wpa_ie + wpa_ie[1] + 2;
-		if (wpa_ie[0] == WLAN_EID_MOBILITY_DOMAIN)
-			wpa_ie = wpa_ie + wpa_ie[1] + 2;
-		wpa_ie_len = wpa_ie[1] + 2;
+			if (wpa_ie[0] == WLAN_EID_RSNX)
+				wpa_ie = wpa_ie + wpa_ie[1] + 2;
+			if (wpa_ie[0] == WLAN_EID_MOBILITY_DOMAIN)
+				wpa_ie = wpa_ie + wpa_ie[1] + 2;
+			wpa_ie_len = wpa_ie[1] + 2;
+		}
 	}
 #ifdef CONFIG_TESTING_OPTIONS
-	if (conf->rsne_override_eapol_set) {
+	if (wpa_ie && conf->rsne_override_eapol_set) {
 		wpa_ie_buf2 = replace_ie(
 			"RSNE", wpa_ie, &wpa_ie_len, WLAN_EID_RSN,
 			conf->rsne_override_eapol,
@@ -3545,7 +3794,7 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 			goto done;
 		wpa_ie = wpa_ie_buf2;
 	}
-	if (conf->rsnxe_override_eapol_set) {
+	if (wpa_ie && conf->rsnxe_override_eapol_set) {
 		wpa_ie_buf = replace_ie(
 			"RSNXE", wpa_ie, &wpa_ie_len, WLAN_EID_RSNX,
 			conf->rsnxe_override_eapol,
@@ -3557,7 +3806,13 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 #endif /* CONFIG_TESTING_OPTIONS */
 	wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
 			"sending 3/4 msg of 4-Way Handshake");
-	if (sm->wpa == WPA_VERSION_WPA2) {
+	if (ml_kde_data.has_gtk) {
+		secure = 1;
+		gtk = NULL;
+		gtk_len = 0;
+		_rsc = NULL;
+		encr = 1;
+	} else if (sm->wpa == WPA_VERSION_WPA2) {
 		if (sm->use_ext_key_id && sm->TimeoutCtr == 1 &&
 		    wpa_auth_set_key(sm->wpa_auth, 0,
 				     wpa_cipher_to_alg(sm->pairwise),
@@ -3623,7 +3878,8 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 		}
 	}
 
-	kde_len = wpa_ie_len + ieee80211w_kde_len(sm) + ocv_oci_len(sm);
+	kde_len = wpa_ie_len + ieee80211w_kde_len(sm) + ocv_oci_len(sm) +
+	          ml_kde_data.kde_len;
 
 	if (sm->use_ext_key_id)
 		kde_len += 2 + RSN_SELECTOR_LEN + 2;
@@ -3654,8 +3910,10 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 		goto done;
 
 	pos = kde;
-	os_memcpy(pos, wpa_ie, wpa_ie_len);
-	pos += wpa_ie_len;
+	if (wpa_ie) {
+		os_memcpy(pos, wpa_ie, wpa_ie_len);
+		pos += wpa_ie_len;
+	}
 #ifdef CONFIG_IEEE80211R_AP
 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
 		int res;
@@ -3685,6 +3943,12 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 				  gtk, gtk_len);
 	}
 	pos = ieee80211w_kde_add(sm, pos);
+
+	if (ml_kde_data.buf) {
+		os_memcpy(pos, ml_kde_data.buf, ml_kde_data.kde_len);
+		pos += ml_kde_data.kde_len;
+	}
+
 	if (ocv_oci_add(sm, &pos, conf->oci_freq_override_eapol_m3) < 0)
 		goto done;
 
@@ -3770,6 +4034,60 @@ done:
 	bin_clear_free(kde, kde_len);
 	os_free(wpa_ie_buf);
 	os_free(wpa_ie_buf2);
+	os_free(ml_kde_data.buf);
+}
+
+
+static int wpa_auth_mlo_set_pairwise_key(struct wpa_state_machine *sm)
+{
+	wpa_printf(MSG_ERROR, "MLO: set MLD pairwise key");
+
+	if (sm->Pair) {
+		enum wpa_alg alg = wpa_cipher_to_alg(sm->pairwise);
+		int klen = wpa_cipher_key_len(sm->pairwise);
+		int res;
+
+		res = wpa_auth_set_key(sm->wpa_auth, 0, alg,
+				       sm->addr,
+				       0, sm->PTK.tk, klen,
+				       KEY_FLAG_PAIRWISE_RX_TX);
+
+		if (res) {
+			sm->pairwise_set = false;
+			//Issue disconnect on Assoc link STA
+			wpa_sta_disconnect(sm->wpa_auth, sm->addr,
+					   WLAN_REASON_PREV_AUTH_NOT_VALID);
+			return 0;
+		}
+
+		sm->pairwise_set = true;
+		if (wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) ||
+		    sm->wpa_key_mgmt == WPA_KEY_MGMT_OWE) {
+			wpa_auth_set_eapol(sm->wpa_auth, sm->addr,
+					   WPA_EAPOL_authorized, 1);
+		}
+	}
+
+	// TODO: PTK rekey
+	// TODO: PTKSA store
+	// TODO: IBSS
+	// TODO: FT
+
+	wpa_auth_set_eapol(sm->wpa_auth, sm->addr, WPA_EAPOL_portValid, 1);
+	wpa_auth_set_eapol(sm->wpa_auth, sm->addr, WPA_EAPOL_keyAvailable,
+			   false);
+	wpa_auth_set_eapol(sm->wpa_auth, sm->addr, WPA_EAPOL_keyDone, true);
+
+	if (sm->wpa == WPA_VERSION_WPA)
+		sm->PInitAKeys = true;
+	else
+		sm->has_GTK = true;
+
+	wpa_auth_vlogger(sm->wpa_auth, sm->addr, LOGGER_INFO,
+			 "pairwise key handshake completed (%s)",
+			 sm->wpa == WPA_VERSION_WPA ? "WPA" : "RSN");
+
+	return 0;
 }
 
 
@@ -3777,6 +4095,15 @@ SM_STATE(WPA_PTK, PTKINITDONE)
 {
 	SM_ENTRY_MA(WPA_PTK, PTKINITDONE, wpa_ptk);
 	sm->EAPOLKeyReceived = false;
+
+	if (sm->is_mld) {
+		if (!wpa_auth_mlo_set_pairwise_key(sm))
+			return;
+		wpa_sta_disconnect(sm->wpa_auth, sm->addr,
+				   WLAN_REASON_PREV_AUTH_NOT_VALID);
+		return;
+	}
+
 	if (sm->Pair) {
 		enum wpa_alg alg = wpa_cipher_to_alg(sm->pairwise);
 		int klen = wpa_cipher_key_len(sm->pairwise);
@@ -4014,6 +4341,7 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 	size_t kde_len = 0;
 	u8 *gtk, stub_gtk[32];
 	struct wpa_auth_config *conf = &sm->wpa_auth->conf;
+	struct mlo_kde_data ml_kde_data;
 
 	SM_ENTRY_MA(WPA_PTK_GROUP, REKEYNEGOTIATING, wpa_ptk_group);
 
@@ -4033,8 +4361,10 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 	sm->TimeoutEvt = false;
 	/* Send EAPOL(1, 1, 1, !Pair, G, RSC, GNonce, MIC(PTK), GTK[GN]) */
 	os_memset(rsc, 0, WPA_KEY_RSC_LEN);
+	os_memset(&ml_kde_data, 0, sizeof(ml_kde_data));
+
 	if (gsm->wpa_group_state == WPA_GROUP_SETKEYSDONE)
-		wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN, rsc);
+		wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN, rsc);
 	wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
 			"sending 1/2 msg of Group Key Handshake");
 
@@ -4048,28 +4378,50 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 			return;
 		gtk = stub_gtk;
 	}
-	if (sm->wpa == WPA_VERSION_WPA2) {
-		kde_len = 2 + RSN_SELECTOR_LEN + 2 + gsm->GTK_len +
-			ieee80211w_kde_len(sm) + ocv_oci_len(sm);
+	if (sm->is_mld) {
+		wpa_auth_logger(sm->wpa_auth, sm->addr, LOGGER_DEBUG,
+				"add MLO info in group key rekey");
+		if (mlo_kde_info(sm, &ml_kde_data))
+			goto done;
+		kde_len = ml_kde_data.kde_len + ocv_oci_len(sm);
 		kde_buf = os_malloc(kde_len);
 		if (!kde_buf)
-			return;
-
+			goto done;
 		kde = pos = kde_buf;
-		hdr[0] = gsm->GN & 0x03;
-		hdr[1] = 0;
-		pos = wpa_add_kde(pos, RSN_KEY_DATA_GROUPKEY, hdr, 2,
-				  gtk, gsm->GTK_len);
-		pos = ieee80211w_kde_add(sm, pos);
+		if (ml_kde_data.buf) {
+			os_memcpy(pos, ml_kde_data.buf, ml_kde_data.kde_len);
+			pos += ml_kde_data.kde_len;
+		}
 		if (ocv_oci_add(sm, &pos,
 				conf->oci_freq_override_eapol_g1) < 0) {
 			os_free(kde_buf);
-			return;
+			goto done;
 		}
 		kde_len = pos - kde;
 	} else {
-		kde = gtk;
-		kde_len = gsm->GTK_len;
+		if (sm->wpa == WPA_VERSION_WPA2) {
+			kde_len = 2 + RSN_SELECTOR_LEN + 2 + gsm->GTK_len +
+				ieee80211w_kde_len(sm) + ocv_oci_len(sm);
+			kde_buf = os_malloc(kde_len);
+			if (!kde_buf)
+				return;
+
+			kde = pos = kde_buf;
+			hdr[0] = gsm->GN & 0x03;
+			hdr[1] = 0;
+			pos = wpa_add_kde(pos, RSN_KEY_DATA_GROUPKEY, hdr, 2,
+					  gtk, gsm->GTK_len);
+			pos = ieee80211w_kde_add(sm, pos);
+			if (ocv_oci_add(sm, &pos,
+					conf->oci_freq_override_eapol_g1) < 0) {
+				os_free(kde_buf);
+				return;
+			}
+			kde_len = pos - kde;
+		} else {
+			kde = gtk;
+			kde_len = gsm->GTK_len;
+		}
 	}
 
 	wpa_send_eapol(sm->wpa_auth, sm,
@@ -4081,6 +4433,8 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 		       rsc, NULL, kde, kde_len, gsm->GN, 1);
 
 	bin_clear_free(kde_buf, kde_len);
+done:
+	os_free(ml_kde_data.buf);
 }
 
 
@@ -4348,7 +4702,7 @@ int wpa_wnmsleep_gtk_subelem(struct wpa_state_machine *sm, u8 *pos)
 	WPA_PUT_LE16(pos, gsm->GN & 0x03);
 	pos += 2;
 	*pos++ = gsm->GTK_len;
-	if (wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN, pos) != 0)
+	if (wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN, pos) != 0)
 		return 0;
 	pos += 8;
 	os_memcpy(pos, gsm->GTK[gsm->GN - 1], gsm->GTK_len);
@@ -4386,7 +4740,7 @@ int wpa_wnmsleep_igtk_subelem(struct wpa_state_machine *sm, u8 *pos)
 	*pos++ = 2 + 6 + len;
 	WPA_PUT_LE16(pos, gsm->GN_igtk);
 	pos += 2;
-	if (wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN_igtk, pos) != 0)
+	if (wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN_igtk, pos) != 0)
 		return 0;
 	pos += 6;
 
@@ -4424,7 +4778,7 @@ int wpa_wnmsleep_bigtk_subelem(struct wpa_state_machine *sm, u8 *pos)
 	*pos++ = 2 + 6 + len;
 	WPA_PUT_LE16(pos, gsm->GN_bigtk);
 	pos += 2;
-	if (wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN_bigtk, pos) != 0)
+	if (wpa_auth_get_seqnum(sm->wpa_auth, sm->wpa_auth->conf.link_id, NULL, gsm->GN_bigtk, pos) != 0)
 		return 0;
 	pos += 6;
 
@@ -4493,7 +4847,7 @@ static int wpa_group_config_group_keys(struct wpa_authenticator *wpa_auth,
 	struct wpa_auth_config *conf = &wpa_auth->conf;
 	int ret = 0;
 
-	if (wpa_auth_set_key(wpa_auth, group->vlan_id,
+	if (wpa_auth_mlo_set_key(wpa_auth, wpa_auth->conf.link_id, group->vlan_id,
 			     wpa_cipher_to_alg(conf->wpa_group),
 			     broadcast_ether_addr, group->GN,
 			     group->GTK[group->GN - 1], group->GTK_len,
@@ -4508,14 +4862,14 @@ static int wpa_group_config_group_keys(struct wpa_authenticator *wpa_auth,
 		len = wpa_cipher_key_len(conf->group_mgmt_cipher);
 
 		if (ret == 0 &&
-		    wpa_auth_set_key(wpa_auth, group->vlan_id, alg,
+		    wpa_auth_mlo_set_key(wpa_auth, wpa_auth->conf.link_id, group->vlan_id, alg,
 				     broadcast_ether_addr, group->GN_igtk,
 				     group->IGTK[group->GN_igtk - 4], len,
 				     KEY_FLAG_GROUP_TX_DEFAULT) < 0)
 			ret = -1;
 
 		if (ret == 0 && conf->beacon_prot &&
-		    wpa_auth_set_key(wpa_auth, group->vlan_id, alg,
+		    wpa_auth_mlo_set_key(wpa_auth, wpa_auth->conf.link_id, group->vlan_id, alg,
 				     broadcast_ether_addr, group->GN_bigtk,
 				     group->BIGTK[group->GN_bigtk - 6], len,
 				     KEY_FLAG_GROUP_TX_DEFAULT) < 0)

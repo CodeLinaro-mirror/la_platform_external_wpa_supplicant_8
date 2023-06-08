@@ -136,15 +136,37 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
 	if (!is_6ghz_op_class(hapd->iconf->op_class))
 		cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &=
 			~EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK;
-	if (!hapd->iface->conf->eht_phy_capab.su_beamformer)
+	wpa_printf(MSG_INFO,"EHT TX_BF CAP: SU_BFER %d, SU_BFEE %d MU_BFER %d\n",
+			cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &
+			EHT_PHYCAP_SU_BEAMFORMER,
+			cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &
+			EHT_PHYCAP_SU_BEAMFORMER,
+			cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] &
+			EHT_PHYCAP_MU_BEAMFORMER_MASK);
+
+	wpa_printf(MSG_INFO,"EHT TX_BF CAP HOSTAPD CONF: SU_BFER %d, SU_BFEE %d MU_BFER %d\n",
+			hapd->iface->conf->eht_phy_capab.su_beamformer,
+			hapd->iface->conf->eht_phy_capab.su_beamformee,
+			hapd->iface->conf->eht_phy_capab.mu_beamformer);
+
+	if (hapd->iface->conf->eht_phy_capab.su_beamformer)
+		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] |=
+			EHT_PHYCAP_SU_BEAMFORMER;
+	else
 		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &=
 			~EHT_PHYCAP_SU_BEAMFORMER;
 
-	if (!hapd->iface->conf->eht_phy_capab.su_beamformee)
+	if (hapd->iface->conf->eht_phy_capab.su_beamformee)
+		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMEE_IDX] |=
+			EHT_PHYCAP_SU_BEAMFORMEE;
+	else
 		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMEE_IDX] &=
 			~EHT_PHYCAP_SU_BEAMFORMEE;
 
-	if (!hapd->iface->conf->eht_phy_capab.mu_beamformer)
+	if (hapd->iface->conf->eht_phy_capab.mu_beamformer)
+		cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] |=
+			EHT_PHYCAP_MU_BEAMFORMER_MASK;
+	else
 		cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] &=
 			~EHT_PHYCAP_MU_BEAMFORMER_MASK;
 
@@ -182,6 +204,9 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 
 	if (!hapd->iface->current_mode)
 		return eid;
+
+	if (hapd->iconf->punct_bitmap)
+		elen += EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE;
 
 	*pos++ = WLAN_EID_EXTENSION;
 	*pos++ = 1 + elen;
@@ -233,6 +258,12 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 
 	oper->oper_info.ccfs0 = seg0 ? seg0 : hapd->iconf->channel;
 	oper->oper_info.ccfs1 = seg1;
+
+	if (hapd->iconf->punct_bitmap) {
+		oper->oper_params |= EHT_OPER_DISABLED_SUBCHAN_BITMAP_PRESENT;
+		oper->oper_info.disabled_chan_bitmap =
+			host_to_le16(hapd->iconf->punct_bitmap);
+	}
 
 	return pos + elen;
 }
@@ -386,4 +417,59 @@ void hostapd_get_eht_capab(struct hostapd_data *hapd,
 
 	os_memset(dest, 0, sizeof(*dest));
 	os_memcpy(dest, src, len);
+}
+
+
+size_t hostapd_eid_basic_mle_len(struct hostapd_data *hapd,
+				 enum ieee80211_op_mode opmode)
+{
+	struct hostapd_hw_modes *mode;
+	struct eht_capabilities *eht_cap;
+	const size_t len = 3 /* EID + LEN + EXT EID */ + 2/* ML-CONTROL */
+			   + 1 /* Common Info length */
+			   + ETH_ALEN /* mld-mac */
+			   + 1/* Link-id*/;
+
+	mode = hapd->iface->current_mode;
+	if (!mode)
+		return 0;
+
+	eht_cap = &mode->eht_capab[opmode];
+	if (!eht_cap->eht_supported)
+		return 0;
+
+	return len;
+}
+
+
+u8 * hostapd_eid_basic_mle(struct hostapd_data *hapd, u8 *eid,
+			   enum ieee80211_op_mode opmode)
+{
+	u8 *pos = eid;
+	struct hostapd_hw_modes *mode;
+	struct eht_capabilities *eht_cap;
+
+	mode = hapd->iface->current_mode;
+	if (!mode)
+		return eid;
+
+	eht_cap = &mode->eht_capab[opmode];
+	if (!eht_cap->eht_supported)
+		return eid;
+
+	*pos++ = WLAN_EID_EXTENSION;
+	*pos++ = hostapd_eid_basic_mle_len(hapd, opmode) - 2;
+	*pos++ = WLAN_EID_EXT_MULTI_LINK;
+
+	// Multi-Link Control field
+	*pos++ = BASIC_MULTI_LINK_CTRL_PRES_LINK_ID;
+	*pos++ = 0x0;
+
+	// Common Info field
+	*pos++ = hostapd_eid_basic_mle_len(hapd, opmode) - 5;
+	os_memcpy(pos, hapd->own_addr, ETH_ALEN);
+	pos += ETH_ALEN;
+	*pos++ = 0x0F & hapd->conf->link_id;
+
+	return pos;
 }

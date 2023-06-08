@@ -128,7 +128,7 @@ void ap_sta_hash_add(struct hostapd_data *hapd, struct sta_info *sta)
 }
 
 
-static void ap_sta_hash_del(struct hostapd_data *hapd, struct sta_info *sta)
+void ap_sta_hash_del(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	struct sta_info *s;
 
@@ -707,7 +707,8 @@ void ap_sta_session_warning_timeout(struct hostapd_data *hapd,
 }
 
 
-struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
+struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr,
+			     const u8 *link_addr)
 {
 	struct sta_info *sta;
 	int i;
@@ -716,7 +717,7 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
 	if (sta)
 		return sta;
 
-	wpa_printf(MSG_DEBUG, "  New STA");
+	wpa_printf(MSG_DEBUG, "  New %sSTA", link_addr ? "MLD " : "");
 	if (hapd->num_sta >= hapd->conf->max_num_sta) {
 		/* FIX: might try to remove some old STAs first? */
 		wpa_printf(MSG_DEBUG, "no more room for new STAs (%d/%d)",
@@ -755,6 +756,12 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
 
 	/* initialize STA info data */
 	os_memcpy(sta->addr, addr, ETH_ALEN);
+	if (link_addr) {
+		sta->is_mld = true;
+		os_memcpy(sta->link_addr, link_addr, ETH_ALEN);
+		wpa_printf(MSG_DEBUG, "  New STA Link:" MACSTR,
+			   MAC2STR(link_addr));
+	}
 	sta->next = hapd->sta_list;
 	hapd->sta_list = sta;
 	hapd->num_sta++;

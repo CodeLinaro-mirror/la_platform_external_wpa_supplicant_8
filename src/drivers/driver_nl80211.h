@@ -85,6 +85,8 @@ struct i802_bss {
 	struct nl80211_wiphy_data *wiphy_data;
 	struct dl_list wiphy_list;
 	u8 rand_addr[ETH_ALEN];
+	u8 ext_auth_rand_addr[ETH_ALEN];
+	int link_id;
 };
 
 struct drv_nl80211_if_info {
@@ -188,6 +190,7 @@ struct wpa_driver_nl80211_data {
 	unsigned int brcm_do_acs:1;
 	unsigned int uses_6ghz:1;
 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
+	unsigned int puncturing:1;
 
 	u64 vendor_scan_cookie;
 	u64 remain_on_chan_cookie;

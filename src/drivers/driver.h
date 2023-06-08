@@ -1720,6 +1720,19 @@ struct wpa_driver_ap_params {
 	 * ema - Enhanced MBSSID advertisements support.
 	 */
 	bool ema;
+
+	/**
+	 * punct_bitmap - Preamble puncturing bitmap
+	 * Each bit corresponds to a 20 MHz subchannel, the lowest bit for the
+	 * channel with the lowest frequency. A bit set to 1 indicates that the
+	 * subchannel is punctured, otherwise active.
+	 */
+	u16 punct_bitmap;
+
+	/**
+	 * link_id - MLO Link ID
+	 * Set to a valid Link ID (0-14) when applicable, otherwise -1. */
+	int link_id;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -2562,6 +2575,7 @@ struct beacon_data {
  * @beacon_after: Next beacon/probe resp/asooc resp info
  * @counter_offset_beacon: Offset to the count field in beacon's tail
  * @counter_offset_presp: Offset to the count field in probe resp.
+ * @punct_bitmap - Preamble puncturing bitmap
  */
 struct csa_settings {
 	u8 cs_count;
@@ -2573,6 +2587,8 @@ struct csa_settings {
 
 	u16 counter_offset_beacon[2];
 	u16 counter_offset_presp[2];
+
+	u16 punct_bitmap;
 };
 
 /**
@@ -3398,7 +3414,7 @@ struct wpa_driver_ops {
 	 * keys, so there is no strict requirement on implementing support for
 	 * unicast keys (i.e., addr != %NULL).
 	 */
-	int (*get_seqnum)(const char *ifname, void *priv, const u8 *addr,
+	int (*get_seqnum)(const char *ifname, void *priv, int link_id, const u8 *addr,
 			  int idx, u8 *seq);
 
 	/**
@@ -3614,13 +3630,14 @@ struct wpa_driver_ops {
 	/**
 	 * sta_set_flags - Set station flags (AP only)
 	 * @priv: Private driver interface data
-	 * @addr: Station address
+	 * @addr: Station address. For MLD STA, MLD address
+	 * @link_addr: link address when MLD STA, Otherwise NULL.
 	 * @total_flags: Bitmap of all WPA_STA_* flags currently set
 	 * @flags_or: Bitmap of WPA_STA_* flags to add
 	 * @flags_and: Bitmap of WPA_STA_* flags to us as a mask
 	 * Returns: 0 on success, -1 on failure
 	 */
-	int (*sta_set_flags)(void *priv, const u8 *addr,
+	int (*sta_set_flags)(void *priv, const u8 *addr, const u8 *link_addr,
 			     unsigned int total_flags, unsigned int flags_or,
 			     unsigned int flags_and);
 
@@ -4944,6 +4961,7 @@ struct wpa_driver_ops {
 			      const u8 *match, size_t match_len,
 			      bool multicast);
 #endif /* CONFIG_TESTING_OPTIONS */
+	int (*add_link)(void *priv, u8 link_id, const u8 *addr);
 };
 
 /**
@@ -5807,6 +5825,11 @@ union wpa_event_data {
 		 * fils_pmkid - PMKID used or generated in FILS authentication
 		 */
 		const u8 *fils_pmkid;
+
+		/**
+		 * link_addr - MLD STA link address (for AP mode)
+		 */
+		const u8 *link_addr;
 	} assoc_info;
 
 	/**
@@ -6271,6 +6294,7 @@ union wpa_event_data {
 	 * @cf1: Center frequency 1
 	 * @cf2: Center frequency 2
 	 * @link_id: Link ID of the MLO link
+	 * @punct_bitmap: Puncturing bitmap
 	 */
 	struct ch_switch {
 		int freq;
@@ -6280,6 +6304,7 @@ union wpa_event_data {
 		int cf1;
 		int cf2;
 		int link_id;
+		u16 punct_bitmap;
 	} ch_switch;
 
 	/**
@@ -6442,6 +6467,7 @@ union wpa_event_data {
 		const u8 *peer;
 		const u8 *ie;
 		size_t ie_len;
+		const u8 *link_addr;
 	} update_dh;
 
 	/**
@@ -6497,7 +6523,9 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
  */
 
 static inline void drv_event_assoc(void *ctx, const u8 *addr, const u8 *ie,
-				   size_t ielen, int reassoc)
+				   size_t ielen, const u8 *link_addr,
+				   const u8 *resp_ie, size_t resp_ie_len,
+				   int reassoc)
 {
 	union wpa_event_data event;
 	os_memset(&event, 0, sizeof(event));
@@ -6505,6 +6533,9 @@ static inline void drv_event_assoc(void *ctx, const u8 *addr, const u8 *ie,
 	event.assoc_info.req_ies = ie;
 	event.assoc_info.req_ies_len = ielen;
 	event.assoc_info.addr = addr;
+	event.assoc_info.resp_ies = resp_ie;
+	event.assoc_info.resp_ies_len = resp_ie_len;
+	event.assoc_info.link_addr = link_addr;
 	wpa_supplicant_event(ctx, EVENT_ASSOC, &event);
 }
 

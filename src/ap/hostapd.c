@@ -1459,11 +1459,15 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 		return -1;
 	}
 
-	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+	if (hapd_link_id(hapd) >= 0 &&
+	    hostapd_drv_add_link(hapd, hapd_link_id(hapd), hapd->own_addr))
 		return -1;
 
-	if (start_beacon)
-		return hostapd_start_beacon(hapd, flush_old_stations);
+	if (start_beacon && hostapd_start_beacon(hapd, flush_old_stations) < 0)
+		return -1;
+
+	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+		return -1;
 
 	return 0;
 }
@@ -3606,6 +3610,9 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	struct hostapd_iface *iface = hapd->iface;
 	struct hostapd_freq_params old_freq;
 	int ret;
+#ifdef CONFIG_IEEE80211BE
+	u16 old_punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 	u8 chan, bandwidth;
 
 	os_memset(&old_freq, 0, sizeof(old_freq));
@@ -3651,9 +3658,16 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_IEEE80211BE
+	old_punct_bitmap = iface->conf->punct_bitmap;
+	iface->conf->punct_bitmap = settings->punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 	ret = hostapd_build_beacon_data(hapd, &settings->beacon_after);
 
 	/* change back the configuration */
+#ifdef CONFIG_IEEE80211BE
+	iface->conf->punct_bitmap = old_punct_bitmap;
+#endif /* CONFIG_IEEE80211BE */
 	hostapd_change_config_freq(iface->bss[0], iface->conf,
 				   &old_freq, NULL);
 
@@ -4002,3 +4016,14 @@ void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx)
 	}
 }
 #endif /* CONFIG_OCV */
+
+
+int hapd_link_id(struct hostapd_data *hapd)
+{
+#if defined(CONFIG_IEEE80211AX) && defined(CONFIG_IEEE80211BE)
+	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be)
+		return hapd->conf->link_id;
+#endif
+
+	return -1;
+}
