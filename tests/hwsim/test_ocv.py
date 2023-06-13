@@ -388,9 +388,9 @@ class APConnection:
         pmk = binascii.unhexlify("c2c6c255af836bed1b3f2f1ded98e052f5ad618bb554e2836757b55854a0eab7")
 
         if sta_ocv != "0":
-            self.rsne = binascii.unhexlify("301a0100000fac040100000fac040100000fac0280400000000fac06")
+            self.rsne = binascii.unhexlify("301a0100000fac040100000fac040100000fac028c400000000fac06")
         else:
-            self.rsne = binascii.unhexlify("301a0100000fac040100000fac040100000fac0280000000000fac06")
+            self.rsne = binascii.unhexlify("301a0100000fac040100000fac040100000fac028c000000000fac06")
         self.snonce = binascii.unhexlify('1111111111111111111111111111111111111111111111111111111111111111')
 
         dev.connect(self.ssid, raw_psk=self.psk, scan_freq=freq, ocv=sta_ocv,
@@ -912,6 +912,14 @@ def test_wpa2_ocv_auto_enable_pmf(dev, apdev):
                        ieee80211w="2")
         dev[0].request("REMOVE_NETWORK all")
         dev[0].wait_disconnected()
+
+def test_wpa2_ocv_auto_enable_pmf_on_sta(dev, apdev):
+    """OCV on 2.4 GHz with PMF getting enabled automatically on STA"""
+    params = {"channel": "1",
+              "ieee80211w": "1",
+              "ocv": "1"}
+    hapd, ssid, passphrase = ocv_setup_ap(apdev[0], params)
+    dev[0].connect(ssid, psk=passphrase, scan_freq="2412", ocv="1")
 
 def test_wpa2_ocv_sta_override_eapol(dev, apdev):
     """OCV on 2.4 GHz and STA override EAPOL-Key msg 2/4"""
