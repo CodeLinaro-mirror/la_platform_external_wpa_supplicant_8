@@ -717,7 +717,7 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
 	if (sta)
 		return NULL;
 
-	sta = ap_sta_add(data, addr);
+	sta = ap_sta_add(data, addr, NULL);
 	if (!sta)
 		return NULL;
 

@@ -285,6 +285,8 @@ struct hostapd_bss_config {
 	char vlan_bridge[IFNAMSIZ + 1];
 	char wds_bridge[IFNAMSIZ + 1];
 
+	u8 link_id; /* MLO Link ID for MLD AP */
+
 	enum hostapd_logger_level logger_syslog_level, logger_stdout_level;
 
 	unsigned int logger_syslog; /* module bitfield */
