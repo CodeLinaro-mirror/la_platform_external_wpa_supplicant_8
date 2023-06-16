@@ -567,7 +567,7 @@ std::string CreateHostapdConfig(
 		} else {
 			hw_mode_as_string = "hw_mode=g";
 			ht_cap_vht_oper_chwidth_as_string =
-				"ht_capab=[HT40+][HT40-]";
+				"ht_capab=[HT20]";
 		}
 	} else if (((band & IHostapd::BandMask::BAND_5_GHZ) != 0)
 		    || ((band & IHostapd::BandMask::BAND_6_GHZ) != 0)) {
