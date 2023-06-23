@@ -492,7 +492,7 @@ static u8 * wpa_write_osen(struct wpa_auth_config *conf, u8 *eid)
 
 int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
 {
-	u8 *pos, buf[128];
+	u8 *pos, buf[128] = {0};
 	int res;
 
 #ifdef CONFIG_TESTING_OPTIONS
