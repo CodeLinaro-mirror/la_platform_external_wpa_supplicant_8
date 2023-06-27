@@ -763,6 +763,12 @@ int hostapd_check_he_6ghz_capab(struct hostapd_iface *iface)
 
 	he_cap = &iface->current_mode->he_capab[IEEE80211_MODE_AP];
 	hw = he_cap->he_6ghz_capa;
+	if (!hw && is_6ghz_freq(iface->freq)) {
+		wpa_printf(MSG_INFO,
+			"The driver does support the configured HE 6 GHz, but hw lacks 6 GHz related parameters");
+		return 0;
+	}
+
 	if (iface->conf->he_6ghz_max_mpdu >
 	    ((hw & HE_6GHZ_BAND_CAP_MAX_MPDU_LEN_MASK) >>
 	     HE_6GHZ_BAND_CAP_MAX_MPDU_LEN_SHIFT)) {
