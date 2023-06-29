@@ -562,6 +562,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_WEP
 	int wep_ok;
 #endif /* CONFIG_WEP */
+	bool is_6ghz_bss = is_6ghz_freq(bss->freq);
 
 	ret = wpas_wps_ssid_bss_match(wpa_s, ssid, bss);
 	if (ret >= 0)
@@ -576,6 +577,13 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_WEP */
 
 	rsn_ie = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+	if (is_6ghz_bss && !rsn_ie) {
+		if (debug_print)
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"   skip - 6 GHz BSS without RSNE");
+		return 0;
+	}
+
 	while ((ssid->proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) && rsn_ie) {
 		proto_match++;
 
@@ -589,6 +597,16 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			ie.pairwise_cipher = wpa_default_rsn_cipher(bss->freq);
 		if (!ie.has_group)
 			ie.group_cipher = wpa_default_rsn_cipher(bss->freq);
+
+		if (is_6ghz_bss) {
+			/* WEP and TKIP are not allowed on 6 GHz/MLD */
+			ie.pairwise_cipher &= ~(WPA_CIPHER_WEP40 |
+						WPA_CIPHER_WEP104 |
+						WPA_CIPHER_TKIP);
+			ie.group_cipher &= ~(WPA_CIPHER_WEP40 |
+					     WPA_CIPHER_WEP104 |
+					     WPA_CIPHER_TKIP);
+		}
 
 #ifdef CONFIG_WEP
 		if (wep_ok &&
@@ -631,6 +649,21 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			break;
 		}
 
+		if (is_6ghz_bss) {
+			/* MFPC must be supported on 6 GHz */
+			if (!(ie.capabilities & WPA_CAPABILITY_MFPC)) {
+				if (debug_print)
+					wpa_dbg(wpa_s, MSG_DEBUG,
+						"   skip RSNE - 6 GHz without MFPC");
+				break;
+			}
+
+			/* WPA PSK is not allowed on the 6 GHz band */
+			ie.key_mgmt &= ~(WPA_KEY_MGMT_PSK |
+					 WPA_KEY_MGMT_FT_PSK |
+					 WPA_KEY_MGMT_PSK_SHA256);
+		}
+
 		if (!(ie.key_mgmt & ssid->key_mgmt)) {
 			if (debug_print)
 				wpa_dbg(wpa_s, MSG_DEBUG,
@@ -659,6 +692,13 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 			wpa_dbg(wpa_s, MSG_DEBUG,
 				"   selected based on RSN IE");
 		return 1;
+	}
+
+	if (is_6ghz_bss) {
+		if (debug_print)
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"   skip - 6 GHz BSS without matching RSNE");
+		return 0;
 	}
 
 	if (wpas_get_ssid_pmf(wpa_s, ssid) == MGMT_FRAME_PROTECTION_REQUIRED &&
@@ -1315,8 +1355,15 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	}
 
 #ifdef CONFIG_SAE
-	if ((wpa_s->conf->sae_pwe == 1 || ssid->sae_password_id) &&
-	    wpa_s->conf->sae_pwe != 3 && wpa_key_mgmt_sae(ssid->key_mgmt) &&
+	/* When using SAE Password Identifier and when operationg on the 6 GHz
+	 * band, only H2E is allowed. */
+	if ((wpa_s->conf->sae_pwe == SAE_PWE_HASH_TO_ELEMENT ||
+	     is_6ghz_freq(bss->freq) || ssid->sae_password_id) &&
+	    wpa_s->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK &&
+	    wpa_key_mgmt_sae(ssid->key_mgmt) &&
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
+	    !(wpa_key_mgmt_wpa_psk_no_sae(ssid->key_mgmt)) &&
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 	    !(rsnxe_capa & BIT(WLAN_RSNX_CAPAB_SAE_H2E))) {
 		if (debug_print)
 			wpa_dbg(wpa_s, MSG_DEBUG,
