@@ -475,4 +475,12 @@ enum ptk0_rekey_handling {
 	PTK0_REKEY_ALLOW_NEVER
 };
 
+enum sae_pwe {
+	SAE_PWE_HUNT_AND_PECK = 0,
+	SAE_PWE_HASH_TO_ELEMENT = 1,
+	SAE_PWE_BOTH = 2,
+	SAE_PWE_FORCE_HUNT_AND_PECK = 3,
+	SAE_PWE_NOT_SET = 4,
+};
+
 #endif /* DEFS_H */
