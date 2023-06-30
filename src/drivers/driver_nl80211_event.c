@@ -183,6 +183,7 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_ADD_LINK_STA)
 	C2S(NL80211_CMD_MODIFY_LINK_STA)
 	C2S(NL80211_CMD_REMOVE_LINK_STA)
+	C2S(NL80211_CMD_SET_HW_TIMESTAMP)
 	C2S(__NL80211_CMD_AFTER_LAST)
 	}
 #undef C2S
@@ -1069,7 +1070,9 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 				 struct nlattr *ifindex, struct nlattr *link,
 				 struct nlattr *freq, struct nlattr *type,
 				 struct nlattr *bw, struct nlattr *cf1,
-				 struct nlattr *cf2, int finished)
+				 struct nlattr *cf2,
+				 struct nlattr *punct_bitmap,
+				 int finished)
 {
 	struct i802_bss *bss;
 	union wpa_event_data data;
@@ -1124,6 +1127,8 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 	data.ch_switch.freq = nla_get_u32(freq);
 	data.ch_switch.ht_enabled = ht_enabled;
 	data.ch_switch.ch_offset = chan_offset;
+	if (punct_bitmap)
+		data.ch_switch.punct_bitmap = (u16) nla_get_u32(punct_bitmap);
 	if (bw)
 		data.ch_switch.ch_width = convert2width(nla_get_u32(bw));
 	if (cf1)
@@ -3607,6 +3612,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				     tb[NL80211_ATTR_CHANNEL_WIDTH],
 				     tb[NL80211_ATTR_CENTER_FREQ1],
 				     tb[NL80211_ATTR_CENTER_FREQ2],
+				     tb[NL80211_ATTR_PUNCT_BITMAP],
 				     0);
 		break;
 	case NL80211_CMD_CH_SWITCH_NOTIFY:
@@ -3618,6 +3624,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				     tb[NL80211_ATTR_CHANNEL_WIDTH],
 				     tb[NL80211_ATTR_CENTER_FREQ1],
 				     tb[NL80211_ATTR_CENTER_FREQ2],
+				     tb[NL80211_ATTR_PUNCT_BITMAP],
 				     1);
 		break;
 	case NL80211_CMD_DISCONNECT:
