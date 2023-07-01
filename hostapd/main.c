@@ -248,6 +248,9 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		iface->ema_max_periodicity = capa.ema_max_periodicity;
 	}
 
+        if (!(iface->drv_flags2 & WPA_DRIVER_FLAGS2_MLO))
+                iface->conf->ieee80211be = 0;
+
 	return 0;
 }
 
@@ -447,6 +450,13 @@ static int hostapd_global_run(struct hapd_interfaces *ifaces, int daemonize,
 			return -1;
 		}
 	}
+
+#ifdef CONFIG_CTRL_IFACE_AIDL
+	if (hostapd_aidl_init(ifaces)) {
+		wpa_printf(MSG_ERROR, "Failed to initialize AIDL interface");
+		return -1;
+	}
+#endif /* CONFIG_CTRL_IFACE_AIDL */
 
 	eloop_run();
 
@@ -901,12 +911,6 @@ int main(int argc, char *argv[])
 	}
 
 	hostapd_global_ctrl_iface_init(&interfaces);
-#ifdef CONFIG_CTRL_IFACE_AIDL
-	if (hostapd_aidl_init(&interfaces)) {
-		wpa_printf(MSG_ERROR, "Failed to initialize AIDL interface");
-		goto out;
-	}
-#endif /* CONFIG_CTRL_IFACE_AIDL */
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file)) {
 		wpa_printf(MSG_ERROR, "Failed to start eloop");

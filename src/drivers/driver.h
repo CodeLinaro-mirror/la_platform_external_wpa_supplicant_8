@@ -1299,12 +1299,12 @@ struct wpa_driver_associate_params {
 	 */
 	struct wpa_driver_mld_params mld_params;
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/**
 	 * td_policy - Transition Disable Policy
 	 */
 	u32 td_policy;
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 };
 
 enum hide_ssid {
@@ -1358,6 +1358,11 @@ struct wpa_driver_ap_params {
 	 * beacon_int - Beacon interval
 	 */
 	int beacon_int;
+
+	/**
+	 * link_id - MLO Link ID
+	 * Set to a valid Link ID (0-14) when applicable, otherwise -1. */
+	int link_id;
 
 	/**
 	 * basic_rates: -1 terminated array of basic rates in 100 kbps
@@ -2697,9 +2702,9 @@ enum wpa_drv_update_connect_params_mask {
 	WPA_DRV_UPDATE_ASSOC_IES	= BIT(0),
 	WPA_DRV_UPDATE_FILS_ERP_INFO	= BIT(1),
 	WPA_DRV_UPDATE_AUTH_TYPE	= BIT(2),
-#ifdef CONFIG_DRIVER_NL80211_BRCM
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	WPA_DRV_UPDATE_TD_POLICY	= BIT(3),
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 };
 
 /**
@@ -2720,6 +2725,7 @@ enum wpa_drv_update_connect_params_mask {
  *	the real status code for failures. Used only for the request interface
  *	from user space to the driver.
  * @pmkid: Generated PMKID as part of external auth exchange (e.g., SAE).
+ * @mld_addr: AP's MLD address or %NULL if MLO is not used
  */
 struct external_auth {
 	enum {
@@ -2732,6 +2738,7 @@ struct external_auth {
 	unsigned int key_mgmt_suite;
 	u16 status;
 	const u8 *pmkid;
+	const u8 *mld_addr;
 };
 
 #define WPAS_MAX_PASN_PEERS 10
@@ -3396,7 +3403,7 @@ struct wpa_driver_ops {
 	 * keys, so there is no strict requirement on implementing support for
 	 * unicast keys (i.e., addr != %NULL).
 	 */
-	int (*get_seqnum)(const char *ifname, void *priv, const u8 *addr,
+	int (*get_seqnum)(const char *ifname, void *priv, int link_id, const u8 *addr,
 			  int idx, u8 *seq);
 
 	/**
@@ -3612,13 +3619,14 @@ struct wpa_driver_ops {
 	/**
 	 * sta_set_flags - Set station flags (AP only)
 	 * @priv: Private driver interface data
-	 * @addr: Station address
+	 * @addr: Station address. For MLD STA, MLD address
+	 * @link_addr: link address when MLD STA, Otherwise NULL.
 	 * @total_flags: Bitmap of all WPA_STA_* flags currently set
 	 * @flags_or: Bitmap of WPA_STA_* flags to add
 	 * @flags_and: Bitmap of WPA_STA_* flags to us as a mask
 	 * Returns: 0 on success, -1 on failure
 	 */
-	int (*sta_set_flags)(void *priv, const u8 *addr,
+	int (*sta_set_flags)(void *priv, const u8 *addr, const u8 *link_addr,
 			     unsigned int total_flags, unsigned int flags_or,
 			     unsigned int flags_and);
 
@@ -4937,11 +4945,21 @@ struct wpa_driver_ops {
 	int (*get_sta_mlo_info)(void *priv,
 				struct driver_sta_mlo_info *mlo_info);
 
+	/**
+	 * link_add - Add a link to the AP MLD interface
+	 * @priv: Private driver interface data
+	 * @link_id: The link ID
+	 * @addr: The MAC address to use for the link
+	 * Returns: 0 on success, negative value on failure
+	 */
+	int (*link_add)(void *priv, u8 link_id, const u8 *addr);
+
 #ifdef CONFIG_TESTING_OPTIONS
 	int (*register_frame)(void *priv, u16 type,
 			      const u8 *match, size_t match_len,
 			      bool multicast);
 #endif /* CONFIG_TESTING_OPTIONS */
+	int (*add_link)(void *priv, u8 link_id, const u8 *addr);
 };
 
 /**
@@ -5805,6 +5823,11 @@ union wpa_event_data {
 		 * fils_pmkid - PMKID used or generated in FILS authentication
 		 */
 		const u8 *fils_pmkid;
+
+		/**
+		 * link_addr - MLD STA link address (for AP mode)
+		 */
+		const u8 *link_addr;
 	} assoc_info;
 
 	/**
@@ -6440,6 +6463,7 @@ union wpa_event_data {
 		const u8 *peer;
 		const u8 *ie;
 		size_t ie_len;
+		const u8 *link_addr;
 	} update_dh;
 
 	/**
@@ -6495,7 +6519,9 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
  */
 
 static inline void drv_event_assoc(void *ctx, const u8 *addr, const u8 *ie,
-				   size_t ielen, int reassoc)
+				   size_t ielen, const u8 *link_addr,
+				   const u8 *resp_ie, size_t resp_ie_len,
+				   int reassoc)
 {
 	union wpa_event_data event;
 	os_memset(&event, 0, sizeof(event));
@@ -6503,6 +6529,9 @@ static inline void drv_event_assoc(void *ctx, const u8 *addr, const u8 *ie,
 	event.assoc_info.req_ies = ie;
 	event.assoc_info.req_ies_len = ielen;
 	event.assoc_info.addr = addr;
+	event.assoc_info.resp_ies = resp_ie;
+	event.assoc_info.resp_ies_len = resp_ie_len;
+	event.assoc_info.link_addr = link_addr;
 	wpa_supplicant_event(ctx, EVENT_ASSOC, &event);
 }
 

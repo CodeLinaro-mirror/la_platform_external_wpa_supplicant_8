@@ -132,7 +132,9 @@ static bool check_sa_query_need(struct hostapd_data *hapd, struct sta_info *sta)
 
 
 int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
-			const u8 *req_ies, size_t req_ies_len, int reassoc)
+			const u8 *req_ies, size_t req_ies_len,
+			const u8 *link_addr, const u8 *resp_ies,
+			size_t resp_ies_len, int reassoc)
 {
 	struct sta_info *sta;
 	int new_assoc;
@@ -213,7 +215,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		 */
 		sta->timeout_next = STA_NULLFUNC;
 	} else {
-		sta = ap_sta_add(hapd, addr);
+		sta = ap_sta_add(hapd, addr, link_addr);
 		if (sta == NULL) {
 			hostapd_drv_sta_disassoc(hapd, addr,
 						 WLAN_REASON_DISASSOC_AP_BUSY);
@@ -343,12 +345,15 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
 							sta->addr,
+							sta->is_mld ?
+							sta->link_addr : NULL,
 							p2p_dev_addr);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_ERROR,
 				   "Failed to initialize WPA state machine");
 			return -1;
 		}
+
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  ie, ielen,
@@ -505,7 +510,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL);
+							sta->addr, NULL, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_WARNING,
 				   "Failed to initialize WPA state machine");
@@ -1005,6 +1010,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	if (!finished)
 		return;
 
+	hostapd_change_hw_mode(hapd,hapd->iface->freq);
+
 	if (hapd->csa_in_progress &&
 	    freq == hapd->cs_freq_params.freq) {
 		hostapd_cleanup_cs_params(hapd);
@@ -1090,13 +1097,11 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 		for (i = 0; i < hapd->iface->num_hw_features; i++) {
 			struct hostapd_hw_modes *mode =
 				&hapd->iface->hw_features[i];
+			int chan;
 
 			if (mode->mode == acs_res->hw_mode) {
 				if (hapd->iface->freq > 0 &&
-				    !hw_get_chan(mode->mode,
-						 hapd->iface->freq,
-						 hapd->iface->hw_features,
-						 hapd->iface->num_hw_features))
+						!hw_mode_get_channel(mode, hapd->iface->freq, &chan))
 					continue;
 				hapd->iface->current_mode = mode;
 				break;
@@ -1187,6 +1192,7 @@ void hostapd_acs_channel_selected(struct hostapd_data *hapd,
 		hostapd_set_oper_centr_freq_seg1_idx(hapd->iconf, 0);
 	}
 #endif /* CONFIG_IEEE80211BE */
+
 
 out:
 	ret = hostapd_acs_completed(hapd->iface, err);
@@ -1281,7 +1287,7 @@ static void hostapd_notif_auth(struct hostapd_data *hapd,
 
 	sta = ap_get_sta(hapd, rx_auth->peer);
 	if (!sta) {
-		sta = ap_sta_add(hapd, rx_auth->peer);
+		sta = ap_sta_add(hapd, rx_auth->peer, NULL);
 		if (sta == NULL) {
 			status = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
 			goto fail;
@@ -1294,7 +1300,7 @@ static void hostapd_notif_auth(struct hostapd_data *hapd,
 		sta->auth_alg = WLAN_AUTH_FT;
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL);
+							sta->addr, NULL, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_DEBUG,
 				   "FT: Failed to initialize WPA state machine");
@@ -1546,7 +1552,7 @@ static int hostapd_event_new_sta(struct hostapd_data *hapd, const u8 *addr)
 
 	wpa_printf(MSG_DEBUG, "Data frame from unknown STA " MACSTR
 		   " - adding a new STA", MAC2STR(addr));
-	sta = ap_sta_add(hapd, addr);
+	sta = ap_sta_add(hapd, addr, NULL);
 	if (sta) {
 		hostapd_new_assoc_sta(hapd, sta, 0);
 	} else {
@@ -1810,7 +1816,7 @@ static void hostapd_event_wds_sta_interface_status(struct hostapd_data *hapd,
 #ifdef CONFIG_OWE
 static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
 				      const u8 *peer, const u8 *ie,
-				      size_t ie_len)
+				      size_t ie_len, const u8 *link_addr)
 {
 	u16 status;
 	struct sta_info *sta;
@@ -1852,7 +1858,7 @@ static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
 		 */
 		sta->timeout_next = STA_NULLFUNC;
 	} else {
-		sta = ap_sta_add(hapd, peer);
+		sta = ap_sta_add(hapd, peer, link_addr);
 		if (!sta) {
 			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 			goto err;
@@ -1977,6 +1983,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		hostapd_notif_assoc(hapd, data->assoc_info.addr,
 				    data->assoc_info.req_ies,
 				    data->assoc_info.req_ies_len,
+				    data->assoc_info.link_addr,
+				    data->assoc_info.resp_ies,
+				    data->assoc_info.resp_ies_len,
 				    data->assoc_info.reassoc);
 		break;
 #ifdef CONFIG_OWE
@@ -1985,7 +1994,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			return;
 		hostapd_notif_update_dh_ie(hapd, data->update_dh.peer,
 					   data->update_dh.ie,
-					   data->update_dh.ie_len);
+					   data->update_dh.ie_len,
+					   data->update_dh.link_addr);
 		break;
 #endif /* CONFIG_OWE */
 	case EVENT_DISASSOC:

@@ -326,7 +326,7 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
 	}
 
 	event.assoc_info.freq = drv->assoc_freq;
-	drv->first_bss->freq = drv->assoc_freq;
+	drv->first_bss->flink->freq = drv->assoc_freq;
 
 	nl80211_parse_wmm_params(wmm, &event.assoc_info.wmm_params);
 
@@ -927,7 +927,7 @@ static void mlme_event_connect(struct wpa_driver_nl80211_data *drv,
 	}
 
 	event.assoc_info.freq = nl80211_get_assoc_freq(drv);
-	drv->first_bss->freq = drv->assoc_freq;
+	drv->first_bss->flink->freq = drv->assoc_freq;
 
 	if ((!ssid || ssid[1] == 0 || ssid[1] > 32) &&
 	    (ssid_len = nl80211_get_assoc_ssid(drv, drv->ssid)) > 0) {
@@ -1132,7 +1132,7 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 		data.ch_switch.cf2 = nla_get_u32(cf2);
 
 	if (finished)
-		bss->freq = data.ch_switch.freq;
+		bss->flink->freq = data.ch_switch.freq;
 
 	if (link) {
 		u8 link_id = nla_get_u8(link);
@@ -1638,7 +1638,7 @@ static void mlme_event_join_ibss(struct wpa_driver_nl80211_data *drv,
 	if (freq) {
 		wpa_printf(MSG_DEBUG, "nl80211: IBSS on frequency %u MHz",
 			   freq);
-		drv->first_bss->freq = freq;
+		drv->first_bss->flink->freq = freq;
 	}
 
 	os_memset(&event, 0, sizeof(event));
@@ -1729,19 +1729,39 @@ static void mlme_event_dh_event(struct wpa_driver_nl80211_data *drv,
 				struct nlattr *tb[])
 {
 	union wpa_event_data data;
+	u8 *addr, *link_addr =  NULL;
 
 	if (!is_ap_interface(drv->nlmode))
 		return;
 	if (!tb[NL80211_ATTR_MAC] || !tb[NL80211_ATTR_IE])
 		return;
 
+	if (bss->link_id == -1 &&
+	    (tb[NL80211_ATTR_MLO_LINK_ID] || tb[NL80211_ATTR_MLD_ADDR])) {
+		wpa_printf(MSG_ERROR, "nl80211: Link info not expected for DH event for non-MLD AP");
+		return;
+	}
+
+	if (tb[NL80211_ATTR_MLO_LINK_ID] &&
+	    bss->link_id != nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID])) {
+		wpa_printf(MSG_ERROR, "nl80211: Invalid link ID in DH event");
+		return;
+	}
+
+	addr = nla_data(tb[NL80211_ATTR_MAC]);
+	if (tb[NL80211_ATTR_MLD_ADDR]) {
+		link_addr = addr;
+		addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+	}
+
 	os_memset(&data, 0, sizeof(data));
-	data.update_dh.peer = nla_data(tb[NL80211_ATTR_MAC]);
+	data.update_dh.peer = addr;
 	data.update_dh.ie = nla_data(tb[NL80211_ATTR_IE]);
 	data.update_dh.ie_len = nla_len(tb[NL80211_ATTR_IE]);
+	data.update_dh.link_addr = link_addr;
 
-	wpa_printf(MSG_DEBUG, "nl80211: DH event - peer " MACSTR,
-		   MAC2STR(data.update_dh.peer));
+	wpa_printf(MSG_DEBUG, "nl80211: DH event - (%s)peer " MACSTR,
+		   link_addr ? "MLD " : "", MAC2STR(data.update_dh.peer));
 
 	wpa_supplicant_event(bss->ctx, EVENT_UPDATE_DH, &data);
 }
@@ -1958,23 +1978,49 @@ static void nl80211_new_station_event(struct wpa_driver_nl80211_data *drv,
 				      struct i802_bss *bss,
 				      struct nlattr **tb)
 {
-	u8 *addr;
+	u8 *addr, *link_addr =  NULL;
 	union wpa_event_data data;
 
 	if (tb[NL80211_ATTR_MAC] == NULL)
 		return;
+
+	if (bss->link_id == -1 &&
+	    (tb[NL80211_ATTR_MLO_LINK_ID] || tb[NL80211_ATTR_MLD_ADDR])) {
+		wpa_printf(MSG_ERROR, "nl80211: Link info not expected for new station event for non-MLD AP");
+		return;
+	}
+
+	if (tb[NL80211_ATTR_MLO_LINK_ID] &&
+	    bss->link_id != nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID])) {
+		wpa_printf(MSG_ERROR, "nl80211: Invalid link ID for new STA");
+		return;
+	}
+
 	addr = nla_data(tb[NL80211_ATTR_MAC]);
-	wpa_printf(MSG_DEBUG, "nl80211: New station " MACSTR, MAC2STR(addr));
+	if (tb[NL80211_ATTR_MLD_ADDR]) {
+		link_addr = addr;
+		addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+	}
+
+	wpa_printf(MSG_DEBUG, "nl80211: New {%s)station " MACSTR,
+		   tb[NL80211_ATTR_MLD_ADDR] ? "MLD " : "", MAC2STR(addr));
 
 	if (is_ap_interface(drv->nlmode) && drv->device_ap_sme) {
-		u8 *ies = NULL;
-		size_t ies_len = 0;
+		u8 *ies = NULL, *resp_ies = NULL;
+		size_t ies_len = 0, resp_ies_len = 0;
 		if (tb[NL80211_ATTR_IE]) {
 			ies = nla_data(tb[NL80211_ATTR_IE]);
 			ies_len = nla_len(tb[NL80211_ATTR_IE]);
 		}
 		wpa_hexdump(MSG_DEBUG, "nl80211: Assoc Req IEs", ies, ies_len);
-		drv_event_assoc(bss->ctx, addr, ies, ies_len, 0);
+		if (tb[NL80211_ATTR_RESP_IE]) {
+			resp_ies = nla_data(tb[NL80211_ATTR_RESP_IE]);
+			resp_ies_len = nla_len(tb[NL80211_ATTR_RESP_IE]);
+		}
+		wpa_hexdump(MSG_DEBUG, "nl80211: Assoc Resp IEs", resp_ies,
+			    resp_ies_len);
+		drv_event_assoc(bss->ctx, addr, ies, ies_len, link_addr,
+				resp_ies, resp_ies_len, 0);
 		return;
 	}
 
@@ -3158,6 +3204,7 @@ static void nl80211_external_auth(struct wpa_driver_nl80211_data *drv,
 {
 	union wpa_event_data event;
 	enum nl80211_external_auth_action act;
+	char mld_addr[50];
 
 	if (!tb[NL80211_ATTR_AKM_SUITES] ||
 	    !tb[NL80211_ATTR_EXTERNAL_AUTH_ACTION] ||
@@ -3188,10 +3235,21 @@ static void nl80211_external_auth(struct wpa_driver_nl80211_data *drv,
 
 	event.external_auth.bssid = nla_data(tb[NL80211_ATTR_BSSID]);
 
+	mld_addr[0] = '\0';
+	if (tb[NL80211_ATTR_MLD_ADDR]) {
+		event.external_auth.mld_addr =
+			nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+		os_snprintf(mld_addr, sizeof(mld_addr), ", MLD ADDR: " MACSTR,
+			    MAC2STR(event.external_auth.mld_addr));
+	}
+
 	wpa_printf(MSG_DEBUG,
-		   "nl80211: External auth action: %u, AKM: 0x%x",
+		   "nl80211: External auth action: %u, AKM: 0x%x, SSID: %s, BSSID: " MACSTR "%s",
 		   event.external_auth.action,
-		   event.external_auth.key_mgmt_suite);
+		   event.external_auth.key_mgmt_suite,
+		   wpa_ssid_txt(event.external_auth.ssid,
+				event.external_auth.ssid_len),
+		   MAC2STR(event.external_auth.bssid), mld_addr);
 	wpa_supplicant_event(drv->ctx, EVENT_EXTERNAL_AUTH, &event);
 }
 
