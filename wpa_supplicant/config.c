@@ -2678,6 +2678,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(macsec_integ_only, 0, 1) },
 	{ INT_RANGE(macsec_replay_protect, 0, 1) },
 	{ INT(macsec_replay_window) },
+	{ INT_RANGE(macsec_offload, 0, 2) },
 	{ INT_RANGE(macsec_port, 1, 65534) },
 	{ INT_RANGE(mka_priority, 0, 255) },
 	{ INT_RANGE(macsec_csindex, 0, 1) },
@@ -2711,6 +2712,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(transition_disable, 0, 255) },
 	{ INT_RANGE(sae_pk, 0, 2) },
 	{ INT_RANGE(disable_eht, 0, 1)},
+	{ INT_RANGE(enable_4addr_mode, 0, 1)},
 };
 
 #undef OFFSET
@@ -5394,6 +5396,7 @@ static const struct global_parse_data global_fields[] = {
 	{ FUNC(p2p_device_persistent_mac_addr), 0 },
 	{ INT(p2p_interface_random_mac_addr), 0 },
 	{ INT(p2p_6ghz_disable), 0 },
+	{ INT(p2p_dfs_chan_enable), 0 },
 #endif /* CONFIG_P2P */
 	{ FUNC(country), CFG_CHANGED_COUNTRY },
 	{ INT(bss_max_count), 0 },

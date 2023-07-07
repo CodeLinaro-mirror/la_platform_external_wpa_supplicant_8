@@ -244,7 +244,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-ifeq ($(CONFIG_SUITEB192),y)
+ifdef CONFIG_SUITEB192
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -268,7 +268,7 @@ L_CFLAGS += -DCONFIG_ETH_P_OUI
 OBJS += src/ap/eth_p_oui.c
 endif
 
-ifeq ($(CONFIG_SAE),y)
+ifdef CONFIG_SAE
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
@@ -282,7 +282,7 @@ NEED_HMAC_SHA256_KDF=y
 NEED_DRAGONFLY=y
 endif
 
-ifeq ($(CONFIG_OWE),y)
+ifdef CONFIG_OWE
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -570,7 +570,7 @@ endif
 
 endif
 
-ifeq ($(CONFIG_DPP),y)
+ifdef CONFIG_DPP
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
 OBJS += src/common/dpp_auth.c

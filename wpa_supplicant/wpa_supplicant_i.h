@@ -964,8 +964,6 @@ struct wpa_supplicant {
 	unsigned int connection_channel_bandwidth:5;
 	unsigned int disable_mbo_oce:1;
 	unsigned int connection_11b_only:1;
-	unsigned int connection_vht_max_eight_spatial_streams:1;
-	unsigned int connection_twt:1;
 
 	struct os_reltime last_mac_addr_change;
 	enum wpas_mac_addr_style last_mac_addr_style;
@@ -1043,6 +1041,7 @@ struct wpa_supplicant {
 	unsigned int mesh_ht_enabled:1;
 	unsigned int mesh_vht_enabled:1;
 	unsigned int mesh_he_enabled:1;
+	unsigned int mesh_eht_enabled:1;
 	struct wpa_driver_mesh_join_params *mesh_params;
 #ifdef CONFIG_PMKSA_CACHE_EXTERNAL
 	/* struct external_pmksa_cache::list */
@@ -1865,7 +1864,8 @@ static inline int wpas_mode_to_ieee80211_mode(enum wpas_mode mode)
 int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int pmf_in_use(struct wpa_supplicant *wpa_s, const u8 *addr);
-void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid);
+void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid,
+			bool force);
 
 bool wpas_is_sae_avoided(struct wpa_supplicant *wpa_s,
 			struct wpa_ssid *ssid,
@@ -1883,6 +1883,7 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 int get_shared_radio_freqs(struct wpa_supplicant *wpa_s,
 			   int *freq_array, unsigned int len,
 			   bool exclude_current);
+int disabled_freq(struct wpa_supplicant *wpa_s, int freq);
 
 void wpas_network_reenabled(void *eloop_ctx, void *timeout_ctx);
 

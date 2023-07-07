@@ -840,7 +840,6 @@ int main(int argc, char *argv[])
 		wpa_printf(MSG_WARNING, "Failed to add CLI FST ctrl");
 #endif /* CONFIG_FST && CONFIG_CTRL_IFACE */
 
-    wpa_printf(MSG_ERROR, "debug, set loglevel");
 	/* Allocate and parse configuration for full interface files */
 	for (i = 0; i < interfaces.count; i++) {
 		char *if_name = NULL;

@@ -152,6 +152,7 @@ void wpas_notify_preq(struct wpa_supplicant *wpa_s,
 void wpas_notify_eap_status(struct wpa_supplicant *wpa_s, const char *status,
 			    const char *parameter);
 void wpas_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code);
+void wpas_notify_psk_mismatch(struct wpa_supplicant *wpa_s);
 void wpas_notify_network_bssid_set_changed(struct wpa_supplicant *wpa_s,
 					   struct wpa_ssid *ssid);
 void wpas_notify_network_type_changed(struct wpa_supplicant *wpa_s,
@@ -222,8 +223,11 @@ void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 		struct dscp_policy_data *policies, int num_policies);
 void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency);
 ssize_t wpas_get_certificate(const char *alias, uint8_t** value);
+ssize_t wpas_list_aliases(const char *prefix, char ***aliases);
 void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 				 struct rsn_pmksa_cache_entry *entry);
 void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
+void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
+		unsigned int num_scs_resp, int **scs_resp);
 
 #endif /* NOTIFY_H */

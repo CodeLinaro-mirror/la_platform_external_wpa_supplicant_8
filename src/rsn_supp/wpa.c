@@ -916,12 +916,6 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 		return;
 	}
 
-	if (sm->mlo.valid_links && !is_valid_ap_mld_mac_kde(sm, ie.mac_addr)) {
-		wpa_printf(MSG_INFO,
-			   "RSN: Discard EAPOL-Key msg 1/4 with invalid AP MLD MAC address KDE");
-		return;
-	}
-
 	res = wpa_supplicant_get_pmk(sm, src_addr, ie.pmkid);
 	if (res == -2) {
 		wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "RSN: Do not reply to "

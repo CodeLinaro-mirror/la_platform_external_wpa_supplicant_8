@@ -394,7 +394,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 }
 
 
-static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
+static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
 {
 	struct wpa_ie_data ie;
 	int pmksa_set = -1;
@@ -418,6 +418,8 @@ static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
 						    NULL, NULL, 0, NULL, 0);
 		if (pmksa_set == 0) {
 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
+			if (authorized)
+				wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
 			break;
 		}
 	}
@@ -982,6 +984,7 @@ static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 				if (wpa_s->conf->sae_pwe ==
 				    SAE_PWE_HUNT_AND_PECK &&
 				    !ssid->sae_password_id &&
+				    !is_6ghz_freq(bss->freq) &&
 				    wpa_key_mgmt_sae(ssid->key_mgmt)) {
 					if (debug_print)
 						wpa_dbg(wpa_s, MSG_DEBUG,
@@ -1825,7 +1828,8 @@ int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
 			   struct wpa_bss *selected,
 			   struct wpa_ssid *ssid)
 {
-	if (wpas_wps_partner_link_overlap_detect(wpa_s) ||
+	if ((eap_is_wps_pbc_enrollee(&ssid->eap) &&
+	     wpas_wps_partner_link_overlap_detect(wpa_s)) ||
 	    wpas_wps_scan_pbc_overlap(wpa_s, selected, ssid)) {
 		wpa_msg(wpa_s, MSG_INFO, WPS_EVENT_OVERLAP
 			"PBC session overlap");
@@ -1973,7 +1977,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 					   struct wpa_bss *selected)
 {
 	int min_diff, diff;
-	int to_5ghz;
+	int to_5ghz, to_6ghz;
 	int cur_level;
 	unsigned int cur_est, sel_est;
 	struct wpa_signal_info si;
@@ -2040,8 +2044,11 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	}
 
 	to_5ghz = selected->freq > 4000 && current_bss->freq < 4000;
+	to_6ghz = is_6ghz_freq(selected->freq) &&
+		!is_6ghz_freq(current_bss->freq);
 
-	if (cur_level < 0 && cur_level > selected->level + to_5ghz * 2 &&
+	if (cur_level < 0 &&
+	    cur_level > selected->level + to_5ghz * 2 + to_6ghz * 2 &&
 	    sel_est < cur_est * 1.2) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Skip roam - Current BSS has better "
 			"signal level");
@@ -2092,6 +2099,8 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 		min_diff--;
 
 	if (to_5ghz)
+		min_diff -= 2;
+	if (to_6ghz)
 		min_diff -= 2;
 	diff = selected->level - cur_level;
 	if (diff < min_diff) {
@@ -2703,6 +2712,26 @@ static void interworking_process_assoc_resp(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_INTERWORKING */
 
 
+static void wpa_supplicant_set_4addr_mode(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->enabled_4addr_mode) {
+		wpa_printf(MSG_DEBUG, "4addr mode already set");
+		return;
+	}
+
+	if (wpa_drv_set_4addr_mode(wpa_s, 1) < 0) {
+		wpa_msg(wpa_s, MSG_ERROR, "Failed to set 4addr mode");
+		goto fail;
+	}
+	wpa_s->enabled_4addr_mode = 1;
+	wpa_msg(wpa_s, MSG_INFO, "Successfully set 4addr mode");
+	return;
+
+fail:
+	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+}
+
+
 static void multi_ap_process_assoc_resp(struct wpa_supplicant *wpa_s,
 					const u8 *ies, size_t ies_len)
 {
@@ -2755,11 +2784,7 @@ static void multi_ap_set_4addr_mode(struct wpa_supplicant *wpa_s)
 		goto fail;
 	}
 
-	if (wpa_drv_set_4addr_mode(wpa_s, 1) < 0) {
-		wpa_printf(MSG_ERROR, "Failed to set 4addr mode");
-		goto fail;
-	}
-	wpa_s->enabled_4addr_mode = 1;
+	wpa_supplicant_set_4addr_mode(wpa_s);
 	return;
 
 fail:
@@ -2878,10 +2903,12 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
+#ifdef CONFIG_OCV
 	if (((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) ||
 	     (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OCV)) && ssid->ocv)
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_OCV,
 				 !!(ie.capabilities & WPA_CAPABILITY_OCVC));
+#endif /* CONFIG_OCV */
 
 	/*
 	 * Update PMK in wpa_sm and the driver if roamed to WPA/WPA2 PSK from a
@@ -3141,42 +3168,6 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 		}
 	}
 
-	wpa_s->connection_vht_max_eight_spatial_streams = 0;
-	wpa_s->connection_twt = 0;
-	if (wpa_s->connection_set && wpa_s->connection_vht) {
-		const u8 *ie;
-		int twt_req_support, twt_resp_support;
-
-		ie = get_ie(data->assoc_info.resp_ies,
-			    data->assoc_info.resp_ies_len,
-			    WLAN_EID_VHT_CAP);
-
-		if (ie && ie[1] >= 4) {
-			struct ieee80211_vht_capabilities *vht_capa;
-
-			vht_capa = (struct ieee80211_vht_capabilities *) &ie[2];
-
-			if ((le_to_host32(vht_capa->vht_capabilities_info) &
-			    VHT_CAP_BEAMFORMEE_STS_MAX) == VHT_CAP_BEAMFORMEE_STS_MAX)
-				wpa_s->connection_vht_max_eight_spatial_streams = 1;
-		}
-
-		ie = get_ie(data->assoc_info.req_ies,
-			    data->assoc_info.req_ies_len,
-			    WLAN_EID_EXT_CAPAB);
-
-		twt_req_support = ieee802_11_ext_capab(ie, 77);
-
-		ie = get_ie(data->assoc_info.resp_ies,
-			    data->assoc_info.resp_ies_len,
-			    WLAN_EID_EXT_CAPAB);
-
-		twt_resp_support = ieee802_11_ext_capab(ie, 78);
-
-		if (twt_req_support && twt_resp_support)
-			wpa_s->connection_twt = 1;
-	}
-
 	p = data->assoc_info.req_ies;
 	l = data->assoc_info.req_ies_len;
 
@@ -3197,7 +3188,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
 				break;
 			found = 1;
-			wpa_find_assoc_pmkid(wpa_s);
+			wpa_find_assoc_pmkid(wpa_s,
+					     data->assoc_info.authorized);
 		}
 		if (!found_x && p[0] == WLAN_EID_RSNX) {
 			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
@@ -4022,6 +4014,9 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_DPP2
 	wpa_s->dpp_pfs_fallback = 0;
 #endif /* CONFIG_DPP2 */
+
+	if (wpa_s->current_ssid && wpa_s->current_ssid->enable_4addr_mode)
+		wpa_supplicant_set_4addr_mode(wpa_s);
 }
 
 
@@ -4131,6 +4126,7 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 		if (wpas_p2p_4way_hs_failed(wpa_s) > 0)
 			return; /* P2P group removed */
 		wpas_auth_failed(wpa_s, "WRONG_KEY", prev_pending_bssid);
+		wpas_notify_psk_mismatch(wpa_s);
 #ifdef CONFIG_DPP2
 		wpas_dpp_send_conn_status_result(wpa_s,
 						 DPP_STATUS_AUTH_FAILURE);
@@ -5447,6 +5443,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 		}
 #endif /* CONFIG_TESTING_OPTIONS */
+		if (wpa_s->disconnected) {
+			wpa_printf(MSG_INFO,
+				   "Ignore unexpected EVENT_ASSOC in disconnected state");
+			break;
+		}
 		wpa_supplicant_event_assoc(wpa_s, data);
 		wpa_s->assoc_status_code = WLAN_STATUS_SUCCESS;
 		if (data &&
@@ -5772,6 +5773,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 					  data->ch_switch.ch_width,
 					  data->ch_switch.cf1,
 					  data->ch_switch.cf2,
+					  data->ch_switch.punct_bitmap,
 					  1);
 		}
 #endif /* CONFIG_AP */

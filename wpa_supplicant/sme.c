@@ -198,6 +198,9 @@ static struct wpabuf * sme_auth_build_sae_commit(struct wpa_supplicant *wpa_s,
 	if (wpa_key_mgmt_sae_ext_key(key_mgmt) &&
 	    wpa_s->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK)
 		use_pt = 1;
+	if (bss && is_6ghz_freq(bss->freq) &&
+	    wpa_s->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK)
+		use_pt = 1;
 #ifdef CONFIG_SAE_PK
 	if ((rsnxe_capa & BIT(WLAN_RSNX_CAPAB_SAE_PK)) &&
 	    ssid->sae_pk != SAE_PK_MODE_DISABLED &&
@@ -231,6 +234,8 @@ static struct wpabuf * sme_auth_build_sae_commit(struct wpa_supplicant *wpa_s,
 		}
 	}
 
+	if (use_pt && !ssid->pt)
+		wpa_s_setup_sae_pt(wpa_s->conf, ssid, true);
 	if (use_pt &&
 	    sae_prepare_commit_pt(&wpa_s->sme.sae, ssid->pt,
 				  wpa_s->own_addr, addr,
@@ -526,7 +531,7 @@ static void wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
 
 	if (ieee802_11_parse_elems(data->auth.ies + ie_offset,
 				   data->auth.ies_len - ie_offset,
-				   &elems, 0) != ParseOK) {
+				   &elems, 0) == ParseFailed) {
 		wpa_printf(MSG_DEBUG, "MLD: Failed parsing elements");
 		goto out;
 	}
@@ -1430,7 +1435,7 @@ static int sme_handle_external_auth_start(struct wpa_supplicant *wpa_s,
 		    os_memcmp(ssid_str, ssid->ssid, ssid_str_len) == 0 &&
 		    wpa_key_mgmt_sae(ssid->key_mgmt)) {
 			/* Make sure PT is derived */
-			wpa_s_setup_sae_pt(wpa_s->conf, ssid);
+			wpa_s_setup_sae_pt(wpa_s->conf, ssid, false);
 			wpa_s->sme.ext_auth_wpa_ssid = ssid;
 			break;
 		}
@@ -1597,7 +1602,7 @@ static int sme_external_ml_auth(struct wpa_supplicant *wpa_s,
 	const u8 *mld_addr;
 
 	if (ieee802_11_parse_elems(data + ie_offset, len - ie_offset,
-				   &elems, 0) != ParseOK) {
+				   &elems, 0) == ParseFailed) {
 		wpa_printf(MSG_DEBUG, "MLD: Failed parsing elements");
 		return -1;
 	}
@@ -1618,7 +1623,8 @@ static int sme_external_ml_auth(struct wpa_supplicant *wpa_s,
 	if (os_memcmp(wpa_s->sme.ext_auth_ap_mld_addr, mld_addr, ETH_ALEN) !=
 	    0) {
 		wpa_printf(MSG_DEBUG, "MLD: Unexpected MLD address (expected "
-			   MACSTR ")", MAC2STR(wpa_s->ap_mld_addr));
+			   MACSTR ")",
+			   MAC2STR(wpa_s->sme.ext_auth_ap_mld_addr));
 		return -1;
 	}
 

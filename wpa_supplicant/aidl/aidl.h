@@ -146,6 +146,9 @@ extern "C"
 	void wpas_aidl_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 		struct dscp_policy_data *policies, int num_policies);
 	ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value);
+	ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases);
+	void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
+		unsigned int count, int **scs_resp);
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -332,6 +335,12 @@ static ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
 {
 	return -1;
 }
+static ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases)
+{
+	return -1;
+}
+static void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
+	unsigned int count, int **scs_resp) {}
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus

@@ -1967,6 +1967,42 @@ enum wnm_notification_Type {
 	WNM_NOTIF_TYPE_VENDOR_SPECIFIC = 221,
 };
 
+struct wnm_event_report_element {
+	u8 eid; /* WLAN_EID_EVENT_REPORT */
+	u8 len;
+	u8 token;
+	u8 type;
+	u8 status;
+	/* Followed by conditional fields */
+	union {
+		struct {
+			u8 tsf[8]; /* Event TSF */
+			u8 color_bitmap[8]; /* Event Report field */
+		} STRUCT_PACKED bss_color_collision;
+		struct {
+			u8 tsf[8]; /* Event TSF */
+			u8 color; /* Event Report field */
+		} STRUCT_PACKED bss_color_in_use;
+	} u;
+} STRUCT_PACKED;
+
+enum wnm_event_report_status {
+	WNM_STATUS_SUCCESSFUL = 0,
+	WNM_STATUS_REQ_FAILED = 1,
+	WNM_STATUS_REQ_REFUSED = 2,
+	WNM_STATUS_REQ_INCAPABLE = 3,
+	WNM_STATUS_FREQUENT_TRANSITION = 4,
+};
+
+enum wnm_event_report_type {
+       WNM_EVENT_TYPE_TRANSITION = 0,
+       WNM_EVENT_TYPE_RSNA = 1,
+       WNM_EVENT_TYPE_P2P_LINK = 2,
+       WNM_EVENT_TYPE_WNM_LOG = 3,
+       WNM_EVENT_TYPE_BSS_COLOR_COLLISION = 4,
+       WNM_EVENT_TYPE_BSS_COLOR_IN_USE = 5,
+};
+
 /* Channel Switch modes (802.11h) */
 #define CHAN_SWITCH_MODE_ALLOW_TX	0
 #define CHAN_SWITCH_MODE_BLOCK_TX	1
@@ -2254,7 +2290,6 @@ struct ieee80211_he_operation {
 	 * Max Co-Hosted BSSID Indicator subfield (1 octet), and/or 6 GHz
 	 * Operation Information subfield (5 octets). */
 } STRUCT_PACKED;
-#define IEEE80211_HE_CAPAB_MIN_LEN (6 + 11)
 
 /* IEEE Std 802.11ax-2021, Figure 9-788k - 6 GHz Operation Information field */
 struct ieee80211_he_6ghz_oper_info {
@@ -2470,6 +2505,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define EHT_OPER_DEFAULT_PE_DURATION                   BIT(2)
 #define EHT_OPER_GROUP_ADDR_BU_INDICATION_LIMIT        BIT(3)
 #define EHT_OPER_GROUP_ADDR_BU_INDICATION_EXPONENT     (BIT(4) | BIT(5))
+#define EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE          2
 
 /* Control subfield: Channel Width subfield; see Table 9-401b */
 #define EHT_OPER_CHANNEL_WIDTH_MASK                    0x7
@@ -2705,23 +2741,6 @@ enum ieee80211_eht_ml_sub_elem {
 	EHT_ML_SUB_ELEM_FRAGMENT = 254,
 };
 
-/*
- * STA Control field definitions of Per-STA Profile subelement in Basic
- * Multi-Link element as described in Figure 9-1002n: STA Control field format.
- */
-#define BASIC_MLE_STA_CTRL0_LINK_ID_SHIFT		0
-#define BASIC_MLE_STA_CTRL0_LINK_ID_MASK		0x0F
-#define BASIC_MLE_STA_CTRL0_COMPLETE_PROFILE		0x10
-#define BASIC_MLE_STA_CTRL0_PRES_STA_MAC		0x20
-#define BASIC_MLE_STA_CTRL0_PRES_BEACON_INT		0x40
-#define BASIC_MLE_STA_CTRL0_PRES_TSF_OFFSET		0x80
-#define BASIC_MLE_STA_CTRL1_PRES_DTIM_INFO		0x01
-#define BASIC_MLE_STA_CTRL1_PRES_NSTR_LINK_PAIR		0x02
-#define BASIC_MLE_STA_CTRL1_NSTR_BITMAP			0x04
-#define BASIC_MLE_STA_CTRL1_PRES_BSS_PARAM_COUNT	0x08
-
-#define BASIC_MLE_STA_PROF_STA_MAC_IDX			3
-
 /* IEEE P802.11ay/D4.0, 9.4.2.251 - EDMG Operation element */
 #define EDMG_BSS_OPERATING_CHANNELS_OFFSET	6
 #define EDMG_OPERATING_CHANNEL_WIDTH_OFFSET	7
@@ -2805,6 +2824,7 @@ enum mscs_description_subelem {
 #define FD_CAP_BSS_CHWIDTH_40				1
 #define FD_CAP_BSS_CHWIDTH_80				2
 #define FD_CAP_BSS_CHWIDTH_160_80_80			3
+#define FD_CAP_BSS_CHWIDTH_320				4
 #define FD_CAP_BSS_CHWIDTH_SHIFT			2
 
 #define FD_CAP_NSS_1					0
