@@ -197,7 +197,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	ap_sta_set_authorized(hapd, sta, 0);
 	hostapd_set_sta_flags(hapd, sta);
 
-	if (sta->flags & (WLAN_STA_WDS | WLAN_STA_MULTI_AP))
+	if ((sta->flags & WLAN_STA_WDS) ||
+	    (sta->flags & WLAN_STA_MULTI_AP &&
+	     !(hapd->conf->multi_ap & FRONTHAUL_BSS) &&
+	     !(sta->flags & WLAN_STA_WPS)))
 		hostapd_set_wds_sta(hapd, NULL, sta->addr, sta->aid, 0);
 
 	if (sta->ipaddr)
@@ -1260,6 +1263,13 @@ const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
 }
 
 
+const u8 * ap_sta_wpa_get_dpp_pkhash(struct hostapd_data *hapd,
+				     struct sta_info *sta)
+{
+	return wpa_auth_get_dpp_pkhash(sta->wpa_sm);
+}
+
+
 void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
 			   int authorized)
 {
@@ -1273,10 +1283,12 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
 	if (!!authorized == !!(sta->flags & WLAN_STA_AUTHORIZED))
 		return;
 
-	if (authorized)
+	if (authorized) {
+		hostapd_prune_associations(hapd, sta->addr);
 		sta->flags |= WLAN_STA_AUTHORIZED;
-	else
+	} else {
 		sta->flags &= ~WLAN_STA_AUTHORIZED;
+	}
 
 #ifdef CONFIG_P2P
 	if (hapd->p2p_group == NULL) {
@@ -1298,10 +1310,13 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
 					sta->addr, authorized, dev_addr);
 
 	if (authorized) {
+		const u8 *dpp_pkhash;
 		const char *keyid;
+		char dpp_pkhash_buf[100];
 		char keyid_buf[100];
 		char ip_addr[100];
 
+		dpp_pkhash_buf[0] = '\0';
 		keyid_buf[0] = '\0';
 		ip_addr[0] = '\0';
 #ifdef CONFIG_P2P
@@ -1319,14 +1334,28 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
 				    " keyid=%s", keyid);
 		}
 
-		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_CONNECTED "%s%s%s",
-			buf, ip_addr, keyid_buf);
+		dpp_pkhash = ap_sta_wpa_get_dpp_pkhash(hapd, sta);
+		if (dpp_pkhash) {
+			const char *prefix = " dpp_pkhash=";
+			size_t plen = os_strlen(prefix);
+
+			os_strlcpy(dpp_pkhash_buf, prefix,
+				   sizeof(dpp_pkhash_buf));
+			wpa_snprintf_hex(&dpp_pkhash_buf[plen],
+					 sizeof(dpp_pkhash_buf) - plen,
+					 dpp_pkhash, SHA256_MAC_LEN);
+		}
+
+		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_CONNECTED "%s%s%s%s",
+			buf, ip_addr, keyid_buf, dpp_pkhash_buf);
 		place_marker(AP_STA_CONNECTED);
+
 		if (hapd->msg_ctx_parent &&
 		    hapd->msg_ctx_parent != hapd->msg_ctx)
 			wpa_msg_no_global(hapd->msg_ctx_parent, MSG_INFO,
-					  AP_STA_CONNECTED "%s%s%s",
-					  buf, ip_addr, keyid_buf);
+					  AP_STA_CONNECTED "%s%s%s%s",
+					  buf, ip_addr, keyid_buf,
+					  dpp_pkhash_buf);
 	} else {
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_DISCONNECTED "%s", buf);
 		place_marker(AP_STA_DISCONNECTED);
@@ -1513,11 +1542,12 @@ static void ap_sta_delayed_1x_auth_fail_cb(void *eloop_ctx, void *timeout_ctx)
 
 
 void ap_sta_delayed_1x_auth_fail_disconnect(struct hostapd_data *hapd,
-					    struct sta_info *sta)
+					    struct sta_info *sta,
+					    unsigned timeout)
 {
 	wpa_dbg(hapd->msg_ctx, MSG_DEBUG,
 		"IEEE 802.1X: Force disconnection of " MACSTR
-		" after EAP-Failure in 10 ms", MAC2STR(sta->addr));
+		" after EAP-Failure in %u ms", MAC2STR(sta->addr), timeout);
 
 	/*
 	 * Add a small sleep to increase likelihood of previously requested
@@ -1525,8 +1555,8 @@ void ap_sta_delayed_1x_auth_fail_disconnect(struct hostapd_data *hapd,
 	 * operations.
 	 */
 	eloop_cancel_timeout(ap_sta_delayed_1x_auth_fail_cb, hapd, sta);
-	eloop_register_timeout(0, 10000, ap_sta_delayed_1x_auth_fail_cb,
-			       hapd, sta);
+	eloop_register_timeout(0, timeout * 1000,
+			       ap_sta_delayed_1x_auth_fail_cb, hapd, sta);
 }
 
 
