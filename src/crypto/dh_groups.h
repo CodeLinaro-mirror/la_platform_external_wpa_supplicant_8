@@ -8,6 +8,7 @@
 
 #ifndef DH_GROUPS_H
 #define DH_GROUPS_H
+#define ALL_DH_GROUPS 1
 
 struct dh_group {
 	int id;
