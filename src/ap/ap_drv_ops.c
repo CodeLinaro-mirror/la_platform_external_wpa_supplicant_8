@@ -1014,6 +1014,13 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 
 	os_memset(&params, 0, sizeof(params));
 	params.hw_mode = hapd->iface->conf->hw_mode;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && hapd->iconf->ieee80211be &&
+	    !hapd->conf->disable_11be)
+		params.link_id = hapd->mld_link_id;
+	else
+#endif /* CONFIG_IEEE80211BE */
+		params.link_id = -1;
 
 	/*
 	 * If no chanlist config parameter is provided, include all enabled

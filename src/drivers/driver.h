@@ -2771,6 +2771,9 @@ struct drv_acs_params {
 
 	/* Indicates whether EHT is enabled */
 	bool eht_enabled;
+
+	/* Indicates the link if MLO case */
+	int link_id;
 };
 
 struct wpa_bss_trans_info {
