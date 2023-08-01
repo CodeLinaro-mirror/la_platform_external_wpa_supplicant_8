@@ -280,6 +280,10 @@ void nl80211_mark_disconnected(struct wpa_driver_nl80211_data *drv)
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	os_free(drv->pending_roam_data);
 	drv->pending_roam_data = NULL;
+	os_free(drv->pending_t2lm_data);
+	drv->pending_t2lm_data = NULL;
+	os_free(drv->pending_link_reconfig_data);
+	drv->pending_link_reconfig_data = NULL;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	drv->auth_mld = false;
@@ -10445,8 +10449,10 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 		struct driver_sta_mlo_info *mlo = &drv->sta_mlo_info;
 
 		res = os_snprintf(pos, end - pos,
-				  "ap_mld_addr=" MACSTR "\n",
-				   MAC2STR(mlo->ap_mld_addr));
+				  "ap_mld_addr=" MACSTR "\n"
+				  "default_map=%d\n",
+				   MAC2STR(mlo->ap_mld_addr),
+				   mlo->default_map);
 		if (os_snprintf_error(end - pos, res))
 			return pos - buf;
 		pos += res;
@@ -10465,6 +10471,18 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 			if (os_snprintf_error(end - pos, res))
 				return pos - buf;
 			pos += res;
+
+			if (!mlo->default_map) {
+				res = os_snprintf(
+					pos, end - pos,
+					"uplink_map[%u]=%x\n"
+					"downlink_map[%u]=%x\n",
+					i, mlo->links[i].t2lmap.uplink,
+					i, mlo->links[i].t2lmap.downlink);
+				if (os_snprintf_error(end - pos, res))
+					return pos - buf;
+				pos += res;
+			}
 		}
 	}
 

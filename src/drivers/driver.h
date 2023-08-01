@@ -435,6 +435,18 @@ struct wpa_driver_scan_ssid {
 	size_t ssid_len;
 };
 
+struct t2lm_mapping {
+	/**
+	 * downlink - Bitmap of TIDs mapped with a link in downlink direction
+	 */
+	u8 downlink;
+
+	/**
+	 * uplink - Bitmap of TIDs mapped with a link in uplink direction
+	 */
+	u8 uplink;
+};
+
 /**
  * struct wpa_driver_scan_params - Scan parameters
  * Data for struct wpa_driver_ops::scan2().
@@ -2857,6 +2869,7 @@ struct weighted_pcl {
 };
 
 struct driver_sta_mlo_info {
+	bool default_map;
 	u16 req_links; /* bitmap of requested link IDs */
 	u16 valid_links; /* bitmap of accepted link IDs */
 	u8 assoc_link_id;
@@ -2865,6 +2878,7 @@ struct driver_sta_mlo_info {
 		u8 addr[ETH_ALEN];
 		u8 bssid[ETH_ALEN];
 		unsigned int freq;
+		struct t2lm_mapping t2lmap;
 	} links[MAX_NUM_MLD_LINKS];
 };
 
@@ -5576,6 +5590,21 @@ enum wpa_event_type {
 	 * Described in wpa_event_data.ch_switch.
 	 */
 	EVENT_LINK_CH_SWITCH_STARTED,
+
+	/**
+	 * EVENT_TID_LINK_MAP - MLD event to set TID-to-link mapping
+	 *
+	 * This event is used by the driver to indicate the received TID-to-link
+	 * mapping response from the associated AP MLD.
+	 *
+	 * Described in wpa_event_data.t2l_map_info.
+	 */
+	EVENT_TID_LINK_MAP,
+
+	/**
+	 * EVENT_LINK_RECONFIG - Notification that AP links removed
+	 */
+	EVENT_LINK_RECONFIG,
 };
 
 
@@ -6403,6 +6432,7 @@ union wpa_event_data {
 		u8 vht_seg1_center_ch;
 		u16 ch_width;
 		enum hostapd_hw_mode hw_mode;
+		u16 puncture_bitmap;
 	} acs_selected_channels;
 
 	/**
@@ -6485,6 +6515,14 @@ union wpa_event_data {
 	 */
 	struct pasn_auth pasn_auth;
 
+	/**
+	 * struct tid_link_map_info - Data for EVENT_TID_LINK_MAP
+	 */
+	struct tid_link_map_info {
+		bool default_map;
+		u8 valid_links;
+		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
+	} t2l_map_info;
 };
 
 /**
