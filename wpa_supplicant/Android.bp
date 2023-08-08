@@ -70,6 +70,7 @@ cc_defaults {
         "android.hardware.wifi.supplicant-V2-ndk",
         "android.system.keystore2-V1-ndk",
         "vendor.qti.hardware.wifi.supplicant-V1-ndk",
+        "libbinder_ndk",
         "libbase",
         "libc",
         "libcrypto",

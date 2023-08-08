@@ -2009,6 +2009,7 @@ ndk::ScopedAStatus StaIface::removeAllQosPoliciesInternal()
 std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoInternal()
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	struct driver_sta_mlo_info mlo;
 	MloLinksInfo linksInfo;
 	MloLink link;
 
@@ -2016,6 +2017,7 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 	if (!wpa_s->valid_links)
 		 return {linksInfo, ndk::ScopedAStatus::ok()};
 
+	wpas_drv_get_sta_mlo_info(wpa_s, &mlo);
 	for (int i = 0; i < MAX_NUM_MLD_LINKS; i++) {
 		if (!(wpa_s->valid_links & BIT(i)))
 			continue;
@@ -2043,8 +2045,13 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 		// mapping by the AP, a default TID-to-link mapping is assumed
 		// unless an individual TID-to-link mapping is successfully
 		// negotiated.
-		link.tidsUplinkMap = 0xFF;
-		link.tidsDownlinkMap = 0xFF;
+		if (!mlo.default_map) {
+			link.tidsUplinkMap = mlo.links[i].t2lmap.uplink;
+			link.tidsDownlinkMap = mlo.links[i].t2lmap.downlink;
+		} else {
+			link.tidsUplinkMap = 0xFF;
+			link.tidsDownlinkMap = 0xFF;
+		}
 		linksInfo.links.push_back(link);
 	}
 
@@ -2089,8 +2096,6 @@ static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 				      struct type4_params *param)
 {
 	u8 classifier_mask = 0;
-	int ret;
-	char addr[INET6_ADDRSTRLEN];
 	uint32_t inMask = static_cast<uint32_t>(qos_policy_data.classifierParams.classifierParamMask);
 
 	if (qos_policy_data.classifierParams.ipVersion ==
@@ -2114,24 +2119,14 @@ static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 				wpa_printf(MSG_ERROR, "Invalid source IP");
 				return -1;
 			}
-			os_memcpy(addr, qos_policy_data.classifierParams.srcIp.data(), 4);
-			ret = inet_pton(AF_INET, addr,
-					&param->ip_params.v4.src_ip);
+			os_memcpy(&param->ip_params.v4.src_ip, qos_policy_data.classifierParams.srcIp.data(), 4);
 		} else {
 			if (qos_policy_data.classifierParams.srcIp.size() !=
 			    sizeof(param->ip_params.v6.src_ip)) {
 				wpa_printf(MSG_ERROR, "Invalid source IP");
 				return -1;
 			}
-			os_memcpy(addr, qos_policy_data.classifierParams.srcIp.data(), 16);
-			ret = inet_pton(AF_INET6, addr,
-					&param->ip_params.v6.src_ip);
-		}
-		if (ret != 1) {
-			wpa_printf(MSG_ERROR,
-				   "Error converting src IP address to binary ret=%d",
-				   ret);
-			return -1;
+			os_memcpy(&param->ip_params.v6.src_ip, qos_policy_data.classifierParams.srcIp.data(), 16);
 		}
 
 		/* Classifier Mask - bit 1 = Source IP Address */
@@ -2145,25 +2140,14 @@ static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 				wpa_printf(MSG_ERROR, "Invalid destination IP");
 				return -1;
 			}
-			os_memcpy(addr, qos_policy_data.classifierParams.dstIp.data(), 4);
-			ret = inet_pton(AF_INET, addr,
-					&param->ip_params.v4.dst_ip);
+			os_memcpy(&param->ip_params.v4.dst_ip, qos_policy_data.classifierParams.dstIp.data(), 4);
 		} else {
 			if (qos_policy_data.classifierParams.dstIp.size() !=
 			    sizeof(param->ip_params.v6.dst_ip)) {
 				wpa_printf(MSG_ERROR, "Invalid destination IP");
 				return -1;
 			}
-			os_memcpy(addr, qos_policy_data.classifierParams.dstIp.data(), 16);
-			ret = inet_pton(AF_INET6, addr,
-					&param->ip_params.v6.dst_ip);
-		}
-
-		if (ret != 1) {
-			wpa_printf(MSG_ERROR,
-				   "Error converting dst IP address to binary ret=%d",
-				   ret);
-			return -1;
+			os_memcpy(&param->ip_params.v6.dst_ip, qos_policy_data.classifierParams.dstIp.data(), 16);
 		}
 
 		/* Classifier Mask - bit 2 = Destination IP Address */

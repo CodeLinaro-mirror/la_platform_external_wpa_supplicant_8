@@ -703,13 +703,13 @@ std::string CreateHostapdConfig(
 		owe_transition_ifname_as_string.c_str(),
 		enable_edmg_as_string.c_str(),
 		edmg_channel_as_string.c_str(),
-		vendor_elements_as_string.c_str(),
+		vendor_elements_as_string.c_str()
 #ifdef CONFIG_OCV
 #ifdef CONFIG_IEEE80211BE
 		/* TODO: Don't enable OCV for Wi-Fi 7 until further notice from WFA */
-		iface_params.hwModeParams.enable80211BE ? 0 : 2
+		, iface_params.hwModeParams.enable80211BE ? 0 : 2
 #else /* CONFIG_IEEE80211BE */
-		2
+		, 2
 #endif /* CONFIG_IEEE80211BE */
 #endif /* CONFIG_OCV */
 		);

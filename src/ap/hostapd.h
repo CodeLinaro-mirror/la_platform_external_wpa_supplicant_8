@@ -177,6 +177,12 @@ struct hostapd_data {
 	unsigned int reenable_beacon:1;
 
 	u8 own_addr[ETH_ALEN];
+	u8 mld_addr[ETH_ALEN];
+	u8 mld_link_id;
+	/* Used for mld_link_id assignment - valid on the first MLD BSS only */
+	u8 mld_next_link_id;
+
+	struct hostapd_data *mld_first_bss;
 
 	int num_sta; /* number of entries in sta_list */
 	struct sta_info *sta_list; /* STA info list head */
@@ -544,6 +550,8 @@ struct hostapd_iface {
 	const u8 *extended_capa, *extended_capa_mask;
 	unsigned int extended_capa_len;
 
+	u16 mld_eml_capa, mld_mld_capa;
+
 	unsigned int drv_max_acl_mac_addrs;
 
 	struct hostapd_hw_modes *hw_features;
@@ -714,7 +722,8 @@ int hostapd_register_probereq_cb(struct hostapd_data *hapd,
 					   const u8 *ie, size_t ie_len,
 					   int ssi_signal),
 				 void *ctx);
-void hostapd_prune_associations(struct hostapd_data *hapd, const u8 *addr);
+void hostapd_prune_associations(struct hostapd_data *hapd, const u8 *addr,
+				int mld_assoc_link_id);
 
 /* drv_callbacks.c (TODO: move to somewhere else?) */
 void hostapd_notify_assoc_fils_finish(struct hostapd_data *hapd,
@@ -755,5 +764,7 @@ void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 int hostapd_set_acl(struct hostapd_data *hapd);
 struct hostapd_data * hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
 int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
+struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+					       u8 link_id);
 
 #endif /* HOSTAPD_H */

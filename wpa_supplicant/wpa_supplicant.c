@@ -4002,7 +4002,16 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		return;
 	}
 
-	os_memcpy(prev_bssid, wpa_s->bssid, ETH_ALEN);
+	/*
+	 * Set the current AP's BSSID (for non-MLO connection) or MLD address
+	 * (for MLO connection) as the previous BSSID for reassociation requests
+	 * handled by SME-in-driver. If wpa_supplicant is in disconnected state,
+	 * prev_bssid will be zero as both wpa_s->valid_links and wpa_s->bssid
+	 * will be zero.
+	 */
+	os_memcpy(prev_bssid,
+		  wpa_s->valid_links ? wpa_s->ap_mld_addr : wpa_s->bssid,
+		  ETH_ALEN);
 	os_memset(&params, 0, sizeof(params));
 	wpa_s->reassociate = 0;
 	wpa_s->eap_expected_failure = 0;
@@ -7952,9 +7961,12 @@ int wpa_supplicant_run(struct wpa_global *global)
 	}
 
 #ifdef CONFIG_AIDL
-	global->aidl = wpas_aidl_init(global);
-	if (!global->aidl)
-		return -1;
+	// If daemonize is enabled, initialize AIDL here.
+	if (global->params.daemonize) {
+		global->aidl = wpas_aidl_init(global);
+		if (!global->aidl)
+			return -1;
+	}
 #endif /* CONFIG_AIDL */
 
 #ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
