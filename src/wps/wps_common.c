@@ -28,7 +28,7 @@ void wps_kdf(const u8 *key, const u8 *label_prefix, size_t label_prefix_len,
 	const u8 *addr[4];
 	size_t len[4];
 	int i, iter;
-	u8 hash[SHA256_MAC_LEN], *opos;
+	u8 hash[SHA256_MAC_LEN] = {0}, *opos;
 	size_t left;
 
 	WPA_PUT_BE32(key_bits, res_len * 8);
