@@ -600,7 +600,7 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
 			return -1;
 		}
 		if (oper_chwidth == CONF_OPER_CHWIDTH_80MHZ &&
-		    center_segment1) {
+		    center_segment1 && !data->eht_enabled) {
 			wpa_printf(MSG_ERROR,
 				   "80 MHz: center segment 1 configured");
 			return -1;
