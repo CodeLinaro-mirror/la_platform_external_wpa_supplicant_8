@@ -6501,6 +6501,7 @@ union wpa_event_data {
 		enum chan_width chan_width;
 		int cf1;
 		int cf2;
+		int link_id;
 	} dfs_event;
 
 	/**
