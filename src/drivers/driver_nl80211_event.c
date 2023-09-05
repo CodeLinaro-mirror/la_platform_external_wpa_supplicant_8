@@ -1270,12 +1270,16 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 	if (finished)
 		bss->flink->freq = data.ch_switch.freq;
 
+	if (link)
+		data.ch_switch.link_id = nla_get_u8(link);
+	else
+		data.ch_switch.link_id = -1;
+
 	if (link && is_sta_interface(drv->nlmode)) {
-		u8 link_id = nla_get_u8(link);
+		int link_id = data.ch_switch.link_id;
 
 		if (link_id < MAX_NUM_MLD_LINKS &&
 		    drv->sta_mlo_info.valid_links & BIT(link_id)) {
-			data.ch_switch.link_id = link_id;
 			drv->sta_mlo_info.links[link_id].freq =
 				data.ch_switch.freq;
 			wpa_supplicant_event(
