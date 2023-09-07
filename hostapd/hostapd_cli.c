@@ -1214,6 +1214,13 @@ static int hostapd_cli_cmd_enable(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+static int hostapd_cli_cmd_enable_mld(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "ENABLE_MLD");
+}
+
+
 static int hostapd_cli_cmd_reload(struct wpa_ctrl *ctrl, int argc,
 				      char *argv[])
 {
@@ -1232,6 +1239,13 @@ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
 				      char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "DISABLE");
+}
+
+
+static int hostapd_cli_cmd_disable_mld(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "DISABLE_MLD");
 }
 
 
@@ -1737,12 +1751,16 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "  = send driver command data" },
 	{ "enable", hostapd_cli_cmd_enable, NULL,
 	  "= enable hostapd on current interface" },
+	{ "enable_mld", hostapd_cli_cmd_enable_mld, NULL,
+	  "= enable hostapd on current MLD" },
 	{ "reload", hostapd_cli_cmd_reload, NULL,
 	  "= reload configuration for current interface" },
 	{ "reload_bss", hostapd_cli_cmd_reload_bss, NULL,
 	  "= reload configuration for current BSS" },
 	{ "disable", hostapd_cli_cmd_disable, NULL,
 	  "= disable hostapd on current interface" },
+	{ "disable_mld", hostapd_cli_cmd_disable_mld, NULL,
+	  "= disable hostapd on current MLD" },
 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
 	  "= update Beacon frame contents\n"},
 	{ "erp_flush", hostapd_cli_cmd_erp_flush, NULL,

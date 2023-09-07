@@ -1379,6 +1379,37 @@ static int hostapd_ctrl_iface_enable(struct hostapd_iface *iface)
 }
 
 
+static int hostapd_ctrl_iface_enable_mld(struct hostapd_iface *iface)
+{
+#ifdef CONFIG_IEEE80211BE
+	int i;
+
+	if (iface == NULL || !iface->bss[0]->conf->mld_ap) {
+		wpa_printf(MSG_ERROR, "Trying to enabling MLD while it is not.");
+		return -1;
+	}
+
+	for (i = 0; i < iface->interfaces->count; ++i) {
+		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
+		struct hostapd_data *h_hapd = h_iface->bss[0];
+		struct hostapd_bss_config *h_conf = h_hapd->conf;
+
+		if (!h_conf->mld_ap ||
+		    h_conf->mld_id != iface->bss[0]->conf->mld_id) {
+			continue;
+		}
+		if (hostapd_enable_iface(h_iface)) {
+			wpa_printf(MSG_ERROR, "Enabling of MLD failed");
+			return -1;
+		}
+	}
+	return 0;
+#else /* CONFIG_IEEE80211BE */
+	return -1;
+#endif /* CONFIG_IEEE80211BE */
+}
+
+
 static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
 {
 	if (hostapd_reload_iface(iface) < 0) {
@@ -1406,6 +1437,47 @@ static int hostapd_ctrl_iface_disable(struct hostapd_iface *iface)
 		return -1;
 	}
 	return 0;
+}
+
+
+static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
+{
+#ifdef CONFIG_IEEE80211BE
+	int i;
+	struct hostapd_iface *first_iface;
+
+	if (iface == NULL || !iface->bss[0]->conf->mld_ap) {
+		wpa_printf(MSG_ERROR, "Trying to disable MLD while it is not.");
+		return -1;
+	}
+
+	for (i = 0; i < iface->interfaces->count; ++i) {
+		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
+		struct hostapd_data *h_hapd = h_iface->bss[0];
+		struct hostapd_bss_config *h_conf = h_hapd->conf;
+
+		if (!h_conf->mld_ap ||
+		    h_conf->mld_id != iface->bss[0]->conf->mld_id) {
+			continue;
+		}
+		if (!h_hapd->mld_first_bss) {
+			first_iface = h_iface;
+			continue;
+		}
+		if (hostapd_disable_iface(h_iface)) {
+			wpa_printf(MSG_ERROR, "Disabling MLD failed.");
+			return -1;
+		}
+	}
+	if (hostapd_disable_iface(first_iface)) {
+		wpa_printf(MSG_ERROR, "Disabling MLD failed.");
+		return -1;
+	}
+
+	return 0;
+#else /* CONFIG_IEEE80211BE */
+	return -1;
+#endif /* CONFIG_IEEE80211BE */
 }
 
 
@@ -3518,6 +3590,9 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "GET ", 4) == 0) {
 		reply_len = hostapd_ctrl_iface_get(hapd, buf + 4, reply,
 						   reply_size);
+	} else if (os_strncmp(buf, "ENABLE_MLD", 10) == 0) {
+		if (hostapd_ctrl_iface_enable_mld(hapd->iface))
+			reply_len = -1;
 	} else if (os_strncmp(buf, "ENABLE", 6) == 0) {
 		if (hostapd_ctrl_iface_enable(hapd->iface))
 			reply_len = -1;
@@ -3529,6 +3604,9 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 			reply_len = -1;
 	} else if (os_strncmp(buf, "RELOAD", 6) == 0) {
 		if (hostapd_ctrl_iface_reload(hapd->iface))
+			reply_len = -1;
+	} else if (os_strncmp(buf, "DISABLE_MLD", 11) == 0) {
+		if (hostapd_ctrl_iface_disable_mld(hapd->iface))
 			reply_len = -1;
 	} else if (os_strncmp(buf, "DISABLE", 7) == 0) {
 		if (hostapd_ctrl_iface_disable(hapd->iface))
