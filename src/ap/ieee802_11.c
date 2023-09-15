@@ -874,7 +874,15 @@ static void sae_sme_send_external_auth_status(struct hostapd_data *hapd,
 
 	os_memset(&params, 0, sizeof(params));
 	params.status = status;
-	params.bssid = sta->addr;
+
+#ifdef CONFIG_IEEE80211BE
+	if (sta->mld_info.mld_sta)
+		params.bssid =
+			sta->mld_info.links[sta->mld_assoc_link_id].peer_addr;
+#endif /* CONFIG_IEEE80211BE */
+	if (!params.bssid)
+		params.bssid = sta->addr;
+
 	if (status == WLAN_STATUS_SUCCESS && sta->sae &&
 	    !hapd->conf->disable_pmksa_caching)
 		params.pmkid = sta->sae->pmkid;
@@ -3688,7 +3696,8 @@ u16 owe_validate_request(struct hostapd_data *hapd, const u8 *peer,
 u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 		       struct sta_info *sta,
 		       const u8 *rsn_ie, size_t rsn_ie_len,
-		       const u8 *owe_dh, size_t owe_dh_len)
+		       const u8 *owe_dh, size_t owe_dh_len,
+		       const u8 *link_addr)
 {
 	u16 status;
 	u8 *owe_buf, ie[256 * 2];
@@ -3710,6 +3719,11 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto end;
 	}
+#ifdef CONFIG_IEEE80211BE
+	if (sta->mld_info.mld_sta)
+		wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld_addr,
+				     sta->mld_assoc_link_id, &sta->mld_info);
+#endif /* CONFIG_IEEE80211BE */
 	rsn_ie -= 2;
 	rsn_ie_len += 2;
 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
@@ -3754,8 +3768,9 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 end:
 	wpa_printf(MSG_DEBUG, "OWE: Update status %d, ie len %d for peer "
 			      MACSTR, status, (unsigned int) ie_len,
-			      MAC2STR(sta->addr));
-	hostapd_drv_update_dh_ie(hapd, sta->addr, status,
+			      MAC2STR(link_addr ? link_addr : sta->addr));
+	hostapd_drv_update_dh_ie(hapd, link_addr ? link_addr : sta->addr,
+				 status,
 				 status == WLAN_STATUS_SUCCESS ? ie : NULL,
 				 ie_len);
 
