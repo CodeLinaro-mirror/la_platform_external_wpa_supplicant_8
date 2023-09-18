@@ -1221,6 +1221,20 @@ static int hostapd_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
 	return wpa_ctrl_command(ctrl, "UPDATE_BEACON");
 }
 
+static int hostapd_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	char buf[4096];
+	int res;
+
+	if (argc < 1) {
+		printf("Invalid DRIVER command - at least 1 argument "
+		       "required.\n");
+		return -1;
+	}
+	if (write_cmd(buf, sizeof(buf), "DRIVER", argc, argv) < 0)
+		return -1;
+	return wpa_ctrl_command(ctrl, buf);
+}
 
 static int hostapd_cli_cmd_vendor(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
@@ -1325,7 +1339,6 @@ static int hostapd_cli_cmd_remove_neighbor(struct wpa_ctrl *ctrl, int argc,
 {
 	return hostapd_cli_cmd(ctrl, "REMOVE_NEIGHBOR", 1, argc, argv);
 }
-
 
 static int hostapd_cli_cmd_req_lci(struct wpa_ctrl *ctrl, int argc,
 				   char *argv[])
@@ -1649,6 +1662,9 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	{ "vendor", hostapd_cli_cmd_vendor, NULL,
 	  "<vendor id> <sub command id> [<hex formatted data>]\n"
 	  "  = send vendor driver command" },
+	{ "driver", hostapd_cli_cmd_driver, NULL,
+	  "<driver sub command> [<hex formatted data>]\n"
+	  "  = send driver command data" },
 	{ "enable", hostapd_cli_cmd_enable, NULL,
 	  "= enable hostapd on current interface" },
 	{ "reload", hostapd_cli_cmd_reload, NULL,
@@ -1734,7 +1750,6 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "= reload wpa_psk_file only" },
 	{ NULL, NULL, NULL, NULL }
 };
-
 
 /*
  * Prints command usage, lines are padded with the specified string.
