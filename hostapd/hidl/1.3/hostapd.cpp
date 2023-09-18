@@ -26,6 +26,9 @@ extern "C"
 {
 #include "common/wpa_ctrl.h"
 #include "drivers/linux_ioctl.h"
+
+#define ENCRYPTION_TYPE_OWE              7
+#define ENCRYPTION_TYPE_OWE_TRANSITION   8
 }
 
 // The HIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -42,6 +45,37 @@ using android::base::WriteStringToFile;
 using android::hardware::wifi::hostapd::V1_3::IHostapd;
 using android::hardware::wifi::hostapd::V1_3::Generation;
 using android::hardware::wifi::hostapd::V1_3::Bandwidth;
+
+#ifdef CONFIG_OWE
+extern "C" int linux_get_ifhwaddr(int sock, const char *ifname, u8 *addr);
+
+std::vector<uint8_t> GenerateOweSSID(std::string ifname)
+{
+	int ret;
+	int sock;
+	u8 macaddr[6] = {0};
+	char mac_str[18] = {0};
+
+	sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock >= 0) {
+		linux_get_ifhwaddr(sock, ifname.c_str(), macaddr);
+		close(sock);
+	}
+
+	// TODO: check ret
+	ret = snprintf(mac_str, sizeof(mac_str),
+		"%02x:%02x:%02x:%02x:%02x:%02x",
+		macaddr[0], macaddr[1], macaddr[2],
+		macaddr[3], macaddr[4], macaddr[5]);
+
+	std::string ssid = StringPrintf("owe.%s", mac_str);
+
+	wpa_printf(MSG_INFO, "Generated OWE SSID: %s", ssid.c_str());
+	std::vector<uint8_t> vssid(ssid.begin(), ssid.end());
+
+	return vssid;
+}
+#endif
 
 #define MAX_PORTS 1024
 bool GetInterfacesInBridge(std::string br_name,
@@ -280,7 +314,7 @@ std::string CreateHostapdConfig(
     const android::hardware::wifi::hostapd::V1_3::IHostapd::IfaceParams& iface_params,
     const android::hardware::wifi::hostapd::V1_3::IHostapd::ChannelParams& channelParams,
     const IHostapd::NetworkParams& nw_params,
-    const std::string br_name)
+    const android::hardware::wifi::hostapd::V1_3::VendorParams& vendor_params)
 {
 	if (nw_params.V1_2.V1_0.ssid.size() >
 	    static_cast<uint32_t>(
@@ -305,11 +339,22 @@ std::string CreateHostapdConfig(
 	bool is_6Ghz_band_only = band == static_cast<uint32_t>(IHostapd::BandMask::BAND_6_GHZ);
 	bool is_60Ghz_band_only = band == static_cast<uint32_t>(IHostapd::BandMask::BAND_60_GHZ);
 	std::string encryption_config_as_string;
-	switch (nw_params.V1_2.encryptionType) {
-	case IHostapd::EncryptionType::NONE:
+#ifdef CONFIG_OWE
+	// OWE transition mode interface string
+	std::string owe_trans_iface_as_string;
+#endif
+	switch (static_cast<uint32_t>(nw_params.V1_2.encryptionType)) {
+	case static_cast<uint32_t>(IHostapd::EncryptionType::NONE):
 		// no security params
+#ifdef CONFIG_OWE
+		if (!vendor_params.oweTransIfaceName.empty()) {
+			encryption_config_as_string = StringPrintf(
+				"owe_transition_ifname=%s",
+				vendor_params.oweTransIfaceName.c_str());
+		}
+#endif
 		break;
-	case IHostapd::EncryptionType::WPA:
+	case static_cast<uint32_t>(IHostapd::EncryptionType::WPA):
 		if (!validatePassphrase(
 		    nw_params.V1_2.passphrase.size(),
 		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
@@ -325,7 +370,7 @@ std::string CreateHostapdConfig(
 		    is_60Ghz_band_only ? "GCMP" : "TKIP CCMP",
 		    nw_params.V1_2.passphrase.c_str());
 		break;
-	case IHostapd::EncryptionType::WPA2:
+	case static_cast<uint32_t>(IHostapd::EncryptionType::WPA2):
 		if (!validatePassphrase(
 		    nw_params.V1_2.passphrase.size(),
 		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
@@ -341,7 +386,7 @@ std::string CreateHostapdConfig(
 		    is_60Ghz_band_only ? "GCMP" : "CCMP",
 		    nw_params.V1_2.passphrase.c_str());
 		break;
-	case IHostapd::EncryptionType::WPA3_SAE_TRANSITION:
+	case static_cast<uint32_t>(IHostapd::EncryptionType::WPA3_SAE_TRANSITION):
 		if (!validatePassphrase(
 		    nw_params.V1_2.passphrase.size(),
 		    static_cast<uint32_t>(IHostapd::ParamSizeLimits::
@@ -362,7 +407,7 @@ std::string CreateHostapdConfig(
 		    nw_params.V1_2.passphrase.c_str(),
 		    nw_params.V1_2.passphrase.c_str());
 		break;
-	case IHostapd::EncryptionType::WPA3_SAE:
+	case static_cast<uint32_t>(IHostapd::EncryptionType::WPA3_SAE):
 		if (!validatePassphrase(nw_params.V1_2.passphrase.size(), 1, -1)) {
 			return "";
 		}
@@ -378,6 +423,21 @@ std::string CreateHostapdConfig(
 		    is_6Ghz_band_only ? 1 : 2,
 		    nw_params.V1_2.passphrase.c_str());
 		break;
+#ifdef CONFIG_OWE
+	case ENCRYPTION_TYPE_OWE:
+		if (!vendor_params.oweTransIfaceName.empty()) {
+			owe_trans_iface_as_string = StringPrintf(
+				"owe_transition_ifname=%s",
+				vendor_params.oweTransIfaceName.c_str());
+		}
+		encryption_config_as_string = StringPrintf(
+		    "wpa=2\n"
+		    "rsn_pairwise=CCMP\n"
+		    "wpa_key_mgmt=OWE\n"
+		    "ieee80211w=2\n%s",
+		    owe_trans_iface_as_string.c_str());
+		break;
+#endif
 	default:
 		wpa_printf(MSG_ERROR, "Unknown encryption type");
 		return "";
@@ -491,8 +551,8 @@ std::string CreateHostapdConfig(
 #endif /* CONFIG_INTERWORKING */
 
 	std::string bridge_as_string;
-	if (!br_name.empty()) {
-		bridge_as_string = StringPrintf("bridge=%s", br_name.c_str());
+	if (!vendor_params.bridgeIfaceName.empty()) {
+		bridge_as_string = StringPrintf("bridge=%s", vendor_params.bridgeIfaceName.c_str());
 	}
 
 	return StringPrintf(
@@ -784,13 +844,17 @@ V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_3(
     const V1_3::IHostapd::NetworkParams& nw_params)
 {
 	int channelParamsListSize = iface_params.channelParamsList.size();
-	if (channelParamsListSize == 1) {
+#ifdef CONFIG_OWE
+	bool isOweTransition = (static_cast<uint32_t>(nw_params.V1_2.encryptionType)
+		    == ENCRYPTION_TYPE_OWE_TRANSITION);
+#endif
+	if (channelParamsListSize == 1 && !isOweTransition) {
 		// Single AP
 		wpa_printf(MSG_INFO, "AddSingleAccessPoint, iface=%s",
 		    iface_params.V1_2.V1_1.V1_0.ifaceName.c_str());
 		return addSingleAccessPoint(iface_params, iface_params.channelParamsList[0],
-		    nw_params, "");
-	} else if (channelParamsListSize == 2) {
+		    nw_params, {});
+	} else if (channelParamsListSize == 2 || isOweTransition) {
 		// Concurrent APs
 		wpa_printf(MSG_INFO, "AddDualAccessPoint, iface=%s",
 		    iface_params.V1_2.V1_1.V1_0.ifaceName.c_str());
@@ -802,7 +866,22 @@ V1_2::HostapdStatus Hostapd::addAccessPointInternal_1_3(
 V1_2::HostapdStatus Hostapd::addConcurrentAccessPoints(
     const V1_3::IHostapd::IfaceParams& iface_params, const V1_3::IHostapd::NetworkParams& nw_params)
 {
-	int channelParamsListSize = iface_params.channelParamsList.size();
+	auto channelParamsList = static_cast<std::vector<V1_3::IHostapd::ChannelParams>>
+		(iface_params.channelParamsList);
+	int channelParamsListSize = channelParamsList.size();
+#ifdef CONFIG_OWE
+	bool isOweTransition = (static_cast<uint32_t>(nw_params.V1_2.encryptionType)
+			  == ENCRYPTION_TYPE_OWE_TRANSITION);
+	if (isOweTransition && channelParamsListSize == 1) {
+		// make it two same bands
+		channelParamsList.push_back(channelParamsList[0]);
+		channelParamsListSize = channelParamsList.size();
+	}
+	if (isOweTransition && channelParamsList.size() != 2) {
+		return {V1_2::HostapdStatusCode::FAILURE_UNKNOWN,
+		    "OWE transtion mode MUST have 2 bandMasks"};
+	}
+#endif
 	// Get available interfaces in bridge
 	std::vector<std::string> managed_interfaces;
 	std::string br_name = StringPrintf(
@@ -819,8 +898,30 @@ V1_2::HostapdStatus Hostapd::addConcurrentAccessPoints(
 	for (std::size_t i = 0; i < channelParamsListSize; i ++) {
 		V1_3::IHostapd::IfaceParams iface_params_new = iface_params;
 		iface_params_new.V1_2.V1_1.V1_0.ifaceName = managed_interfaces[i];
+
+		VendorParams vendor_params;
+		vendor_params.bridgeIfaceName = br_name;
+		NetworkParams nw_params_new = nw_params;
+#ifdef CONFIG_OWE
+		if (isOweTransition) {
+			if (i == 0) {
+				nw_params_new.V1_2.V1_0.ssid =
+				    GenerateOweSSID(managed_interfaces[0]);
+				nw_params_new.V1_2.V1_0.isHidden = true;
+				nw_params_new.V1_2.encryptionType =
+				    (IHostapd::EncryptionType) ENCRYPTION_TYPE_OWE;
+				vendor_params.oweTransIfaceName = managed_interfaces[1];
+			} else if (i == 1) {
+				nw_params_new.V1_2.V1_0.ssid = nw_params.V1_2.V1_0.ssid;
+				nw_params_new.V1_2.V1_0.isHidden = false;
+				nw_params_new.V1_2.encryptionType =
+				    IHostapd::EncryptionType::NONE;
+				vendor_params.oweTransIfaceName = managed_interfaces[0];
+			} // else no possible
+		}
+#endif
 		V1_2::HostapdStatus status = addSingleAccessPoint(
-		    iface_params_new, iface_params.channelParamsList[i], nw_params, br_name);
+		    iface_params_new, channelParamsList[i], nw_params_new, vendor_params);
 		if (status.code != V1_2::HostapdStatusCode::SUCCESS) {
 			wpa_printf(MSG_ERROR, "Failed to addAccessPoint %s",
 				   managed_interfaces[i].c_str());
@@ -836,7 +937,7 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
     const V1_3::IHostapd::IfaceParams& iface_params,
     const V1_3::IHostapd::ChannelParams& channelParams,
     const V1_3::IHostapd::NetworkParams& nw_params,
-    const std::string br_name)
+    const VendorParams& vendor_params)
 {
 	if (hostapd_get_iface(interfaces_, iface_params.V1_2.V1_1.V1_0.ifaceName.c_str())) {
 		wpa_printf(
@@ -844,7 +945,8 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 		    iface_params.V1_2.V1_1.V1_0.ifaceName.c_str());
 		return {V1_2::HostapdStatusCode::FAILURE_IFACE_EXISTS, ""};
 	}
-	const auto conf_params = CreateHostapdConfig(iface_params, channelParams, nw_params, br_name);
+	const auto conf_params = CreateHostapdConfig(iface_params,
+                                  channelParams, nw_params, vendor_params);
 	if (conf_params.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to create config params");
 		return {V1_2::HostapdStatusCode::FAILURE_ARGS_INVALID, ""};
