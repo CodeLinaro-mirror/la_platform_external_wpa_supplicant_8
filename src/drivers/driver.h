@@ -2175,6 +2175,9 @@ struct wpa_driver_capa {
 
 	/* Maximum number of supported CSA counters */
 	u16 max_csa_counters;
+
+	/* Maximum number of supported AKM suites in commands */
+	unsigned int max_num_akms;
 };
 
 
