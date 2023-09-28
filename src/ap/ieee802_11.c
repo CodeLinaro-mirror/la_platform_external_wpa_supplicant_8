@@ -5639,7 +5639,7 @@ static void hostapd_disassoc_sta(struct hostapd_data *hapd,
 
 
 #ifdef CONFIG_IEEE80211BE
-static struct sta_info *
+struct sta_info *
 hostapd_ml_get_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 			 struct hostapd_data **assoc_hapd)
 {
