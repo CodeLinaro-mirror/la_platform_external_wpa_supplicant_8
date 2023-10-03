@@ -615,6 +615,40 @@ struct tclas_element {
 };
 
 
+struct qos_characteristics {
+	bool available;
+
+	/* Control Info Direction */
+	u8 direction;
+	/* Presence Bitmap Of Additional Parameters */
+	u16 mask;
+	/* Minimum Service Interval */
+	u32 min_si;
+	/* Maximum Service Interval */
+	u32 max_si;
+	/* Minimum Data Rate */
+	u32 min_data_rate;
+	/* Delay Bound */
+	u32 delay_bound;
+	/* Maximum MSDU Size */
+	u16 max_msdu_size;
+	/* Service Start Time */
+	u32 service_start_time;
+	/* Service Start Time LinkID */
+	u8 service_start_time_link_id;
+	/* Mean Data Rate */
+	u32 mean_data_rate;
+	/* Delayed Bounded Burst Size */
+	u32 burst_size;
+	/* MSDU Lifetime */
+	u16 msdu_lifetime;
+	/* MSDU Delivery Info */
+	u8 msdu_delivery_info;
+	/* Medium Time */
+	u16 medium_time;
+};
+
+
 struct scs_desc_elem {
 	u8 scs_id;
 	enum scs_request_type request_type;
@@ -623,6 +657,7 @@ struct scs_desc_elem {
 	struct tclas_element *tclas_elems;
 	unsigned int num_tclas_elem;
 	u8 tclas_processing;
+	struct qos_characteristics qos_char_elem;
 };
 
 
@@ -1973,5 +2008,7 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			    struct pasn_auth *pasn_auth);
 void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status);
+
+bool wpa_is_non_eht_scs_traffic_desc_supported(struct wpa_bss *bss);
 
 #endif /* WPA_SUPPLICANT_I_H */
