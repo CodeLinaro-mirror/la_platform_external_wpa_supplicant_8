@@ -1556,6 +1556,10 @@ endif
 ifdef CONFIG_CTRL_IFACE_AIDL
 WPA_SUPPLICANT_USE_AIDL=y
 L_CFLAGS += -DCONFIG_AIDL -DCONFIG_CTRL_IFACE_AIDL
+ifdef CONFIG_USE_VENDOR_AIDL
+WPA_SUPPLICANT_USE_VENDOR_AIDL=y
+L_CFLAGS += -DCONFIG_USE_VENDOR_AIDL
+endif
 endif
 
 ifdef CONFIG_READLINE
@@ -1954,6 +1958,9 @@ endif
 ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V2-ndk
 LOCAL_SHARED_LIBRARIES += android.system.keystore2-V1-ndk
+ifeq ($(WPA_SUPPLICANT_USE_VENDOR_AIDL), y)
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant-V2-ndk
+endif
 LOCAL_SHARED_LIBRARIES += libutils libbase
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libwpa_aidl
@@ -2033,6 +2040,13 @@ LOCAL_SHARED_LIBRARIES := \
     libutils \
     liblog \
     libssl
+ifeq ($(WPA_SUPPLICANT_USE_VENDOR_AIDL), y)
+LOCAL_SRC_FILES += \
+    aidl/supplicant_vendor.cpp \
+    aidl/vendorsta_iface.cpp
+LOCAL_SHARED_LIBRARIES += \
+    vendor.qti.hardware.wifi.supplicant-V2-ndk
+endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/aidl
 include $(BUILD_STATIC_LIBRARY)

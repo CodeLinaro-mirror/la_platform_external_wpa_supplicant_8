@@ -229,5 +229,8 @@ void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
 void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 		unsigned int num_scs_resp, int **scs_resp);
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
+#endif
 
 #endif /* NOTIFY_H */
