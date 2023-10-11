@@ -1451,3 +1451,19 @@ struct wpabuf * wpa_bss_defrag_mle(const struct wpa_bss *bss, u8 type)
 
 	return ieee802_11_defrag_mle(&elems, type);
 }
+
+
+const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			    bool mlo)
+{
+	return wpa_bss_get_ie(bss, WLAN_EID_RSN);
+}
+
+const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+			     const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			     bool mlo)
+{
+	return wpa_bss_get_ie(bss, WLAN_EID_RSNX);
+}
+

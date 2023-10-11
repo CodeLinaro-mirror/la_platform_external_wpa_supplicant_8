@@ -203,4 +203,11 @@ void calculate_update_time(const struct os_reltime *fetch_time,
 
 struct wpabuf * wpa_bss_defrag_mle(const struct wpa_bss *bss, u8 type);
 
+const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			    bool mlo);
+const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+			     const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			     bool mlo);
+
 #endif /* BSS_H */
