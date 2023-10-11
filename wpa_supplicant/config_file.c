@@ -1567,6 +1567,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->wowlan_disconnect_on_deinit)
 		fprintf(f, "wowlan_disconnect_on_deinit=%d\n",
 			config->wowlan_disconnect_on_deinit);
+	if (config->rsn_overriding)
+		fprintf(f, "rsn_overriding=%d\n", config->rsn_overriding);
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */
