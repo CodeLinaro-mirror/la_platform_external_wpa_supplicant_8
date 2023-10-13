@@ -294,6 +294,7 @@ ifdef CONFIG_SAE
 CFLAGS += -DCONFIG_SAE
 OBJS += ../src/common/sae.o
 ifdef CONFIG_SAE_PK
+NEED_AES_SIV=y
 CFLAGS += -DCONFIG_SAE_PK
 OBJS += ../src/common/sae_pk.o
 endif
