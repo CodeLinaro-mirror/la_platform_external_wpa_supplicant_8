@@ -3200,6 +3200,29 @@ int wpa_is_fils_sk_pfs_supported(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_FILS */
 
 
+bool wpa_is_non_eht_scs_traffic_desc_supported(struct wpa_bss *bss)
+{
+	const u8 *wfa_capa;
+
+	if (!bss)
+		return false;
+
+	/* Get WFA capability from Beacon or Probe Response frame elements */
+	wfa_capa = wpa_bss_get_vendor_ie(bss, WFA_CAPA_IE_VENDOR_TYPE);
+	if (!wfa_capa)
+		wfa_capa = wpa_bss_get_vendor_ie_beacon(
+			bss, WFA_CAPA_IE_VENDOR_TYPE);
+
+	if (!wfa_capa || wfa_capa[1] < 6 || wfa_capa[6] < 1 ||
+	    !(wfa_capa[7] & WFA_CAPA_QM_NON_EHT_SCS_TRAFFIC_DESC)) {
+		/* AP does not enable QM non EHT traffic description policy */
+		return false;
+	}
+
+	return true;
+}
+
+
 static int wpas_populate_wfa_capa(struct wpa_supplicant *wpa_s,
 				  struct wpa_bss *bss,
 				  u8 *wpa_ie, size_t wpa_ie_len,
@@ -3212,6 +3235,9 @@ static int wpas_populate_wfa_capa(struct wpa_supplicant *wpa_s,
 	os_memset(wfa_capa, 0, sizeof(wfa_capa));
 	if (wpa_s->enable_dscp_policy_capa)
 		wfa_capa[0] |= WFA_CAPA_QM_DSCP_POLICY;
+
+	if (wpa_is_non_eht_scs_traffic_desc_supported(bss))
+		wfa_capa[0] |= WFA_CAPA_QM_NON_EHT_SCS_TRAFFIC_DESC;
 
 	if (!wfa_capa[0])
 		return wpa_ie_len;
@@ -3311,7 +3337,7 @@ static u8 * wpas_populate_assoc_ies(
 #endif /* CONFIG_FILS */
 		if (pmksa_cache_set_current(wpa_s->wpa, NULL, addr,
 					    ssid, try_opportunistic,
-					    cache_id, 0) == 0) {
+					    cache_id, 0, false) == 0) {
 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
 #if defined(CONFIG_SAE) || defined(CONFIG_FILS)
 			pmksa_cached = 1;
@@ -4307,7 +4333,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	if (params.mgmt_frame_protection != NO_MGMT_FRAME_PROTECTION && bss) {
 		const u8 *rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
 		struct wpa_ie_data ie;
-		if (rsn && wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie) == 0 &&
+		if (!wpas_driver_bss_selection(wpa_s) && rsn &&
+		    wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie) == 0 &&
 		    ie.capabilities &
 		    (WPA_CAPABILITY_MFPC | WPA_CAPABILITY_MFPR)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "WPA: Selected AP supports "
@@ -7176,6 +7203,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_PASN
 	wpa_pasn_sm_set_caps(wpa_s->wpa, wpa_s->drv_flags2);
 #endif /* CONFIG_PASN */
+	wpa_sm_set_driver_bss_selection(wpa_s->wpa,
+					!!(wpa_s->drv_flags &
+					   WPA_DRIVER_FLAGS_BSS_SELECTION));
 	if (wpa_s->max_remain_on_chan == 0)
 		wpa_s->max_remain_on_chan = 1000;
 
