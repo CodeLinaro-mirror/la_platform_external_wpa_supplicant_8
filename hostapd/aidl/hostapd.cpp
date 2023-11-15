@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <set>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <linux/if_bridge.h>
@@ -33,6 +34,8 @@ extern "C"
 {
 #include "common/wpa_ctrl.h"
 #include "drivers/linux_ioctl.h"
+
+#define MAX_HE80_ALLOWED_PRI_CHANNEL     157
 }
 
 // The AIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -58,6 +61,9 @@ using aidl::android::hardware::wifi::hostapd::HostapdStatusCode;
 using aidl::android::hardware::wifi::hostapd::IfaceParams;
 using aidl::android::hardware::wifi::hostapd::NetworkParams;
 using aidl::android::hardware::wifi::hostapd::ParamSizeLimits;
+
+std::set<int> allowed_ht40_first_channel_list = { 36, 44, 52, 60, 100, 108, 116,
+					124, 132, 140, 149, 157, 165, 184, 192 };
 
 int band2Ghz = (int)BandMask::BAND_2_GHZ;
 int band5Ghz = (int)BandMask::BAND_5_GHZ;
@@ -184,6 +190,23 @@ std::string WriteMLOHostapdConfig(
 }
 #endif //CONFIG_IEEE80211BE
 
+static int hostapd_get_center_80mhz(int channel)
+{
+	int center_channels[] = { 42, 58, 106, 122, 138, 155 };
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(center_channels); i++)
+		/*
+		 * In 80 MHz, the bandwidth "spans" 12 channels (e.g., 36-48),
+		 * so the center channel is 6 channels away from the start/end.
+		 */
+		if (channel >= center_channels[i] - 6 &&
+				channel <= center_channels[i] + 6)
+			return center_channels[i];
+
+	return 0;
+}
+
 /*
  * Get the op_class for a channel/band
  * The logic here is based on Table E-4 in the 802.11 Specification
@@ -213,7 +236,8 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 	// 5GHz Band
 	if ((band & band5Ghz) != 0) {
 		if (support11ac) {
-			switch (channel) {
+			int center_channel = hostapd_get_center_80mhz(channel);
+			switch (center_channel) {
 				case 42:
 				case 58:
 				case 106:
@@ -222,10 +246,13 @@ int getOpClassForChannel(int channel, int band, bool support11n, bool support11a
 				case 155:
 					// 80MHz channel
 					return 128;
+#if 0
+// 160Mhz to be supported
 				case 50:
 				case 114:
 					// 160MHz channel
 					return 129;
+#endif
 			}
 		}
 
@@ -580,11 +607,17 @@ std::string CreateHostapdConfig(
 			channelParams.acsShouldExcludeDfs,
 			freqList_as_string.c_str());
 	} else {
+		bool support11ac = iface_params.hwModeParams.enable80211AC;
+#ifdef CONFIG_IEEE80211AX
+		if (!support11ac) {
+			support11ac = iface_params.hwModeParams.enable80211AX;
+		}
+#endif
 		int op_class = getOpClassForChannel(
 			channelParams.channel,
 			band,
 			iface_params.hwModeParams.enable80211N,
-			iface_params.hwModeParams.enable80211AC);
+			support11ac);
 		channel_config_as_string = StringPrintf(
 			"channel=%d\n"
 			"op_class=%d",
@@ -728,8 +761,20 @@ std::string CreateHostapdConfig(
 		if (!is_2Ghz_band_only && !is_60Ghz_used) {
 			if (iface_params.hwModeParams.enable80211AC) {
 				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string =
-					"ht_capab=[HT40+]\n"
 					"vht_oper_chwidth=1\n";
+				if (allowed_ht40_first_channel_list.end()
+				    == allowed_ht40_first_channel_list.find(channelParams.channel)) {
+				    ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
+					"ht_capab=[HT40-]\n";
+				} else {
+					if (channelParams.channel >
+					    MAX_HE80_ALLOWED_PRI_CHANNEL) {
+						channel_config_as_string.replace(8, 3,
+							std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
+					}
+					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
+						"ht_capab=[HT40+]\n";
+				}
 			}
 			if (band & band6Ghz) {
 #ifdef CONFIG_IEEE80211BE
@@ -751,6 +796,8 @@ std::string CreateHostapdConfig(
 				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1";
 			}
 #endif
+		} else if (is_2Ghz_band_only) {
+			ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = "ht_capab=[HT40+][HT40-]";
 		}
 		break;
 	}
