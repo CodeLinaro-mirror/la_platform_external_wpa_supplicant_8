@@ -279,6 +279,12 @@ struct wpa_auth_config {
 	bool force_kdk_derivation;
 
 	bool radius_psk;
+
+#ifdef CONFIG_IEEE80211BE
+	const u8 *mld_addr;
+	int link_id;
+	struct wpa_authenticator *first_link_auth;
+#endif /* CONFIG_IEEE80211BE */
 };
 
 typedef enum {
@@ -645,5 +651,14 @@ void wpa_auth_ml_get_rsn_info(struct wpa_authenticator *a,
 void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 			      struct wpa_auth_ml_link_key_info *info,
 			      bool mgmt_frame_prot, bool beacon_prot);
+
+void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
+			       int release_link_id);
+
+#define for_each_sm_auth(sm, link_id) \
+	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++)	\
+		if (sm->mld_links[link_id].valid &&			\
+		    sm->mld_links[link_id].wpa_auth &&			\
+		    sm->wpa_auth != sm->mld_links[link_id].wpa_auth)
 
 #endif /* WPA_AUTH_H */
