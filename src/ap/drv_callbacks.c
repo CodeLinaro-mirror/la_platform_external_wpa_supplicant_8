@@ -1857,6 +1857,11 @@ static void hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
 
 			h_hapd = hostapd_find_by_sta(h, src);
 			if (h_hapd) {
+				struct sta_info *sta = ap_get_sta(h_hapd, src);
+				if (sta->mld_info.mld_sta &&
+				    sta->mld_assoc_link_id != h_hapd->mld_link_id) {
+					continue;
+				}
 				hapd = h_hapd;
 				break;
 			}
