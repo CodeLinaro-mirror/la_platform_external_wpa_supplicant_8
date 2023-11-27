@@ -3168,6 +3168,7 @@ enum nl80211_attrs {
 	NL80211_ATTR_RADAR_BACKGROUND,
 
 	NL80211_ATTR_AP_SETTINGS_FLAGS,
+	NL80211_ATTR_MAX_NUM_AKMS_CONNECT,
 
 	/* add attributes here, update the policy in nl80211.c */
 
