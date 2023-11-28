@@ -1820,7 +1820,7 @@ enum qca_wlan_vendor_attr_p2p_listen_offload {
  * with this command within last QCA_WLAN_VENDOR_ATTR_ACS_LAST_SCAN_AGEOUT_TIME
  * (in ms), scan only the remaining channels.
  *
- * @QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID: Mandatory on AP MLD (u8).
+ * @QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID: Mandatory if MLD AP (u8).
  * Used with command to configure ACS operation for a specific link affiliated
  * to an AP MLD.
  *
@@ -2411,10 +2411,10 @@ enum qca_wlan_vendor_scan_priority {
  *	QCA_WLAN_VENDOR_SCAN_PRIORITY_HIGH as the priority of vendor scan.
  * @QCA_WLAN_VENDOR_ATTR_SCAN_PAD: Attribute used for padding for 64-bit
  *	alignment.
- * @QCA_WLAN_VENDOR_ATTR_SCAN_LINK_ID: This u8 attribute is used for OBSS scan
- *	when AP is operating as MLD to specify which link is requesting the
- *	scan or which link the scan result is for. No need of this attribute
- *	in other cases.
+ * @QCA_WLAN_VENDOR_ATTR_SCAN_LINK_ID: This u8 attribute is used for obss scan
+ *      when AP is operating as MLD to specify which link is requesting the
+ *      scan or which link the scan result is for. No need of this attribute
+ *      in other cases.
  */
 enum qca_wlan_vendor_attr_scan {
 	QCA_WLAN_VENDOR_ATTR_SCAN_INVALID_PARAM = 0,
