@@ -1287,6 +1287,13 @@ static int hostapd_cli_cmd_driver_event(struct wpa_ctrl *ctrl, int argc, char *a
 }
 #endif /* CONFIG_TESTING_OPTIONS */
 
+static int hostapd_cli_cmd_stop_ap(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "STOP_AP");
+}
+
+
 static int hostapd_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	char buf[4096];
@@ -1763,6 +1770,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "= disable hostapd on current MLD" },
 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
 	  "= update Beacon frame contents\n"},
+	{ "stop_ap", hostapd_cli_cmd_stop_ap, NULL,
+	  "= stop AP\n"},
 	{ "erp_flush", hostapd_cli_cmd_erp_flush, NULL,
 	  "= drop all ERP keys"},
 	{ "log_level", hostapd_cli_cmd_log_level, NULL,
