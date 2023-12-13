@@ -454,7 +454,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
 					      wpa_s->sme.assoc_req_ie,
-					      &wpa_s->sme.assoc_req_ie_len)) {
+					      &wpa_s->sme.assoc_req_ie_len,
+					      false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
 				"key management and encryption suites");
 			wpas_connect_work_done(wpa_s);
@@ -467,7 +468,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
 					      wpa_s->sme.assoc_req_ie,
-					      &wpa_s->sme.assoc_req_ie_len)) {
+					      &wpa_s->sme.assoc_req_ie_len,
+					      false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
 				"key management and encryption suites");
 			wpas_connect_work_done(wpa_s);
@@ -487,7 +489,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
 		if (wpa_supplicant_set_suites(wpa_s, NULL, ssid,
 					      wpa_s->sme.assoc_req_ie,
-					      &wpa_s->sme.assoc_req_ie_len)) {
+					      &wpa_s->sme.assoc_req_ie_len,
+					      false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
 				"key management and encryption suites (no "
 				"scan results)");
@@ -747,9 +750,9 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	if (!skip_auth && params.auth_alg == WPA_AUTH_ALG_SAE &&
 	    pmksa_cache_set_current(wpa_s->wpa, NULL, bss->bssid, ssid, 0,
 				    NULL,
-				    wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE ?
-				    WPA_KEY_MGMT_FT_SAE :
-				    WPA_KEY_MGMT_SAE) == 0) {
+				    wpa_key_mgmt_sae(wpa_s->key_mgmt) ?
+				    wpa_s->key_mgmt :
+				    (int) WPA_KEY_MGMT_SAE) == 0) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"PMKSA cache entry found - try to use PMKSA caching instead of new SAE authentication");
 		wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
@@ -1093,6 +1096,7 @@ static void sme_send_external_auth_status(struct wpa_supplicant *wpa_s,
 {
 	struct external_auth params;
 
+	wpa_s->sme.ext_auth_wpa_ssid = NULL;
 	os_memset(&params, 0, sizeof(params));
 	params.status = status;
 	params.ssid = wpa_s->sme.ext_auth_ssid;
@@ -1111,13 +1115,19 @@ static int sme_handle_external_auth_start(struct wpa_supplicant *wpa_s,
 	size_t ssid_str_len = data->external_auth.ssid_len;
 	const u8 *ssid_str = data->external_auth.ssid;
 
+	wpa_s->sme.ext_auth_wpa_ssid = NULL;
 	/* Get the SSID conf from the ssid string obtained */
 	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
 		if (!wpas_network_disabled(wpa_s, ssid) &&
 		    ssid_str_len == ssid->ssid_len &&
 		    os_memcmp(ssid_str, ssid->ssid, ssid_str_len) == 0 &&
-		    (ssid->key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE)))
+		    (ssid->key_mgmt & (WPA_KEY_MGMT_SAE |
+				       WPA_KEY_MGMT_FT_SAE))) {
+			/* Make sure PT is derived */
+			wpa_s_setup_sae_pt(wpa_s->conf, ssid);
+			wpa_s->sme.ext_auth_wpa_ssid = ssid;
 			break;
+		}
 	}
 	if (!ssid ||
 	    sme_external_auth_send_sae_commit(wpa_s, data->external_auth.bssid,
@@ -1258,7 +1268,8 @@ static int sme_sae_auth(struct wpa_supplicant *wpa_s, u16 auth_transaction,
 	if (auth_transaction == 1 &&
 	    status_code == WLAN_STATUS_ANTI_CLOGGING_TOKEN_REQ &&
 	    wpa_s->sme.sae.state == SAE_COMMITTED &&
-	    (external || wpa_s->current_bss) && wpa_s->current_ssid) {
+	    ((external && wpa_s->sme.ext_auth_wpa_ssid) ||
+	     (!external && wpa_s->current_bss && wpa_s->current_ssid))) {
 		int default_groups[] = { 19, 20, 21, 0 };
 		u16 group;
 		const u8 *token_pos;
@@ -1317,14 +1328,15 @@ static int sme_sae_auth(struct wpa_supplicant *wpa_s, u16 auth_transaction,
 		else
 			sme_external_auth_send_sae_commit(
 				wpa_s, wpa_s->sme.ext_auth_bssid,
-				wpa_s->current_ssid);
+				wpa_s->sme.ext_auth_wpa_ssid);
 		return 0;
 	}
 
 	if (auth_transaction == 1 &&
 	    status_code == WLAN_STATUS_FINITE_CYCLIC_GROUP_NOT_SUPPORTED &&
 	    wpa_s->sme.sae.state == SAE_COMMITTED &&
-	    (external || wpa_s->current_bss) && wpa_s->current_ssid) {
+	    ((external && wpa_s->sme.ext_auth_wpa_ssid) ||
+	     (!external && wpa_s->current_bss && wpa_s->current_ssid))) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "SME: SAE group not supported");
 		int_array_add_unique(&wpa_s->sme.sae_rejected_groups,
 				     wpa_s->sme.sae.group);
@@ -1338,7 +1350,7 @@ static int sme_sae_auth(struct wpa_supplicant *wpa_s, u16 auth_transaction,
 		else
 			sme_external_auth_send_sae_commit(
 				wpa_s, wpa_s->sme.ext_auth_bssid,
-				wpa_s->current_ssid);
+				wpa_s->sme.ext_auth_wpa_ssid);
 		return 0;
 	}
 
@@ -1363,8 +1375,9 @@ static int sme_sae_auth(struct wpa_supplicant *wpa_s, u16 auth_transaction,
 		groups = wpa_s->conf->sae_groups;
 
 		wpa_dbg(wpa_s, MSG_DEBUG, "SME SAE commit");
-		if ((!external && wpa_s->current_bss == NULL) ||
-		    wpa_s->current_ssid == NULL)
+		if ((external && !wpa_s->sme.ext_auth_wpa_ssid) ||
+		    (!external &&
+		     (!wpa_s->current_bss || !wpa_s->current_ssid)))
 			return -1;
 		if (wpa_s->sme.sae.state != SAE_COMMITTED) {
 			wpa_printf(MSG_DEBUG,
