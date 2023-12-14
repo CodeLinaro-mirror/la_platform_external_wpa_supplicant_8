@@ -187,6 +187,8 @@ public:
 #ifdef CONFIG_USE_VENDOR_AIDL
 	void notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char *msg);
 #endif
+	void notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
+				       enum mlo_info_change_reason reason);
 
 	// Methods called from aidl objects.
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
