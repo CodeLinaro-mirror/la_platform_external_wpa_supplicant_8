@@ -946,9 +946,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 
 	hapd->iconf->channel = channel;
 	hapd->iconf->ieee80211n = ht;
-	if (!ht) {
+	if (!ht)
 		hapd->iconf->ieee80211ac = 0;
-	}
 	if (hapd->iconf->ch_switch_vht_config) {
 		/* CHAN_SWITCH VHT config */
 		if (hapd->iconf->ch_switch_vht_config &
@@ -963,7 +962,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		if (hapd->iconf->ch_switch_he_config &
 		    CH_SWITCH_HE_ENABLED) {
 			hapd->iconf->ieee80211ax = 1;
-			if (!is_6ghz_freq(hapd->iface->freq))
+			if (hapd->iface->freq > 4000 &&
+			    hapd->iface->freq < 5895)
 				hapd->iconf->ieee80211ac = 1;
 		}
 		else if (hapd->iconf->ch_switch_he_config &
@@ -977,7 +977,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		    CH_SWITCH_EHT_ENABLED) {
 			hapd->iconf->ieee80211be = 1;
 			hapd->iconf->ieee80211ax = 1;
-			if (!is_6ghz_freq(hapd->iface->freq))
+			if (!is_6ghz_freq(hapd->iface->freq) &&
+			    hapd->iface->freq > 4000)
 				hapd->iconf->ieee80211ac = 1;
 		} else if (hapd->iconf->ch_switch_eht_config &
 			   CH_SWITCH_EHT_DISABLED)
