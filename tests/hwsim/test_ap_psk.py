@@ -250,7 +250,7 @@ def test_ap_wpa2_ptk_rekey_blocked_ap(dev, apdev):
         raise Exception("PTK rekey timed out")
     if "WPA: Key negotiation completed" in ev:
         raise Exception("No disconnect, PTK rekey succeeded")
-    ev = dev[0].wait_event(["WPA: Key negotiation completed"], timeout=1)
+    ev = dev[0].wait_event(["WPA: Key negotiation completed"], timeout=1.1)
     if ev is None:
         raise Exception("Reconnect too slow")
 
@@ -268,7 +268,7 @@ def test_ap_wpa2_ptk_rekey_blocked_sta(dev, apdev):
         raise Exception("PTK rekey timed out")
     if "WPA: Key negotiation completed" in ev:
         raise Exception("No disconnect, PTK rekey succeeded")
-    ev = dev[0].wait_event(["WPA: Key negotiation completed"], timeout=1)
+    ev = dev[0].wait_event(["WPA: Key negotiation completed"], timeout=1.1)
     if ev is None:
         raise Exception("Reconnect too slow")
 
@@ -646,8 +646,8 @@ def test_ap_wpa2_bridge_fdb(dev, apdev):
                        bssid=apdev[0]['bssid'])
         dev[1].connect(ssid, psk=passphrase, scan_freq="2412",
                        bssid=apdev[0]['bssid'])
-        hapd.wait_sta()
-        hapd.wait_sta()
+        hapd.wait_sta(wait_4way_hs=True)
+        hapd.wait_sta(wait_4way_hs=True)
         addr0 = dev[0].p2p_interface_addr()
         hwsim_utils.test_connectivity_sta(dev[0], dev[1])
         err, macs1 = hapd.cmd_execute(['brctl', 'showmacs', 'ap-br0'])
@@ -2621,8 +2621,12 @@ def read_process_memory(pid, key=None):
             for name in ["[heap]", "[stack]"]:
                 if name in l:
                     logger.info("%s 0x%x-0x%x is at %d-%d" % (name, start, end, len(buf), len(buf) + (end - start)))
-            mem.seek(start)
-            data = mem.read(end - start)
+            try:
+                mem.seek(start)
+                data = mem.read(end - start)
+            except OSError as e:
+                logger.info("Could not read mem: start=%d end=%d: %s" % (start, end, str(e)))
+                continue
             buf += data
             if key and key in data:
                 logger.info("Key found in " + l)

@@ -119,12 +119,14 @@ struct wpa_driver_nl80211_data {
 	struct wpa_driver_capa capa;
 	u8 *extended_capa, *extended_capa_mask;
 	unsigned int extended_capa_len;
-	struct drv_nl80211_ext_capa {
+	struct drv_nl80211_iface_capa {
 		enum nl80211_iftype iftype;
 		u8 *ext_capa, *ext_capa_mask;
 		unsigned int ext_capa_len;
-	} iface_ext_capa[NL80211_IFTYPE_MAX];
-	unsigned int num_iface_ext_capa;
+		u16 eml_capa;
+		u16 mld_capa_and_ops;
+	} iface_capa[NL80211_IFTYPE_MAX];
+	unsigned int num_iface_capa;
 
 	int has_capability;
 	int has_driver_key_mgmt;
@@ -163,8 +165,6 @@ struct wpa_driver_nl80211_data {
 	unsigned int scan_for_auth:1;
 	unsigned int retry_auth:1;
 	unsigned int use_monitor:1;
-	unsigned int ignore_next_local_disconnect:1;
-	unsigned int ignore_next_local_deauth:1;
 	unsigned int hostapd:1;
 	unsigned int start_mode_sta:1;
 	unsigned int start_iface_up:1;
@@ -201,13 +201,18 @@ struct wpa_driver_nl80211_data {
 	unsigned int puncturing:1;
 	unsigned int qca_ap_allowed_freqs:1;
 
+	u32 ignore_next_local_disconnect;
+	u32 ignore_next_local_deauth;
+
 	u64 vendor_scan_cookie;
 	u64 remain_on_chan_cookie;
 	u64 send_frame_cookie;
+	int send_frame_link_id;
 #define MAX_SEND_FRAME_COOKIES 20
 	u64 send_frame_cookies[MAX_SEND_FRAME_COOKIES];
 	unsigned int num_send_frame_cookies;
 	u64 eapol_tx_cookie;
+	int eapol_tx_link_id;
 
 	unsigned int last_mgmt_freq;
 
@@ -264,6 +269,10 @@ struct wpa_driver_nl80211_data {
 
 struct nl_msg;
 
+struct nl80211_err_info {
+	int link_id;
+};
+
 void * nl80211_cmd(struct wpa_driver_nl80211_data *drv,
 		   struct nl_msg *msg, int flags, uint8_t cmd);
 struct nl_msg * nl80211_cmd_msg(struct i802_bss *bss, int flags, uint8_t cmd);
@@ -274,7 +283,8 @@ int send_and_recv_msgs(struct wpa_driver_nl80211_data *drv, struct nl_msg *msg,
 		       int (*valid_handler)(struct nl_msg *, void *),
 		       void *valid_data,
 		       int (*ack_handler_custom)(struct nl_msg *, void *),
-		       void *ack_data);
+		       void *ack_data,
+		       struct nl80211_err_info *err_info);
 struct nl_sock * get_connect_handle(struct i802_bss *bss);
 int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 			 const char *ifname, enum nl80211_iftype iftype,
@@ -321,6 +331,7 @@ int process_bss_event(struct nl_msg *msg, void *arg);
 const char * nl80211_iftype_str(enum nl80211_iftype mode);
 
 void nl80211_restore_ap_mode(struct i802_bss *bss);
+struct i802_link * nl80211_get_link(struct i802_bss *bss, s8 link_id);
 
 #ifdef ANDROID
 int android_nl_socket_set_nonblocking(struct nl_sock *handle);

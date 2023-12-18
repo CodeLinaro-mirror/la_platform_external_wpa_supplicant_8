@@ -924,6 +924,7 @@ def test_dpp_config_legacy_gen_psk(dev, apdev):
 
 def test_dpp_config_legacy_gen_two_conf(dev, apdev):
     """Generate DPP Config Object for legacy network (two config objects)"""
+    check_dpp_capab(dev[0])
     ssid1 = "test1"
     pass1 = "passphrase for psk"
     ssid2 = "test-2"
@@ -977,6 +978,7 @@ def test_dpp_config_legacy_gen_two_conf(dev, apdev):
 
 def test_dpp_config_legacy_gen_two_conf_psk(dev, apdev):
     """Generate DPP Config Object for legacy network (two config objects, psk)"""
+    check_dpp_capab(dev[0])
     ssid1 = "test1"
     psk1 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     ssid2 = "test-2"
@@ -4858,8 +4860,9 @@ def test_dpp_keygen_configurator_error(dev, apdev):
     if "FAIL" not in dev[0].request("DPP_CONFIGURATOR_ADD curve=unknown"):
         raise Exception("Unexpected success of invalid DPP_CONFIGURATOR_ADD")
 
-def rx_process_frame(dev):
-    msg = dev.mgmt_rx()
+def rx_process_frame(dev, msg=None):
+    if msg is None:
+        msg = dev.mgmt_rx()
     if msg is None:
         raise Exception("No management frame RX reported")
     if "OK" not in dev.request("MGMT_RX_PROCESS freq={} datarate={} ssi_signal={} frame={}".format(
@@ -4873,7 +4876,12 @@ def wait_auth_success(responder, initiator, configurator=None, enrollee=None,
                       require_configurator_failure=False,
                       timeout=5, stop_responder=False, stop_initiator=False):
     res = {}
-    ev = responder.wait_event(["DPP-AUTH-SUCCESS", "DPP-FAIL"], timeout=timeout)
+    ev = responder.wait_event(["DPP-AUTH-SUCCESS", "DPP-FAIL",
+                               "MGMT-RX"], timeout=timeout)
+    if ev and "MGMT-RX" in ev:
+        res['responder-mgmt-rx'] = ev
+        ev = responder.wait_event(["DPP-AUTH-SUCCESS", "DPP-FAIL"],
+                                  timeout=timeout)
     if ev is None or "DPP-AUTH-SUCCESS" not in ev:
         raise Exception("DPP authentication did not succeed (Responder)")
     for i in ev.split(' '):
@@ -4945,10 +4953,14 @@ def test_dpp_gas_timeout_handling(dev, apdev):
     # DPP Authentication Confirmation
     rx_process_frame(dev[0])
 
-    wait_auth_success(dev[0], dev[1])
+    res = wait_auth_success(dev[0], dev[1])
+    if 'responder-mgmt-rx' in res:
+        msg = dev[0].mgmt_rx_parse(res['responder-mgmt-rx'])
+    else:
+        msg = None
 
     # DPP Configuration Request (GAS Initial Request frame)
-    rx_process_frame(dev[0])
+    rx_process_frame(dev[0], msg)
 
     # DPP Configuration Request (GAS Comeback Request frame)
     rx_process_frame(dev[0])
@@ -4970,10 +4982,14 @@ def test_dpp_gas_comeback_after_failure(dev, apdev):
     # DPP Authentication Confirmation
     rx_process_frame(dev[0])
 
-    wait_auth_success(dev[0], dev[1])
+    res = wait_auth_success(dev[0], dev[1])
+    if 'responder-mgmt-rx' in res:
+        msg = dev[0].mgmt_rx_parse(res['responder-mgmt-rx'])
+    else:
+        msg = None
 
     # DPP Configuration Request (GAS Initial Request frame)
-    rx_process_frame(dev[0])
+    rx_process_frame(dev[0], msg)
 
     # DPP Configuration Request (GAS Comeback Request frame)
     msg = dev[0].mgmt_rx()
@@ -5002,14 +5018,17 @@ def test_dpp_gas(dev, apdev):
     # DPP Authentication Confirmation
     rx_process_frame(dev[0])
 
-    wait_auth_success(dev[0], dev[1])
+    res = wait_auth_success(dev[0], dev[1])
 
     # DPP Configuration Request (GAS Initial Request frame)
-    msg = dev[0].mgmt_rx()
+    if 'responder-mgmt-rx' in res:
+        msg = dev[0].mgmt_rx_parse(res['responder-mgmt-rx'])
+    else:
+        msg = dev[0].mgmt_rx()
 
     # Protected Dual of GAS Initial Request frame (dropped by GAS server)
     if msg == None:
-        raise Exception("MGMT_RX_PROCESS failed. <Please retry>")
+        raise Exception("GAS Initial Request frame not received")
     frame = binascii.hexlify(msg['frame'])
     frame = frame[0:48] + b"09" + frame[50:]
     frame = frame.decode()
@@ -5469,13 +5488,21 @@ def test_dpp_two_initiators(dev, apdev):
     id = dev[0].dpp_bootstrap_gen(chan="81/1", mac=True)
     uri = dev[0].request("DPP_BOOTSTRAP_GET_URI %d" % id)
     dev[0].dpp_listen(2412)
+    peer = dev[2].dpp_qr_code(uri)
     dev[1].dpp_auth_init(uri=uri)
     ev = dev[0].wait_event(["DPP-RX"], timeout=5)
     if ev is None:
         raise Exeption("No DPP Authentication Request seen")
-    dev[2].dpp_auth_init(uri=uri)
-    wait_dpp_fail(dev[0],
-                  "DPP-FAIL Already in DPP authentication exchange - ignore new one")
+    dev[2].dpp_auth_init(uri=uri, peer=peer)
+    ev = dev[0].wait_event(["DPP-FAIL"], timeout=5)
+    if ev is None:
+        raise Exception("Failure not reported")
+    skip = False
+    if "Configurator rejected configuration" in ev:
+        # Race condition prevented real test from being executed
+        skip = True
+    elif "DPP-FAIL Already in DPP authentication exchange - ignore new one" not in ev:
+        raise Exception("Unexpected result: " + ev)
 
     ev = dev[0].wait_event(["DPP-CONF-FAILED"], timeout=2)
     if ev is None:
@@ -5487,6 +5514,9 @@ def test_dpp_two_initiators(dev, apdev):
     dev[0].request("DPP_STOP_LISTEN")
     dev[1].request("DPP_STOP_LISTEN")
     dev[2].request("DPP_STOP_LISTEN")
+
+    if skip:
+        raise HwsimSkip("dpp_two_initiators not fully executed due to race condition")
 
 def test_dpp_conf_file_update(dev, apdev, params):
     """DPP provisioning updating wpa_supplicant configuration file"""
@@ -5831,10 +5861,12 @@ def run_dpp_controller_relay(dev, apdev, params, chirp=False, discover=False,
         raise Exception("DPP network id not reported")
     network = int(ev.split(' ')[1])
     dev[0].wait_connected()
+    relay.wait_sta()
     dev[0].dump_monitor()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
     dev[0].dump_monitor()
+    relay.wait_sta_disconnect()
 
     if "OK" not in dev[0].request("DPP_RECONFIG %s" % network):
         raise Exception("Failed to start reconfiguration")
@@ -5845,6 +5877,7 @@ def run_dpp_controller_relay(dev, apdev, params, chirp=False, discover=False,
     if network == network2:
         raise Exception("Network ID did not change")
     dev[0].wait_connected()
+    relay.wait_sta()
 
     time.sleep(0.5)
     wt.close()
@@ -6823,7 +6856,7 @@ def test_dpp_chirp_configurator_inits(dev, apdev):
             raise Exception("Presence Announcement not sent")
 
     dev[1].dpp_auth_init(uri=uri, conf="sta-dpp", configurator=conf_id)
-    wait_auth_success(dev[0], dev[1], dev[1], dev[0])
+    wait_auth_success(dev[0], dev[1], dev[1], dev[0], timeout=10)
 
 def test_dpp_chirp_ap(dev, apdev):
     """DPP chirp by an AP"""
@@ -7280,8 +7313,10 @@ def run_dpp_reconfig_hostapd_configurator(dev, apdev):
         raise Exception("DPP network id not reported")
     network = int(ev.split(' ')[1])
     dev[0].wait_connected()
+    hapd.wait_sta()
     dev[0].request("DISCONNECT")
     dev[0].wait_disconnected()
+    hapd.wait_sta_disconnect()
     dev[0].dump_monitor()
     time.sleep(10)
     if "FAIL" in dev[0].request("PMKSA_FLUSH"):
@@ -7308,6 +7343,7 @@ def run_dpp_reconfig_hostapd_configurator(dev, apdev):
     if network == network2:
         raise Exception("Network ID did not change")
     dev[0].wait_connected()
+    hapd.wait_sta()
 
 def test_dpp_qr_code_auth_rand_mac_addr(dev, apdev):
     """DPP QR Code and authentication exchange (rand_mac_addr=1)"""

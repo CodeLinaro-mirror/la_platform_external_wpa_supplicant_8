@@ -845,6 +845,16 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+		if (!iconf->he_op.he_bss_color_disabled &&
+		    iconf->he_op.he_bss_color) {
+			ret = os_snprintf(buf + len, buflen - len,
+					  "he_bss_color=%d\n",
+					  iconf->he_op.he_bss_color);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+		}
 	}
 #endif /* CONFIG_IEEE80211AX */
 
@@ -938,6 +948,21 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+#ifdef CONFIG_IEEE80211BE
+		if (bss->conf->mld_ap) {
+			ret = os_snprintf(buf + len, buflen - len,
+					  "mld_addr[%d]=" MACSTR "\n"
+					  "mld_id[%d]=%d\n"
+					  "mld_link_id[%d]=%d\n",
+					  (int) i, MAC2STR(bss->mld_addr),
+					  (int) i, bss->conf->mld_id,
+					  (int) i, bss->mld_link_id);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+		}
+#endif /* CONFIG_IEEE80211BE */
 	}
 
 	if (hapd->conf->chan_util_avg_period) {
@@ -1069,7 +1094,7 @@ int hostapd_ctrl_iface_pmksa_add(struct hostapd_data *hapd, char *cmd)
 		return -1;
 
 	return wpa_auth_pmksa_add2(hapd->wpa_auth, spa, pmk, pmk_len,
-				   pmkid, expiration, akmp);
+				   pmkid, expiration, akmp, NULL);
 }
 
 
@@ -1290,6 +1315,8 @@ int hostapd_ctrl_iface_bss_tm_req(struct hostapd_data *hapd,
 		req_mode |= WNM_BSS_TM_REQ_ABRIDGED;
 	if (os_strstr(cmd, " disassoc_imminent=1"))
 		req_mode |= WNM_BSS_TM_REQ_DISASSOC_IMMINENT;
+	if (os_strstr(cmd, " link_removal_imminent=1"))
+		req_mode |= WNM_BSS_TM_REQ_LINK_REMOVAL_IMMINENT;
 
 #ifdef CONFIG_MBO
 	pos = os_strstr(cmd, "mbo=");

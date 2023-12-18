@@ -132,7 +132,7 @@ class DataCollector(object):
     def __enter__(self):
         if self._tracing:
             output = os.path.abspath(os.path.join(self._logdir, '%s.dat' % (self._testname, )))
-            self._trace_cmd = subprocess.Popen(['trace-cmd', 'record', '-o', output, '-e', 'mac80211', '-e', 'cfg80211', '-e', 'printk', 'sh', '-c', 'echo STARTED ; read l'],
+            self._trace_cmd = subprocess.Popen(['trace-cmd', 'record', '-o', output, '-T', '-e', 'skb', '-e', 'mac80211', '-e', 'cfg80211', '-e', 'printk', 'sh', '-c', 'echo STARTED ; read l'],
                                                stdin=subprocess.PIPE,
                                                stdout=subprocess.PIPE,
                                                stderr=open('/dev/null', 'w'),
@@ -486,6 +486,12 @@ def main():
             log_handler.setLevel(logging.DEBUG)
             log_handler.setFormatter(log_formatter)
             logger.addHandler(log_handler)
+
+        try:
+            with open('/sys/kernel/debug/clear_warn_once', 'w') as f:
+                f.write('1\n')
+        except FileNotFoundError:
+            pass
 
         reset_ok = True
         with DataCollector(args.logdir, name, args):

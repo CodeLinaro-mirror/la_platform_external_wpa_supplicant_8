@@ -560,6 +560,9 @@ def test_ap_ft_pmf_required_over_ds(dev, apdev):
 def test_ap_ft_pmf_beacon_prot(dev, apdev):
     """WPA2-PSK-FT AP with PMF and beacon protection"""
     run_ap_ft_pmf(dev, apdev, "1", beacon_prot=True)
+    ev = dev[0].wait_event(["CTRL-EVENT-BEACON-LOSS"], timeout=5)
+    if ev is not None:
+        raise Exception("Beacon loss detected")
 
 def run_ap_ft_pmf(dev, apdev, ieee80211w, over_ds=False, beacon_prot=False):
     ssid = "test-ft"
@@ -3206,6 +3209,12 @@ def test_ap_ft_reassoc_proto(dev, apdev):
     for t in tests:
         hapd2ap.request("MGMT_RX_PROCESS freq=2412 datarate=0 ssi_signal=-30 frame=" + hdr + ies1 + t)
 
+    # Do not leave dev[0] in state where it is waiting for
+    # NL80211_CMD_ASSOCIATE to complete since that might deliver
+    # an ASSOC_TIMED_OUT event to the next test case.
+    dev[0].request("DISCONNECT")
+    time.sleep(0.2)
+
 def test_ap_ft_reassoc_local_fail(dev, apdev):
     """WPA2-PSK-FT AP Reassociation Request frame and local failure"""
     ssid = "test-ft"
@@ -3473,6 +3482,7 @@ def test_ap_ft_roam_rrm(dev, apdev):
     dev[0].flush_scan_cache()
     dev[0].connect(ssid, psk=passphrase, key_mgmt="FT-PSK", proto="WPA2",
                    scan_freq="2412")
+    hapd0.wait_sta()
     check_beacon_req(hapd0, addr, 1)
 
     params = ft_params2(ssid=ssid, passphrase=passphrase)
@@ -3482,10 +3492,12 @@ def test_ap_ft_roam_rrm(dev, apdev):
 
     dev[0].scan_for_bss(bssid1, freq=2412)
     dev[0].roam(bssid1)
+    hapd1.wait_sta()
     check_beacon_req(hapd1, addr, 2)
 
     dev[0].scan_for_bss(bssid0, freq=2412)
     dev[0].roam(bssid0)
+    hapd0.wait_sta()
     check_beacon_req(hapd0, addr, 3)
 
 def test_ap_ft_pmksa_caching(dev, apdev):

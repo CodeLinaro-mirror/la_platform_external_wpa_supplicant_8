@@ -956,6 +956,14 @@ static int hostapd_ctrl_iface_get_key_mgmt(struct hostapd_data *hapd,
 		pos += ret;
 	}
 #endif /* CONFIG_DPP */
+#ifdef CONFIG_SHA384
+	if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA384) {
+		ret = os_snprintf(pos, end - pos, "WPA-EAP-SHA384 ");
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+#endif /* CONFIG_SHA384 */
 
 	if (pos > buf && *(pos - 1) == ' ') {
 		*(pos - 1) = '\0';
@@ -1836,6 +1844,7 @@ static int hostapd_ctrl_iface_data_test_config(struct hostapd_data *hapd,
 	int enabled = atoi(cmd);
 	char *pos;
 	const char *ifname;
+	const u8 *addr = hapd->own_addr;
 
 	if (!enabled) {
 		if (hapd->l2_test) {
@@ -1856,7 +1865,11 @@ static int hostapd_ctrl_iface_data_test_config(struct hostapd_data *hapd,
 	else
 		ifname = hapd->conf->iface;
 
-	hapd->l2_test = l2_packet_init(ifname, hapd->own_addr,
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap)
+		addr = hapd->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+	hapd->l2_test = l2_packet_init(ifname, addr,
 					ETHERTYPE_IP, hostapd_data_test_rx,
 					hapd, 1);
 	if (hapd->l2_test == NULL)
@@ -1990,74 +2003,6 @@ done:
 	os_free(buf);
 
 	return res < 0 ? -1 : 0;
-}
-
-
-static int hostapd_ctrl_test_alloc_fail(struct hostapd_data *hapd, char *cmd)
-{
-#ifdef WPA_TRACE_BFD
-	char *pos;
-
-	wpa_trace_fail_after = atoi(cmd);
-	pos = os_strchr(cmd, ':');
-	if (pos) {
-		pos++;
-		os_strlcpy(wpa_trace_fail_func, pos,
-			   sizeof(wpa_trace_fail_func));
-	} else {
-		wpa_trace_fail_after = 0;
-	}
-
-	return 0;
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
-static int hostapd_ctrl_get_alloc_fail(struct hostapd_data *hapd,
-				       char *buf, size_t buflen)
-{
-#ifdef WPA_TRACE_BFD
-	return os_snprintf(buf, buflen, "%u:%s", wpa_trace_fail_after,
-			   wpa_trace_fail_func);
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
-static int hostapd_ctrl_test_fail(struct hostapd_data *hapd, char *cmd)
-{
-#ifdef WPA_TRACE_BFD
-	char *pos;
-
-	wpa_trace_test_fail_after = atoi(cmd);
-	pos = os_strchr(cmd, ':');
-	if (pos) {
-		pos++;
-		os_strlcpy(wpa_trace_test_fail_func, pos,
-			   sizeof(wpa_trace_test_fail_func));
-	} else {
-		wpa_trace_test_fail_after = 0;
-	}
-
-	return 0;
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
-static int hostapd_ctrl_get_fail(struct hostapd_data *hapd,
-				 char *buf, size_t buflen)
-{
-#ifdef WPA_TRACE_BFD
-	return os_snprintf(buf, buflen, "%u:%s", wpa_trace_test_fail_after,
-			   wpa_trace_test_fail_func);
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
 }
 
 
@@ -2623,6 +2568,12 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 	if (ret)
 		return ret;
 
+	settings.link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (iface->num_bss && iface->bss[0]->conf->mld_ap)
+		settings.link_id = iface->bss[0]->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
+
 	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
 					     settings.punct_bitmap);
 	if (ret) {
@@ -2707,6 +2658,155 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 #else /* NEED_AP_MLME */
 	return -1;
 #endif /* NEED_AP_MLME */
+}
+
+
+static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
+{
+	u8 *mcs_set = NULL;
+	u16 mcs_map;
+	u8 ht_rx_nss = 0;
+	u8 vht_rx_nss = 1;
+	u8 mcs;
+	bool ht_supported = false;
+	bool vht_supported = false;
+	int i;
+
+	if (sta->ht_capabilities && (sta->flags & WLAN_STA_HT)) {
+		mcs_set = sta->ht_capabilities->supported_mcs_set;
+		ht_supported = true;
+	}
+
+	if (sta->vht_capabilities && (sta->flags & WLAN_STA_VHT)) {
+		mcs_map = le_to_host16(
+			sta->vht_capabilities->vht_supported_mcs_set.rx_map);
+		vht_supported = true;
+	}
+
+	if (ht_supported && mcs_set) {
+		if (mcs_set[0])
+			ht_rx_nss++;
+		if (mcs_set[1])
+			ht_rx_nss++;
+		if (mcs_set[2])
+			ht_rx_nss++;
+		if (mcs_set[3])
+			ht_rx_nss++;
+	}
+	if (vht_supported) {
+		for (i = 7; i >= 0; i--) {
+			mcs = (mcs_map >> (2 * i)) & 0x03;
+			if (mcs != 0x03) {
+				vht_rx_nss = i + 1;
+				break;
+			}
+		}
+	}
+
+	return ht_rx_nss > vht_rx_nss ? ht_rx_nss : vht_rx_nss;
+}
+
+
+static char hostapd_ctrl_iface_notify_cw_htaction(struct hostapd_data *hapd,
+						  const u8 *addr, u8 width)
+{
+	u8 buf[3];
+	char ret;
+
+	width = width >= 1 ? 1 : 0;
+
+	buf[0] = WLAN_ACTION_HT;
+	buf[1] = WLAN_HT_ACTION_NOTIFY_CHANWIDTH;
+	buf[2] = width;
+
+	ret = hostapd_drv_send_action(hapd, hapd->iface->freq, 0, addr,
+				      buf, sizeof(buf));
+	if (ret)
+		wpa_printf(MSG_DEBUG,
+			   "Failed to send Notify Channel Width frame to "
+			   MACSTR, MAC2STR(addr));
+
+	return ret;
+}
+
+
+static char hostapd_ctrl_iface_notify_cw_vhtaction(struct hostapd_data *hapd,
+						   const u8 *addr, u8 width)
+{
+	u8 buf[3];
+	char ret;
+
+	buf[0] = WLAN_ACTION_VHT;
+	buf[1] = WLAN_VHT_ACTION_OPMODE_NOTIF;
+	buf[2] = width;
+
+	ret = hostapd_drv_send_action(hapd, hapd->iface->freq, 0, addr,
+				      buf, sizeof(buf));
+	if (ret)
+		wpa_printf(MSG_DEBUG,
+			   "Failed to send Opeating Mode Notification frame to "
+			   MACSTR, MAC2STR(addr));
+
+	return ret;
+}
+
+
+static char hostapd_ctrl_iface_notify_cw_change(struct hostapd_data *hapd,
+						const char *cmd)
+{
+	u8 cw, operating_mode = 0, nss;
+	struct sta_info *sta;
+	enum hostapd_hw_mode hw_mode;
+
+	if (is_6ghz_freq(hapd->iface->freq)) {
+		wpa_printf(MSG_ERROR, "20/40 BSS coex not supported in 6 GHz");
+		return -1;
+	}
+
+	cw = atoi(cmd);
+	hw_mode = hapd->iface->current_mode->mode;
+	if ((hw_mode == HOSTAPD_MODE_IEEE80211G ||
+	     hw_mode == HOSTAPD_MODE_IEEE80211B) &&
+	    !(cw == 0 || cw == 1)) {
+		wpa_printf(MSG_ERROR,
+			   "Channel width should be either 20 MHz or 40 MHz for 2.4 GHz band");
+		return -1;
+	}
+
+	switch (cw) {
+	case 0:
+		operating_mode = 0;
+		break;
+	case 1:
+		operating_mode = VHT_OPMODE_CHANNEL_40MHZ;
+		break;
+	case 2:
+		operating_mode = VHT_OPMODE_CHANNEL_80MHZ;
+		break;
+	case 3:
+		operating_mode = VHT_OPMODE_CHANNEL_160MHZ;
+		break;
+	default:
+		wpa_printf(MSG_ERROR, "Channel width should be between 0 to 3");
+		return -1;
+	}
+
+	for (sta = hapd->sta_list; sta; sta = sta->next) {
+		if ((sta->flags & WLAN_STA_VHT) && sta->vht_capabilities) {
+			nss = hostapd_maxnss(hapd, sta) - 1;
+			hostapd_ctrl_iface_notify_cw_vhtaction(hapd, sta->addr,
+							       operating_mode |
+							       (u8) (nss << 4));
+			continue;
+		}
+
+		if ((sta->flags & (WLAN_STA_HT | WLAN_STA_VHT)) ==
+		    WLAN_STA_HT && sta->ht_capabilities)
+			hostapd_ctrl_iface_notify_cw_htaction(hapd, sta->addr,
+							      cw);
+	}
+
+	return 0;
 }
 
 
@@ -3283,6 +3383,32 @@ static int hostapd_ctrl_iface_driver_cmd(struct hostapd_data *hapd, char *cmd,
 #endif /* ANDROID */
 
 
+#ifdef CONFIG_IEEE80211BE
+#ifdef CONFIG_TESTING_OPTIONS
+static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
+					  char *buf, size_t buflen)
+{
+	int ret;
+	u32 count = atoi(cmd);
+
+	if (!count)
+		count = 1;
+
+	ret = hostapd_link_remove(hapd, count);
+	if (ret == 0) {
+		ret = os_snprintf(buf, buflen, "%s\n", "OK");
+		if (os_snprintf_error(buflen, ret))
+			ret = -1;
+		else
+			ret = 0;
+	}
+
+	return ret;
+}
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
+
+
 static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 					      char *buf, char *reply,
 					      int reply_size,
@@ -3476,6 +3602,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strcmp(buf, "RELOAD_BSS") == 0) {
 		if (hostapd_ctrl_iface_reload_bss(hapd))
 			reply_len = -1;
+	} else if (os_strcmp(buf, "RELOAD_CONFIG") == 0) {
+		if (hostapd_reload_config(hapd->iface))
+			reply_len = -1;
 	} else if (os_strncmp(buf, "RELOAD", 6) == 0) {
 		if (hostapd_ctrl_iface_reload(hapd->iface))
 			reply_len = -1;
@@ -3515,16 +3644,15 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 		if (hostapd_ctrl_iface_data_test_frame(hapd, buf + 16) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "TEST_ALLOC_FAIL ", 16) == 0) {
-		if (hostapd_ctrl_test_alloc_fail(hapd, buf + 16) < 0)
+		if (testing_set_fail_pattern(true, buf + 16) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "GET_ALLOC_FAIL") == 0) {
-		reply_len = hostapd_ctrl_get_alloc_fail(hapd, reply,
-							reply_size);
+		reply_len = testing_get_fail_pattern(true, reply, reply_size);
 	} else if (os_strncmp(buf, "TEST_FAIL ", 10) == 0) {
-		if (hostapd_ctrl_test_fail(hapd, buf + 10) < 0)
+		if (testing_set_fail_pattern(false, buf + 10) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "GET_FAIL") == 0) {
-		reply_len = hostapd_ctrl_get_fail(hapd, reply, reply_size);
+		reply_len = testing_get_fail_pattern(false, reply, reply_size);
 	} else if (os_strncmp(buf, "RESET_PN ", 9) == 0) {
 		if (hostapd_ctrl_reset_pn(hapd, buf + 9) < 0)
 			reply_len = -1;
@@ -3555,6 +3683,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 #endif /* CONFIG_TESTING_OPTIONS */
 	} else if (os_strncmp(buf, "CHAN_SWITCH ", 12) == 0) {
 		if (hostapd_ctrl_iface_chan_switch(hapd->iface, buf + 12))
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NOTIFY_CW_CHANGE ", 17) == 0) {
+		if (hostapd_ctrl_iface_notify_cw_change(hapd, buf + 17))
 			reply_len = -1;
 	} else if (os_strncmp(buf, "VENDOR ", 7) == 0) {
 		reply_len = hostapd_ctrl_iface_vendor(hapd, buf + 7, reply,
@@ -3831,6 +3962,14 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 		reply_len = hostapd_ctrl_iface_driver_cmd(hapd, buf + 7, reply,
 							  reply_size);
 #endif /* ANDROID */
+#ifdef CONFIG_IEEE80211BE
+#ifdef CONFIG_TESTING_OPTIONS
+	} else if (os_strncmp(buf, "LINK_REMOVE ", 12) == 0) {
+		if (hostapd_ctrl_iface_link_remove(hapd, buf + 12,
+						   reply, reply_size))
+			reply_len = -1;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
 		reply_len = 16;

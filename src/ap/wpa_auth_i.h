@@ -172,6 +172,24 @@ struct wpa_state_machine {
 	void *eapol_status_cb_ctx1;
 	void *eapol_status_cb_ctx2;
 #endif /* CONFIG_TESTING_OPTIONS */
+
+#ifdef CONFIG_IEEE80211BE
+	u8 own_mld_addr[ETH_ALEN];
+	u8 peer_mld_addr[ETH_ALEN];
+	s8 mld_assoc_link_id;
+	u8 n_mld_affiliated_links;
+
+	struct mld_link {
+		bool valid;
+		u8 peer_addr[ETH_ALEN];
+		u8 own_addr[ETH_ALEN];
+
+		const u8 *rsne;
+		size_t rsne_len;
+		const u8 *rsnxe;
+		size_t rsnxe_len;
+	} mld_links[MAX_NUM_MLD_LINKS];
+#endif /* CONFIG_IEEE80211BE */
 };
 
 
@@ -204,6 +222,8 @@ struct wpa_group {
 	u8 BIGTK[2][WPA_IGTK_MAX_LEN];
 	int GN_igtk, GM_igtk;
 	int GN_bigtk, GM_bigtk;
+	bool bigtk_set;
+	bool bigtk_configured;
 	/* Number of references except those in struct wpa_group->next */
 	unsigned int references;
 	unsigned int num_setup_iface;
@@ -238,6 +258,8 @@ struct wpa_authenticator {
 
 	struct rsn_pmksa_cache *pmksa;
 	struct wpa_ft_pmk_cache *ft_pmk_cache;
+
+	bool non_tx_beacon_prot;
 
 #ifdef CONFIG_P2P
 	struct bitfield *ip_pool;

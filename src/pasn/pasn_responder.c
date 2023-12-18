@@ -335,6 +335,8 @@ pasn_derive_keys(struct pasn_data *pasn,
 		}
 	}
 
+	pasn->pmk_len = pmk_len;
+	os_memcpy(pasn->pmk, pmk, pmk_len);
 	ret = pasn_pmk_to_ptk(pmk, pmk_len, peer_addr, own_addr,
 			      wpabuf_head(secret), wpabuf_len(secret),
 			      &pasn->ptk, pasn->akmp,
@@ -751,9 +753,8 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 
 	derive_keys = true;
 	if (pasn_params.wrapped_data_format != WPA_PASN_WRAPPED_DATA_NO) {
-		wrapped_data = ieee802_11_defrag(&elems,
-						 WLAN_EID_EXTENSION,
-						 WLAN_EID_EXT_WRAPPED_DATA);
+		wrapped_data = ieee802_11_defrag(elems.wrapped_data,
+						 elems.wrapped_data_len, true);
 		if (!wrapped_data) {
 			wpa_printf(MSG_DEBUG, "PASN: Missing wrapped data");
 			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
@@ -977,9 +978,9 @@ int handle_auth_pasn_3(struct pasn_data *pasn, const u8 *own_addr,
 	}
 
 	if (pasn_params.wrapped_data_format != WPA_PASN_WRAPPED_DATA_NO) {
-		wrapped_data = ieee802_11_defrag(&elems,
-						 WLAN_EID_EXTENSION,
-						 WLAN_EID_EXT_WRAPPED_DATA);
+		wrapped_data = ieee802_11_defrag(elems.wrapped_data,
+						 elems.wrapped_data_len,
+						 true);
 
 		if (!wrapped_data) {
 			wpa_printf(MSG_DEBUG, "PASN: Missing wrapped data");

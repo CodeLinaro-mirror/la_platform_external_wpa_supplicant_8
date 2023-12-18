@@ -833,10 +833,12 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 			wpa_s->sae_commit_override = wpabuf_parse_bin(value);
 	} else if (os_strcasecmp(cmd, "driver_signal_override") == 0) {
 		ret = wpas_ctrl_iface_set_dso(wpa_s, value);
+#ifndef CONFIG_NO_ROBUST_AV
 	} else if (os_strcasecmp(cmd, "disable_scs_support") == 0) {
 		wpa_s->disable_scs_support = !!atoi(value);
 	} else if (os_strcasecmp(cmd, "disable_mscs_support") == 0) {
 		wpa_s->disable_mscs_support = !!atoi(value);
+#endif /* CONFIG_NO_ROBUST_AV */
 	} else if (os_strcasecmp(cmd, "disable_eapol_g2_tx") == 0) {
 		wpa_s->disable_eapol_g2_tx = !!atoi(value);
 		/* Populate value to wpa_sm if already associated. */
@@ -932,8 +934,10 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 			return -1;
 		wnm_set_coloc_intf_elems(wpa_s, elems);
 #endif /* CONFIG_WNM */
+#ifndef CONFIG_NO_ROBUST_AV
 	} else if (os_strcasecmp(cmd, "enable_dscp_policy_capa") == 0) {
 		wpa_s->enable_dscp_policy_capa = !!atoi(value);
+#endif /* CONFIG_NO_ROBUST_AV */
 	} else {
 		value[-1] = '=';
 		ret = wpa_config_process_global(wpa_s->conf, cmd, -1);
@@ -1260,6 +1264,8 @@ static int wpa_supplicant_ctrl_iface_tdls_link_status(
 #endif /* CONFIG_TDLS */
 
 
+#ifndef CONFIG_NO_WMM_AC
+
 static int wmm_ac_ctrl_addts(struct wpa_supplicant *wpa_s, char *cmd)
 {
 	char *token, *context = NULL;
@@ -1308,6 +1314,8 @@ static int wmm_ac_ctrl_delts(struct wpa_supplicant *wpa_s, char *cmd)
 
 	return wpas_wmm_ac_delts(wpa_s, tsid);
 }
+
+#endif /* CONFIG_NO_WMM_AC */
 
 
 #ifdef CONFIG_IEEE80211R
@@ -2967,6 +2975,16 @@ static char * wpa_supplicant_ie_txt(char *pos, char *end, const char *proto,
 		pos += ret;
 	}
 
+#ifdef CONFIG_SHA384
+	if (data.key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA384) {
+		ret = os_snprintf(pos, end - pos, "%sEAP-SHA384",
+				  pos == start ? "" : "+");
+		if (os_snprintf_error(end - pos, ret))
+			return pos;
+		pos += ret;
+	}
+#endif /* CONFIG_SHA384 */
+
 	pos = wpa_supplicant_cipher_txt(pos, end, data.pairwise_cipher);
 
 	if (data.capabilities & WPA_CAPABILITY_PREAUTH) {
@@ -3609,6 +3627,7 @@ static int wpa_supplicant_ctrl_iface_update_network(
 
 	if (os_strcmp(name, "bssid") != 0 &&
 	    os_strcmp(name, "bssid_hint") != 0 &&
+	    os_strcmp(name, "scan_freq") != 0 &&
 	    os_strcmp(name, "priority") != 0) {
 		wpa_sm_pmksa_cache_flush(wpa_s->wpa, ssid);
 
@@ -5686,7 +5705,8 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 	}
 #endif /* CONFIG_FILS */
 
-	if (!is_zero_ether_addr(bss->mld_addr)) {
+	if (!is_zero_ether_addr(bss->mld_addr) &&
+	    (mask & WPA_BSS_MASK_AP_MLD_ADDR)) {
 		ret = os_snprintf(pos, end - pos,
 				  "ap_mld_addr=" MACSTR "\n",
 				  MAC2STR(bss->mld_addr));
@@ -8868,9 +8888,11 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpabuf_free(wpa_s->rsnxe_override_eapol);
 	wpa_s->rsnxe_override_eapol = NULL;
 	wpas_clear_driver_signal_override(wpa_s);
+#ifndef CONFIG_NO_ROBUST_AV
 	wpa_s->disable_scs_support = 0;
 	wpa_s->disable_mscs_support = 0;
 	wpa_s->enable_dscp_policy_capa = 0;
+#endif /* CONFIG_NO_ROBUST_AV */
 	wpa_s->oci_freq_override_eapol = 0;
 	wpa_s->oci_freq_override_saquery_req = 0;
 	wpa_s->oci_freq_override_saquery_resp = 0;
@@ -8899,7 +8921,9 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_s->next_scan_bssid_wildcard_ssid = 0;
 	os_free(wpa_s->select_network_scan_freqs);
 	wpa_s->select_network_scan_freqs = NULL;
+#ifndef CONFIG_NO_ROBUST_AV
 	os_memset(&wpa_s->robust_av, 0, sizeof(struct robust_av_data));
+#endif /* CONFIG_NO_ROBUST_AV */
 
 	wpa_bss_flush(wpa_s);
 	if (!dl_list_empty(&wpa_s->bss)) {
@@ -8926,7 +8950,9 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 
 	free_bss_tmp_disallowed(wpa_s);
 
+#ifndef CONFIG_NO_ROBUST_AV
 	os_memset(&wpa_s->robust_av, 0, sizeof(struct robust_av_data));
+#endif /* CONFIG_NO_ROBUST_AV */
 
 #ifdef CONFIG_PASN
 	wpas_pasn_auth_stop(wpa_s);
@@ -10122,72 +10148,6 @@ done:
 }
 
 
-static int wpas_ctrl_test_alloc_fail(struct wpa_supplicant *wpa_s, char *cmd)
-{
-#ifdef WPA_TRACE_BFD
-	char *pos;
-
-	wpa_trace_fail_after = atoi(cmd);
-	pos = os_strchr(cmd, ':');
-	if (pos) {
-		pos++;
-		os_strlcpy(wpa_trace_fail_func, pos,
-			   sizeof(wpa_trace_fail_func));
-	} else {
-		wpa_trace_fail_after = 0;
-	}
-	return 0;
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
-static int wpas_ctrl_get_alloc_fail(struct wpa_supplicant *wpa_s,
-				    char *buf, size_t buflen)
-{
-#ifdef WPA_TRACE_BFD
-	return os_snprintf(buf, buflen, "%u:%s", wpa_trace_fail_after,
-			   wpa_trace_fail_func);
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
-static int wpas_ctrl_test_fail(struct wpa_supplicant *wpa_s, char *cmd)
-{
-#ifdef WPA_TRACE_BFD
-	char *pos;
-
-	wpa_trace_test_fail_after = atoi(cmd);
-	pos = os_strchr(cmd, ':');
-	if (pos) {
-		pos++;
-		os_strlcpy(wpa_trace_test_fail_func, pos,
-			   sizeof(wpa_trace_test_fail_func));
-	} else {
-		wpa_trace_test_fail_after = 0;
-	}
-	return 0;
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
-static int wpas_ctrl_get_fail(struct wpa_supplicant *wpa_s,
-				    char *buf, size_t buflen)
-{
-#ifdef WPA_TRACE_BFD
-	return os_snprintf(buf, buflen, "%u:%s", wpa_trace_test_fail_after,
-			   wpa_trace_test_fail_func);
-#else /* WPA_TRACE_BFD */
-	return -1;
-#endif /* WPA_TRACE_BFD */
-}
-
-
 static void wpas_ctrl_event_test_cb(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
@@ -10559,6 +10519,8 @@ static int wpas_ctrl_vendor_elem_remove(struct wpa_supplicant *wpa_s, char *cmd)
 }
 
 
+#ifndef CONFIG_NO_RRM
+
 static void wpas_ctrl_neighbor_rep_cb(void *ctx, struct wpabuf *neighbor_rep)
 {
 	struct wpa_supplicant *wpa_s = ctx;
@@ -10701,6 +10663,8 @@ static int wpas_ctrl_iface_send_neighbor_rep(struct wpa_supplicant *wpa_s,
 
 	return ret;
 }
+
+#endif /* CONFIG_NO_RRM */
 
 
 static int wpas_ctrl_iface_erp_flush(struct wpa_supplicant *wpa_s)
@@ -11055,6 +11019,7 @@ int wpas_ctrl_cmd_debug_level(const char *cmd)
 }
 
 
+#ifndef CONFIG_NO_ROBUST_AV
 static int wpas_ctrl_iface_configure_mscs(struct wpa_supplicant *wpa_s,
 					  const char *cmd)
 {
@@ -11123,6 +11088,7 @@ static int wpas_ctrl_iface_configure_mscs(struct wpa_supplicant *wpa_s,
 
 	return wpas_send_mscs_req(wpa_s);
 }
+#endif /* CONFIG_NO_ROBUST_AV */
 
 
 #ifdef CONFIG_PASN
@@ -11226,6 +11192,8 @@ static int wpas_ctrl_iface_pasn_deauthenticate(struct wpa_supplicant *wpa_s,
 
 #endif /* CONFIG_PASN */
 
+
+#ifndef CONFIG_NO_ROBUST_AV
 
 static int set_type4_frame_classifier(const char *cmd,
 				      struct type4_params *param)
@@ -11528,7 +11496,16 @@ static int wpas_ctrl_iface_configure_scs(struct wpa_supplicant *wpa_s,
 	 * [scs_id=<decimal number>] <add|remove|change> [scs_up=<0-7>]
 	 * [classifier_type=<4|10>]
 	 * [classifier params based on classifier type]
-	 * [tclas_processing=<0|1>] [scs_id=<decimal number>] ...
+	 * [tclas_processing=<0|1>]
+	 * [qos_characteristics] <up/down/direct> [min_si=<decimal number>]
+	 * [max_si=<decimal number>] [min_data_rate=<decimal number>]
+	 * [delay_bound=<decimal number>] [max_msdu=<decimal number>]
+	 * [service_start_time=<decimal number>]
+	 * [service_start_time_link_id=<decimal number>]
+	 * [mean_data_rate=<decimal number>] [burst_size=<decimal number>]
+	 * [msdu_lifetime=<decimal number>]
+	 * [msdu_delivery_info=<decimal number>] [medium_time=<decimal number>]
+	 * [scs_id=<decimal number>] ...
 	 */
 	pos1 = os_strstr(cmd, "scs_id=");
 	if (!pos1) {
@@ -11541,9 +11518,10 @@ static int wpas_ctrl_iface_configure_scs(struct wpa_supplicant *wpa_s,
 	while (pos1) {
 		struct scs_desc_elem *n1;
 		struct active_scs_elem *active_scs_desc;
-		char *next_scs_desc;
+		char *next_scs_desc, *pos2;
 		unsigned int num_tclas_elem = 0;
-		bool scsid_active = false;
+		bool scsid_active = false, tclas_present = false;
+		struct qos_characteristics *qos_elem = &desc_elem.qos_char_elem;
 
 		desc_elem.scs_id = atoi(pos1 + 7);
 		pos1 += 7;
@@ -11619,8 +11597,9 @@ static int wpas_ctrl_iface_configure_scs(struct wpa_supplicant *wpa_s,
 		pos = os_strstr(pos1, "classifier_type=");
 		if (!pos) {
 			wpa_printf(MSG_ERROR, "classifier type empty");
-			goto free_scs_desc;
+			goto qos_characteristics;
 		}
+		tclas_present = true;
 
 		while (pos) {
 			struct tclas_element elem = { 0 }, *n;
@@ -11682,6 +11661,117 @@ static int wpas_ctrl_iface_configure_scs(struct wpa_supplicant *wpa_s,
 			}
 
 			desc_elem.tclas_processing = val;
+		}
+
+	qos_characteristics:
+		pos1 = os_strstr(pos1, "qos_characteristics");
+		if (!pos1 && !tclas_present)
+			goto free_scs_desc;
+		if (!pos1)
+			goto scs_desc_end;
+
+		qos_elem->available = true;
+		if (os_strstr(pos1, "up ")) {
+			qos_elem->direction = SCS_DIRECTION_UP;
+			if (tclas_present) {
+				wpa_printf(MSG_ERROR,
+					   "TCLAS with direction:UP not allowed");
+				goto free_scs_desc;
+			}
+		} else if (os_strstr(pos1, "down ")) {
+			qos_elem->direction = SCS_DIRECTION_DOWN;
+		} else if (os_strstr(pos1, "direct ")) {
+			qos_elem->direction = SCS_DIRECTION_DIRECT;
+		}
+
+		pos1 = os_strstr(pos1, "min_si=");
+		if (!pos1) {
+			wpa_printf(MSG_ERROR, "Min SI is required");
+			goto free_scs_desc;
+		}
+		qos_elem->min_si = atoi(pos1 + 7);
+
+		pos1 = os_strstr(pos1, "max_si=");
+		if (!pos1) {
+			wpa_printf(MSG_ERROR, "Max SI is required");
+			goto free_scs_desc;
+		}
+		qos_elem->max_si = atoi(pos1 + 7);
+
+		if (qos_elem->min_si && qos_elem->max_si &&
+		    qos_elem->max_si < qos_elem->min_si) {
+			wpa_printf(MSG_ERROR, "Invalid Max SI");
+			goto free_scs_desc;
+		}
+
+		pos1 = os_strstr(pos1, "min_data_rate=");
+		if (!pos1) {
+			wpa_printf(MSG_ERROR, "Min data rate is required");
+			goto free_scs_desc;
+		}
+		qos_elem->min_data_rate = atoi(pos1 + 14);
+
+		pos1 = os_strstr(pos1, "delay_bound=");
+		if (!pos1) {
+			wpa_printf(MSG_ERROR, "Delay Bound is required");
+			goto free_scs_desc;
+		}
+		qos_elem->delay_bound = atoi(pos1 + 12);
+
+		if (qos_elem->min_data_rate >= BIT(24) ||
+		    qos_elem->delay_bound >= BIT(24)) {
+			wpa_printf(MSG_ERROR,
+				   "Invalid min_data_rate or delay_bound");
+			goto free_scs_desc;
+		}
+
+		pos2 = os_strstr(pos1, "max_msdu=");
+		if (pos2) {
+			qos_elem->max_msdu_size = atoi(pos2 + 9);
+			qos_elem->mask |= SCS_QOS_BIT_MAX_MSDU_SIZE;
+		}
+
+		pos2 = os_strstr(pos1, "service_start_time=");
+		if (pos2) {
+			qos_elem->service_start_time = atoi(pos2 + 19);
+			qos_elem->mask |= SCS_QOS_BIT_SERVICE_START_TIME;
+		}
+
+		pos2 = os_strstr(pos1, "service_start_time_link_id=");
+		if (pos2) {
+			qos_elem->service_start_time_link_id = atoi(pos2 + 27);
+			qos_elem->mask |= SCS_QOS_BIT_SERVICE_START_TIME_LINKID;
+		}
+
+		pos2 = os_strstr(pos1, "mean_data_rate=");
+		if (pos2) {
+			qos_elem->mean_data_rate = atoi(pos2 + 15);
+			qos_elem->mask |= SCS_QOS_BIT_MEAN_DATA_RATE;
+		}
+
+		pos2 = os_strstr(pos1, "burst_size=");
+		if (pos2) {
+			qos_elem->burst_size = atoi(pos2 + 11);
+			qos_elem->mask |=
+				SCS_QOS_BIT_DELAYED_BOUNDED_BURST_SIZE;
+		}
+
+		pos2 = os_strstr(pos1, "msdu_lifetime=");
+		if (pos2) {
+			qos_elem->msdu_lifetime = atoi(pos2 + 14);
+			qos_elem->mask |= SCS_QOS_BIT_MSDU_LIFETIME;
+		}
+
+		pos2 = os_strstr(pos1, "msdu_delivery_info=");
+		if (pos2) {
+			qos_elem->msdu_delivery_info = atoi(pos2 + 19);
+			qos_elem->mask |= SCS_QOS_BIT_MSDU_DELIVERY_INFO;
+		}
+
+		pos2 = os_strstr(pos1, "medium_time=");
+		if (pos2) {
+			qos_elem->medium_time = atoi(pos2 + 12);
+			qos_elem->mask |= SCS_QOS_BIT_MEDIUM_TIME;
 		}
 
 scs_desc_end:
@@ -11801,6 +11891,8 @@ static int wpas_ctrl_iface_send_dscp_query(struct wpa_supplicant *wpa_s,
 	return wpas_send_dscp_query(wpa_s, pos + 12, os_strlen(pos + 12));
 }
 
+#endif /* CONFIG_NO_ROBUST_AV */
+
 
 static int wpas_ctrl_iface_mlo_signal_poll(struct wpa_supplicant *wpa_s,
 					   char *buf, size_t buflen)
@@ -11911,6 +12003,80 @@ static int wpas_ctrl_iface_mlo_status(struct wpa_supplicant *wpa_s,
 
 	return pos - buf;
 }
+
+
+#ifdef CONFIG_TESTING_OPTIONS
+static int wpas_ctrl_ml_probe(struct wpa_supplicant *wpa_s, char *cmd)
+{
+	char *token, *context = NULL;
+	u8 bssid[ETH_ALEN];
+	int mld_id = -1, link_id = -1;
+	struct wpa_bss *bss;
+	int *freqs;
+
+	os_memset(bssid, 0, sizeof(bssid));
+
+	while ((token = str_token(cmd, " ", &context))) {
+		if (os_strncmp(token, "bssid=", 6) == 0) {
+			if (hwaddr_aton(token + 6, bssid))
+				return -1;
+		} else if (os_strncmp(token, "mld_id=", 7) == 0) {
+			mld_id = atoi(token + 7);
+		} else if (os_strncmp(token, "link_id=", 8) == 0) {
+			link_id = atoi(token + 8);
+		}
+	}
+
+	if (mld_id < 0 || is_zero_ether_addr(bssid)) {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Failed parsing ML probe request arguments");
+		return -1;
+	}
+
+	bss = wpa_bss_get_bssid(wpa_s, bssid);
+	if (!bss) {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Unknown BSS for " MACSTR, MAC2STR(bssid));
+		return -1;
+	}
+
+	if (wpa_s->sched_scanning || wpa_s->scanning ||
+	    (wpa_s->wpa_state > WPA_SCANNING &&
+	     wpa_s->wpa_state != WPA_COMPLETED)) {
+		wpa_printf(MSG_DEBUG,
+			   "MLO: Ongoing scan: Reject ML probe request");
+		return -1;
+	}
+
+	freqs = os_malloc(sizeof(int) * 2);
+	if (!freqs)
+		return -1;
+
+	freqs[0] = bss->freq;
+	freqs[1] = 0;
+
+	wpa_s->manual_scan_passive = 0;
+	wpa_s->manual_scan_use_id = 0;
+	wpa_s->manual_scan_only_new = 0;
+	wpa_s->scan_id_count = 0;
+	wpa_s->scan_res_handler = scan_only_handler;
+	os_free(wpa_s->manual_scan_freqs);
+	wpa_s->manual_scan_freqs = freqs;
+
+	os_memcpy(wpa_s->ml_probe_bssid, bssid, ETH_ALEN);
+	wpa_s->ml_probe_mld_id = mld_id;
+	if (link_id >= 0)
+		wpa_s->ml_probe_links = BIT(link_id);
+
+	wpa_s->normal_scans = 0;
+	wpa_s->scan_req = MANUAL_SCAN_REQ;
+	wpa_s->after_wps = 0;
+	wpa_s->known_wps_freq = 0;
+	wpa_supplicant_req_scan(wpa_s, 0, 0);
+
+	return 0;
+}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 
 char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
@@ -12584,6 +12750,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		reply_len = wpa_supplicant_ctrl_iface_tdls_link_status(
 			wpa_s, buf + 17, reply, reply_size);
 #endif /* CONFIG_TDLS */
+#ifndef CONFIG_NO_WMM_AC
 	} else if (os_strcmp(buf, "WMM_AC_STATUS") == 0) {
 		reply_len = wpas_wmm_ac_status(wpa_s, reply, reply_size);
 	} else if (os_strncmp(buf, "WMM_AC_ADDTS ", 13) == 0) {
@@ -12592,6 +12759,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "WMM_AC_DELTS ", 13) == 0) {
 		if (wmm_ac_ctrl_delts(wpa_s, buf + 13))
 			reply_len = -1;
+#endif /* CONFIG_NO_WMM_AC */
 	} else if (os_strncmp(buf, "SIGNAL_POLL", 11) == 0) {
 		reply_len = wpa_supplicant_signal_poll(wpa_s, reply,
 						       reply_size);
@@ -12678,15 +12846,15 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		if (wpas_ctrl_iface_data_test_frame(wpa_s, buf + 16) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "TEST_ALLOC_FAIL ", 16) == 0) {
-		if (wpas_ctrl_test_alloc_fail(wpa_s, buf + 16) < 0)
+		if (testing_set_fail_pattern(true, buf + 16) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "GET_ALLOC_FAIL") == 0) {
-		reply_len = wpas_ctrl_get_alloc_fail(wpa_s, reply, reply_size);
+		reply_len = testing_get_fail_pattern(true, reply, reply_size);
 	} else if (os_strncmp(buf, "TEST_FAIL ", 10) == 0) {
-		if (wpas_ctrl_test_fail(wpa_s, buf + 10) < 0)
+		if (testing_set_fail_pattern(false, buf + 10) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "GET_FAIL") == 0) {
-		reply_len = wpas_ctrl_get_fail(wpa_s, reply, reply_size);
+		reply_len = testing_get_fail_pattern(false, reply, reply_size);
 	} else if (os_strncmp(buf, "EVENT_TEST ", 11) == 0) {
 		if (wpas_ctrl_event_test(wpa_s, buf + 11) < 0)
 			reply_len = -1;
@@ -12718,6 +12886,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strcmp(buf, "TWT_TEARDOWN") == 0) {
 		if (wpas_ctrl_iface_send_twt_teardown(wpa_s, ""))
 			reply_len = -1;
+	} else if (os_strncmp(buf, "ML_PROBE_REQ ", 13) == 0) {
+		if (wpas_ctrl_ml_probe(wpa_s, buf + 13))
+			reply_len = -1;
 #endif /* CONFIG_TESTING_OPTIONS */
 	} else if (os_strncmp(buf, "VENDOR_ELEM_ADD ", 16) == 0) {
 		if (wpas_ctrl_vendor_elem_add(wpa_s, buf + 16) < 0)
@@ -12728,9 +12899,11 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "VENDOR_ELEM_REMOVE ", 19) == 0) {
 		if (wpas_ctrl_vendor_elem_remove(wpa_s, buf + 19) < 0)
 			reply_len = -1;
+#ifndef CONFIG_NO_RRM
 	} else if (os_strncmp(buf, "NEIGHBOR_REP_REQUEST", 20) == 0) {
 		if (wpas_ctrl_iface_send_neighbor_rep(wpa_s, buf + 20))
 			reply_len = -1;
+#endif /* CONFIG_NO_RRM */
 	} else if (os_strcmp(buf, "ERP_FLUSH") == 0) {
 		wpas_ctrl_iface_erp_flush(wpa_s);
 	} else if (os_strncmp(buf, "MAC_RAND_SCAN ", 14) == 0) {
@@ -12903,9 +13076,6 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 			reply_len = -1;
 #endif /* CONFIG_DPP3 */
 #endif /* CONFIG_DPP */
-	} else if (os_strncmp(buf, "MSCS ", 5) == 0) {
-		if (wpas_ctrl_iface_configure_mscs(wpa_s, buf + 5))
-			reply_len = -1;
 #ifdef CONFIG_PASN
 	} else if (os_strncmp(buf, "PASN_START ", 11) == 0) {
 		if (wpas_ctrl_iface_pasn_start(wpa_s, buf + 11) < 0)
@@ -12918,6 +13088,10 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		if (wpas_ctrl_iface_pasn_deauthenticate(wpa_s, buf + 12) < 0)
 			reply_len = -1;
 #endif /* CONFIG_PASN */
+#ifndef CONFIG_NO_ROBUST_AV
+	} else if (os_strncmp(buf, "MSCS ", 5) == 0) {
+		if (wpas_ctrl_iface_configure_mscs(wpa_s, buf + 5))
+			reply_len = -1;
 	} else if (os_strncmp(buf, "SCS ", 4) == 0) {
 		if (wpas_ctrl_iface_configure_scs(wpa_s, buf + 4))
 			reply_len = -1;
@@ -12927,6 +13101,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "DSCP_QUERY ", 11) == 0) {
 		if (wpas_ctrl_iface_send_dscp_query(wpa_s, buf + 11))
 			reply_len = -1;
+#endif /* CONFIG_NO_ROBUST_AV */
 	} else if (os_strcmp(buf, "MLO_STATUS") == 0) {
 		reply_len = wpas_ctrl_iface_mlo_status(wpa_s, reply,
 						       reply_size);

@@ -21,6 +21,16 @@ def wait_ap_ready(dev):
     if ev is None:
         raise Exception("AP failed to start")
 
+def set_regdom(dev, country):
+    dev.set("country", country)
+    for i in range(5):
+        ev = dev.wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=5)
+        if not ev:
+            return
+        if "alpha2=" + country in ev:
+            return
+    logger.info("No regdom change event indicated")
+
 def log_channel_info(dev):
     gen = dev.get_status_field('wifi_generation')
     if gen:
@@ -391,7 +401,7 @@ def _test_wpas_ap_dfs(dev):
     if ev is None:
         raise Exception("AP failed to start")
 
-    dev[1].connect("wpas-ap-dfs", key_mgmt="NONE")
+    dev[1].connect("wpas-ap-dfs", key_mgmt="NONE", timeout=30)
     dev[1].wait_regdom(country_ie=True)
     dev[0].request("DISCONNECT")
     dev[1].disconnect_and_stop_scan()
@@ -684,7 +694,7 @@ def _test_wpas_ap_5ghz(dev):
 def test_wpas_ap_open_ht40(dev):
     """wpa_supplicant AP mode - HT 40 MHz"""
     id = dev[0].add_network()
-    dev[0].set("country", "FI")
+    set_regdom(dev[0], "FI")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -713,7 +723,7 @@ def test_wpas_ap_open_ht40(dev):
 def test_wpas_ap_open_vht80(dev):
     """wpa_supplicant AP mode - VHT 80 MHz"""
     id = dev[0].add_network()
-    dev[0].set("country", "FI")
+    set_regdom(dev[0], "FI")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -743,29 +753,44 @@ def test_wpas_ap_open_vht80(dev):
         dev[1].flush_scan_cache()
 
 def test_wpas_ap_open_vht80_us(dev):
-    """wpa_supplicant AP mode - VHT 80 MHz (US)"""
+    """wpa_supplicant AP mode - VHT 80 MHz (US) channel 149"""
+    run_wpas_ap_open_vht80_us(dev, 5745, 5775, 1)
+
+def test_wpas_ap_open_vht80_us_153(dev):
+    """wpa_supplicant AP mode - VHT 80 MHz (US) channel 153"""
+    run_wpas_ap_open_vht80_us(dev, 5765, 5775, -1)
+
+def test_wpas_ap_open_vht80_us_157(dev):
+    """wpa_supplicant AP mode - VHT 80 MHz (US) channel 157"""
+    run_wpas_ap_open_vht80_us(dev, 5785, 5775, 1)
+
+def test_wpas_ap_open_vht80_us_161(dev):
+    """wpa_supplicant AP mode - VHT 80 MHz (US) channel 161"""
+    run_wpas_ap_open_vht80_us(dev, 5805, 5775, -1)
+
+def run_wpas_ap_open_vht80_us(dev, freq, center_freq, ht40):
     id = dev[0].add_network()
-    dev[0].set("country", "US")
+    set_regdom(dev[0], "US")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
         dev[0].set_network(id, "key_mgmt", "NONE")
-        dev[0].set_network(id, "frequency", "5745")
-        dev[0].set_network(id, "scan_freq", "5745")
+        dev[0].set_network(id, "frequency", str(freq))
+        dev[0].set_network(id, "scan_freq", str(freq))
         dev[0].set_network(id, "vht", "1")
-        dev[0].set_network(id, "vht_center_freq1", "5775")
+        dev[0].set_network(id, "vht_center_freq1", str(center_freq))
         dev[0].set_network(id, "max_oper_chwidth", "1")
-        dev[0].set_network(id, "ht40", "1")
+        dev[0].set_network(id, "ht40", str(ht40))
         dev[0].select_network(id)
         wait_ap_ready(dev[0])
 
-        dev[1].connect("wpas-ap-open", key_mgmt="NONE", scan_freq="5745")
+        dev[1].connect("wpas-ap-open", key_mgmt="NONE", scan_freq=str(freq))
         log_channel_info(dev[1])
         sig = dev[1].request("SIGNAL_POLL").splitlines()
         hwsim_utils.test_connectivity(dev[0], dev[1])
         dev[1].request("DISCONNECT")
         dev[1].wait_disconnected()
-        if "FREQUENCY=5745" not in sig:
+        if "FREQUENCY=" + str(freq) not in sig:
             raise Exception("Unexpected SIGNAL_POLL value(1): " + str(sig))
         if "WIDTH=80 MHz" not in sig:
             raise Exception("Unexpected SIGNAL_POLL value(2): " + str(sig))
@@ -818,7 +843,7 @@ def test_wpas_ap_no_ht(dev):
 def test_wpas_ap_async_fail(dev):
     """wpa_supplicant AP mode - Async failure"""
     id = dev[0].add_network()
-    dev[0].set("country", "FI")
+    set_regdom(dev[0], "FI")
     try:
         dev[0].set_network(id, "mode", "2")
         dev[0].set_network_quoted(id, "ssid", "wpas-ap-open")
@@ -963,8 +988,8 @@ def test_wpas_ap_sae_and_psk_transition_disable(dev):
     dev[1].set("sae_groups", "")
     dev[1].connect("wpas-ap-sae", key_mgmt="SAE WPA-PSK",
                    psk="12345678", ieee80211w="1",
-                   scan_freq="2412")
-    ev = dev[1].wait_event(["TRANSITION-DISABLE"], timeout=1)
+                   scan_freq="2412", wait_connect=False)
+    ev = dev[1].wait_event(["TRANSITION-DISABLE"], timeout=15)
     if ev is None:
         raise Exception("Transition disable not indicated")
     if ev.split(' ')[1] != "01":
@@ -1055,11 +1080,14 @@ def run_wpas_ap_lifetime_in_memory(dev, apdev, params, raw):
     get_key_locations(buf, pmk, "PMK")
 
     dev[1].connect(ssid, psk=passphrase, scan_freq="2412")
+    dev[0].wait_sta()
 
     buf = read_process_memory(pid, pmk)
 
     dev[1].request("DISCONNECT")
     dev[1].wait_disconnected()
+    dev[0].wait_sta_disconnect()
+    time.sleep(1)
 
     buf2 = read_process_memory(pid, pmk)
 

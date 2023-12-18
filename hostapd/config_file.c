@@ -667,6 +667,10 @@ static int hostapd_config_parse_key_mgmt(int line, const char *value)
 			val |= WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
 #endif /* CONFIG_SHA384 */
 #endif /* CONFIG_IEEE80211R_AP */
+#ifdef CONFIG_SHA384
+		else if (os_strcmp(start, "WPA-EAP-SHA384") == 0)
+			val |= WPA_KEY_MGMT_IEEE8021X_SHA384;
+#endif /* CONFIG_SHA384 */
 		else if (os_strcmp(start, "WPA-PSK-SHA256") == 0)
 			val |= WPA_KEY_MGMT_PSK_SHA256;
 		else if (os_strcmp(start, "WPA-EAP-SHA256") == 0)
@@ -2603,6 +2607,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 	} else if (os_strcmp(buf, "imsi_privacy_key") == 0) {
 		os_free(bss->imsi_privacy_key);
 		bss->imsi_privacy_key = os_strdup(pos);
+	} else if (os_strcmp(buf, "eap_sim_aka_fast_reauth_limit") == 0) {
+		bss->eap_sim_aka_fast_reauth_limit = atoi(pos);
 #endif /* EAP_SERVER_SIM */
 #ifdef EAP_SERVER_TNC
 	} else if (os_strcmp(buf, "tnc") == 0) {
@@ -4770,6 +4776,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		conf->eht_phy_capab.su_beamformee = atoi(pos);
 	} else if (os_strcmp(buf, "eht_mu_beamformer") == 0) {
 		conf->eht_phy_capab.mu_beamformer = atoi(pos);
+	} else if (os_strcmp(buf, "eht_default_pe_duration") == 0) {
+		conf->eht_default_pe_duration = atoi(pos);
 	} else if (os_strcmp(buf, "punct_bitmap") == 0) {
 		conf->punct_bitmap = atoi(pos);
 	} else if (os_strcmp(buf, "punct_acs_threshold") == 0) {
@@ -4782,6 +4790,16 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			return 1;
 		}
 		conf->punct_acs_threshold = val;
+	} else if (os_strcmp(buf, "mld_ap") == 0) {
+		bss->mld_ap = !!atoi(pos);
+	} else if (os_strcmp(buf, "mld_id") == 0) {
+		bss->mld_id = atoi(pos);
+	} else if (os_strcmp(buf, "mld_addr") == 0) {
+		if (hwaddr_aton(pos, bss->mld_addr)) {
+			wpa_printf(MSG_ERROR, "Line %d: Invalid mld_addr",
+				   line);
+			return 1;
+		}
 #endif /* CONFIG_IEEE80211BE */
 	} else {
 		wpa_printf(MSG_ERROR,

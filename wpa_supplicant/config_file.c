@@ -1124,15 +1124,21 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 			config->disable_scan_offload);
 	if (config->fast_reauth != DEFAULT_FAST_REAUTH)
 		fprintf(f, "fast_reauth=%d\n", config->fast_reauth);
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	if (config->opensc_engine_path)
 		fprintf(f, "opensc_engine_path=%s\n",
 			config->opensc_engine_path);
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	if (config->pkcs11_engine_path)
 		fprintf(f, "pkcs11_engine_path=%s\n",
 			config->pkcs11_engine_path);
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	if (config->pkcs11_module_path)
 		fprintf(f, "pkcs11_module_path=%s\n",
 			config->pkcs11_module_path);
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	if (config->openssl_ciphers)
 		fprintf(f, "openssl_ciphers=%s\n", config->openssl_ciphers);
 	if (config->pcsc_reader)
@@ -1606,6 +1612,16 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->wowlan_disconnect_on_deinit)
 		fprintf(f, "wowlan_disconnect_on_deinit=%d\n",
 			config->wowlan_disconnect_on_deinit);
+#ifdef CONFIG_TESTING_OPTIONS
+	if (config->mld_force_single_link)
+		fprintf(f, "mld_force_single_link=1\n");
+	if (config->mld_connect_band_pref != MLD_CONNECT_BAND_PREF_AUTO)
+		fprintf(f, "mld_connect_band_pref=%d\n",
+			config->mld_connect_band_pref);
+	if (!is_zero_ether_addr(config->mld_connect_bssid_pref))
+		fprintf(f, "mld_connect_bssid_pref=" MACSTR "\n",
+			MAC2STR(config->mld_connect_bssid_pref));
+#endif /* CONFIG_TESTING_OPTIONS */
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */

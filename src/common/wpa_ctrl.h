@@ -87,6 +87,8 @@ extern "C" {
 #define WPA_EVENT_BEACON_LOSS "CTRL-EVENT-BEACON-LOSS "
 /** Regulatory domain channel */
 #define WPA_EVENT_REGDOM_CHANGE "CTRL-EVENT-REGDOM-CHANGE "
+/** Regulatory beacon hint */
+#define WPA_EVENT_REGDOM_BEACON_HINT "CTRL-EVENT-REGDOM-BEACON-HINT "
 /** Channel switch started (followed by freq=<MHz> and other channel parameters)
  */
 #define WPA_EVENT_CHANNEL_SWITCH_STARTED "CTRL-EVENT-STARTED-CHANNEL-SWITCH "
@@ -473,6 +475,7 @@ extern "C" {
 #define WPA_BSS_MASK_FILS_INDICATION	BIT(24)
 #define WPA_BSS_MASK_RNR		BIT(25)
 #define WPA_BSS_MASK_ML			BIT(26)
+#define WPA_BSS_MASK_AP_MLD_ADDR	BIT(27)
 
 
 /* VENDOR_ELEM_* frame id values */

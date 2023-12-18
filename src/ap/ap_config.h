@@ -448,6 +448,7 @@ struct hostapd_bss_config {
 	int eap_sim_aka_result_ind;
 	int eap_sim_id;
 	char *imsi_privacy_key;
+	int eap_sim_aka_fast_reauth_limit;
 	int tnc;
 	int fragment_size;
 	u16 pwd_group;
@@ -937,6 +938,17 @@ struct hostapd_bss_config {
 	u8 rnr;
 	char *config_id;
 	bool xrates_supported;
+
+#ifdef CONFIG_IEEE80211BE
+	/* The AP is part of an AP MLD */
+	u8 mld_ap;
+
+	/* The MLD ID to which the AP MLD is affiliated with */
+	u8 mld_id;
+
+	/* The AP's MLD MAC address within the AP MLD */
+	u8 mld_addr[ETH_ALEN];
+#endif /* CONFIG_IEEE80211BE */
 };
 
 /**
@@ -1162,6 +1174,7 @@ struct hostapd_config {
 	struct eht_phy_capabilities_info eht_phy_capab;
 	u16 punct_bitmap; /* a bitmap of disabled 20 MHz channels */
 	u8 punct_acs_threshold;
+	u8 eht_default_pe_duration;
 #endif /* CONFIG_IEEE80211BE */
 
 	/* EHT enable/disable config from CHAN_SWITCH */
@@ -1229,7 +1242,8 @@ hostapd_set_oper_centr_freq_seg0_idx(struct hostapd_config *conf,
 #ifdef CONFIG_IEEE80211BE
 	if (conf->ieee80211be)
 		conf->eht_oper_centr_freq_seg0_idx = oper_centr_freq_seg0_idx;
-	if (center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
+	if (is_6ghz_op_class(conf->op_class) &&
+	    center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
 		oper_centr_freq_seg0_idx +=
 			conf->channel > oper_centr_freq_seg0_idx ? 16 : -16;
 #endif /* CONFIG_IEEE80211BE */

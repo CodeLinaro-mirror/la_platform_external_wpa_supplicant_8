@@ -1646,9 +1646,10 @@ def start_md5_assoc(dev, hapd):
     proxy_msg(dev, hapd) # NAK
     proxy_msg(hapd, dev) # MD5 Request
 
-def stop_md5_assoc(dev, hapd):
+def stop_md5_assoc(dev, hapd, wait=True):
     dev.request("REMOVE_NETWORK all")
-    dev.wait_disconnected()
+    if wait:
+        dev.wait_disconnected()
     dev.dump_monitor()
     hapd.dump_monitor()
 
@@ -1667,10 +1668,14 @@ def test_eap_proto_md5_server(dev, apdev):
     start_md5_assoc(dev[0], hapd)
     proxy_msg(dev[0], hapd) # MD5 Response
     proxy_msg(hapd, dev[0]) # EAP-Success
-    ev = dev[0].wait_event(["CTRL-EVENT-EAP-SUCCESS"], timeout=5)
+    # Accept both EAP-Success and disconnection indication since it is possible
+    # for disconnection from the AP (due to EAP-MD5 not deriving keys) to be
+    # processed more quickly.
+    ev = dev[0].wait_event(["CTRL-EVENT-EAP-SUCCESS",
+                            "CTRL-EVENT-DISCONNECTED"], timeout=5)
     if ev is None:
         raise Exception("No EAP-Success reported")
-    stop_md5_assoc(dev[0], hapd)
+    stop_md5_assoc(dev[0], hapd, wait="CTRL-EVENT-EAP-SUCCESS" in ev)
 
     start_md5_assoc(dev[0], hapd)
     resp = rx_msg(dev[0])
@@ -5579,6 +5584,7 @@ def test_eap_proto_sim_errors(dev, apdev):
         dev[0].request("REMOVE_NETWORK all")
         dev[0].dump_monitor()
 
+    hapd2.dump_monitor()
     tests = ["eap_sim_msg_add_encr_start;eap_sim_response_notification",
              "aes_128_cbc_encrypt;eap_sim_response_notification"]
     for func in tests:
@@ -5588,6 +5594,7 @@ def test_eap_proto_sim_errors(dev, apdev):
                            eap="SIM", identity="1232010000000000",
                            phase1="result_ind=1",
                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581")
+            hapd2.wait_sta()
             dev[0].request("REAUTHENTICATE")
             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
             if ev is None:
@@ -5596,7 +5603,9 @@ def test_eap_proto_sim_errors(dev, apdev):
             wait_fail_trigger(dev[0], "GET_FAIL")
             dev[0].request("REMOVE_NETWORK all")
             dev[0].dump_monitor()
+            hapd2.wait_sta_disconnect()
 
+    hapd2.dump_monitor()
     tests = ["eap_sim_parse_encr;eap_sim_process_notification_reauth"]
     for func in tests:
         with alloc_fail(dev[0], 1, func):
@@ -5605,6 +5614,7 @@ def test_eap_proto_sim_errors(dev, apdev):
                            eap="SIM", identity="1232010000000000",
                            phase1="result_ind=1",
                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581")
+            hapd2.wait_sta()
             dev[0].request("REAUTHENTICATE")
             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
             if ev is None:
@@ -5613,6 +5623,7 @@ def test_eap_proto_sim_errors(dev, apdev):
             wait_fail_trigger(dev[0], "GET_ALLOC_FAIL")
             dev[0].request("REMOVE_NETWORK all")
             dev[0].dump_monitor()
+            hapd2.wait_sta_disconnect()
 
 def test_eap_proto_aka_errors(dev, apdev):
     """EAP-AKA protocol tests (error paths)"""
@@ -5689,6 +5700,7 @@ def test_eap_proto_aka_errors(dev, apdev):
             dev[0].wait_disconnected()
             dev[0].dump_monitor()
 
+    hapd2.dump_monitor()
     tests = ["eap_sim_msg_add_encr_start;eap_aka_response_notification",
              "aes_128_cbc_encrypt;eap_aka_response_notification"]
     for func in tests:
@@ -5698,6 +5710,7 @@ def test_eap_proto_aka_errors(dev, apdev):
                            eap="AKA", identity="0232010000000000",
                            phase1="result_ind=1",
                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581:000000000123")
+            hapd2.wait_sta()
             dev[0].request("REAUTHENTICATE")
             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
             if ev is None:
@@ -5706,7 +5719,9 @@ def test_eap_proto_aka_errors(dev, apdev):
             wait_fail_trigger(dev[0], "GET_FAIL")
             dev[0].request("REMOVE_NETWORK all")
             dev[0].dump_monitor()
+            hapd2.wait_sta_disconnect()
 
+    hapd2.dump_monitor()
     tests = ["eap_sim_parse_encr;eap_aka_process_notification_reauth"]
     for func in tests:
         with alloc_fail(dev[0], 1, func):
@@ -5715,6 +5730,7 @@ def test_eap_proto_aka_errors(dev, apdev):
                            eap="AKA", identity="0232010000000000",
                            phase1="result_ind=1",
                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581:000000000123")
+            hapd2.wait_sta()
             dev[0].request("REAUTHENTICATE")
             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
             if ev is None:
@@ -5723,6 +5739,7 @@ def test_eap_proto_aka_errors(dev, apdev):
             wait_fail_trigger(dev[0], "GET_ALLOC_FAIL")
             dev[0].request("REMOVE_NETWORK all")
             dev[0].dump_monitor()
+            hapd2.wait_sta_disconnect()
 
 def test_eap_proto_aka_prime_errors(dev, apdev):
     """EAP-AKA' protocol tests (error paths)"""
@@ -6467,6 +6484,10 @@ def run_eap_ikev2_connect(dev):
     dev.request("REMOVE_NETWORK all")
     if not ev or "CTRL-EVENT-DISCONNECTED" not in ev:
         dev.wait_disconnected()
+    ev = dev.wait_event(["CTRL-EVENT-NETWORK-REMOVED"], timeout=1)
+    if ev is None:
+        raise Exception("Network removal not reported")
+    time.sleep(0.01)
     dev.dump_monitor()
 
 def test_eap_proto_ikev2_errors_server(dev, apdev):

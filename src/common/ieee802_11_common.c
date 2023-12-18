@@ -421,6 +421,7 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
 	for_each_element(elem, start, len) {
 		u8 id = elem->id, elen = elem->datalen;
 		const u8 *pos = elem->data;
+		size_t *total_len = NULL;
 
 		if (id == WLAN_EID_FRAGMENT && elems->num_frag_elems > 0) {
 			elems->num_frag_elems--;
@@ -504,6 +505,8 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
 				break;
 			elems->ftie = pos;
 			elems->ftie_len = elen;
+			elems->fte_defrag_len = elen;
+			total_len = &elems->fte_defrag_len;
 			break;
 		case WLAN_EID_TIMEOUT_INTERVAL:
 			if (elen != 5)
@@ -649,6 +652,12 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
 				   id, elen);
 			break;
 		}
+
+		if (elen == 255 && total_len)
+			*total_len += ieee802_11_fragments_length(
+				elems, pos + elen,
+				(start + len) - (pos + elen));
+
 	}
 
 	if (!for_each_element_completed(elem, start, len)) {
@@ -1790,6 +1799,7 @@ static int ieee80211_chan_to_freq_eu(u8 op_class, u8 chan)
 
 static int ieee80211_chan_to_freq_jp(u8 op_class, u8 chan)
 {
+	/* Table E-3 in IEEE Std 802.11-2020 - Operating classes in Japan */
 	switch (op_class) {
 	case 30: /* channels 1..13 */
 	case 56: /* channels 1..9; 40 MHz */
@@ -1813,14 +1823,14 @@ static int ieee80211_chan_to_freq_jp(u8 op_class, u8 chan)
 		if (chan < 34 || chan > 64)
 			return -1;
 		return 5000 + 5 * chan;
-	case 34: /* channels 100-140 */
-	case 35: /* channels 100-140 */
-	case 39: /* channels 100-132; 40 MHz */
-	case 40: /* channels 100-132; 40 MHz */
-	case 44: /* channels 104-136; 40 MHz */
-	case 45: /* channels 104-136; 40 MHz */
-	case 58: /* channels 100-140 */
-		if (chan < 100 || chan > 140)
+	case 34: /* channels 100-144 */
+	case 35: /* reserved */
+	case 39: /* channels 100-140; 40 MHz */
+	case 40: /* reserved */
+	case 44: /* channels 104-144; 40 MHz */
+	case 45: /* reserved */
+	case 58: /* channels 100-144 */
+		if (chan < 100 || chan > 144)
 			return -1;
 		return 5000 + 5 * chan;
 	case 59: /* 60 GHz band, channels 1..6 */
@@ -1874,7 +1884,7 @@ static int ieee80211_chan_to_freq_cn(u8 op_class, u8 chan)
 
 static int ieee80211_chan_to_freq_global(u8 op_class, u8 chan)
 {
-	/* Table E-4 in IEEE Std 802.11-2012 - Global operating classes */
+	/* Table E-4 in IEEE Std 802.11-2020 - Global operating classes */
 	switch (op_class) {
 	case 81:
 		/* channels 1..13 */
@@ -1900,10 +1910,10 @@ static int ieee80211_chan_to_freq_global(u8 op_class, u8 chan)
 		if (chan < 36 || chan > 64)
 			return -1;
 		return 5000 + 5 * chan;
-	case 121: /* channels 100-140 */
-	case 122: /* channels 100-142; 40 MHz */
-	case 123: /* channels 104-136; 40 MHz */
-		if (chan < 100 || chan > 140)
+	case 121: /* channels 100-144 */
+	case 122: /* channels 100-140; 40 MHz */
+	case 123: /* channels 104-144; 40 MHz */
+		if (chan < 100 || chan > 144)
 			return -1;
 		return 5000 + 5 * chan;
 	case 124: /* channels 149,153,157,161 */
@@ -2005,7 +2015,7 @@ int ieee80211_is_dfs(int freq, const struct hostapd_hw_modes *modes,
 
 	if (!modes || !num_modes)
 		return (freq >= 5260 && freq <= 5320) ||
-			(freq >= 5500 && freq <= 5700);
+			(freq >= 5500 && freq <= 5720);
 
 	for (i = 0; i < num_modes; i++) {
 		for (j = 0; j < modes[i].num_channels; j++) {
@@ -2377,9 +2387,9 @@ const struct oper_class_map global_op_class[] = {
 	{ HOSTAPD_MODE_IEEE80211A, 118, 52, 64, 4, BW20, NO_P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 119, 52, 60, 8, BW40PLUS, NO_P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 120, 56, 64, 8, BW40MINUS, NO_P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 121, 100, 140, 4, BW20, NO_P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 122, 100, 132, 8, BW40PLUS, NO_P2P_SUPP },
-	{ HOSTAPD_MODE_IEEE80211A, 123, 104, 136, 8, BW40MINUS, NO_P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 121, 100, 144, 4, BW20, NO_P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 122, 100, 140, 8, BW40PLUS, NO_P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 123, 104, 144, 8, BW40MINUS, NO_P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 124, 149, 161, 4, BW20, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 125, 149, 177, 4, BW20, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 126, 149, 173, 8, BW40PLUS, P2P_SUPP },
@@ -2952,7 +2962,7 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
 	for (i = 0; i < flen; i++)
 		capabs |= rsnxe[i] << (8 * i);
 
-	return capabs & BIT(capab);
+	return !!(capabs & BIT(capab));
 }
 
 
@@ -3054,10 +3064,10 @@ int op_class_to_bandwidth(u8 op_class)
 	case 119: /* channels 52,60; 40 MHz; dfs */
 	case 120: /* channels 56,64; 40 MHz; dfs */
 		return 40;
-	case 121: /* channels 100-140 */
+	case 121: /* channels 100-144 */
 		return 20;
-	case 122: /* channels 100-142; 40 MHz */
-	case 123: /* channels 104-136; 40 MHz */
+	case 122: /* channels 100-140; 40 MHz */
+	case 123: /* channels 104-144; 40 MHz */
 		return 40;
 	case 124: /* channels 149,153,157,161 */
 	case 125: /* channels 149,153,157,161,165,169,173,177 */
@@ -3117,10 +3127,10 @@ enum oper_chan_width op_class_to_ch_width(u8 op_class)
 	case 119: /* channels 52,60; 40 MHz; dfs */
 	case 120: /* channels 56,64; 40 MHz; dfs */
 		return CONF_OPER_CHWIDTH_USE_HT;
-	case 121: /* channels 100-140 */
+	case 121: /* channels 100-144 */
 		return CONF_OPER_CHWIDTH_USE_HT;
-	case 122: /* channels 100-142; 40 MHz */
-	case 123: /* channels 104-136; 40 MHz */
+	case 122: /* channels 100-140; 40 MHz */
+	case 123: /* channels 104-144; 40 MHz */
 		return CONF_OPER_CHWIDTH_USE_HT;
 	case 124: /* channels 149,153,157,161 */
 	case 125: /* channels 149,153,157,161,165,169,171 */
@@ -3162,8 +3172,7 @@ enum oper_chan_width op_class_to_ch_width(u8 op_class)
 }
 
 
-struct wpabuf * ieee802_11_defrag_data(const u8 *data, size_t len,
-				       bool ext_elem)
+struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
 {
 	struct wpabuf *buf;
 	const u8 *pos, *end = data + len;
@@ -3203,44 +3212,6 @@ struct wpabuf * ieee802_11_defrag_data(const u8 *data, size_t len,
 }
 
 
-struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
-				  u8 eid, u8 eid_ext)
-{
-	const u8 *data;
-	size_t len;
-
-	/*
-	 * TODO: Defragmentation mechanism can be supported for all IEs. For now
-	 * handle only those that are used (or use ieee802_11_defrag_data()).
-	 */
-	switch (eid) {
-	case WLAN_EID_EXTENSION:
-		switch (eid_ext) {
-		case WLAN_EID_EXT_FILS_HLP_CONTAINER:
-			data = elems->fils_hlp;
-			len = elems->fils_hlp_len;
-			break;
-		case WLAN_EID_EXT_WRAPPED_DATA:
-			data = elems->wrapped_data;
-			len = elems->wrapped_data_len;
-			break;
-		default:
-			wpa_printf(MSG_DEBUG,
-				   "Defragmentation not supported. eid_ext=%u",
-				   eid_ext);
-			return NULL;
-		}
-		break;
-	default:
-		wpa_printf(MSG_DEBUG,
-			   "Defragmentation not supported. eid=%u", eid);
-		return NULL;
-	}
-
-	return ieee802_11_defrag_data(data, len, true);
-}
-
-
 const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type)
 {
 	const struct element *elem;
@@ -3274,41 +3245,4 @@ const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len)
 		return NULL;
 
 	return &buf[mld_addr_pos];
-}
-
-
-struct wpabuf * ieee802_11_defrag_mle(struct ieee802_11_elems *elems, u8 type)
-{
-	const u8 *data;
-	size_t len;
-
-	switch (type) {
-	case MULTI_LINK_CONTROL_TYPE_BASIC:
-		data = elems->basic_mle;
-		len = elems->basic_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_PROBE_REQ:
-		data = elems->probe_req_mle;
-		len = elems->probe_req_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_RECONF:
-		data = elems->reconf_mle;
-		len = elems->reconf_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_TDLS:
-		data = elems->tdls_mle;
-		len = elems->tdls_mle_len;
-		break;
-	case MULTI_LINK_CONTROL_TYPE_PRIOR_ACCESS:
-		data = elems->prior_access_mle;
-		len = elems->prior_access_mle_len;
-		break;
-	default:
-		wpa_printf(MSG_DEBUG,
-			   "Defragmentation not supported for Multi-Link element type=%u",
-			   type);
-		return NULL;
-	}
-
-	return ieee802_11_defrag_data(data, len, true);
 }

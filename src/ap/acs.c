@@ -245,6 +245,7 @@ enum bw_type {
 	ACS_BW40,
 	ACS_BW80,
 	ACS_BW160,
+	ACS_BW320,
 };
 
 struct bw_item {
@@ -256,7 +257,7 @@ struct bw_item {
 static const struct bw_item bw_40[] = {
 	{ 5180, 5200, 38 }, { 5220, 5240, 46 }, { 5260, 5280, 54 },
 	{ 5300, 5320, 62 }, { 5500, 5520, 102 }, { 5540, 5560, 110 },
-	{ 5580, 5600, 110 }, { 5620, 5640, 126}, { 5660, 5680, 134 },
+	{ 5580, 5600, 118 }, { 5620, 5640, 126 }, { 5660, 5680, 134 },
 	{ 5700, 5720, 142 }, { 5745, 5765, 151 }, { 5785, 5805, 159 },
 	{ 5825, 5845, 167 }, { 5865, 5885, 175 },
 	{ 5955, 5975, 3 }, { 5995, 6015, 11 }, { 6035, 6055, 19 },
@@ -286,10 +287,16 @@ static const struct bw_item bw_160[] = {
 	{ 6435, 6575, 111 }, { 6595, 6735, 143 },
 	{ 6755, 6895, 175 }, { 6915, 7055, 207 }, { -1, -1, -1 }
 };
+static const struct bw_item bw_320[] = {
+	{ 5955, 6255, 31 },  { 6115, 6415, 63 }, { 6275, 6575, 95 },
+	{ 6435, 6735, 127 }, { 6595, 6895, 159}, { 6755, 7055, 191 },
+	{ -1, -1, -1 }
+};
 static const struct bw_item *bw_desc[] = {
 	[ACS_BW40] = bw_40,
 	[ACS_BW80] = bw_80,
 	[ACS_BW160] = bw_160,
+	[ACS_BW320] = bw_320,
 };
 
 
@@ -859,6 +866,18 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
 			}
 		}
 
+		if (mode->mode == HOSTAPD_MODE_IEEE80211A &&
+		    iface->conf->ieee80211be) {
+			if (hostapd_get_oper_chwidth(iface->conf) ==
+			    CONF_OPER_CHWIDTH_320MHZ &&
+			    !acs_usable_bw_chan(chan, ACS_BW320)) {
+				wpa_printf(MSG_DEBUG,
+					   "ACS: Channel %d: not allowed as primary channel for 320 MHz bandwidth",
+					   chan->chan);
+				continue;
+			}
+		}
+
 		factor = 0;
 		if (acs_usable_chan(chan))
 			factor = chan->interference_factor;
@@ -898,7 +917,8 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
 
 		/* If the AP is in the 5 GHz or 6 GHz band, lets prefer a less
 		 * crowded primary channel if one was found in the segment */
-		if (iface->current_mode->mode == HOSTAPD_MODE_IEEE80211A &&
+		if (iface->current_mode &&
+		    iface->current_mode->mode == HOSTAPD_MODE_IEEE80211A &&
 		    chan != best) {
 			wpa_printf(MSG_DEBUG,
 				   "ACS: promoting channel %d over %d (less interference %Lg/%Lg)",
@@ -1034,13 +1054,17 @@ acs_find_ideal_chan(struct hostapd_iface *iface)
 	    iface->conf->secondary_channel)
 		n_chans = 2;
 
-	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax) {
+	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax ||
+	    iface->conf->ieee80211be) {
 		switch (hostapd_get_oper_chwidth(iface->conf)) {
 		case CONF_OPER_CHWIDTH_80MHZ:
 			n_chans = 4;
 			break;
 		case CONF_OPER_CHWIDTH_160MHZ:
 			n_chans = 8;
+			break;
+		case CONF_OPER_CHWIDTH_320MHZ:
+			n_chans = 16;
 			break;
 		default:
 			break;
@@ -1075,12 +1099,6 @@ bw_selected:
 
 		return ideal_chan;
 	}
-
-#ifdef CONFIG_IEEE80211BE
-	if (iface->conf->punct_acs_threshold)
-		wpa_printf(MSG_DEBUG, "ACS: RU puncturing bitmap 0x%x",
-			   ideal_chan->punct_bitmap);
-#endif /* CONFIG_IEEE80211BE */
 
 	return rand_chan;
 }
@@ -1131,11 +1149,14 @@ static void acs_adjust_center_freq(struct hostapd_iface *iface)
 	case CONF_OPER_CHWIDTH_160MHZ:
 		center = acs_get_bw_center_chan(iface->freq, ACS_BW160);
 		break;
+	case CONF_OPER_CHWIDTH_320MHZ:
+		center = acs_get_bw_center_chan(iface->freq, ACS_BW320);
+		break;
 	default:
 		/* TODO: How can this be calculated? Adjust
 		 * acs_find_ideal_chan() */
 		wpa_printf(MSG_INFO,
-			   "ACS: Only VHT20/40/80/160 is supported now");
+			   "ACS: Only VHT20/40/80/160/320 is supported now");
 		return;
 	}
 
@@ -1198,7 +1219,8 @@ static void acs_study(struct hostapd_iface *iface)
 	iface->conf->punct_bitmap = ideal_chan->punct_bitmap;
 #endif /* CONFIG_IEEE80211BE */
 
-	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax) {
+	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax ||
+	    iface->conf->ieee80211be) {
 		acs_adjust_secondary(iface);
 		acs_adjust_center_freq(iface);
 	}

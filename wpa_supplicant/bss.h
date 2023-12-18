@@ -96,6 +96,8 @@ struct wpa_bss {
 	size_t ssid_len;
 	/** Frequency of the channel in MHz (e.g., 2412 = channel 1) */
 	int freq;
+	/** The max channel width supported by both the AP and the STA */
+	enum chan_width max_cw;
 	/** Beacon interval in TUs (host byte order) */
 	u16 beacon_int;
 	/** Capability information field in host byte order */
@@ -124,6 +126,15 @@ struct wpa_bss {
 	size_t beacon_ie_len;
 	/** MLD address of the AP */
 	u8 mld_addr[ETH_ALEN];
+
+	/** An array of MLD links */
+	u8 n_mld_links;
+	struct mld_link {
+		u8 link_id;
+		u8 bssid[ETH_ALEN];
+		int freq;
+	} mld_links[MAX_NUM_MLD_LINKS];
+
 	/* followed by ie_len octets of IEs */
 	/* followed by beacon_ie_len octets of IEs */
 	u8 ies[];
@@ -201,6 +212,13 @@ void calculate_update_time(const struct os_reltime *fetch_time,
 			   unsigned int age_ms,
 			   struct os_reltime *update_time);
 
-struct wpabuf * wpa_bss_defrag_mle(const struct wpa_bss *bss, u8 type);
+int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
+				   struct wpa_bss *bss,
+				   u8 *ap_mld_addr,
+				   u16 *missing_links,
+				   struct wpa_ssid *ssid,
+				   u8 *ap_mld_id);
+u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
+				    struct wpa_bss *bss);
 
 #endif /* BSS_H */

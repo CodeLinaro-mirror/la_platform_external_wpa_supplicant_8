@@ -116,10 +116,7 @@ OBJS += ../src/utils/wpabuf.o
 OBJS += ../src/utils/bitfield.o
 OBJS += ../src/utils/ip_addr.o
 OBJS += ../src/utils/crc32.o
-OBJS += op_classes.o
-OBJS += rrm.o
 OBJS += twt.o
-OBJS += robust_av.o
 OBJS_p = wpa_passphrase.o
 OBJS_p += ../src/utils/common.o
 OBJS_p += ../src/utils/wpa_debug.o
@@ -128,7 +125,6 @@ OBJS_c = wpa_cli.o ../src/common/wpa_ctrl.o
 OBJS_c += ../src/utils/wpa_debug.o
 OBJS_c += ../src/utils/common.o
 OBJS_c += ../src/common/cli.o
-OBJS += wmm_ac.o
 
 ifndef CONFIG_OS
 ifdef CONFIG_NATIVE_WINDOWS
@@ -455,6 +451,56 @@ endif
 
 ifdef CONFIG_NO_ROAMING
 CFLAGS += -DCONFIG_NO_ROAMING
+endif
+
+ifdef CONFIG_OPENSC_ENGINE_PATH
+CFLAGS += -DCONFIG_OPENSC_ENGINE_PATH=\"$(CONFIG_OPENSC_ENGINE_PATH)\"
+endif
+
+ifdef CONFIG_NO_OPENSC_ENGINE_PATH
+CFLAGS += -DCONFIG_OPENSC_ENGINE_PATH=NULL
+endif
+
+ifdef CONFIG_PKCS11_ENGINE_PATH
+CFLAGS += -DCONFIG_PKCS11_ENGINE_PATH=\"$(CONFIG_PKCS11_ENGINE_PATH)\"
+endif
+
+ifdef CONFIG_NO_PKCS11_ENGINE_PATH
+CFLAGS += -DCONFIG_PKCS11_ENGINE_PATH=NULL
+endif
+
+ifdef CONFIG_PKCS11_MODULE_PATH
+CFLAGS += -DCONFIG_PKCS11_MODULE_PATH=\"$(CONFIG_PKCS11_MODULE_PATH)\"
+endif
+
+ifdef CONFIG_NO_PKCS11_MODULE_PATH
+CFLAGS += -DCONFIG_PKCS11_MODULE_PATH=NULL
+endif
+
+ifdef CONFIG_NO_LOAD_DYNAMIC_EAP
+CFLAGS += -DCONFIG_NO_LOAD_DYNAMIC_EAP
+endif
+
+ifdef CONFIG_NO_RRM
+CFLAGS += -DCONFIG_NO_RRM
+else
+OBJS += rrm.o
+ifdef CONFIG_AP
+OBJS += ../src/ap/rrm.o
+endif
+OBJS += op_classes.o
+endif
+
+ifdef CONFIG_NO_WMM_AC
+CFLAGS += -DCONFIG_NO_WMM_AC
+else
+OBJS += wmm_ac.o
+endif
+
+ifdef CONFIG_NO_ROBUST_AV
+CFLAGS += -DCONFIG_NO_ROBUST_AV
+else
+OBJS += robust_av.o
 endif
 
 include ../src/drivers/drivers.mak
@@ -963,7 +1009,6 @@ OBJS += ../src/ap/beacon.o
 OBJS += ../src/ap/bss_load.o
 OBJS += ../src/ap/eap_user_db.o
 OBJS += ../src/ap/neighbor_db.o
-OBJS += ../src/ap/rrm.o
 OBJS += ../src/ap/ieee802_11_ht.o
 ifdef CONFIG_IEEE80211AC
 OBJS += ../src/ap/ieee802_11_vht.o
@@ -1038,6 +1083,7 @@ endif
 ifdef CONFIG_MBO
 OBJS += mbo.o
 CFLAGS += -DCONFIG_MBO
+NEED_GAS=y
 endif
 
 ifdef NEED_RSN_AUTHENTICATOR

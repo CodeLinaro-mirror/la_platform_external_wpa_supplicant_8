@@ -175,6 +175,12 @@ struct hostapd_data {
 	unsigned int reenable_beacon:1;
 
 	u8 own_addr[ETH_ALEN];
+	u8 mld_addr[ETH_ALEN];
+	u8 mld_link_id;
+	/* Used for mld_link_id assignment - valid on the first MLD BSS only */
+	u8 mld_next_link_id;
+
+	struct hostapd_data *mld_first_bss;
 
 	int num_sta; /* number of entries in sta_list */
 	struct sta_info *sta_list; /* STA info list head */
@@ -462,6 +468,13 @@ struct hostapd_data {
 #ifdef CONFIG_CTRL_IFACE_UDP
        unsigned char ctrl_iface_cookie[CTRL_IFACE_COOKIE_LEN];
 #endif /* CONFIG_CTRL_IFACE_UDP */
+
+#ifdef CONFIG_IEEE80211BE
+	u8 eht_mld_bss_param_change;
+#ifdef CONFIG_TESTING_OPTIONS
+	u8 eht_mld_link_removal_count;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
 };
 
 
@@ -541,6 +554,8 @@ struct hostapd_iface {
 	/* extended capabilities supported by the driver */
 	const u8 *extended_capa, *extended_capa_mask;
 	unsigned int extended_capa_len;
+
+	u16 mld_eml_capa, mld_mld_capa;
 
 	unsigned int drv_max_acl_mac_addrs;
 
@@ -715,13 +730,15 @@ int hostapd_register_probereq_cb(struct hostapd_data *hapd,
 					   const u8 *ie, size_t ie_len,
 					   int ssi_signal),
 				 void *ctx);
-void hostapd_prune_associations(struct hostapd_data *hapd, const u8 *addr);
+void hostapd_prune_associations(struct hostapd_data *hapd, const u8 *addr,
+				int mld_assoc_link_id);
 
 /* drv_callbacks.c (TODO: move to somewhere else?) */
 void hostapd_notify_assoc_fils_finish(struct hostapd_data *hapd,
 				      struct sta_info *sta);
 int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
-			const u8 *ie, size_t ielen, int reassoc);
+			const u8 *req_ie, size_t req_ielen, const u8 *resp_ie,
+			size_t resp_ielen, const u8 *link_addr, int reassoc);
 void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_event_sta_low_ack(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_event_connect_failed_reason(struct hostapd_data *hapd,
@@ -756,5 +773,27 @@ void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 int hostapd_set_acl(struct hostapd_data *hapd);
 struct hostapd_data * hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
 int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
+struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+					       u8 link_id);
+int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
+
+#ifdef CONFIG_IEEE80211BE
+#define for_each_mld_link(_link, _bss_idx, _iface_idx, _ifaces, _mld_id) \
+	for (_iface_idx = 0;						\
+	     _iface_idx < (_ifaces)->count;				\
+	     _iface_idx++)						\
+		for (_bss_idx = 0;					\
+		     _bss_idx <						\
+			(_ifaces)->iface[_iface_idx]->num_bss;		\
+		     _bss_idx++)					\
+			for (_link =					\
+			     (_ifaces)->iface[_iface_idx]->bss[_bss_idx]; \
+			    _link && _link->conf->mld_ap &&		\
+				_link->conf->mld_id == _mld_id;		\
+			    _link = NULL)
+#else /* CONFIG_IEEE80211BE */
+#define for_each_mld_link(_link, _bss_idx, _iface_idx, _ifaces, _mld_id) \
+	if (false)
+#endif /* CONFIG_IEEE80211BE */
 
 #endif /* HOSTAPD_H */

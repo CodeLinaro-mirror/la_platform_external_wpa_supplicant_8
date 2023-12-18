@@ -96,9 +96,9 @@ def sigma_dut_cmd(cmd, port=9000, timeout=2, dump_dev=None):
                     done = True
                     res = line
                     break
-                if running and not done:
-                    # Read the actual response
-                    res = sock.recv(1000).decode()
+            if running and not done:
+                # Read the actual response
+                res = sock.recv(1000).decode()
         except:
             res = ''
             pass
@@ -164,10 +164,17 @@ def stop_sigma_dut(sigma):
     sigma_log_output(cmd)
     logger.debug("Terminating sigma_dut process")
     cmd.terminate()
-    cmd.wait()
-    out, err = cmd.communicate()
-    logger.debug("sigma_dut stdout: " + str(out.decode()))
-    logger.debug("sigma_dut stderr: " + str(err.decode()))
+    try:
+        out, err = cmd.communicate(timeout=200)
+        logger.debug("sigma_dut stdout: " + str(out.decode()))
+        logger.debug("sigma_dut stderr: " + str(err.decode()))
+    except subprocess.TimeoutExpired:
+        logger.debug("sigma_dut termination timed out")
+        cmd.kill()
+        out, err = cmd.communicate()
+        logger.debug("sigma_dut stdout: " + str(out.decode()))
+        logger.debug("sigma_dut stderr: " + str(err.decode()))
+
     subprocess.call(["ip", "addr", "del", "dev", sigma['ifname'],
                      "127.0.0.11/24"],
                     stderr=open('/dev/null', 'w'))
@@ -1071,8 +1078,14 @@ def test_sigma_dut_ap_sae_pw_id(dev, apdev, params):
                 dev[0].connect("test-sae", key_mgmt="SAE", sae_password=pw,
                                sae_password_id=pw_id,
                                ieee80211w="2", scan_freq="2412")
+                # Allow some time for AP to complete handling of connection
+                # before disconnecting.
+                time.sleep(0.1)
                 dev[0].request("REMOVE_NETWORK all")
                 dev[0].wait_disconnected()
+                # Allow some time for AP to complete handling of disconnection
+                # before trying SAE again.
+                time.sleep(0.1)
 
             sigma_dut_cmd_check("ap_reset_default")
         finally:
@@ -1141,8 +1154,14 @@ def test_sigma_dut_ap_sae_pw_id_ft(dev, apdev, params):
                 dev[0].connect("test-sae", key_mgmt=key_mgmt, sae_password=pw,
                                sae_password_id=pw_id,
                                ieee80211w="2", scan_freq="2412")
+                # Allow some time for AP to complete handling of connection
+                # before disconnecting.
+                time.sleep(0.1)
                 dev[0].request("REMOVE_NETWORK all")
                 dev[0].wait_disconnected()
+                # Allow some time for AP to complete handling of disconnection
+                # before trying SAE again.
+                time.sleep(0.1)
 
             sigma_dut_cmd_check("ap_reset_default")
         finally:
@@ -2719,6 +2738,7 @@ def run_sigma_dut_dpp_pkex_responder(dev, apdev, v1=False):
         stop_sigma_dut(sigma)
 
 def dpp_init_conf(dev, id1, conf, conf_id, extra):
+    time.sleep(1)
     logger.info("Starting DPP initiator/configurator in a thread")
     cmd = "DPP_AUTH_INIT peer=%d conf=%s %s configurator=%d" % (id1, conf, extra, conf_id)
     if "OK" not in dev.request(cmd):
@@ -3575,7 +3595,8 @@ def run_sigma_dut_ap_dpp_relay(dev, apdev):
     res = sigma_dut_cmd_check("dev_exec_action,program,DPP,DPPActionType,GetLocalBootstrap,DPPCryptoIdentifier,P-256,DPPBS,QR")
 
     dev[0].dpp_auth_init(uri=uri_c, role="enrollee")
-    wait_auth_success(dev[1], dev[0], configurator=dev[1], enrollee=dev[0])
+    wait_auth_success(dev[1], dev[0], configurator=dev[1], enrollee=dev[0],
+                      timeout=10)
 
     sigma_dut_cmd_check("ap_reset_default")
 
@@ -5679,6 +5700,12 @@ def run_sigma_dut_ap_channel(dev, apdev, params, channel, mode, scan_freq,
         sigma = start_sigma_dut(iface, hostapd_logdir=logdir)
         try:
             subprocess.call(['iw', 'reg', 'set', 'US'])
+            for i in range(5):
+                ev = dev[0].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=5)
+                if ev is None:
+                    break
+                if "alpha2=US" in ev:
+                    break
             cmd = "ap_reset_default"
             if program:
                 cmd += ",program," + program
@@ -5791,8 +5818,8 @@ def test_sigma_dut_ap_transition_disable(dev, apdev, params):
 
             dev[0].set("sae_groups", "")
             dev[0].connect("test-sae", key_mgmt="SAE", psk="12345678",
-                           ieee80211w="2", scan_freq="2412")
-            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=1)
+                           ieee80211w="2", scan_freq="2412", wait_connect=False)
+            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=15)
             if ev is None:
                 raise Exception("Transition disable not indicated")
             if ev.split(' ')[1] != "01":
@@ -5816,8 +5843,8 @@ def test_sigma_dut_ap_transition_disable_change(dev, apdev, params):
             sigma_dut_cmd_check("ap_config_commit,NAME,AP")
             dev[0].set("sae_groups", "")
             dev[0].connect("test-sae", key_mgmt="SAE", psk="12345678",
-                           ieee80211w="2", scan_freq="2412")
-            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=1)
+                           ieee80211w="2", scan_freq="2412", wait_connect=False)
+            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=15)
             if ev is not None:
                 raise Exception("Unexpected transition disable indication")
             dev[0].request("DISCONNECT")
@@ -5826,8 +5853,7 @@ def test_sigma_dut_ap_transition_disable_change(dev, apdev, params):
 
             sigma_dut_cmd_check("ap_set_rfeature,NAME,AP,Transition_Disable,1,Transition_Disable_Index,0")
             dev[0].request("RECONNECT")
-            dev[0].wait_connected()
-            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=1)
+            ev = dev[0].wait_event(["TRANSITION-DISABLE"], timeout=15)
             if ev is None:
                 raise Exception("Transition disable not indicated")
             if ev.split(' ')[1] != "01":

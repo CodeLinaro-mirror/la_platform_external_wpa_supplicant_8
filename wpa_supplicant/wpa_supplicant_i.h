@@ -596,6 +596,40 @@ struct tclas_element {
 };
 
 
+struct qos_characteristics {
+	bool available;
+
+	/* Control Info Direction */
+	u8 direction;
+	/* Presence Bitmap Of Additional Parameters */
+	u16 mask;
+	/* Minimum Service Interval */
+	u32 min_si;
+	/* Maximum Service Interval */
+	u32 max_si;
+	/* Minimum Data Rate */
+	u32 min_data_rate;
+	/* Delay Bound */
+	u32 delay_bound;
+	/* Maximum MSDU Size */
+	u16 max_msdu_size;
+	/* Service Start Time */
+	u32 service_start_time;
+	/* Service Start Time LinkID */
+	u8 service_start_time_link_id;
+	/* Mean Data Rate */
+	u32 mean_data_rate;
+	/* Delayed Bounded Burst Size */
+	u32 burst_size;
+	/* MSDU Lifetime */
+	u16 msdu_lifetime;
+	/* MSDU Delivery Info */
+	u8 msdu_delivery_info;
+	/* Medium Time */
+	u16 medium_time;
+};
+
+
 struct scs_desc_elem {
 	u8 scs_id;
 	enum scs_request_type request_type;
@@ -604,6 +638,7 @@ struct scs_desc_elem {
 	struct tclas_element *tclas_elems;
 	unsigned int num_tclas_elem;
 	u8 tclas_processing;
+	struct qos_characteristics qos_char_elem;
 };
 
 
@@ -623,6 +658,13 @@ struct active_scs_elem {
 	struct dl_list list;
 	u8 scs_id;
 	enum scs_response_status status;
+};
+
+
+struct ml_sta_link_info {
+	u8 link_id;
+	u8 bssid[ETH_ALEN];
+	u16 status;
 };
 
 
@@ -688,7 +730,7 @@ struct wpa_supplicant {
 	u8 ap_mld_addr[ETH_ALEN];
 	u8 mlo_assoc_link_id;
 	u16 valid_links; /* bitmap of valid MLO link IDs */
-	struct ml_sta_link_info {
+	struct {
 		u8 addr[ETH_ALEN];
 		u8 bssid[ETH_ALEN];
 		unsigned int freq;
@@ -868,6 +910,10 @@ struct wpa_supplicant {
 	unsigned int num_last_scan_freqs;
 	unsigned int suitable_network;
 	unsigned int no_suitable_network;
+
+	u8 ml_probe_bssid[ETH_ALEN];
+	int ml_probe_mld_id;
+	u16 ml_probe_links;
 
 	u64 drv_flags;
 	u64 drv_flags2;
@@ -1253,6 +1299,7 @@ struct wpa_supplicant {
 	u8 wnm_reply;
 	u8 wnm_num_neighbor_report;
 	u8 wnm_mode;
+	bool wnm_link_removal;
 	u16 wnm_dissoc_timer;
 	u8 wnm_bss_termination_duration[12];
 	struct neighbor_report *wnm_neighbor_report_elements;
@@ -1501,8 +1548,24 @@ struct wpa_supplicant {
 	unsigned int multi_ap_ie:1;
 	unsigned int multi_ap_backhaul:1;
 	unsigned int multi_ap_fronthaul:1;
+
+#ifndef CONFIG_NO_ROBUST_AV
 	struct robust_av_data robust_av;
 	bool mscs_setup_done;
+	struct scs_robust_av_data scs_robust_av_req;
+	u8 scs_dialog_token;
+	struct dl_list active_scs_ids;
+	bool ongoing_scs_req;
+	u8 dscp_req_dialog_token;
+	u8 dscp_query_dialog_token;
+	unsigned int enable_dscp_policy_capa:1;
+	unsigned int connection_dscp:1;
+	unsigned int wait_for_dscp_req:1;
+#ifdef CONFIG_TESTING_OPTIONS
+	unsigned int disable_scs_support:1;
+	unsigned int disable_mscs_support:1;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_NO_ROBUST_AV */
 
 	bool wps_scan_done; /* Set upon receiving scan results event */
 	bool supp_pbc_active; /* Set for interface when PBC is triggered */
@@ -1514,21 +1577,23 @@ struct wpa_supplicant {
 	unsigned int pasn_count;
 	struct pasn_auth *pasn_params;
 #endif /* CONFIG_PASN */
-	struct scs_robust_av_data scs_robust_av_req;
-	u8 scs_dialog_token;
-#ifdef CONFIG_TESTING_OPTIONS
-	unsigned int disable_scs_support:1;
-	unsigned int disable_mscs_support:1;
-#endif /* CONFIG_TESTING_OPTIONS */
-	struct dl_list active_scs_ids;
-	bool ongoing_scs_req;
-	u8 dscp_req_dialog_token;
-	u8 dscp_query_dialog_token;
-	unsigned int enable_dscp_policy_capa:1;
-	unsigned int connection_dscp:1;
-	unsigned int wait_for_dscp_req:1;
+
+	bool is_6ghz_enabled;
+	bool crossed_6ghz_dom;
+	bool last_scan_all_chan;
+	bool last_scan_non_coloc_6ghz;
+	bool support_6ghz;
 
 	struct wpa_signal_info last_signal_info;
+
+	struct wpa_ssid *ml_connect_probe_ssid;
+	struct wpa_bss *ml_connect_probe_bss;
+
+#ifdef CONFIG_OWE
+	/* An array of frequencies to scan for OWE transition mode BSSs when
+	 * owe_transition_search == 1 */
+	int *owe_trans_scan_freq;
+#endif /* CONFIG_OWE */
 };
 
 
@@ -1635,7 +1700,8 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *own_addr,
 			     enum frame_encryption encrypted);
 void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_clear_status(struct wpa_supplicant *wpa_s);
-void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid);
+void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
+			    const u8 **link_bssids);
 void fils_connection_failure(struct wpa_supplicant *wpa_s);
 void fils_pmksa_cache_flush(struct wpa_supplicant *wpa_s);
 int wpas_driver_bss_selection(struct wpa_supplicant *wpa_s);
@@ -1649,8 +1715,10 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 		    size_t ssid_len);
 void wpas_request_connection(struct wpa_supplicant *wpa_s);
 void wpas_request_disconnection(struct wpa_supplicant *wpa_s);
-int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf, size_t buflen);
-int wpas_update_random_addr(struct wpa_supplicant *wpa_s, int style,
+int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf, size_t buflen,
+			 struct wpa_bss *bss);
+int wpas_update_random_addr(struct wpa_supplicant *wpa_s,
+			    enum wpas_mac_addr_style style,
 			    struct wpa_ssid *ssid);
 int wpas_update_random_addr_disassoc(struct wpa_supplicant *wpa_s);
 void add_freq(int *freqs, int *num_freqs, int freq);
@@ -1916,5 +1984,8 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			    struct pasn_auth *pasn_auth);
 void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status);
+bool wpas_is_6ghz_supported(struct wpa_supplicant *wpa_s, bool only_enabled);
+
+bool wpa_is_non_eht_scs_traffic_desc_supported(struct wpa_bss *bss);
 
 #endif /* WPA_SUPPLICANT_I_H */

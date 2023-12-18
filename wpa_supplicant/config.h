@@ -47,6 +47,7 @@
 #define DEFAULT_OCE_SUPPORT OCE_STA
 #define DEFAULT_EXTENDED_KEY_ID 0
 #define DEFAULT_SCAN_RES_VALID_FOR_CONNECT 5
+#define DEFAULT_MLD_CONNECT_BAND_PREF MLD_CONNECT_BAND_PREF_AUTO
 
 #include "config_ssid.h"
 #include "wps/wps.h"
@@ -615,6 +616,7 @@ struct wpa_config {
 	 */
 	int fast_reauth;
 
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	/**
 	 * opensc_engine_path - Path to the OpenSSL engine for opensc
 	 *
@@ -622,7 +624,9 @@ struct wpa_config {
 	 * engine (engine_opensc.so); if %NULL, this engine is not loaded.
 	 */
 	char *opensc_engine_path;
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
 
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	/**
 	 * pkcs11_engine_path - Path to the OpenSSL engine for PKCS#11
 	 *
@@ -630,7 +634,9 @@ struct wpa_config {
 	 * engine (engine_pkcs11.so); if %NULL, this engine is not loaded.
 	 */
 	char *pkcs11_engine_path;
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
 
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	/**
 	 * pkcs11_module_path - Path to the OpenSSL OpenSC/PKCS#11 module
 	 *
@@ -639,6 +645,7 @@ struct wpa_config {
 	 * module is not loaded.
 	 */
 	char *pkcs11_module_path;
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 
 	/**
 	 * openssl_ciphers - OpenSSL cipher string
@@ -1771,6 +1778,20 @@ struct wpa_config {
 
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN*/
+
+#ifdef CONFIG_TESTING_OPTIONS
+	enum {
+		MLD_CONNECT_BAND_PREF_AUTO = 0,
+		MLD_CONNECT_BAND_PREF_2GHZ = 1,
+		MLD_CONNECT_BAND_PREF_5GHZ = 2,
+		MLD_CONNECT_BAND_PREF_6GHZ = 3,
+		MLD_CONNECT_BAND_PREF_MAX = 4,
+	}  mld_connect_band_pref;
+
+	u8 mld_connect_bssid_pref[ETH_ALEN];
+
+	int mld_force_single_link;
+#endif /* CONFIG_TESTING_OPTIONS */
 };
 
 
