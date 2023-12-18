@@ -14,6 +14,7 @@
 #include "sta_info.h"
 #include "ieee802_11.h"
 
+struct crypto_ec *ge;
 
 static u16 ieee80211_eht_ppet_size(u16 ppe_thres_hdr, const u8 *phy_cap_info)
 {
@@ -838,7 +839,7 @@ sae_commit_skip_fixed_fields(const struct ieee80211_mgmt *mgmt, size_t len,
 
 		prime_len = dh->prime_len;
 	} else {
-		prime_len = crypto_ec_prime_len(ec);
+		prime_len = crypto_ec_prime_len(ge);
 	}
 
 	wpa_printf(MSG_DEBUG, "EHT: SAE scalar length is %zu", prime_len);
@@ -848,7 +849,7 @@ sae_commit_skip_fixed_fields(const struct ieee80211_mgmt *mgmt, size_t len,
 
 	if (ec) {
 		pos += prime_len * 2;
-		crypto_ec_deinit(ec);
+		crypto_ec_deinit(ge);
 	} else {
 		pos += prime_len;
 	}
