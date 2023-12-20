@@ -214,6 +214,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		 */
 		hapd->mld_first_bss = h_hapd;
 		hapd->mld_link_id = hapd->mld_first_bss->mld_next_link_id++;
+		hapd->mld_first_bss->mld_next_link_id %= MAX_NUM_MLD_LINKS;
 
 		goto setup_mld;
 	}
