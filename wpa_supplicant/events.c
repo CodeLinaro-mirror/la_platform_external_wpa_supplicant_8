@@ -165,7 +165,8 @@ static void wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s)
 }
 
 
-static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
+static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s,
+					union wpa_event_data *data)
 {
 	struct wpa_ssid *ssid, *old_ssid;
 	u8 drv_ssid[SSID_MAX_LEN];
@@ -238,8 +239,15 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 	if (wpa_key_mgmt_wpa_any(ssid->key_mgmt)) {
 		u8 wpa_ie[80];
 		size_t wpa_ie_len = sizeof(wpa_ie);
+		bool skip_default_rsne;
+
+		/* Do not override RSNE/RSNXE with the default values if the
+		 * driver indicated the actual values used in the
+		 * (Re)Association Request frame. */
+		skip_default_rsne = data && data->assoc_info.req_ies;
 		if (wpa_supplicant_set_suites(wpa_s, NULL, ssid,
-					      wpa_ie, &wpa_ie_len) < 0)
+					      wpa_ie, &wpa_ie_len,
+					      skip_default_rsne) < 0)
 			wpa_dbg(wpa_s, MSG_DEBUG, "Could not set WPA suites");
 	} else {
 		wpa_supplicant_set_non_wpa_policy(wpa_s, ssid);
@@ -2728,8 +2736,10 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		p += len;
 	}
 
-	if (!found || wpa_parse_wpa_ie(p, len, &ie) < 0)
+	if (!found || wpa_parse_wpa_ie(p, len, &ie) < 0) {
+		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_OCV, 0);
 		return 0;
+	}
 
 	wpa_hexdump(MSG_DEBUG,
 		    "WPA: Update cipher suite selection based on IEs in driver-generated WPA/RSNE in AssocReq",
@@ -2755,6 +2765,11 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 			wpa_s, WLAN_REASON_AKMP_NOT_VALID);
 		return -1;
 	}
+
+	if (((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) ||
+	     (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OCV)) && ssid->ocv)
+		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_OCV,
+				 !!(ie.capabilities & WPA_CAPABILITY_OCVC));
 
 	/*
 	 * Update PMK in wpa_sm and the driver if roamed to WPA/WPA2 PSK from a
@@ -3453,7 +3468,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		if (wpa_supplicant_dynamic_keys(wpa_s) && !ft_completed) {
 			wpa_clear_keys(wpa_s, bssid);
 		}
-		if (wpa_supplicant_select_config(wpa_s) < 0) {
+		if (wpa_supplicant_select_config(wpa_s, data) < 0) {
 			wpa_supplicant_deauthenticate(
 				wpa_s, WLAN_REASON_DEAUTH_LEAVING);
 			return;
