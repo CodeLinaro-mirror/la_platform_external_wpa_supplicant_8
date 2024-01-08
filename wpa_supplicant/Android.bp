@@ -135,6 +135,7 @@ wpa_supplicant_cflags_cc_defaults {
         "-DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"",
         "-DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"",
         "-DCONFIG_CTRL_IFACE_AIDL",
+        "-DCONFIG_USE_VENDOR_AIDL",
         "-DCONFIG_CTRL_IFACE_UNIX",
         "-DCONFIG_DPP",
         "-DCONFIG_DPP2",
