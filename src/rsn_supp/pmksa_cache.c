@@ -14,8 +14,8 @@
 #include "wpa.h"
 #include "wpa_i.h"
 #include "pmksa_cache.h"
-#include "wpa_supplicant_i.h"
-#include "notify.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/notify.h"
 
 #if defined(IEEE8021X_EAPOL) && !defined(CONFIG_NO_WPA)
 

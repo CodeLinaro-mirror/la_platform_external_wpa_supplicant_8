@@ -13648,6 +13648,12 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 #ifndef ANDROID_LIB_STUB
 	.driver_cmd = wpa_driver_nl80211_driver_cmd,
 #endif /* !ANDROID_LIB_STUB */
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+#ifndef ANDROID_LIB_STUB
+	.driver_cmd = wpa_driver_nl80211_driver_cmd,
+#endif /* !ANDROID_LIB_STUB */
+#endif
 #endif /* ANDROID */
 	.vendor_cmd = nl80211_vendor_cmd,
 	.set_qos_map = nl80211_set_qos_map,

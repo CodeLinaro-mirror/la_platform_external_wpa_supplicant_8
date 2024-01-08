@@ -4186,6 +4186,10 @@ struct wpa_driver_ops {
 	 * Returns: 0 on success, -1 on failure
 	 */
 	int (*driver_cmd)(void *priv, char *cmd, char *buf, size_t buf_len);
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+	int (*driver_cmd)(void *priv, char *cmd, char *buf, size_t buf_len);
+#endif
 #endif /* ANDROID */
 
 	/**

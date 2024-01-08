@@ -32,8 +32,8 @@
 #include "pmksa_cache.h"
 #include "wpa_i.h"
 #include "wpa_ie.h"
-#include "wpa_supplicant_i.h"
-#include "driver_i.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/driver_i.h"
 
 static const u8 null_rsc[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 

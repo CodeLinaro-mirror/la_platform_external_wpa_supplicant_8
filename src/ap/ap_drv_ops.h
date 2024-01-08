@@ -420,6 +420,16 @@ static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
 		return -1;
 	return hapd->driver->driver_cmd(hapd->drv_priv, cmd, buf, buf_len);
 }
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
+					 char *cmd, char *buf, size_t buf_len)
+{
+	if (!hapd->driver->driver_cmd)
+		return -1;
+	return hapd->driver->driver_cmd(hapd->drv_priv, cmd, buf, buf_len);
+}
+#endif
 #endif /* ANDROID */
 
 #ifdef CONFIG_TESTING_OPTIONS

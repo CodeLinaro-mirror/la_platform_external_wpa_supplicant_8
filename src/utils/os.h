@@ -9,6 +9,10 @@
 #ifndef OS_H
 #define OS_H
 
+#ifdef __cplusplus
+#include <cstring>
+#endif
+
 typedef long os_time_t;
 
 /**

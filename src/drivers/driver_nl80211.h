@@ -340,6 +340,15 @@ int wpa_driver_set_ap_wps_p2p_ie(void *priv, const struct wpabuf *beacon,
 				 const struct wpabuf *proberesp,
 				 const struct wpabuf *assocresp);
 #endif /* ANDROID_P2P */
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+/*qcwcn wpa supplicant 8 lib*/
+extern int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
+					 size_t buf_len);
+extern int wpa_driver_nl80211_driver_event(struct wpa_driver_nl80211_data *drv,
+					   u32 vendor_id, u32 subcmd,
+					   u8 *data, size_t len);
+#endif
 #endif /* ANDROID */
 
 

@@ -9,6 +9,8 @@
 #ifndef P2P_SUPPLICANT_H
 #define P2P_SUPPLICANT_H
 
+#define P2P_MGMT_DEVICE_PREFIX		"p2p-dev-"
+
 enum p2p_wps_method;
 struct p2p_go_neg_results;
 enum p2p_send_action_result;

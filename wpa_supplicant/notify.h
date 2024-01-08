@@ -12,7 +12,7 @@
 #include "p2p/p2p.h"
 #include "bss.h"
 #include "rsn_supp/pmksa_cache.h"
-#include "dpp.h"
+#include "common/dpp.h"
 
 struct wps_credential;
 struct wps_event_m2d;

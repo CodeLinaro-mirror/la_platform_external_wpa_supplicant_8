@@ -6296,7 +6296,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		snprintf(event_msg, sizeof(event_msg),
 			WPA_EVENT_THERMAL_CHANGE "level=%d", data->thermal_info.level);
 		wpa_msg(wpa_s, MSG_INFO, "%s", event_msg);
+#ifdef CONFIG_USE_VENDOR_AIDL
 		wpas_notify_vendor_ctrl_event(wpa_s, event_msg);
+#endif
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);

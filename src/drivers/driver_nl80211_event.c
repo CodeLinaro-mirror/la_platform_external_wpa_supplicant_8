@@ -3021,6 +3021,14 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 		wpa_driver_nl80211_driver_event(drv, vendor_id, subcmd, data,
 						len);
 #endif /* ANDROID_LIB_EVENT */
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+#ifdef ANDROID_LIB_EVENT
+	if (!(vendor_id == OUI_QCA &&
+	      subcmd == QCA_NL80211_VENDOR_SUBCMD_KEY_MGMT_ROAM_AUTH))
+		wpa_driver_nl80211_driver_event(drv, vendor_id, subcmd, data, len);
+#endif /* ANDROID_LIB_EVENT */
+#endif
 #endif /* ANDROID */
 
 	switch (vendor_id) {
