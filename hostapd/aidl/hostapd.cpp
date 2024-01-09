@@ -643,11 +643,11 @@ std::string CreateHostapdConfig(
 			std::string interface_mac_addr = getInterfaceMacAddress(iface_params.name);
 			if (interface_mac_addr.empty()) {
 				wpa_printf(MSG_ERROR,
-				    "Unable to set interface mac address as bssid for 11BE SAP");
+				    "Unable to set interface mac address as mld_addr for 11BE SAP");
 				return "";
 			}
 			eht_params_as_string += StringPrintf(
-				"bssid=%s\n"
+				"mld_addr=%s\n"
 				"mld_ap=1",
 				interface_mac_addr.c_str());
 		}
