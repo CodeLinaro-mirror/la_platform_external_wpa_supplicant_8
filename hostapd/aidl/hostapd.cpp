@@ -45,6 +45,7 @@ extern "C"
 // TOOD(b/71872409): Add unit tests for this.
 namespace {
 constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
+constexpr char kMLOConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s_%d.conf";
 
 using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
@@ -152,6 +153,36 @@ static int hostapd_get_center_80mhz(int channel)
 			return center_channels[i];
 
 	return 0;
+}
+
+std::string WriteMLOHostapdConfig(
+    const std::string& interface_name, const std::string& config, const int id)
+{
+	const std::string file_path =
+	    StringPrintf(kMLOConfFileNameFmt, interface_name.c_str(), id);
+	if (WriteStringToFile(
+		config, file_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		getuid(), getgid())) {
+		return file_path;
+	}
+	// Diagnose failure
+	int error = errno;
+	wpa_printf(
+		MSG_ERROR, "Cannot write hostapd config to %s, error: %s",
+		file_path.c_str(), strerror(error));
+	struct stat st;
+	int result = stat(file_path.c_str(), &st);
+	if (result == 0) {
+		wpa_printf(
+			MSG_ERROR, "hostapd config file uid: %d, gid: %d, mode: %d",
+			st.st_uid, st.st_gid, st.st_mode);
+	} else {
+		wpa_printf(
+			MSG_ERROR,
+			"Error calling stat() on hostapd config file: %s",
+			strerror(errno));
+	}
+	return "";
 }
 
 /*
@@ -1053,11 +1084,16 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 			iface_params.hwModeParams.enable80211BE ? "true" : "false");
 		return addSingleAccessPoint(iface_params, iface_params.channelParams[0],
 		    nw_params, "", "", iface_params.hwModeParams.enable80211BE);
-	} else if (channelParamsSize == 2) {
+	} else if (channelParamsSize == 2 && !iface_params.hwModeParams.enable80211BE) {
 		// Concurrent APs
 		wpa_printf(MSG_INFO, "AddDualAccessPoint, iface=%s",
 			iface_params.name.c_str());
 		return addConcurrentAccessPoints(iface_params, nw_params);
+	} else if (channelParamsSize > 1 && iface_params.hwModeParams.enable80211BE) {
+		// MultiLink AP
+		wpa_printf(MSG_INFO, "Add MultiLink AccessPoint, iface=%s",
+			iface_params.name.c_str());
+		return addMultiLinkAccessPoints(iface_params, nw_params);
 	}
 	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 }
@@ -1072,6 +1108,165 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	std::vector<uint8_t> vssid(ssid.begin(), ssid.end());
 
 	return vssid;
+}
+
+::ndk::ScopedAStatus Hostapd::addMultiLinkIface(
+	const IfaceParams& iface_params, const NetworkParams& nw_params)
+{
+	int channelParamsListSize = iface_params.channelParams.size();
+
+	for (std::size_t i = 0; i < channelParamsListSize; i++) {
+		const auto conf_params = CreateHostapdConfig(iface_params,
+				iface_params.channelParams[i], nw_params, "", "",
+				iface_params.hwModeParams.enable80211BE);
+/*
+		if (i == 1) {
+			ChannelParams channelParams_new = iface_params.channelParams[i];
+			channelParams_new.channel = 36;
+			channelParams_new.bandMask = BandMask::BAND_5_GHZ;
+			channelParams_new.enableAcs = false;
+			auto conf_params = CreateHostapdConfig(iface_params,
+				channelParams_new, nw_params, "", "",
+				iface_params.hwModeParams.enable80211BE);
+		}
+*/
+		if (conf_params.empty()) {
+			wpa_printf(MSG_ERROR, "Failed to create config params");
+			return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
+		}
+
+		const auto conf_file_path =
+			WriteMLOHostapdConfig(iface_params.name, conf_params, i);
+		if (conf_file_path.empty()) {
+			wpa_printf(MSG_ERROR, "Failed to write config file, %d", i);
+			return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
+		}
+		std::string add_iface_param_str = StringPrintf(
+			"%s config=%s", iface_params.name.c_str(),
+			conf_file_path.c_str());
+		std::vector<char> add_iface_param_vec(
+			add_iface_param_str.begin(), add_iface_param_str.end() + 1);
+		wpa_printf(MSG_DEBUG, "Before add iface, %s", add_iface_param_vec.data());
+		if (hostapd_add_iface(interfaces_, add_iface_param_vec.data()) < 0) {
+			wpa_printf(
+				MSG_ERROR, "Adding interface %s failed",
+				add_iface_param_str.c_str());
+			return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
+		}
+	}
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus Hostapd::addMultiLinkAccessPoints(
+	const IfaceParams& iface_params, const NetworkParams& nw_params)
+{
+
+	ndk::ScopedAStatus status = addMultiLinkIface(iface_params, nw_params);
+	if (!status.isOk()) {
+		wpa_printf(MSG_ERROR, "Failed to addMultiLinkIface %s",
+			   iface_params.name.c_str());
+		return status;
+	}
+
+	wpa_printf(MSG_DEBUG, "addMultiLinkIFace success");
+
+	std::size_t i = 0;
+	std::size_t j = 0;
+	for (i = 0; i < interfaces_->count; i++) {
+		struct hostapd_iface *iface = interfaces_->iface[i];
+
+		for (j = 0; j < iface->num_bss; j++) {
+			struct hostapd_data *iface_hapd = iface->bss[j];
+			int res = 0;
+			res = memcmp(iface_hapd->conf->iface, iface_params.name.c_str(), iface_params.name.size());
+
+			if (res == 0) {
+				on_setup_complete_internal_callback =
+					[this](struct hostapd_data* iface_hapd) {
+						wpa_printf(
+						MSG_INFO, "AP interface setup completed - state %s",
+						hostapd_state_text(iface_hapd->iface->state));
+						if (iface_hapd->iface->state == HAPD_IFACE_DISABLED) {
+							// Invoke the failure callback on all registered
+							// clients.
+							for (const auto& callback : callbacks_) {
+								callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+									iface_hapd->conf->bridge : iface_hapd->conf->iface,
+										    iface_hapd->conf->iface);
+							}
+						}
+					};
+
+				// Register for new client connect/disconnect indication.
+				on_sta_authorized_internal_callback =
+					[this](struct hostapd_data* iface_hapd, const u8 *mac_addr,
+						int authorized, const u8 *p2p_dev_addr) {
+						wpa_printf(MSG_DEBUG, "notify client " MACSTR " %s",
+								MAC2STR(mac_addr),
+								(authorized) ? "Connected" : "Disconnected");
+						ClientInfo info;
+						info.ifaceName = strlen(iface_hapd->conf->bridge) > 0 ?
+							iface_hapd->conf->bridge : iface_hapd->conf->iface;
+						info.apIfaceInstance = iface_hapd->conf->iface;
+						info.clientAddress.assign(mac_addr, mac_addr + ETH_ALEN);
+						info.isConnected = authorized;
+						for (const auto &callback : callbacks_) {
+							callback->onConnectedClientsChanged(info);
+						}
+					};
+
+				// Register for wpa_event which used to get channel switch event
+				on_wpa_msg_internal_callback =
+					[this](struct hostapd_data* iface_hapd, int level,
+						enum wpa_msg_type type, const char *txt,
+						size_t len) {
+						wpa_printf(MSG_DEBUG, "Receive wpa msg : %s", txt);
+					if (os_strncmp(txt, AP_EVENT_ENABLED,
+							strlen(AP_EVENT_ENABLED)) == 0 ||
+						os_strncmp(txt, WPA_EVENT_CHANNEL_SWITCH,
+							strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
+						ApInfo info;
+						info.ifaceName = strlen(iface_hapd->conf->bridge) > 0 ?
+							iface_hapd->conf->bridge : iface_hapd->conf->iface,
+						info.apIfaceInstance = iface_hapd->conf->iface;
+						info.freqMhz = iface_hapd->iface->freq;
+						info.channelBandwidth = getChannelBandwidth(iface_hapd->iconf);
+						info.generation = getGeneration(iface_hapd->iface->current_mode);
+						info.apIfaceInstanceMacAddress.assign(iface_hapd->own_addr,
+							iface_hapd->own_addr + ETH_ALEN);
+						for (const auto &callback : callbacks_) {
+							callback->onApInstanceInfoChanged(info);
+						}
+					} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0
+						    || os_strncmp(txt, INTERFACE_DISABLED, strlen(INTERFACE_DISABLED)) == 0)
+					{
+						// Invoke the failure callback on all registered clients.
+						for (const auto& callback : callbacks_) {
+							callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+								iface_hapd->conf->bridge : iface_hapd->conf->iface,
+									    iface_hapd->conf->iface);
+						}
+					}
+				};
+
+				// Setup callback
+				iface_hapd->setup_complete_cb = onAsyncSetupCompleteCb;
+				iface_hapd->setup_complete_cb_ctx = iface_hapd;
+				iface_hapd->sta_authorized_cb = onAsyncStaAuthorizedCb;
+				iface_hapd->sta_authorized_cb_ctx = iface_hapd;
+				wpa_msg_register_aidl_cb(onAsyncWpaEventCb);
+
+				if (hostapd_enable_iface(iface_hapd->iface) < 0) {
+					wpa_printf(
+					MSG_ERROR, "Enabling interface %s failed on %d",
+						iface_params.name.c_str(), i);
+					return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
+				}
+			}
+		}
+	}
+
+	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus Hostapd::addConcurrentAccessPoints(

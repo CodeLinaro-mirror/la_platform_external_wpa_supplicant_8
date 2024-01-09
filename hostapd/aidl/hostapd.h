@@ -69,6 +69,12 @@ private:
 	::ndk::ScopedAStatus addConcurrentAccessPoints(
 	    const IfaceParams& IfaceParams,
 	    const NetworkParams& nw_params);
+	::ndk::ScopedAStatus addMultiLinkIface(
+	    const IfaceParams& IfaceParams,
+	    const NetworkParams& nw_params);
+	::ndk::ScopedAStatus addMultiLinkAccessPoints(
+	    const IfaceParams& IfaceParams,
+	    const NetworkParams& nw_params);
 	::ndk::ScopedAStatus removeAccessPointInternal(const std::string& iface_name);
 	::ndk::ScopedAStatus registerCallbackInternal(
 	    const std::shared_ptr<IHostapdCallback>& callback);
