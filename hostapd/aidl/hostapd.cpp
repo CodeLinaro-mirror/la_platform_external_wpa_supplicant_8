@@ -655,12 +655,12 @@ std::string CreateHostapdConfig(
 	if (is_11be_supported && enable_11be && !is_60Ghz_used) {
 		std::string interface_mac_addr = getInterfaceMacAddress(iface_params.name);
 		if (interface_mac_addr.empty()) {
-			wpa_printf(MSG_ERROR, "Unable to set interface mac address as bssid for 11BE SAP");
+			wpa_printf(MSG_ERROR, "Unable to set interface mac address as mld_addr for 11BE SAP");
 			return "";
 		}
 		eht_params_as_string = StringPrintf(
 			"ieee80211be=1\n"
-			"bssid=%s\n"
+			"mld_addr=%s\n"
 			"mld_ap=1\n",
 			interface_mac_addr.c_str());
 		/* TODO set eht_su_beamformer, eht_su_beamformee, eht_mu_beamformer */
