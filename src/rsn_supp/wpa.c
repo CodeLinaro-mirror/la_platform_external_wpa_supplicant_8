@@ -2745,8 +2745,8 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 #endif /* CONFIG_OCV */
 
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Sending EAPOL-Key 2/2");
-	return wpa_eapol_key_send(sm, &sm->ptk, ver, sm->bssid, ETH_P_EAPOL,
-				  rbuf, rlen, key_mic);
+	return wpa_eapol_key_send(sm, &sm->ptk, ver, wpa_sm_get_auth_addr(sm),
+				  ETH_P_EAPOL, rbuf, rlen, key_mic);
 }
 
 
@@ -6543,4 +6543,12 @@ void wpa_sm_set_cur_pmksa(struct wpa_sm *sm,
 {
 	if (sm)
 		sm->cur_pmksa = entry;
+}
+
+
+void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
+				     bool driver_bss_selection)
+{
+	if (sm)
+		sm->driver_bss_selection = driver_bss_selection;
 }
