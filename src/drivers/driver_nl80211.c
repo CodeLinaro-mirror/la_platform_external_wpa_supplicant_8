@@ -4644,7 +4644,7 @@ static int nl80211_put_beacon_rate(struct nl_msg *msg, u64 flags, u64 flags2,
 		}
 
 		if (nla_put_u8(msg, NL80211_TXRATE_LEGACY,
-			       (u8) params->beacon_rate / 5) ||
+			       (u8) (params->beacon_rate / 5)) ||
 		    nla_put(msg, NL80211_TXRATE_HT, 0, NULL) ||
 		    (params->freq->vht_enabled &&
 		     nla_put(msg, NL80211_TXRATE_VHT, sizeof(vht_rate),
@@ -10988,7 +10988,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 	int i;
 
 	wpa_printf(MSG_DEBUG,
-		   "nl80211: Channel switch request (cs_count=%u block_tx=%u freq=%d channel=%d sec_channel_offset=%d width=%d cf1=%d cf2=%d puncturing_bitmap=0x%04x%s%s%s)",
+		   "nl80211: Channel switch request (cs_count=%u block_tx=%u freq=%d channel=%d sec_channel_offset=%d width=%d cf1=%d cf2=%d puncturing_bitmap=0x%04x link_id=%d%s%s%s)",
 		   settings->cs_count, settings->block_tx,
 		   settings->freq_params.freq,
 		   settings->freq_params.channel,
@@ -10997,6 +10997,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 		   settings->freq_params.center_freq1,
 		   settings->freq_params.center_freq2,
 		   settings->punct_bitmap,
+		   settings->link_id,
 		   settings->freq_params.ht_enabled ? " ht" : "",
 		   settings->freq_params.vht_enabled ? " vht" : "",
 		   settings->freq_params.he_enabled ? " he" : "");
@@ -11070,7 +11071,9 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 	     nla_put_flag(msg, NL80211_ATTR_CH_SWITCH_BLOCK_TX)) ||
 	    (settings->punct_bitmap &&
 	     nla_put_u32(msg, NL80211_ATTR_PUNCT_BITMAP,
-			 settings->punct_bitmap)))
+			 settings->punct_bitmap)) ||
+	    (settings->link_id != NL80211_DRV_LINK_ID_NA &&
+	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, settings->link_id)))
 		goto error;
 
 	/* beacon_after params */
@@ -11705,6 +11708,15 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 	if (!addr)
 		addr = drv->perm_addr;
 
+	/*
+	 * Try to change the address first without setting the interface
+	 * down and then fall back to DOWN/set addr/UP if the first
+	 * attempt failed. This can reduce the interface setup time
+	 * significantly with some drivers.
+	 */
+	if (!linux_set_ifhwaddr(drv->global->ioctl_sock, bss->ifname, addr))
+		goto done;
+
 	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 0) < 0)
 		return -1;
 
@@ -11721,17 +11733,19 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 		return -1;
 	}
 
-	wpa_printf(MSG_DEBUG, "nl80211: set_mac_addr for %s to " MACSTR,
-		bss->ifname, MAC2STR(addr));
-	drv->addr_changed = new_addr;
-	os_memcpy(bss->prev_addr, bss->addr, ETH_ALEN);
-	os_memcpy(bss->addr, addr, ETH_ALEN);
-
 	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 1) < 0)
 	{
 		wpa_printf(MSG_DEBUG,
 			"nl80211: Could not restore interface UP after set_mac_addr");
 	}
+
+done:
+	wpa_printf(MSG_DEBUG, "nl80211: set_mac_addr for %s to " MACSTR,
+		   bss->ifname, MAC2STR(addr));
+	drv->addr_changed = new_addr;
+	os_memcpy(bss->prev_addr, bss->addr, ETH_ALEN);
+	os_memcpy(bss->addr, addr, ETH_ALEN);
+
 	return 0;
 }
 
