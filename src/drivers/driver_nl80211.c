@@ -4926,51 +4926,6 @@ static int nl80211_mbssid(struct nl_msg *msg,
 #endif /* CONFIG_IEEE80211AX */
 
 
-#ifdef CONFIG_DRIVER_NL80211_QCA
-static void qca_set_allowed_ap_freqs(struct wpa_driver_nl80211_data *drv,
-				    const int *freqs, int num_freqs)
-{
-	struct nl_msg *msg;
-	struct nlattr *params, *freqs_list;
-	int i, ret;
-
-	if (!drv->set_wifi_conf_vendor_cmd_avail || !drv->qca_ap_allowed_freqs)
-		return;
-
-	wpa_printf(MSG_DEBUG, "nl80211: Set AP allowed frequency list");
-
-	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
-	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
-	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
-			QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION) ||
-	    !(params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)))
-		goto err;
-
-	freqs_list = nla_nest_start(
-		msg, QCA_WLAN_VENDOR_ATTR_CONFIG_AP_ALLOWED_FREQ_LIST);
-	if (!freqs_list)
-		goto err;
-
-	for (i = 0; i < num_freqs; i++) {
-		if (nla_put_u32(msg, i, freqs[i]))
-			goto err;
-	}
-
-	nla_nest_end(msg, freqs_list);
-	nla_nest_end(msg, params);
-
-	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
-	if (ret)
-		wpa_printf(MSG_ERROR,
-			   "nl80211: Failed set AP alllowed frequency list: %d (%s)",
-			   ret, strerror(-ret));
-
-	return;
-err:
-	nlmsg_free(msg);
-}
-#endif /* CONFIG_DRIVER_NL80211_QCA */
-
 static int nl80211_put_freq_params(struct nl_msg *msg,
 				   const struct hostapd_freq_params *freq)
 {
@@ -5075,6 +5030,56 @@ static int nl80211_put_freq_params(struct nl_msg *msg,
 
 	return 0;
 }
+
+
+#ifdef CONFIG_DRIVER_NL80211_QCA
+static void qca_set_allowed_ap_freqs(struct wpa_driver_nl80211_data *drv,
+				    const int *freqs, int num_freqs, int link_id)
+{
+	struct nl_msg *msg;
+	struct nlattr *params, *freqs_list;
+	int i, ret;
+
+	if (!drv->set_wifi_conf_vendor_cmd_avail || !drv->qca_ap_allowed_freqs)
+		return;
+
+	wpa_printf(MSG_DEBUG, "nl80211: Set AP allowed frequency list");
+
+	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
+	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+			QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION) ||
+	    !(params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)))
+		goto err;
+
+	if (link_id != NL80211_DRV_LINK_ID_NA &&
+	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_CONFIG_MLO_LINK_ID, link_id))
+		goto err;
+
+	freqs_list = nla_nest_start(
+		msg, QCA_WLAN_VENDOR_ATTR_CONFIG_AP_ALLOWED_FREQ_LIST);
+	if (!freqs_list)
+		goto err;
+
+	for (i = 0; i < num_freqs; i++) {
+		if (nla_put_u32(msg, i, freqs[i]))
+			goto err;
+	}
+
+	nla_nest_end(msg, freqs_list);
+	nla_nest_end(msg, params);
+
+	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+	if (ret)
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Failed set AP alllowed frequency list: %d (%s)",
+			   ret, strerror(-ret));
+
+	return;
+err:
+	nlmsg_free(msg);
+}
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
 static int wpa_driver_nl80211_set_ap(void *priv,
@@ -5433,9 +5438,16 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	}
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (cmd == NL80211_CMD_NEW_BEACON && params->allowed_freqs)
-		qca_set_allowed_ap_freqs(drv, params->allowed_freqs,
-					 int_array_len(params->allowed_freqs));
+	if (cmd == NL80211_CMD_NEW_BEACON && params->allowed_freqs) {
+		if (params->mld_ap)
+			qca_set_allowed_ap_freqs(drv, params->allowed_freqs,
+					 int_array_len(params->allowed_freqs),
+					 params->mld_link_id);
+		else
+			qca_set_allowed_ap_freqs(drv, params->allowed_freqs,
+					 int_array_len(params->allowed_freqs),
+					 NL80211_DRV_LINK_ID_NA);
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	ret = send_and_recv_msgs_connect_handle(drv, msg, bss, 1);
