@@ -282,6 +282,7 @@ def run_dpp_controller_relay_pkex(dev, apdev, params):
 
 def dpp_pb_ap(apdev):
     params = {"ssid": "sae",
+              "dpp_configurator_connectivity": "1",
               "wpa": "2",
               "wpa_key_mgmt": "SAE",
               "ieee80211w": "2",
@@ -311,6 +312,29 @@ def test_dpp_push_button(dev, apdev):
         dev[0].wait_connected()
     finally:
         dev[0].set("dpp_config_processing", "0", allow_fail=True)
+
+def test_dpp_push_button_unsupported_ap_conf(dev, apdev):
+    """DPP push button and unsupported AP configuration"""
+    check_dpp_capab(dev[0], min_ver=3)
+
+    params = {"ssid": "open",
+              "dpp_configurator_connectivity": "1"}
+    hapd = hostapd.add_ap(apdev[0], params)
+    if "OK" not in hapd.request("DPP_PUSH_BUTTON"):
+        raise Exception("Failed to press push button on the AP")
+    if "OK" not in dev[0].request("DPP_PUSH_BUTTON"):
+        raise Exception("Failed to press push button on the station")
+    ev = hapd.wait_event(["DPP-PB-RESULT"], timeout=30)
+    if ev is None or "failed" not in ev:
+        raise Exception("Push button bootstrapping did not fail on AP")
+    while True:
+        ev = dev[0].wait_event(["DPP-PB-RESULT", "DPP-RX"], timeout=100)
+        if ev is None:
+            raise Exception("Push button result not reported on station")
+        if "DPP-PB-RESULT failed" in ev:
+            break
+        if "type=18" in ev:
+            raise Exception("Unexpected PKEX initiation seen")
 
 def test_dpp_push_button_session_overlap_sta(dev, apdev):
     """DPP push button and session overlap detected by STA"""
@@ -384,7 +408,7 @@ def test_dpp_push_button_session_overlap_configurator(dev, apdev):
     check_dpp_capab(dev[1], min_ver=3)
     check_dpp_capab(dev[2], min_ver=3)
 
-    dev[0].dpp_listen(2412)
+    dev[0].dpp_listen(2437)
     conf_id = dev[1].dpp_configurator_add()
     ssid = "example"
     ssid_hex = binascii.hexlify(ssid.encode()).decode()
@@ -528,7 +552,7 @@ def test_dpp_push_button_wpas_conf(dev, apdev):
     check_dpp_capab(dev[0], min_ver=3)
     check_dpp_capab(dev[1], min_ver=3)
 
-    dev[1].dpp_listen(2412)
+    dev[1].dpp_listen(2437)
     conf_id = dev[1].dpp_configurator_add()
     ssid = "example"
     ssid_hex = binascii.hexlify(ssid.encode()).decode()

@@ -138,6 +138,11 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd);
 int hostapd_drv_update_dh_ie(struct hostapd_data *hapd, const u8 *peer,
 			     u16 reason_code, const u8 *ie, size_t ielen);
 int hostapd_drv_dpp_listen(struct hostapd_data *hapd, bool enable);
+int hostapd_drv_set_secure_ranging_ctx(struct hostapd_data *hapd,
+				       const u8 *own_addr, const u8 *addr,
+				       u32 cipher, u8 key_len, const u8 *key,
+				       u8 ltf_keyseed_len,
+				       const u8 *ltf_keyseed, u32 action);
 
 
 #include "drivers/driver.h"
@@ -150,6 +155,11 @@ int hostapd_drv_set_qos_map(struct hostapd_data *hapd, const u8 *qos_map_set,
 			    u8 qos_map_set_len);
 
 void hostapd_get_ext_capa(struct hostapd_iface *iface);
+
+void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
+				      struct hostapd_hw_modes *mode,
+				      int acs_ch_list_all, bool allow_disabled,
+				      int **freq_list);
 
 static inline int hostapd_drv_set_countermeasures(struct hostapd_data *hapd,
 						  int enabled)

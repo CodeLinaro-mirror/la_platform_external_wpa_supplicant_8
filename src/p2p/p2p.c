@@ -53,7 +53,7 @@ static void p2p_scan_timeout(void *eloop_ctx, void *timeout_ctx);
 void p2p_expire_peers(struct p2p_data *p2p)
 {
 	struct p2p_device *dev, *n;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 	size_t i;
 
 	os_get_reltime(&now);
@@ -4105,9 +4105,11 @@ static void p2p_timeout_invite(struct p2p_data *p2p)
 		/*
 		 * Better remain on operating channel instead of listen channel
 		 * when running a group.
+		 * Wait 120 ms to let the P2P GO to send its beacon on the
+		 * intended TBTT.
 		 */
 		p2p_dbg(p2p, "Inviting in active GO role - wait on operating channel");
-		p2p_set_timeout(p2p, 0, 100000);
+		p2p_set_timeout(p2p, 0, 120000);
 		return;
 	}
 	p2p_listen_in_find(p2p, 0);
@@ -4292,7 +4294,7 @@ int p2p_get_peer_info_txt(const struct p2p_peer_info *info,
 	struct p2p_device *dev;
 	int res;
 	char *pos, *end;
-	struct os_reltime now;
+	struct os_reltime now = {0};
 
 	if (info == NULL)
 		return -1;

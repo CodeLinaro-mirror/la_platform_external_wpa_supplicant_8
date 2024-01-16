@@ -92,7 +92,7 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 		goto fail;
 
 	pos = buf;
-	pos = hostapd_eid_ext_capab(hapd, pos);
+	pos = hostapd_eid_ext_capab(hapd, pos, false);
 	if (add_buf_data(&assocresp, buf, pos - buf) < 0)
 		goto fail;
 	pos = hostapd_eid_interworking(hapd, pos);
@@ -459,6 +459,7 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 	params.qosinfo = qosinfo;
 	params.support_p2p_ps = supp_p2p_ps;
 	params.set = set;
+	params.mld_link_id = -1;
 	return hapd->driver->sta_add(hapd->drv_priv, &params);
 }
 
@@ -645,8 +646,8 @@ struct hostapd_hw_modes *
 hostapd_get_hw_feature_data(struct hostapd_data *hapd, u16 *num_modes,
 			    u16 *flags, u8 *dfs_domain)
 {
-	if (hapd->driver == NULL ||
-	    hapd->driver->get_hw_feature_data == NULL)
+	if (!hapd->driver || !hapd->driver->get_hw_feature_data ||
+	    !hapd->drv_priv)
 		return NULL;
 	return hapd->driver->get_hw_feature_data(hapd->drv_priv, num_modes,
 						 flags, dfs_domain);
@@ -724,6 +725,7 @@ int hostapd_drv_set_key(const char *ifname, struct hostapd_data *hapd,
 	params.key_len = key_len;
 	params.vlan_id = vlan_id;
 	params.key_flag = key_flag;
+	params.link_id = -1;
 
 	return hapd->driver->set_key(hapd->drv_priv, &params);
 }
@@ -881,12 +883,13 @@ int hostapd_drv_set_qos_map(struct hostapd_data *hapd,
 }
 
 
-static void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
-					     struct hostapd_hw_modes *mode,
-					     int acs_ch_list_all,
-					     int **freq_list)
+void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
+				      struct hostapd_hw_modes *mode,
+				      int acs_ch_list_all, bool allow_disabled,
+				      int **freq_list)
 {
 	int i;
+	bool is_no_ir = false;
 
 	for (i = 0; i < mode->num_channels; i++) {
 		struct hostapd_channel_data *chan = &mode->channels[i];
@@ -905,15 +908,22 @@ static void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 			     chan->chan)))
 			continue;
 		if (is_6ghz_freq(chan->freq) &&
-		    hapd->iface->conf->acs_exclude_6ghz_non_psc &&
-		    !is_6ghz_psc_frequency(chan->freq))
+		    ((hapd->iface->conf->acs_exclude_6ghz_non_psc &&
+		      !is_6ghz_psc_frequency(chan->freq)) ||
+		     (!hapd->iface->conf->ieee80211ax &&
+		      !hapd->iface->conf->ieee80211be)))
 			continue;
-		if (!(chan->flag & HOSTAPD_CHAN_DISABLED) &&
+		if ((!(chan->flag & HOSTAPD_CHAN_DISABLED) || allow_disabled) &&
 		    !(hapd->iface->conf->acs_exclude_dfs &&
 		      (chan->flag & HOSTAPD_CHAN_RADAR)) &&
 		    !(chan->max_tx_power < hapd->iface->conf->min_tx_power))
 			int_array_add_unique(freq_list, chan->freq);
+		else if ((chan->flag & HOSTAPD_CHAN_NO_IR) &&
+			 is_6ghz_freq(chan->freq))
+			is_no_ir = true;
 	}
+
+	hapd->iface->is_no_ir = is_no_ir;
 }
 
 
@@ -931,6 +941,11 @@ void hostapd_get_ext_capa(struct hostapd_iface *iface)
 }
 
 
+/**
+ * hostapd_drv_do_acs - Start automatic channel selection
+ * @hapd: BSS data for the device initiating ACS
+ * Returns: 0 on success, -1 on failure, 1 on failure due to NO_IR (AFC)
+ */
 int hostapd_drv_do_acs(struct hostapd_data *hapd)
 {
 	struct drv_acs_params params;
@@ -965,7 +980,13 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 		    selected_mode != mode->mode)
 			continue;
 		hostapd_get_hw_mode_any_channels(hapd, mode, acs_ch_list_all,
-						 &freq_list);
+						 false, &freq_list);
+	}
+
+	if (!freq_list && hapd->iface->is_no_ir) {
+		wpa_printf(MSG_ERROR,
+			   "NO_IR: Interface freq_list is empty. Failing do_acs.");
+		return 1;
 	}
 
 	params.freq_list = freq_list;
@@ -1024,3 +1045,30 @@ int hostapd_drv_dpp_listen(struct hostapd_data *hapd, bool enable)
 		return 0;
 	return hapd->driver->dpp_listen(hapd->drv_priv, enable);
 }
+
+
+#ifdef CONFIG_PASN
+int hostapd_drv_set_secure_ranging_ctx(struct hostapd_data *hapd,
+				       const u8 *own_addr, const u8 *peer_addr,
+				       u32 cipher, u8 tk_len, const u8 *tk,
+				       u8 ltf_keyseed_len,
+				       const u8 *ltf_keyseed, u32 action)
+{
+	struct secure_ranging_params params;
+
+	if (!hapd->driver || !hapd->driver->set_secure_ranging_ctx)
+		return 0;
+
+	os_memset(&params, 0, sizeof(params));
+	params.own_addr = own_addr;
+	params.peer_addr = peer_addr;
+	params.cipher = cipher;
+	params.tk_len = tk_len;
+	params.tk = tk;
+	params.ltf_keyseed_len = ltf_keyseed_len;
+	params.ltf_keyseed = ltf_keyseed;
+	params.action = action;
+
+	return hapd->driver->set_secure_ranging_ctx(hapd->drv_priv, &params);
+}
+#endif /* CONFIG_PASN */
