@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -13,17 +19,15 @@
 
 #include "aidl_manager.h"
 #include "misc_utils.h"
-#include <android/binder_process.h>
-#include <android/binder_manager.h>
 #include <aidl/android/hardware/wifi/supplicant/IpVersion.h>
 #ifdef CONFIG_USE_VENDOR_AIDL
 #include "vendorsta_iface.h"
 #endif
 
 extern "C" {
-#include "scan.h"
-#include "src/eap_common/eap_sim_common.h"
-#include "list.h"
+#include "../wpa_supplicant/scan.h"
+#include "eap_common/eap_sim_common.h"
+#include "utils/list.h"
 }
 
 namespace {
@@ -73,19 +77,9 @@ const std::string getNetworkObjectMapKey(
  */
 template <class CallbackType>
 int registerForDeathAndAddCallbackAidlObjectToList(
-	AIBinder_DeathRecipient* death_notifier,
 	const std::shared_ptr<CallbackType> &callback,
 	std::vector<std::shared_ptr<CallbackType>> &callback_list)
 {
-	binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
-			death_notifier, nullptr /* cookie */);
-	if (status != STATUS_OK) {
-		wpa_printf(
-			MSG_ERROR,
-			"Error registering for death notification for "
-			"supplicant callback object");
-		return 1;
-	}
 	callback_list.push_back(callback);
 	return 0;
 }
@@ -120,7 +114,6 @@ int removeAidlObjectFromMap(
 
 template <class CallbackType>
 int addIfaceCallbackAidlObjectToMap(
-	AIBinder_DeathRecipient* death_notifier,
 	const std::string &ifname, const std::shared_ptr<CallbackType> &callback,
 	std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
 	&callbacks_map)
@@ -135,12 +128,11 @@ int addIfaceCallbackAidlObjectToMap(
 
 	// Register for death notification before we add it to our list.
 	return registerForDeathAndAddCallbackAidlObjectToList<CallbackType>(
-		death_notifier, callback, iface_callback_list);
+		callback, iface_callback_list);
 }
 
 template <class CallbackType>
 int addNetworkCallbackAidlObjectToMap(
-	AIBinder_DeathRecipient* death_notifier,
 	const std::string &ifname, int network_id,
 	const std::shared_ptr<CallbackType> &callback,
 	std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
@@ -159,12 +151,11 @@ int addNetworkCallbackAidlObjectToMap(
 
 	// Register for death notification before we add it to our list.
 	return registerForDeathAndAddCallbackAidlObjectToList<CallbackType>(
-		death_notifier, callback, network_callback_list);
+		callback, network_callback_list);
 }
 
 template <class CallbackType>
 int removeAllIfaceCallbackAidlObjectsFromMap(
-	AIBinder_DeathRecipient* death_notifier,
 	const std::string &ifname,
 	std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
 	&callbacks_map)
@@ -173,23 +164,12 @@ int removeAllIfaceCallbackAidlObjectsFromMap(
 	if (iface_callback_map_iter == callbacks_map.end())
 		return 1;
 	const auto &iface_callback_list = iface_callback_map_iter->second;
-	for (const auto &callback : iface_callback_list) {
-		binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
-				death_notifier, nullptr /* cookie */);
-		if (status != STATUS_OK) {
-			wpa_printf(
-				MSG_ERROR,
-				"Error deregistering for death notification for "
-				"iface callback object");
-		}
-	}
 	callbacks_map.erase(iface_callback_map_iter);
 	return 0;
 }
 
 template <class CallbackType>
 int removeAllNetworkCallbackAidlObjectsFromMap(
-	AIBinder_DeathRecipient* death_notifier,
 	const std::string &network_key,
 	std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
 	&callbacks_map)
@@ -198,17 +178,6 @@ int removeAllNetworkCallbackAidlObjectsFromMap(
 	if (network_callback_map_iter == callbacks_map.end())
 		return 1;
 	const auto &network_callback_list = network_callback_map_iter->second;
-	for (const auto &callback : network_callback_list) {
-		binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
-				death_notifier, nullptr /* cookie */);
-		if (status != STATUS_OK) {
-			wpa_printf(
-				MSG_ERROR,
-				"Error deregistering for death "
-				"notification for "
-				"network callback object");
-		}
-	}
 	callbacks_map.erase(network_callback_map_iter);
 	return 0;
 }
@@ -417,17 +386,13 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 	// Create the main aidl service object and register it.
 	wpa_printf(MSG_INFO, "Starting AIDL supplicant");
 	wpa_printf(MSG_INFO, "Interface version: %d", Supplicant::version);
-	supplicant_object_ = ndk::SharedRefBase::make<Supplicant>(global);
+	supplicant_object_ = std::make_shared<Supplicant>(global);
 	wpa_global_ = global;
-	std::string instance = std::string() + Supplicant::descriptor + "/default";
-	if (AServiceManager_addService(supplicant_object_->asBinder().get(),
-			instance.c_str()) != STATUS_OK)
-	{
-		return 1;
-	}
 
-	// Initialize the death notifier.
-	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
+	std::shared_ptr<SupplicantCallback> SupplicantCb = std::make_shared<SupplicantCallback>();
+	supplicant_object_->registerCallback(SupplicantCb);
+	wpa_printf(MSG_INFO, "Supplicant Callback registered");
+
 	return 0;
 }
 
@@ -436,17 +401,8 @@ int AidlManager::registerVendorAidlService(struct wpa_global *global)
 {
 	// Create the main aidl service object and register it.
 	wpa_printf(MSG_INFO, "Starting vendor AIDL supplicant");
-	supplicantvendor_object_ = ndk::SharedRefBase::make<SupplicantVendor>(global);
+	supplicantvendor_object_ = std::make_shared<SupplicantVendor>(global);
 	wpa_global_ = global;
-	std::string instance = std::string() + SupplicantVendor::descriptor + "/default";
-	if (AServiceManager_addService(supplicantvendor_object_->asBinder().get(),
-			instance.c_str()) != STATUS_OK)
-	{
-		return 1;
-	}
-
-	// Initialize the death notifier.
-	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
 	return 0;
 }
 #endif
@@ -464,9 +420,10 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		return 1;
 
 	if (isP2pIface(wpa_s)) {
+#if 0
 		if (addAidlObjectToMap<P2pIface>(
 			wpa_s->ifname,
-			ndk::SharedRefBase::make<P2pIface>(wpa_s->global, wpa_s->ifname),
+			std::make_shared<P2pIface>(wpa_s->global, wpa_s->ifname),
 			p2p_iface_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -477,10 +434,14 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		}
 		p2p_iface_callbacks_map_[wpa_s->ifname] =
 			std::vector<std::shared_ptr<ISupplicantP2pIfaceCallback>>();
+#else
+		wpa_printf(MSG_ERROR, "[Error]: <registerInterface> P2P not supported");
+		return 1;
+#endif
 	} else {
 		if (addAidlObjectToMap<StaIface>(
 			wpa_s->ifname,
-			ndk::SharedRefBase::make<StaIface>(wpa_s->global, wpa_s->ifname),
+			std::make_shared<StaIface>(wpa_s->global, wpa_s->ifname, ++total_iface_ids_),
 			sta_iface_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -489,12 +450,25 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 				wpa_s->ifname);
 			return 1;
 		}
+		sta_iface_someip_map_[total_iface_ids_] = wpa_s->ifname;
 		sta_iface_callbacks_map_[wpa_s->ifname] =
-			std::vector<std::shared_ptr<ISupplicantStaIfaceCallback>>();
+			std::vector<std::shared_ptr<SupplicantStaIfaceCallback>>();
+
+		std::shared_ptr<SupplicantStaIfaceCallback> StaIfaceCb =
+					std::make_shared<SupplicantStaIfaceCallback>(total_iface_ids_);
+		std::shared_ptr<StaIface> StaIface_instance = sta_iface_object_map_.find(wpa_s->ifname)->second;
+		int reason = static_cast<int>((StaIface_instance->registerCallback(StaIfaceCb)).getServiceSpecificError());
+		if(reason){
+			wpa_printf(MSG_ERROR, "[Fail] Supplicant StaIface Callback not registered for %s(%d), reason: %d", 
+						wpa_s->ifname, total_iface_ids_, reason);
+			return 1;
+		}
+		wpa_printf(MSG_INFO, "Supplicant StaIface Callback registered for %s(%d)", wpa_s->ifname, total_iface_ids_);
+
 #ifdef CONFIG_USE_VENDOR_AIDL
 		if (addAidlObjectToMap<VendorStaIface>(
 			wpa_s->ifname,
-			ndk::SharedRefBase::make<VendorStaIface>(wpa_s->global, wpa_s->ifname),
+			std::make_shared<VendorStaIface>(wpa_s->global, wpa_s->ifname),
 			vendor_sta_iface_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -528,7 +502,7 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 
 	// Invoke the |onInterfaceCreated| method on all registered callbacks.
 	callWithEachSupplicantCallback(std::bind(
-		&ISupplicantCallback::onInterfaceCreated, std::placeholders::_1,
+		&SupplicantCallback::onInterfaceCreated, std::placeholders::_1,
 		misc_utils::charBufToString(wpa_s->ifname)));
 	return 0;
 }
@@ -550,27 +524,27 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 	// Note: We can't use isP2pIface() here because interface
 	// pointers (wpa_s->global->p2p_init_wpa_s == wpa_s) used by the helper
 	// function is cleared by the core before notifying the AIDL interface.
-	bool success =
-		!removeAidlObjectFromMap(wpa_s->ifname, p2p_iface_object_map_);
-	if (success) {  // assumed to be P2P
-		success = !removeAllIfaceCallbackAidlObjectsFromMap(
-			death_notifier_, wpa_s->ifname, p2p_iface_callbacks_map_);
-	} else {  // assumed to be STA
-		success = !removeAidlObjectFromMap(
+//	bool success =
+//		!removeAidlObjectFromMap(wpa_s->ifname, p2p_iface_object_map_);
+//	if (success) {  // assumed to be P2P
+//		success = !removeAllIfaceCallbackAidlObjectsFromMap(
+//			death_notifier_, wpa_s->ifname, p2p_iface_callbacks_map_);
+//	} else {  // assumed to be STA
+		bool success = !removeAidlObjectFromMap(
 			wpa_s->ifname, sta_iface_object_map_);
 		if (success) {
 			success = !removeAllIfaceCallbackAidlObjectsFromMap(
-				death_notifier_, wpa_s->ifname, sta_iface_callbacks_map_);
+				wpa_s->ifname, sta_iface_callbacks_map_);
 		}
 #ifdef CONFIG_USE_VENDOR_AIDL
 		success = !removeAidlObjectFromMap(
 			wpa_s->ifname, vendor_sta_iface_object_map_);
 		if (success) {
 			success = !removeAllIfaceCallbackAidlObjectsFromMap(
-				death_notifier_, wpa_s->ifname, vendor_sta_iface_callbacks_map_);
+				wpa_s->ifname, vendor_sta_iface_callbacks_map_);
 		}
 #endif
-	}
+//	}
 	if (!success) {
 		wpa_printf(
 			MSG_ERROR,
@@ -582,7 +556,7 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 
 	// Invoke the |onInterfaceRemoved| method on all registered callbacks.
 	callWithEachSupplicantCallback(std::bind(
-		&ISupplicantCallback::onInterfaceRemoved, std::placeholders::_1,
+		&SupplicantCallback::onInterfaceRemoved, std::placeholders::_1,
 		misc_utils::charBufToString(wpa_s->ifname)));
 	return 0;
 }
@@ -607,9 +581,10 @@ int AidlManager::registerNetwork(
 		getNetworkObjectMapKey(wpa_s->ifname, ssid->id);
 
 	if (isP2pIface(wpa_s)) {
+#if 0
 		if (addAidlObjectToMap<P2pNetwork>(
 			network_key,
-			ndk::SharedRefBase::make<P2pNetwork>(wpa_s->global, wpa_s->ifname, ssid->id),
+			std::make_shared<P2pNetwork>(wpa_s->global, wpa_s->ifname, ssid->id),
 			p2p_network_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -618,10 +593,14 @@ int AidlManager::registerNetwork(
 				ssid->id);
 			return 1;
 		}
+#else
+		wpa_printf(MSG_ERROR, "[Error]: <registerNetwork> P2P not supported");
+		return 1;
+#endif
 	} else {
 		if (addAidlObjectToMap<StaNetwork>(
 			network_key,
-			ndk::SharedRefBase::make<StaNetwork>(wpa_s->global, wpa_s->ifname, ssid->id),
+			std::make_shared<StaNetwork>(wpa_s->global, wpa_s->ifname, ssid->id, ++total_network_ids_),
 			sta_network_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -630,14 +609,29 @@ int AidlManager::registerNetwork(
 				ssid->id);
 			return 1;
 		}
+		sta_network_someip_map_[total_network_ids_] = ssid->id;
 		sta_network_callbacks_map_[network_key] =
-			std::vector<std::shared_ptr<ISupplicantStaNetworkCallback>>();
+			std::vector<std::shared_ptr<SupplicantStaNetworkCallback>>();
+
+		std::shared_ptr<StaIface> StaIface_instance = sta_iface_object_map_.find(wpa_s->ifname)->second;
+		int32_t ifId = StaIface_instance->getIfaceInstanceId();
+		std::shared_ptr<SupplicantStaNetworkCallback> StaNetworkCb =
+					std::make_shared<SupplicantStaNetworkCallback>(ifId, total_network_ids_);
+		std::shared_ptr<StaNetwork> StaNetwork_instance = sta_network_object_map_.find(network_key)->second;
+		int reason = static_cast<int>((StaNetwork_instance->registerCallback(StaNetworkCb)).getServiceSpecificError());
+		if(reason){
+			wpa_printf(MSG_ERROR, "[Fail] Supplicant Network Callback not registered for %s(%d)-%d(%d), reason: %d", 
+						wpa_s->ifname, ifId, ssid->id, total_network_ids_, reason);
+			return 1;
+		}
+		wpa_printf(MSG_INFO, "Supplicant Network Callback registered for %s(%d)-%d(%d)", wpa_s->ifname, ifId, ssid->id, total_network_ids_);
+
 		// Invoke the |onNetworkAdded| method on all registered
 		// callbacks.
 		callWithEachStaIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
-			&ISupplicantStaIfaceCallback::onNetworkAdded,
+			&SupplicantStaIfaceCallback::onNetworkAdded,
 			std::placeholders::_1, ssid->id));
 	}
 	return 0;
@@ -663,6 +657,7 @@ int AidlManager::unregisterNetwork(
 		getNetworkObjectMapKey(wpa_s->ifname, ssid->id);
 
 	if (isP2pIface(wpa_s)) {
+#if 0
 		if (removeAidlObjectFromMap(
 			network_key, p2p_network_object_map_)) {
 			wpa_printf(
@@ -672,6 +667,10 @@ int AidlManager::unregisterNetwork(
 				ssid->id);
 			return 1;
 		}
+#else
+		wpa_printf(MSG_ERROR, "[Error]: <unregisterNetwork> P2P not supported");
+		return 1;
+#endif
 	} else {
 		if (removeAidlObjectFromMap(
 			network_key, sta_network_object_map_)) {
@@ -683,7 +682,7 @@ int AidlManager::unregisterNetwork(
 			return 1;
 		}
 		if (removeAllNetworkCallbackAidlObjectsFromMap(
-			death_notifier_, network_key, sta_network_callbacks_map_)) {
+			network_key, sta_network_callbacks_map_)) {
 			return 1;
 		}
 
@@ -692,7 +691,7 @@ int AidlManager::unregisterNetwork(
 		callWithEachStaIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
-			&ISupplicantStaIfaceCallback::onNetworkRemoved,
+			&SupplicantStaIfaceCallback::onNetworkRemoved,
 			std::placeholders::_1, ssid->id));
 	}
 	return 0;
@@ -809,9 +808,9 @@ int AidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 
 	// Invoke the |onStateChanged| method on all registered callbacks.
 	std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 		func = std::bind(
-			&ISupplicantStaIfaceCallback::onSupplicantStateChanged,
+			&SupplicantStaIfaceCallback::onSupplicantStateChanged,
 			std::placeholders::_1,
 			aidl_state_change_data);
 	callWithEachStaIfaceCallback(
@@ -846,7 +845,7 @@ int AidlManager::notifyNetworkRequest(
 			misc_utils::charBufToString(wpa_s->ifname),
 			ssid->id,
 			std::bind(
-			&ISupplicantStaNetworkCallback::
+			&SupplicantStaNetworkCallback::
 				onNetworkEapIdentityRequest,
 			std::placeholders::_1));
 		return 0;
@@ -862,7 +861,7 @@ int AidlManager::notifyNetworkRequest(
 				misc_utils::charBufToString(wpa_s->ifname),
 				ssid->id,
 				std::bind(
-				&ISupplicantStaNetworkCallback::
+				&SupplicantStaNetworkCallback::
 					onNetworkEapSimGsmAuthRequest,
 				std::placeholders::_1, aidl_params));
 			return 0;
@@ -876,7 +875,7 @@ int AidlManager::notifyNetworkRequest(
 				misc_utils::charBufToString(wpa_s->ifname),
 				ssid->id,
 				std::bind(
-				&ISupplicantStaNetworkCallback::
+				&SupplicantStaNetworkCallback::
 					onNetworkEapSimUmtsAuthRequest,
 				std::placeholders::_1, aidl_params));
 			return 0;
@@ -904,7 +903,7 @@ void AidlManager::notifyPermanentIdReqDenied(struct wpa_supplicant *wpa_s)
 			misc_utils::charBufToString(wpa_s->ifname),
 			current_ssid->id,
 			std::bind(
-			&ISupplicantStaNetworkCallback::
+			&SupplicantStaNetworkCallback::
 				onPermanentIdReqDenied,
 			std::placeholders::_1));
 }
@@ -970,7 +969,7 @@ void AidlManager::notifyAnqpQueryDone(
 
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-				   &ISupplicantStaIfaceCallback::onAnqpQueryDone,
+				   &SupplicantStaIfaceCallback::onAnqpQueryDone,
 				   std::placeholders::_1, macAddrToVec(bssid), aidl_anqp_data,
 				   aidl_hs20_anqp_data));
 }
@@ -998,7 +997,7 @@ void AidlManager::notifyHs20IconQueryDone(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onHs20IconQueryDone,
+		&SupplicantStaIfaceCallback::onHs20IconQueryDone,
 		std::placeholders::_1, macAddrToVec(bssid), file_name,
 		std::vector<uint8_t>(image, image + image_length)));
 }
@@ -1030,7 +1029,7 @@ void AidlManager::notifyHs20RxSubscriptionRemediation(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onHs20SubscriptionRemediation,
+		&SupplicantStaIfaceCallback::onHs20SubscriptionRemediation,
 		std::placeholders::_1, macAddrToVec(wpa_s->bssid), aidl_osu_method, url));
 }
 
@@ -1056,7 +1055,7 @@ void AidlManager::notifyHs20RxDeauthImminentNotice(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onHs20DeauthImminentNotice,
+		&SupplicantStaIfaceCallback::onHs20DeauthImminentNotice,
 		std::placeholders::_1, macAddrToVec(wpa_s->bssid), code,
 		reauth_delay, misc_utils::charBufToString(url)));
 }
@@ -1081,7 +1080,7 @@ void AidlManager::notifyHs20RxTermsAndConditionsAcceptance(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-			&ISupplicantStaIfaceCallback
+			&SupplicantStaIfaceCallback
 			::onHs20TermsAndConditionsAcceptanceRequestedNotification,
 			std::placeholders::_1, macAddrToVec(wpa_s->bssid), url));
 }
@@ -1110,7 +1109,7 @@ void AidlManager::notifyDisconnectReason(struct wpa_supplicant *wpa_s)
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onDisconnected,
+		&SupplicantStaIfaceCallback::onDisconnected,
 		std::placeholders::_1, macAddrToVec(bssid), wpa_s->disconnect_reason < 0,
 		static_cast<StaIfaceReasonCode>(
 			abs(wpa_s->disconnect_reason))));
@@ -1202,9 +1201,9 @@ void AidlManager::notifyAssocReject(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_MBO */
 
 	const std::function<
-			ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+			ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 			func = std::bind(
-			&ISupplicantStaIfaceCallback::onAssociationRejected,
+			&SupplicantStaIfaceCallback::onAssociationRejected,
 			std::placeholders::_1, aidl_assoc_reject_data);
 	callWithEachStaIfaceCallback(aidl_ifname, func);
 }
@@ -1225,7 +1224,7 @@ void AidlManager::notifyAuthTimeout(struct wpa_supplicant *wpa_s)
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onAuthenticationTimeout,
+		&SupplicantStaIfaceCallback::onAuthenticationTimeout,
 		std::placeholders::_1, macAddrToVec(bssid)));
 }
 
@@ -1264,7 +1263,7 @@ void AidlManager::notifyBssidChanged(struct wpa_supplicant *wpa_s)
 
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-				   &ISupplicantStaIfaceCallback::onBssidChanged,
+				   &SupplicantStaIfaceCallback::onBssidChanged,
 				   std::placeholders::_1, reason, macAddrToVec(bssid)));
 }
 
@@ -1282,7 +1281,7 @@ void AidlManager::notifyWpsEventFail(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onWpsEventFail,
+		&SupplicantStaIfaceCallback::onWpsEventFail,
 		std::placeholders::_1, macAddrToVec(peer_macaddr),
 		static_cast<WpsConfigError>(
 			config_error),
@@ -1301,7 +1300,7 @@ void AidlManager::notifyWpsEventSuccess(struct wpa_supplicant *wpa_s)
 
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-				   &ISupplicantStaIfaceCallback::onWpsEventSuccess,
+				   &SupplicantStaIfaceCallback::onWpsEventSuccess,
 				   std::placeholders::_1));
 }
 
@@ -1317,7 +1316,7 @@ void AidlManager::notifyWpsEventPbcOverlap(struct wpa_supplicant *wpa_s)
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onWpsEventPbcOverlap,
+		&SupplicantStaIfaceCallback::onWpsEventPbcOverlap,
 		std::placeholders::_1));
 }
 
@@ -1327,6 +1326,7 @@ void AidlManager::notifyP2pDeviceFound(
 	u8 peer_wfd_device_info_len, const u8 *peer_wfd_r2_device_info,
 	u8 peer_wfd_r2_device_info_len)
 {
+#if 0
 	if (!wpa_s || !addr || !info)
 		return;
 
@@ -1380,11 +1380,13 @@ void AidlManager::notifyP2pDeviceFound(
 		info->dev_capab, static_cast<P2pGroupCapabilityMask>(info->group_capab), aidl_peer_wfd_device_info,
 		aidl_peer_wfd_r2_device_info, aidl_vendor_elems);
 	callWithEachP2pIfaceCallback(wpa_s->ifname, func);
+#endif
 }
 
 void AidlManager::notifyP2pDeviceLost(
 	struct wpa_supplicant *wpa_s, const u8 *p2p_device_addr)
 {
+#if 0
 	if (!wpa_s || !p2p_device_addr)
 		return;
 
@@ -1396,10 +1398,12 @@ void AidlManager::notifyP2pDeviceLost(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 				   &ISupplicantP2pIfaceCallback::onDeviceLost,
 				   std::placeholders::_1, macAddrToVec(p2p_device_addr)));
+#endif
 }
 
 void AidlManager::notifyP2pFindStopped(struct wpa_supplicant *wpa_s)
 {
+#if 0
 	if (!wpa_s)
 		return;
 
@@ -1411,12 +1415,14 @@ void AidlManager::notifyP2pFindStopped(struct wpa_supplicant *wpa_s)
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 				   &ISupplicantP2pIfaceCallback::onFindStopped,
 				   std::placeholders::_1));
+#endif
 }
 
 void AidlManager::notifyP2pGoNegReq(
 	struct wpa_supplicant *wpa_s, const u8 *src_addr, u16 dev_passwd_id,
 	u8 /* go_intent */)
 {
+#if 0
 	if (!wpa_s || !src_addr)
 		return;
 
@@ -1431,11 +1437,13 @@ void AidlManager::notifyP2pGoNegReq(
 		std::placeholders::_1, macAddrToVec(src_addr),
 		static_cast<WpsDevPasswordId>(
 			dev_passwd_id)));
+#endif
 }
 
 void AidlManager::notifyP2pGoNegCompleted(
 	struct wpa_supplicant *wpa_s, const struct p2p_go_neg_results *res)
 {
+#if 0
 	if (!wpa_s || !res)
 		return;
 
@@ -1450,11 +1458,13 @@ void AidlManager::notifyP2pGoNegCompleted(
 		std::placeholders::_1,
 		static_cast<P2pStatusCode>(
 			res->status)));
+#endif
 }
 
 void AidlManager::notifyP2pGroupFormationFailure(
 	struct wpa_supplicant *wpa_s, const char *reason)
 {
+#if 0
 	if (!wpa_s || !reason)
 		return;
 
@@ -1467,12 +1477,14 @@ void AidlManager::notifyP2pGroupFormationFailure(
 		std::bind(
 		&ISupplicantP2pIfaceCallback::onGroupFormationFailure,
 		std::placeholders::_1, reason));
+#endif
 }
 
 void AidlManager::notifyP2pGroupStarted(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 	int persistent, int client, const u8 *ip)
 {
+#if 0
 	if (!wpa_group_s || !wpa_group_s->parent || !ssid)
 		return;
 
@@ -1527,12 +1539,14 @@ void AidlManager::notifyP2pGroupStarted(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,
 		std::placeholders::_1, params));
+#endif
 }
 
 void AidlManager::notifyP2pGroupRemoved(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 	const char *role)
 {
+#if 0
 	if (!wpa_group_s || !wpa_group_s->parent || !ssid || !role)
 		return;
 
@@ -1548,12 +1562,14 @@ void AidlManager::notifyP2pGroupRemoved(
 		std::bind(
 		&ISupplicantP2pIfaceCallback::onGroupRemoved,
 		std::placeholders::_1, misc_utils::charBufToString(wpa_group_s->ifname), aidl_is_go));
+#endif
 }
 
 void AidlManager::notifyP2pInvitationReceived(
 	struct wpa_supplicant *wpa_s, const u8 *sa, const u8 *go_dev_addr,
 	const u8 *bssid, int id, int op_freq)
 {
+#if 0
 	if (!wpa_s || !sa || !go_dev_addr || !bssid)
 		return;
 
@@ -1573,11 +1589,13 @@ void AidlManager::notifyP2pInvitationReceived(
 		&ISupplicantP2pIfaceCallback::onInvitationReceived,
 		std::placeholders::_1, macAddrToVec(sa), macAddrToVec(go_dev_addr),
 		macAddrToVec(bssid), aidl_network_id, op_freq));
+#endif
 }
 
 void AidlManager::notifyP2pInvitationResult(
 	struct wpa_supplicant *wpa_s, int status, const u8 *bssid)
 {
+#if 0
 	if (!wpa_s)
 		return;
 
@@ -1592,6 +1610,7 @@ void AidlManager::notifyP2pInvitationResult(
 		std::placeholders::_1, bssid ? macAddrToVec(bssid) : kZeroBssid,
 		static_cast<P2pStatusCode>(
 			status)));
+#endif
 }
 
 void AidlManager::notifyP2pProvisionDiscovery(
@@ -1599,6 +1618,7 @@ void AidlManager::notifyP2pProvisionDiscovery(
 	enum p2p_prov_disc_status status, u16 config_methods,
 	unsigned int generated_pin)
 {
+#if 0
 	if (!wpa_s || !dev_addr)
 		return;
 
@@ -1620,12 +1640,14 @@ void AidlManager::notifyP2pProvisionDiscovery(
 		std::placeholders::_1, macAddrToVec(dev_addr), aidl_is_request,
 		static_cast<P2pProvDiscStatusCode>(status),
 		static_cast<WpsConfigMethods>(config_methods), aidl_generated_pin));
+#endif
 }
 
 void AidlManager::notifyP2pSdResponse(
 	struct wpa_supplicant *wpa_s, const u8 *sa, u16 update_indic,
 	const u8 *tlvs, size_t tlvs_len)
 {
+#if 0
 	if (!wpa_s || !sa || !tlvs)
 		return;
 
@@ -1639,11 +1661,13 @@ void AidlManager::notifyP2pSdResponse(
 		&ISupplicantP2pIfaceCallback::onServiceDiscoveryResponse,
 		std::placeholders::_1, macAddrToVec(sa), update_indic,
 		byteArrToVec(tlvs, tlvs_len)));
+#endif
 }
 
 void AidlManager::notifyApStaAuthorized(
 	struct wpa_supplicant *wpa_group_s, const u8 *sta, const u8 *p2p_dev_addr)
 {
+#if 0
 	if (!wpa_group_s || !wpa_group_s->parent || !sta)
 		return;
 	wpa_supplicant *wpa_s = getTargetP2pIfaceForGroup(wpa_group_s);
@@ -1655,11 +1679,13 @@ void AidlManager::notifyApStaAuthorized(
 		&ISupplicantP2pIfaceCallback::onStaAuthorized,
 		std::placeholders::_1, macAddrToVec(sta),
 		p2p_dev_addr ? macAddrToVec(p2p_dev_addr) : kZeroBssid));
+#endif
 }
 
 void AidlManager::notifyApStaDeauthorized(
 	struct wpa_supplicant *wpa_group_s, const u8 *sta, const u8 *p2p_dev_addr)
 {
+#if 0
 	if (!wpa_group_s || !wpa_group_s->parent || !sta)
 		return;
 	wpa_supplicant *wpa_s = getTargetP2pIfaceForGroup(wpa_group_s);
@@ -1672,6 +1698,7 @@ void AidlManager::notifyApStaDeauthorized(
 		&ISupplicantP2pIfaceCallback::onStaDeauthorized,
 		std::placeholders::_1, macAddrToVec(sta),
 		p2p_dev_addr ? macAddrToVec(p2p_dev_addr) : kZeroBssid));
+#endif
 }
 
 void AidlManager::notifyExtRadioWorkStart(
@@ -1687,7 +1714,7 @@ void AidlManager::notifyExtRadioWorkStart(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onExtRadioWorkStart,
+		&SupplicantStaIfaceCallback::onExtRadioWorkStart,
 		std::placeholders::_1, id));
 }
 
@@ -1704,7 +1731,7 @@ void AidlManager::notifyExtRadioWorkTimeout(
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onExtRadioWorkTimeout,
+		&SupplicantStaIfaceCallback::onExtRadioWorkTimeout,
 		std::placeholders::_1, id));
 }
 
@@ -1716,7 +1743,7 @@ void AidlManager::notifyEapError(struct wpa_supplicant *wpa_s, int error_code)
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(
-		&ISupplicantStaIfaceCallback::onEapFailure,
+		&SupplicantStaIfaceCallback::onEapFailure,
 		std::placeholders::_1,
 		macAddrToVec(wpa_s->bssid), error_code));
 }
@@ -1771,7 +1798,7 @@ void AidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 	 */
 	callWithEachStaIfaceCallback(aidl_ifname,
 			std::bind(
-					&ISupplicantStaIfaceCallback::onDppConfigReceived,
+					&SupplicantStaIfaceCallback::onDppConfigReceived,
 					std::placeholders::_1, aidl_dpp_config_data));
 }
 
@@ -1785,7 +1812,7 @@ void AidlManager::notifyDppConfigSent(struct wpa_supplicant *wpa_s)
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 
 	callWithEachStaIfaceCallback(aidl_ifname,
-			std::bind(&ISupplicantStaIfaceCallback::onDppSuccessConfigSent,
+			std::bind(&SupplicantStaIfaceCallback::onDppSuccessConfigSent,
 					std::placeholders::_1));
 }
 
@@ -1833,7 +1860,7 @@ void AidlManager::notifyDppConnectionStatusSent(struct wpa_supplicant *wpa_s,
 {
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 	callWithEachStaIfaceCallback(aidl_ifname,
-			std::bind(&ISupplicantStaIfaceCallback::onDppConnectionStatusResultSent,
+			std::bind(&SupplicantStaIfaceCallback::onDppConnectionStatusResultSent,
 					std::placeholders::_1,
 					convertSupplicantDppStatusErrorCodeToAidl(result)));
 }
@@ -1862,7 +1889,7 @@ void AidlManager::notifyDppFailure(struct wpa_supplicant *wpa_s,
 	std::vector<char16_t> band_list_vec(band_list, band_list + size);
 
 	callWithEachStaIfaceCallback(aidl_ifname,
-			std::bind(&ISupplicantStaIfaceCallback::onDppFailure,
+			std::bind(&SupplicantStaIfaceCallback::onDppFailure,
 					std::placeholders::_1, code, misc_utils::charBufToString(ssid),
 					misc_utils::charBufToString(channel_list), band_list_vec));
 }
@@ -1878,7 +1905,7 @@ void AidlManager::notifyDppProgress(
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 
 	callWithEachStaIfaceCallback(aidl_ifname,
-			std::bind(&ISupplicantStaIfaceCallback::onDppProgress,
+			std::bind(&SupplicantStaIfaceCallback::onDppProgress,
 					std::placeholders::_1, code));
 }
 
@@ -1893,7 +1920,7 @@ void AidlManager::notifyDppSuccess(struct wpa_supplicant *wpa_s, DppEventType co
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 
 	callWithEachStaIfaceCallback(aidl_ifname,
-			std::bind(&ISupplicantStaIfaceCallback::onDppSuccess,
+			std::bind(&SupplicantStaIfaceCallback::onDppSuccess,
 					std::placeholders::_1, code));
 }
 
@@ -1920,9 +1947,9 @@ void AidlManager::notifyPmkCacheAdded(
 	aidl_pmksa_data.expirationTimeInSec = pmksa_entry->expiration;
 
 	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 		func = std::bind(
-		&ISupplicantStaIfaceCallback::onPmkSaCacheAdded,
+		&SupplicantStaIfaceCallback::onPmkSaCacheAdded,
 		std::placeholders::_1, aidl_pmksa_data);
 	callWithEachStaIfaceCallback(aidl_ifname, func);
 }
@@ -2054,9 +2081,9 @@ void AidlManager::notifyBssTmStatus(struct wpa_supplicant *wpa_s)
 #endif
 
 	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 		func = std::bind(
-		&ISupplicantStaIfaceCallback::onBssTmHandlingDone,
+		&SupplicantStaIfaceCallback::onBssTmHandlingDone,
 		std::placeholders::_1, aidl_bsstm_data);
 	callWithEachStaIfaceCallback(aidl_ifname, func);
 #endif
@@ -2099,9 +2126,9 @@ void AidlManager::notifyTransitionDisable(struct wpa_supplicant *wpa_s,
 {
 	TransitionDisableIndication flag = setTransitionDisableFlagsMask(bitmap);
 	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaNetworkCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaNetworkCallback>)>
 		func = std::bind(
-		&ISupplicantStaNetworkCallback::onTransitionDisable,
+		&SupplicantStaNetworkCallback::onTransitionDisable,
 		std::placeholders::_1, flag);
 
 	callWithEachStaNetworkCallback(
@@ -2122,9 +2149,9 @@ void AidlManager::notifyNetworkNotFound(struct wpa_supplicant *wpa_s)
 			wpa_s->current_ssid->ssid + wpa_s->current_ssid->ssid_len);
 
 	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 		func = std::bind(
-		&ISupplicantStaIfaceCallback::onNetworkNotFound,
+		&SupplicantStaIfaceCallback::onNetworkNotFound,
 		std::placeholders::_1, aidl_ssid);
 	callWithEachStaIfaceCallback(misc_utils::charBufToString(wpa_s->ifname), func);
 }
@@ -2137,6 +2164,7 @@ void AidlManager::notifyFrequencyChanged(struct wpa_supplicant *wpa_s, int frequ
 	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
 	struct wpa_supplicant *wpa_p2pdev_s = getTargetP2pIfaceForGroup(wpa_s);
 	if (wpa_p2pdev_s) {
+#if 0
 		// Notify frequency changed event on P2P interface
 		const std::function<
 			ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
@@ -2144,18 +2172,22 @@ void AidlManager::notifyFrequencyChanged(struct wpa_supplicant *wpa_s, int frequ
 			std::placeholders::_1, aidl_ifname, frequency);
 		// For group notifications, need to use the parent iface for callbacks.
 		callWithEachP2pIfaceCallback(misc_utils::charBufToString(wpa_p2pdev_s->ifname), func);
+#else
+		wpa_printf(MSG_ERROR, "[Error]: <notifyFrequencyChanged> P2P not supported");
+		return;
+#endif
 	} else if (wpa_s->current_ssid) {
 		// Notify frequency changed event on STA interface
 		const std::function<
-			ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+			ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 			func = std::bind(
-			&ISupplicantStaIfaceCallback::onBssFrequencyChanged,
+			&SupplicantStaIfaceCallback::onBssFrequencyChanged,
 			std::placeholders::_1, frequency);
 		callWithEachStaIfaceCallback(aidl_ifname, func);
 	} else {
 		wpa_printf(MSG_INFO, "Drop frequency changed event");
 		return;
-        }
+	}
 }
 
 void AidlManager::notifyCertification(struct wpa_supplicant *wpa_s,
@@ -2189,9 +2221,9 @@ void AidlManager::notifyCertification(struct wpa_supplicant *wpa_s,
 	std::vector<uint8_t> certBlob(cert->buf, cert->buf + cert->used);
 
 	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaNetworkCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaNetworkCallback>)>
 		func = std::bind(
-		&ISupplicantStaNetworkCallback::onServerCertificateAvailable,
+		&SupplicantStaNetworkCallback::onServerCertificateAvailable,
 		std::placeholders::_1,
 		depth,
 		subjectBlob,
@@ -2209,9 +2241,9 @@ void AidlManager::notifyAuxiliaryEvent(struct wpa_supplicant *wpa_s,
 		return;
 
 	const std::function<
-		ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+		ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 		func = std::bind(
-		&ISupplicantStaIfaceCallback::onAuxiliarySupplicantEvent,
+		&SupplicantStaIfaceCallback::onAuxiliarySupplicantEvent,
 		std::placeholders::_1, event_code, macAddrToVec(wpa_s->bssid),
 		misc_utils::charBufToString(reason_string));
 	callWithEachStaIfaceCallback(
@@ -2243,6 +2275,45 @@ void AidlManager::notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char
 #endif
 
 /**
+ * Get Supplicant instance
+ */
+int AidlManager::getSupplicantInstance(std::shared_ptr<Supplicant> *supplicant_object)
+{
+	if(supplicant_object_)
+	{
+		*supplicant_object = supplicant_object_;
+		return 0;
+	}
+	return 1;
+}
+
+/**
+ * Get Sta Iface Name
+ */
+int AidlManager::getStaIfaceNameByInstanceId(int32_t id, std::string *name)
+{
+	auto iface_object_iter = sta_iface_someip_map_.find(id);
+	if (iface_object_iter == sta_iface_someip_map_.end())
+		return 1;
+
+	*name = iface_object_iter->second;
+	return 0;
+}
+
+/**
+ * Get Sta Network Id
+ */
+int AidlManager::getStaNetworkIdByInstanceId(int32_t id, int *nwid)
+{
+	auto iface_object_iter = sta_network_someip_map_.find(id);
+	if (iface_object_iter == sta_network_someip_map_.end())
+		return 1;
+
+	*nwid = iface_object_iter->second;
+	return 0;
+}
+
+/**
  * Retrieve the |ISupplicantP2pIface| aidl object reference using the provided
  * ifname.
  *
@@ -2254,6 +2325,7 @@ void AidlManager::notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char
 int AidlManager::getP2pIfaceAidlObjectByIfname(
 	const std::string &ifname, std::shared_ptr<ISupplicantP2pIface> *iface_object)
 {
+#if 0
 	if (ifname.empty() || !iface_object)
 		return 1;
 
@@ -2263,6 +2335,9 @@ int AidlManager::getP2pIfaceAidlObjectByIfname(
 
 	*iface_object = iface_object_iter->second;
 	return 0;
+#else
+	return 1;
+#endif
 }
 
 /**
@@ -2327,6 +2402,7 @@ int AidlManager::getP2pNetworkAidlObjectByIfnameAndNetworkId(
 	const std::string &ifname, int network_id,
 	std::shared_ptr<ISupplicantP2pNetwork> *network_object)
 {
+#if 0
 	if (ifname.empty() || network_id < 0 || !network_object)
 		return 1;
 
@@ -2340,6 +2416,9 @@ int AidlManager::getP2pNetworkAidlObjectByIfnameAndNetworkId(
 
 	*network_object = network_object_iter->second;
 	return 0;
+#else
+	return 1;
+#endif
 }
 
 /**
@@ -2380,11 +2459,11 @@ int AidlManager::getStaNetworkAidlObjectByIfnameAndNetworkId(
  * @return 0 on success, 1 on failure.
  */
 int AidlManager::addSupplicantCallbackAidlObject(
-	const std::shared_ptr<ISupplicantCallback> &callback)
+	const std::shared_ptr<SupplicantCallback> &callback)
 {
 	return registerForDeathAndAddCallbackAidlObjectToList<
-		ISupplicantCallback>(
-		death_notifier_, callback, supplicant_callbacks_);
+		SupplicantCallback>(
+		callback, supplicant_callbacks_);
 }
 
 /**
@@ -2415,8 +2494,12 @@ int AidlManager::addP2pIfaceCallbackAidlObject(
 	const std::string &ifname,
 	const std::shared_ptr<ISupplicantP2pIfaceCallback> &callback)
 {
+#if 0
 	return addIfaceCallbackAidlObjectToMap(
 		death_notifier_, ifname, callback, p2p_iface_callbacks_map_);
+#else
+	return 0;
+#endif
 }
 
 /**
@@ -2430,10 +2513,10 @@ int AidlManager::addP2pIfaceCallbackAidlObject(
  */
 int AidlManager::addStaIfaceCallbackAidlObject(
 	const std::string &ifname,
-	const std::shared_ptr<ISupplicantStaIfaceCallback> &callback)
+	const std::shared_ptr<SupplicantStaIfaceCallback> &callback)
 {
 	return addIfaceCallbackAidlObjectToMap(
-		death_notifier_, ifname, callback, sta_iface_callbacks_map_);
+		ifname, callback, sta_iface_callbacks_map_);
 }
 
 #ifdef CONFIG_USE_VENDOR_AIDL
@@ -2451,7 +2534,7 @@ int AidlManager::addVendorStaIfaceCallbackAidlObject(
 	const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback)
 {
 	return addIfaceCallbackAidlObjectToMap(
-		death_notifier_, ifname, callback, vendor_sta_iface_callbacks_map_);
+		ifname, callback, vendor_sta_iface_callbacks_map_);
 }
 #endif
 
@@ -2467,10 +2550,10 @@ int AidlManager::addVendorStaIfaceCallbackAidlObject(
  */
 int AidlManager::addStaNetworkCallbackAidlObject(
 	const std::string &ifname, int network_id,
-	const std::shared_ptr<ISupplicantStaNetworkCallback> &callback)
+	const std::shared_ptr<SupplicantStaNetworkCallback> &callback)
 {
 	return addNetworkCallbackAidlObjectToMap(
-		death_notifier_, ifname, network_id, callback,
+		ifname, network_id, callback,
 		sta_network_callbacks_map_);
 }
 
@@ -2483,6 +2566,7 @@ int AidlManager::addStaNetworkCallbackAidlObject(
 struct wpa_supplicant *AidlManager::getTargetP2pIfaceForGroup(
 		struct wpa_supplicant *wpa_group_s)
 {
+#if 0
 	if (!wpa_group_s || !wpa_group_s->parent)
 		return NULL;
 
@@ -2509,6 +2593,9 @@ struct wpa_supplicant *AidlManager::getTargetP2pIfaceForGroup(
 		return target_wpa_s;
 
 	return NULL;
+#else
+	return NULL;
+#endif
 }
 
 /**
@@ -2518,7 +2605,7 @@ struct wpa_supplicant *AidlManager::getTargetP2pIfaceForGroup(
  * @param callback Aidl reference of the |ISupplicantCallback| object.
  */
 void AidlManager::removeSupplicantCallbackAidlObject(
-	const std::shared_ptr<ISupplicantCallback> &callback)
+	const std::shared_ptr<SupplicantCallback> &callback)
 {
 	supplicant_callbacks_.erase(
 		std::remove(
@@ -2538,8 +2625,10 @@ void AidlManager::removeP2pIfaceCallbackAidlObject(
 	const std::string &ifname,
 	const std::shared_ptr<ISupplicantP2pIfaceCallback> &callback)
 {
+#if 0
 	return removeIfaceCallbackAidlObjectFromMap(
 		ifname, callback, p2p_iface_callbacks_map_);
+#endif
 }
 
 /**
@@ -2551,7 +2640,7 @@ void AidlManager::removeP2pIfaceCallbackAidlObject(
  */
 void AidlManager::removeStaIfaceCallbackAidlObject(
 	const std::string &ifname,
-	const std::shared_ptr<ISupplicantStaIfaceCallback> &callback)
+	const std::shared_ptr<SupplicantStaIfaceCallback> &callback)
 {
 	return removeIfaceCallbackAidlObjectFromMap(
 		ifname, callback, sta_iface_callbacks_map_);
@@ -2609,7 +2698,7 @@ bool AidlManager::checkForVendorStaIfaceCallback(const std::string &ifname)
  */
 void AidlManager::removeStaNetworkCallbackAidlObject(
 	const std::string &ifname, int network_id,
-	const std::shared_ptr<ISupplicantStaNetworkCallback> &callback)
+	const std::shared_ptr<SupplicantStaNetworkCallback> &callback)
 {
 	return removeNetworkCallbackAidlObjectFromMap(
 		ifname, network_id, callback, sta_network_callbacks_map_);
@@ -2623,7 +2712,7 @@ void AidlManager::removeStaNetworkCallbackAidlObject(
  * |ISupplicantCallback|.
  */
 void AidlManager::callWithEachSupplicantCallback(
-	const std::function<ndk::ScopedAStatus(std::shared_ptr<ISupplicantCallback>)> &method)
+	const std::function<ndk::ScopedAStatus(std::shared_ptr<SupplicantCallback>)> &method)
 {
 	for (const auto &callback : supplicant_callbacks_) {
 		if (!method(callback).isOk()) {
@@ -2646,7 +2735,9 @@ void AidlManager::callWithEachP2pIfaceCallback(
 	const std::function<ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
 	&method)
 {
+#if 0
 	callWithEachIfaceCallback(ifname, method, p2p_iface_callbacks_map_);
+#endif
 }
 
 /**
@@ -2660,7 +2751,7 @@ void AidlManager::callWithEachP2pIfaceCallback(
  */
 void AidlManager::callWithEachStaIfaceCallback(
 	const std::string &ifname,
-	const std::function<ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+	const std::function<ndk::ScopedAStatus(std::shared_ptr<SupplicantStaIfaceCallback>)>
 	&method)
 {
 	callWithEachIfaceCallback(ifname, method, sta_iface_callbacks_map_);
@@ -2692,13 +2783,13 @@ void AidlManager::callWithEachVendorStaIfaceCallback(
  *
  * @param ifname Name of the corresponding interface.
  * @param network_id ID of the corresponding network.
- * @param method Pointer to the required aidl method from 
+ * @param method Pointer to the required aidl method from
  * |ISupplicantStaNetworkCallback|.
  */
 void AidlManager::callWithEachStaNetworkCallback(
 	const std::string &ifname, int network_id,
 	const std::function<
-	ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaNetworkCallback>)> &method)
+	ndk::ScopedAStatus(std::shared_ptr<SupplicantStaNetworkCallback>)> &method)
 {
 	callWithEachNetworkCallback(
 		ifname, network_id, method, sta_network_callbacks_map_);
@@ -2712,7 +2803,7 @@ void AidlManager::notifyQosPolicyReset(
 
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onQosPolicyReset,
+			&SupplicantStaIfaceCallback::onQosPolicyReset,
 			std::placeholders::_1));
 }
 
@@ -2830,7 +2921,7 @@ void AidlManager::notifyQosPolicyRequest(struct wpa_supplicant *wpa_s,
 
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onQosPolicyRequest,
+			&SupplicantStaIfaceCallback::onQosPolicyRequest,
 			std::placeholders::_1, wpa_s->dscp_req_dialog_token, qosPolicyData));
 }
 
@@ -2852,6 +2943,7 @@ void AidlManager::notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
 }
 
 ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
+#if 0
 	if (alias == nullptr || value == nullptr) {
 		wpa_printf(MSG_ERROR, "Null pointer argument was passed to getCertificate");
 		return -1;
@@ -2862,10 +2954,12 @@ ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
 		os_memcpy(*value, cert->data(), cert->size());
 		return cert->size();
 	}
+#endif
 	return -1;
 }
 
 ssize_t AidlManager::listAliases(const char *prefix, char ***aliases) {
+#if 0
 	if (prefix == nullptr || aliases == nullptr) {
 		wpa_printf(MSG_ERROR, "Null pointer argument was passed to listAliases");
 		return -1;
@@ -2897,6 +2991,7 @@ ssize_t AidlManager::listAliases(const char *prefix, char ***aliases) {
 		}
 		return count;
 	}
+#endif
 	return -1;
 }
 
@@ -2954,7 +3049,7 @@ void AidlManager::notifyQosPolicyScsResponse(struct wpa_supplicant *wpa_s,
 	}
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onQosPolicyResponseForScs,
+			&SupplicantStaIfaceCallback::onQosPolicyResponseForScs,
 			std::placeholders::_1, scsResponses));
 }
 

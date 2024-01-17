@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef WPA_SUPPLICANT_AIDL_STA_IFACE_H
 #define WPA_SUPPLICANT_AIDL_STA_IFACE_H
 
@@ -18,20 +24,22 @@
 #include <aidl/android/hardware/wifi/supplicant/BnSupplicantStaIface.h>
 #include <aidl/android/hardware/wifi/supplicant/BtCoexistenceMode.h>
 #include <aidl/android/hardware/wifi/supplicant/Hs20AnqpSubtypes.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantStaIfaceCallback.h>
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantStaNetwork.h>
 #include <aidl/android/hardware/wifi/supplicant/MloLinksInfo.h>
 #include <aidl/android/hardware/wifi/supplicant/QosPolicyStatus.h>
 #include <aidl/android/hardware/wifi/supplicant/RxFilterType.h>
 
+#include "SupplicantStaIfaceCallback.h"
+#include <aidl/android/hardware/wifi/supplicant/ScopedAStatus.h>
+
 extern "C"
 {
 #include "utils/common.h"
 #include "utils/includes.h"
-#include "wpa_supplicant_i.h"
-#include "config.h"
-#include "driver_i.h"
-#include "wpa.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/config.h"
+#include "../wpa_supplicant/driver_i.h"
+#include "rsn_supp/wpa.h"
 }
 
 namespace aidl {
@@ -48,8 +56,8 @@ namespace supplicant {
 class StaIface : public BnSupplicantStaIface
 {
 public:
-	StaIface(struct wpa_global* wpa_global, const char ifname[]);
-	~StaIface() override = default;
+	StaIface(struct wpa_global* wpa_global, const char ifname[], int32_t id);
+	~StaIface() = default;
 	// AIDL does not provide a built-in mechanism to let the server
 	// invalidate a AIDL interface object after creation. If any client
 	// process holds onto a reference to the object in their context,
@@ -65,25 +73,32 @@ public:
 	void invalidate();
 	bool isValid();
 
+	int32_t getIfaceInstanceId();
+
 	// Aidl methods exposed.
-  	::ndk::ScopedAStatus getName(std::string* _aidl_return) override;
+#if 0
+	::ndk::ScopedAStatus getName(std::string* _aidl_return) override;
 	::ndk::ScopedAStatus getType(IfaceType* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus addNetwork(
 		std::shared_ptr<ISupplicantStaNetwork>* _aidl_return) override;
 	::ndk::ScopedAStatus removeNetwork(int32_t in_id) override;
+#if 0
 	::ndk::ScopedAStatus filsHlpFlushRequest() override;
 	::ndk::ScopedAStatus filsHlpAddRequest(
 		const std::vector<uint8_t>& in_dst_mac,
 		const std::vector<uint8_t>& in_pkt) override;
 	::ndk::ScopedAStatus getNetwork(
 		int32_t in_id, std::shared_ptr<ISupplicantStaNetwork>* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus listNetworks(std::vector<int32_t>* _aidl_return) override;
 	::ndk::ScopedAStatus registerCallback(
-		const std::shared_ptr<ISupplicantStaIfaceCallback>& in_callback) override;
+		const std::shared_ptr<SupplicantStaIfaceCallback>& in_callback);
 	::ndk::ScopedAStatus reassociate() override;
 	::ndk::ScopedAStatus reconnect() override;
 	::ndk::ScopedAStatus disconnect() override;
 	::ndk::ScopedAStatus setPowerSave(bool in_enable) override;
+#if 0
 	::ndk::ScopedAStatus initiateTdlsDiscover(
 		const std::vector<uint8_t>& in_macAddress) override;
 	::ndk::ScopedAStatus initiateTdlsSetup(
@@ -98,6 +113,7 @@ public:
 		const std::vector<uint8_t>& in_macAddress) override;
 	::ndk::ScopedAStatus initiateHs20IconQuery(
 		const std::vector<uint8_t>& in_macAddress, const std::string& in_fileName) override;
+#endif
 	::ndk::ScopedAStatus getMacAddress(std::vector<uint8_t>* _aidl_return) override;
 	::ndk::ScopedAStatus startRxFilter() override;
 	::ndk::ScopedAStatus stopRxFilter() override;
@@ -107,6 +123,7 @@ public:
 	::ndk::ScopedAStatus setBtCoexistenceScanModeEnabled(bool in_enable) override;
 	::ndk::ScopedAStatus setSuspendModeEnabled(bool in_enable) override;
 	::ndk::ScopedAStatus setCountryCode(const std::vector<uint8_t>& in_code) override;
+#if 0
 	::ndk::ScopedAStatus startWpsRegistrar(
 		const std::vector<uint8_t>& in_bssid, const std::string& in_pin) override;
 	::ndk::ScopedAStatus startWpsPbc(const std::vector<uint8_t>& in_bssid) override;
@@ -121,13 +138,17 @@ public:
 	::ndk::ScopedAStatus setWpsModelNumber(const std::string& in_modelNumber) override;
 	::ndk::ScopedAStatus setWpsSerialNumber(const std::string& in_serialNumber) override;
 	::ndk::ScopedAStatus setWpsConfigMethods(WpsConfigMethods in_configMethods) override;
+#endif
 	::ndk::ScopedAStatus setExternalSim(bool in_useExternalSim) override;
+#if 0
 	::ndk::ScopedAStatus addExtRadioWork(
 		const std::string& in_name, int32_t in_freqInMhz,
 		int32_t in_timeoutInSec, int32_t* _aidl_return) override;
 	::ndk::ScopedAStatus removeExtRadioWork(int32_t in_id) override;
+#endif
 	::ndk::ScopedAStatus enableAutoReconnect(bool in_enable) override;
 	::ndk::ScopedAStatus getKeyMgmtCapabilities(KeyMgmtMask* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus addDppPeerUri(
 		const std::string& in_uri, int32_t* _aidl_return) override;
 	::ndk::ScopedAStatus removeDppUri(int32_t in_id) override;
@@ -140,8 +161,10 @@ public:
 	::ndk::ScopedAStatus startDppEnrolleeInitiator(
 		int32_t in_peerBootstrapId, int32_t in_ownBootstrapId) override;
 	::ndk::ScopedAStatus stopDppInitiator() override;
+#endif
 	::ndk::ScopedAStatus getConnectionCapabilities(ConnectionCapabilities* _aidl_return) override;
 	::ndk::ScopedAStatus getWpaDriverCapabilities(WpaDriverCapabilitiesMask* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus setMboCellularDataStatus(bool in_available) override;
 	::ndk::ScopedAStatus generateDppBootstrapInfoForResponder(
 		const std::vector<uint8_t>& in_macAddress,
@@ -157,36 +180,46 @@ public:
 		const std::vector<QosPolicyStatus>& in_qosPolicyStatusList) override;
 	::ndk::ScopedAStatus removeAllQosPolicies() override;
 	::ndk::ScopedAStatus getConnectionMloLinksInfo(MloLinksInfo* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus getSignalPollResults(
 		std::vector<SignalPollResult>* results) override;
+#if 0
 	::ndk::ScopedAStatus addQosPolicyRequestForScs(
 		const std::vector<QosPolicyScsData>& in_qosPolicyData,
 		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
 	::ndk::ScopedAStatus removeQosPolicyForScs(
 		const std::vector<uint8_t>& in_scsPolicyIds,
 		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
+#endif
 
 private:
 	// Corresponding worker functions for the AIDL methods.
+#if 0
 	std::pair<std::string, ndk::ScopedAStatus> getNameInternal();
 	std::pair<IfaceType, ndk::ScopedAStatus> getTypeInternal();
+#endif
 	std::pair<std::shared_ptr<ISupplicantStaNetwork>, ndk::ScopedAStatus>
 		addNetworkInternal();
+#if 0
 	ndk::ScopedAStatus filsHlpFlushRequestInternal();
 	ndk::ScopedAStatus filsHlpAddRequestInternal(
 		const std::vector<uint8_t>& dst_mac,
 		const std::vector<uint8_t>& pkt);
+#endif
 	ndk::ScopedAStatus removeNetworkInternal(int32_t id);
+#if 0
 	std::pair<std::shared_ptr<ISupplicantStaNetwork>, ndk::ScopedAStatus>
 		getNetworkInternal(int32_t id);
+#endif
 	std::pair<std::vector<int32_t>, ndk::ScopedAStatus>
 		listNetworksInternal();
 	ndk::ScopedAStatus registerCallbackInternal(
-		const std::shared_ptr<ISupplicantStaIfaceCallback>& callback);
+		const std::shared_ptr<SupplicantStaIfaceCallback>& callback);
 	ndk::ScopedAStatus reassociateInternal();
 	ndk::ScopedAStatus reconnectInternal();
 	ndk::ScopedAStatus disconnectInternal();
 	ndk::ScopedAStatus setPowerSaveInternal(bool enable);
+#if 0
 	ndk::ScopedAStatus initiateTdlsDiscoverInternal(
 		const std::vector<uint8_t>& mac_address);
 	ndk::ScopedAStatus initiateTdlsSetupInternal(
@@ -203,6 +236,7 @@ private:
 	ndk::ScopedAStatus initiateHs20IconQueryInternal(
 		const std::vector<uint8_t>& mac_address,
 		const std::string& file_name);
+#endif
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>
 		getMacAddressInternal();
 	ndk::ScopedAStatus startRxFilterInternal();
@@ -217,6 +251,7 @@ private:
 	ndk::ScopedAStatus setSuspendModeEnabledInternal(bool enable);
 	ndk::ScopedAStatus setCountryCodeInternal(
 		const std::vector<uint8_t>& code);
+#if 0
 	ndk::ScopedAStatus startWpsRegistrarInternal(
 		const std::vector<uint8_t>& bssid, const std::string& pin);
 	ndk::ScopedAStatus startWpsPbcInternal(
@@ -236,13 +271,17 @@ private:
 	ndk::ScopedAStatus setWpsSerialNumberInternal(
 		const std::string& serial_number);
 	ndk::ScopedAStatus setWpsConfigMethodsInternal(WpsConfigMethods config_methods);
+#endif
 	ndk::ScopedAStatus setExternalSimInternal(bool useExternalSim);
+#if 0
 	std::pair<uint32_t, ndk::ScopedAStatus> addExtRadioWorkInternal(
 		const std::string& name, uint32_t freq_in_mhz,
 		uint32_t timeout_in_sec);
 	ndk::ScopedAStatus removeExtRadioWorkInternal(uint32_t id);
+#endif
 	ndk::ScopedAStatus enableAutoReconnectInternal(bool enable);
 	std::pair<KeyMgmtMask, ndk::ScopedAStatus> getKeyMgmtCapabilitiesInternal();
+#if 0
 	std::pair<uint32_t, ndk::ScopedAStatus> addDppPeerUriInternal(const std::string& uri);
 	ndk::ScopedAStatus removeDppUriInternal(uint32_t bootstrap_id);
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> startDppConfiguratorInitiatorInternal(
@@ -252,8 +291,10 @@ private:
 	ndk::ScopedAStatus startDppEnrolleeInitiatorInternal(uint32_t peer_bootstrap_id,
 			uint32_t own_bootstrap_id);
 	ndk::ScopedAStatus stopDppInitiatorInternal();
+#endif
 	std::pair<ConnectionCapabilities, ndk::ScopedAStatus> getConnectionCapabilitiesInternal();
 	std::pair<WpaDriverCapabilitiesMask, ndk::ScopedAStatus> getWpaDriverCapabilitiesInternal();
+#if 0
 	ndk::ScopedAStatus setMboCellularDataStatusInternal(bool available);
 	std::pair<DppResponderBootstrapInfo, ndk::ScopedAStatus>
 			generateDppBootstrapInfoForResponderInternal(
@@ -269,14 +310,17 @@ private:
 		const std::vector<QosPolicyStatus>& qos_policy_status_list);
 	ndk::ScopedAStatus removeAllQosPoliciesInternal();
 	std::pair<MloLinksInfo, ndk::ScopedAStatus> getConnectionMloLinksInfoInternal();
+#endif
 	std::pair<std::vector<SignalPollResult>, ndk::ScopedAStatus>
 		getSignalPollResultsInternal();
+#if 0
 	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
 		addQosPolicyRequestForScsInternal(
 		const std::vector<QosPolicyScsData>& qosPolicyData);
 	std::pair<std::vector<QosPolicyScsRequestStatus>, ndk::ScopedAStatus>
 		removeQosPolicyForScsInternal(
 		const std::vector<uint8_t>& scsPolicyIds);
+#endif
 
 	struct wpa_supplicant* retrieveIfacePtr();
 
@@ -285,6 +329,8 @@ private:
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
+	// Unique id for someip instance
+	const int32_t ifId;
 	bool is_valid_;
 
 	DISALLOW_COPY_AND_ASSIGN(StaIface);

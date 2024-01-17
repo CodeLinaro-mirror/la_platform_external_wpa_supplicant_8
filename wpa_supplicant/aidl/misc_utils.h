@@ -6,11 +6,19 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef MISC_UTILS_H_
 #define MISC_UTILS_H_
 
 #include <iostream>
 #include <aidl/android/hardware/wifi/supplicant/SupplicantStatusCode.h>
+
+#include <sstream>
 
 extern "C"
 {

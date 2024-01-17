@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef WPA_SUPPLICANT_AIDL_STA_NETWORK_H
 #define WPA_SUPPLICANT_AIDL_STA_NETWORK_H
 
@@ -17,20 +23,21 @@
 #include <aidl/android/hardware/wifi/supplicant/BnSupplicantStaNetwork.h>
 #include <aidl/android/hardware/wifi/supplicant/EapMethod.h>
 #include <aidl/android/hardware/wifi/supplicant/EapPhase2Method.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantStaNetworkCallback.h>
 #include <aidl/android/hardware/wifi/supplicant/NetworkRequestEapSimUmtsAuthParams.h>
 #include <aidl/android/hardware/wifi/supplicant/NetworkResponseEapSimUmtsAuthParams.h>
 #include <aidl/android/hardware/wifi/supplicant/SaeH2eMode.h>
 #include <aidl/android/hardware/wifi/supplicant/DppConnectionKeys.h>
-#include <aidl/android/hardware/wifi/supplicant/TlsVersion.h>
+
+#include "SupplicantStaNetworkCallback.h"
+#include <aidl/android/hardware/wifi/supplicant/ScopedAStatus.h>
 
 extern "C"
 {
 #include "utils/common.h"
 #include "utils/includes.h"
-#include "config.h"
-#include "wpa_supplicant_i.h"
-#include "notify.h"
+#include "../wpa_supplicant/config.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/notify.h"
 #include "eapol_supp/eapol_supp_sm.h"
 #include "eap_peer/eap.h"
 #include "rsn_supp/wpa.h"
@@ -51,21 +58,27 @@ class StaNetwork : public BnSupplicantStaNetwork
 {
 public:
 	StaNetwork(
-		struct wpa_global* wpa_global, const char ifname[], int network_id);
-	~StaNetwork() override = default;
+		struct wpa_global* wpa_global, const char ifname[], int network_id, int32_t id);
+	~StaNetwork() = default;
 	// Refer to |StaIface::invalidate()|.
 	void invalidate();
 	bool isValid();
 
+	int32_t getNetworkInstanceId();
+
 	// Aidl methods exposed.
-  	::ndk::ScopedAStatus getId(int32_t* _aidl_return) override;
+	::ndk::ScopedAStatus getId(int32_t* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus getInterfaceName(std::string* _aidl_return) override;
 	::ndk::ScopedAStatus getType(IfaceType* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus registerCallback(
-		const std::shared_ptr<ISupplicantStaNetworkCallback>& in_callback) override;
+		const std::shared_ptr<SupplicantStaNetworkCallback>& in_callback);
 	::ndk::ScopedAStatus setSsid(const std::vector<uint8_t>& in_ssid) override;
 	::ndk::ScopedAStatus setBssid(const std::vector<uint8_t>& in_bssid) override;
+#if 0
 	::ndk::ScopedAStatus setDppKeys(const DppConnectionKeys& in_keys) override;
+#endif
 	::ndk::ScopedAStatus setScanSsid(bool in_enable) override;
 	::ndk::ScopedAStatus setKeyMgmt(KeyMgmtMask in_keyMgmtMask) override;
 	::ndk::ScopedAStatus setProto(ProtoMask in_protoMask) override;
@@ -79,6 +92,7 @@ public:
 		int32_t in_keyIdx, const std::vector<uint8_t>& in_wepKey) override;
 	::ndk::ScopedAStatus setWepTxKeyIdx(int32_t in_keyIdx) override;
 	::ndk::ScopedAStatus setRequirePmf(bool in_enable) override;
+#if 0
 	::ndk::ScopedAStatus setEapMethod(EapMethod in_method) override;
 	::ndk::ScopedAStatus setEapPhase2Method(EapPhase2Method in_method) override;
 	::ndk::ScopedAStatus setEapIdentity(
@@ -102,9 +116,12 @@ public:
 	::ndk::ScopedAStatus setEapDomainSuffixMatch(
 		const std::string& in_match) override;
 	::ndk::ScopedAStatus setProactiveKeyCaching(bool in_enable) override;
+#endif
 	::ndk::ScopedAStatus setIdStr(const std::string& in_idStr) override;
+#if 0
 	::ndk::ScopedAStatus setUpdateIdentifier(int32_t in_id) override;
 	::ndk::ScopedAStatus setEdmg(bool in_enable) override;
+#endif
 	::ndk::ScopedAStatus getSsid(std::vector<uint8_t>* _aidl_return) override;
 	::ndk::ScopedAStatus getBssid(std::vector<uint8_t>* _aidl_return) override;
 	::ndk::ScopedAStatus getScanSsid(bool* _aidl_return) override;
@@ -116,11 +133,14 @@ public:
 	::ndk::ScopedAStatus getPskPassphrase(std::string* _aidl_return) override;
 	::ndk::ScopedAStatus getPsk(std::vector<uint8_t>* _aidl_return) override;
 	::ndk::ScopedAStatus getSaePassword(std::string* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus getSaePasswordId(std::string* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus getWepKey(
 		int32_t in_keyIdx, std::vector<uint8_t>* _aidl_return) override;
 	::ndk::ScopedAStatus getWepTxKeyIdx(int32_t* _aidl_return) override;
 	::ndk::ScopedAStatus getRequirePmf(bool* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus getEapMethod(EapMethod* _aidl_return) override;
 	::ndk::ScopedAStatus getEapPhase2Method(EapPhase2Method* _aidl_return) override;
 	::ndk::ScopedAStatus getEapIdentity(std::vector<uint8_t>* _aidl_return) override;
@@ -136,13 +156,17 @@ public:
 	::ndk::ScopedAStatus getEapEngine(bool* _aidl_return) override;
 	::ndk::ScopedAStatus getEapEngineId(std::string* _aidl_return) override;
 	::ndk::ScopedAStatus getEapDomainSuffixMatch(std::string* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus getIdStr(std::string* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus getWpsNfcConfigurationToken(
 		std::vector<uint8_t>* _aidl_return) override;
 	::ndk::ScopedAStatus getEdmg(bool* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus enable(bool in_noConnect) override;
 	::ndk::ScopedAStatus disable() override;
 	::ndk::ScopedAStatus select() override;
+#if 0
 	::ndk::ScopedAStatus sendNetworkEapSimGsmAuthResponse(
 		const std::vector<NetworkResponseEapSimGsmAuthParams>& in_params) override;
 	::ndk::ScopedAStatus sendNetworkEapSimGsmAuthFailure() override;
@@ -154,41 +178,54 @@ public:
 	::ndk::ScopedAStatus sendNetworkEapIdentityResponse(
 		const std::vector<uint8_t>& in_identity,
 		const std::vector<uint8_t>& in_encryptedIdentity) override;
+#endif
 	::ndk::ScopedAStatus setGroupMgmtCipher(
 		GroupMgmtCipherMask in_groupMgmtCipherMask) override;
 	::ndk::ScopedAStatus getGroupMgmtCipher(
 		GroupMgmtCipherMask* _aidl_return) override;
+#if 0
 	::ndk::ScopedAStatus enableTlsSuiteBEapPhase1Param(
 		bool in_enable) override;
 	::ndk::ScopedAStatus enableSuiteBEapOpenSslCiphers() override;
+#endif
 	::ndk::ScopedAStatus setSaePassword(
 		const std::string& in_saePassword) override;
+#if 0
 	::ndk::ScopedAStatus setSaePasswordId(
 		const std::string& in_saePasswordId) override;
 	::ndk::ScopedAStatus setOcsp(OcspType in_ocspType) override;
 	::ndk::ScopedAStatus getOcsp(OcspType* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus setPmkCache(
 		const std::vector<uint8_t>& in_serializedEntry) override;
+#if 0
 	::ndk::ScopedAStatus setWapiCertSuite(const std::string& in_suite) override;
 	::ndk::ScopedAStatus getWapiCertSuite(std::string* _aidl_return) override;
 	::ndk::ScopedAStatus setEapErp(bool in_enable) override;
+#endif
 	::ndk::ScopedAStatus setSaeH2eMode(SaeH2eMode in_mode) override;
+#if 0
 	::ndk::ScopedAStatus enableSaePkOnlyMode(bool in_enable) override;
 	::ndk::ScopedAStatus setRoamingConsortiumSelection(
 		const std::vector<uint8_t>& in_selectedRcoi) override;
 	::ndk::ScopedAStatus setMinimumTlsVersionEapPhase1Param(
 		TlsVersion in_tlsVersion) override;
+#endif
 
 private:
 	// Corresponding worker functions for the AIDL methods.
 	std::pair<uint32_t, ndk::ScopedAStatus> getIdInternal();
+#if 0
 	std::pair<std::string, ndk::ScopedAStatus> getInterfaceNameInternal();
 	std::pair<IfaceType, ndk::ScopedAStatus> getTypeInternal();
+#endif
 	ndk::ScopedAStatus registerCallbackInternal(
-		const std::shared_ptr<ISupplicantStaNetworkCallback>& callback);
+		const std::shared_ptr<SupplicantStaNetworkCallback>& callback);
 	ndk::ScopedAStatus setSsidInternal(const std::vector<uint8_t>& ssid);
 	ndk::ScopedAStatus setBssidInternal(const std::vector<uint8_t>& bssid);
+#if 0
 	ndk::ScopedAStatus setDppKeysInternal(const DppConnectionKeys& keys);
+#endif
 	ndk::ScopedAStatus setScanSsidInternal(bool enable);
 	ndk::ScopedAStatus setKeyMgmtInternal(
 		KeyMgmtMask mask);
@@ -206,6 +243,7 @@ private:
 		uint32_t key_idx, const std::vector<uint8_t>& wep_key);
 	ndk::ScopedAStatus setWepTxKeyIdxInternal(uint32_t key_idx);
 	ndk::ScopedAStatus setRequirePmfInternal(bool enable);
+#if 0
 	ndk::ScopedAStatus setEapMethodInternal(
 		EapMethod method);
 	ndk::ScopedAStatus setEapPhase2MethodInternal(
@@ -232,9 +270,12 @@ private:
 	ndk::ScopedAStatus setEapDomainSuffixMatchInternal(
 		const std::string& match);
 	ndk::ScopedAStatus setProactiveKeyCachingInternal(bool enable);
+#endif
 	ndk::ScopedAStatus setIdStrInternal(const std::string& id_str);
+#if 0
 	ndk::ScopedAStatus setUpdateIdentifierInternal(uint32_t id);
 	ndk::ScopedAStatus setEdmgInternal(bool enable);
+#endif
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> getSsidInternal();
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> getBssidInternal();
 	std::pair<bool, ndk::ScopedAStatus> getScanSsidInternal();
@@ -246,11 +287,14 @@ private:
 	std::pair<std::string, ndk::ScopedAStatus> getPskPassphraseInternal();
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> getPskInternal();
 	std::pair<std::string, ndk::ScopedAStatus> getSaePasswordInternal();
+#if 0
 	std::pair<std::string, ndk::ScopedAStatus> getSaePasswordIdInternal();
+#endif
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> getWepKeyInternal(
 		uint32_t key_idx);
 	std::pair<uint32_t, ndk::ScopedAStatus> getWepTxKeyIdxInternal();
 	std::pair<bool, ndk::ScopedAStatus> getRequirePmfInternal();
+#if 0
 	std::pair<EapMethod, ndk::ScopedAStatus> getEapMethodInternal();
 	std::pair<EapPhase2Method, ndk::ScopedAStatus>
 		getEapPhase2MethodInternal();
@@ -269,13 +313,17 @@ private:
 	std::pair<bool, ndk::ScopedAStatus> getEapEngineInternal();
 	std::pair<std::string, ndk::ScopedAStatus> getEapEngineIdInternal();
 	std::pair<std::string, ndk::ScopedAStatus> getEapDomainSuffixMatchInternal();
+#endif
 	std::pair<std::string, ndk::ScopedAStatus> getIdStrInternal();
+#if 0
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>
 		getWpsNfcConfigurationTokenInternal();
 	std::pair<bool, ndk::ScopedAStatus> getEdmgInternal();
+#endif
 	ndk::ScopedAStatus enableInternal(bool no_connect);
 	ndk::ScopedAStatus disableInternal();
 	ndk::ScopedAStatus selectInternal();
+#if 0
 	ndk::ScopedAStatus sendNetworkEapSimGsmAuthResponseInternal(
 		const std::vector<NetworkResponseEapSimGsmAuthParams>&
 		vec_params);
@@ -290,26 +338,35 @@ private:
 		const std::vector<uint8_t>& imsi_identity);
 	ndk::ScopedAStatus enableTlsSuiteBEapPhase1ParamInternal(bool enable);
 	ndk::ScopedAStatus enableSuiteBEapOpenSslCiphersInternal();
+#endif
 	ndk::ScopedAStatus setSaePasswordInternal(
 		const std::string& sae_password);
+#if 0
 	ndk::ScopedAStatus setSaePasswordIdInternal(
 		const std::string& sae_password_id);
+#endif
 	ndk::ScopedAStatus setGroupMgmtCipherInternal(
 		GroupMgmtCipherMask mask);
 	std::pair<GroupMgmtCipherMask, ndk::ScopedAStatus>
 		getGroupMgmtCipherInternal();
+#if 0
 	ndk::ScopedAStatus setOcspInternal(OcspType ocspType);
 	std::pair<OcspType, ndk::ScopedAStatus> getOcspInternal();
+#endif
 	ndk::ScopedAStatus setPmkCacheInternal(const std::vector<uint8_t>& serializedEntry);
+#if 0
 	ndk::ScopedAStatus setWapiCertSuiteInternal(const std::string& suite);
 	std::pair<std::string, ndk::ScopedAStatus> getWapiCertSuiteInternal();
 	ndk::ScopedAStatus setWapiPskInternal(const std::vector<uint8_t>& psk);
 	std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> getWapiPskInternal();
+#endif
 	ndk::ScopedAStatus setSaeH2eModeInternal(SaeH2eMode mode);
+#if 0
 	ndk::ScopedAStatus enableSaePkOnlyModeInternal(bool enable);
 	ndk::ScopedAStatus setRoamingConsortiumSelectionInternal(
 		const std::vector<uint8_t>& selectedRcoi);
 	ndk::ScopedAStatus setMinimumTlsVersionEapPhase1ParamInternal(TlsVersion tlsVersion);
+#endif
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
@@ -349,6 +406,8 @@ private:
 	const std::string ifname_;
 	// Id of the network this aidl object controls.
 	const int network_id_;
+	// Unique id for someip instance
+	const int32_t NwId;
 	bool is_valid_;
 	int tlsFlags;
 
