@@ -1835,6 +1835,8 @@ int ap_ctrl_iface_chanswitch(struct wpa_supplicant *wpa_s, const char *pos)
 	if (ret)
 		return ret;
 
+	settings.link_id = -1;
+
 	return ap_switch_channel(wpa_s, &settings);
 }
 #endif /* CONFIG_CTRL_IFACE */
