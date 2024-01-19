@@ -548,6 +548,9 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
 	else
 		ieee80211n_scan_channels_5g(iface, &params);
 
+#ifdef CONFIG_DRIVER_NL80211_QCA
+	params.only_new_results = 1;
+#endif
 	ret = hostapd_driver_scan(iface->bss[0], &params);
 	os_free(params.freqs);
 
