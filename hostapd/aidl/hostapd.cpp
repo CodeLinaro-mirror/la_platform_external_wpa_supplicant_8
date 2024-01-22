@@ -1152,10 +1152,14 @@ std::vector<uint8_t>  generateRandomOweSsid()
 						if (iface_hapd->iface->state == HAPD_IFACE_DISABLED) {
 							// Invoke the failure callback on all registered
 							// clients.
+							std::string iface = iface_hapd->conf->iface;
+							int id = iface_hapd->mld_link_id;
+							std::stringstream ifaceInstanceString;
+							ifaceInstanceString << iface << "_" << id;
 							for (const auto& callback : callbacks_) {
 								callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
 									iface_hapd->conf->bridge : iface_hapd->conf->iface,
-										    iface_hapd->conf->iface);
+										    ifaceInstanceString.str());
 							}
 						}
 					};
