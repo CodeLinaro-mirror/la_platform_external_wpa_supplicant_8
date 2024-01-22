@@ -1232,13 +1232,19 @@ std::vector<uint8_t>  generateRandomOweSsid()
 							strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
 						ApInfo info;
 						info.ifaceName = strlen(iface_hapd->conf->bridge) > 0 ?
-							iface_hapd->conf->bridge : iface_hapd->conf->iface,
-						info.apIfaceInstance = iface_hapd->conf->iface;
+							iface_hapd->conf->bridge : iface_hapd->conf->iface;
+						std::string str = iface_hapd->conf->iface;
+						int id = iface_hapd->mld_link_id;
+						std::stringstream ss;
+						ss << str << "_" << id;
+						info.apIfaceInstance = ss.str();
 						info.freqMhz = iface_hapd->iface->freq;
 						info.channelBandwidth = getChannelBandwidth(iface_hapd->iconf);
 						info.generation = getGeneration(iface_hapd->iface->current_mode);
 						info.apIfaceInstanceMacAddress.assign(iface_hapd->own_addr,
 							iface_hapd->own_addr + ETH_ALEN);
+						info.apIfaceInstanceMacAddress.insert(info.apIfaceInstanceMacAddress.end(),
+							iface_hapd->mld_addr, iface_hapd->mld_addr + ETH_ALEN);
 						for (const auto &callback : callbacks_) {
 							callback->onApInstanceInfoChanged(info);
 						}
