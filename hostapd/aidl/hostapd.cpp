@@ -839,17 +839,23 @@ std::string CreateHostapdConfig(
 Generation getGeneration(hostapd_hw_modes *current_mode)
 {
 	wpa_printf(MSG_DEBUG, "getGeneration hwmode=%d, ht_enabled=%d,"
-		   " vht_enabled=%d, he_supported=%d",
+		   " vht_enabled=%d, he_supported=%d, eht_supported=%d",
 		   current_mode->mode, current_mode->ht_capab != 0,
-		   current_mode->vht_capab != 0, current_mode->he_capab->he_supported);
+		   current_mode->vht_capab != 0, current_mode->he_capab->he_supported,
+		   current_mode->eht_capab->eht_supported);
 	switch (current_mode->mode) {
 	case HOSTAPD_MODE_IEEE80211B:
 		return Generation::WIFI_STANDARD_LEGACY;
 	case HOSTAPD_MODE_IEEE80211G:
+		if (current_mode->eht_capab->eht_supported) {
+			return Generation::WIFI_STANDARD_11BE;
+		}
 		return current_mode->ht_capab == 0 ?
 				Generation::WIFI_STANDARD_LEGACY : Generation::WIFI_STANDARD_11N;
 	case HOSTAPD_MODE_IEEE80211A:
-		if (current_mode->he_capab->he_supported) {
+		if (current_mode->eht_capab->eht_supported) {
+			return Generation::WIFI_STANDARD_11BE;
+		} else if (current_mode->he_capab->he_supported) {
 			return Generation::WIFI_STANDARD_11AX;
 		}
 		return current_mode->vht_capab == 0 ?
