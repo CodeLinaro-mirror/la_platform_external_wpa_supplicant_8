@@ -1696,6 +1696,33 @@ switch_link_hapd(struct hostapd_data *hapd, int link_id)
 }
 
 
+#ifdef CONFIG_DRIVER_NL80211_QCA
+static struct hostapd_data *
+switch_link_per_cookie(struct hostapd_data *hapd, u64 scan_cookie)
+{
+#ifdef CONFIG_IEEE80211BE
+	unsigned int i;
+	if (hapd->conf->mld_ap && scan_cookie !=0) {
+		for (i = 0; i < hapd->iface->interfaces->count; i++) {
+			struct hostapd_iface *h = hapd->iface->interfaces->iface[i];
+			struct hostapd_data *h_hapd = h->bss[0];
+			struct hostapd_bss_config *hconf = h_hapd->conf;
+
+			if (!hconf->mld_ap || hconf->mld_id != hapd->conf->mld_id)
+				continue;
+
+			if (h_hapd->scan_cookie == scan_cookie) {
+				h_hapd->scan_cookie = 0;
+				return h_hapd;
+			}
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+	return hapd;
+}
+#endif
+
+
 #define HAPD_BROADCAST ((struct hostapd_data *) -1)
 
 static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
@@ -2308,6 +2335,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		michael_mic_failure(hapd, data->michael_mic_failure.src, 1);
 		break;
 	case EVENT_SCAN_RESULTS:
+#ifdef CONFIG_DRIVER_NL80211_QCA
+		hapd = switch_link_per_cookie(hapd, data->scan_info.scan_cookie);
+#endif
 		if (hapd->iface->scan_cb)
 			hapd->iface->scan_cb(hapd->iface);
 		break;

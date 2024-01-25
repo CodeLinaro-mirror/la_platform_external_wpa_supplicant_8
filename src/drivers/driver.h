@@ -686,6 +686,14 @@ struct wpa_driver_scan_params {
 	 */
 	unsigned int non_coloc_6ghz:1;
 
+	/**
+	 * link_id - Specify the link that requesting the scan
+	 *
+	 * This is set when operating as an AP MLD and is doing OBSS scan.
+	 *
+	 */
+	s8 link_id;
+
 	/*
 	 * NOTE: Whenever adding new parameters here, please make sure
 	 * wpa_scan_clone_params() and wpa_scan_free_params() get updated with
@@ -6307,6 +6315,8 @@ union wpa_event_data {
 	 *	(if available).
 	 * @scan_start_tsf_bssid: The BSSID according to which %scan_start_tsf
 	 *	is set.
+	 * @scan_cookie: Unique identification representing the corresponding
+	 *      scan request.
 	 */
 	struct scan_info {
 		int aborted;
@@ -6318,6 +6328,7 @@ union wpa_event_data {
 		int nl_scan_event;
 		u64 scan_start_tsf;
 		u8 scan_start_tsf_bssid[ETH_ALEN];
+		u64 scan_cookie;
 	} scan_info;
 
 	/**

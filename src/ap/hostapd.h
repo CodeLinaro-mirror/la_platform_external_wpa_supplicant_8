@@ -473,6 +473,7 @@ struct hostapd_data {
 #ifdef CONFIG_CTRL_IFACE_UDP
        unsigned char ctrl_iface_cookie[CTRL_IFACE_COOKIE_LEN];
 #endif /* CONFIG_CTRL_IFACE_UDP */
+       u64 scan_cookie;
 };
 
 
