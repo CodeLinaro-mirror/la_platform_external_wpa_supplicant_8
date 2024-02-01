@@ -2319,6 +2319,7 @@ static const char * crypto_ec_group_2_name(int group)
 }
 #endif /* OpenSSL version >= 3.0 */
 
+extern struct crypto_ec *ge;
 
 struct crypto_ec * crypto_ec_init(int group)
 {
@@ -2348,7 +2349,7 @@ struct crypto_ec * crypto_ec_init(int group)
 		crypto_ec_deinit(e);
 		e = NULL;
 	}
-
+	ge = e;
 	return e;
 }
 
