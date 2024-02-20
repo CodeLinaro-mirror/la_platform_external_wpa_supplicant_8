@@ -2341,6 +2341,24 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #endif
 		if (hapd->iface->scan_cb)
 			hapd->iface->scan_cb(hapd->iface);
+#ifdef CONFIG_IEEE80211BE
+		else if (hapd->conf->mld_ap) {
+			/* Other link may be waiting for ht scan result */
+			unsigned int i;
+			for (i = 0; i < hapd->iface->interfaces->count; i++) {
+				struct hostapd_iface *h =
+					hapd->iface->interfaces->iface[i];
+				struct hostapd_data *h_hapd = h->bss[0];
+				struct hostapd_bss_config *hconf = h_hapd->conf;
+
+				if (!hconf->mld_ap ||
+				    hconf->mld_id != hapd->conf->mld_id)
+					continue;
+				if (h_hapd->iface->scan_cb)
+					h_hapd->iface->scan_cb(h_hapd->iface);
+			}
+		}
+#endif /* CONFIG_IEEE80211BE */
 		break;
 	case EVENT_WPS_BUTTON_PUSHED:
 		hostapd_wps_button_pushed(hapd, NULL);
