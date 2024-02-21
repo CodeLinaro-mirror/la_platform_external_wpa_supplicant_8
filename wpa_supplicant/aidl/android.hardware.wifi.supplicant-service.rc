@@ -3,8 +3,8 @@ service wpa_supplicant /vendor/bin/hw/wpa_supplicant \
 	-g@android:wpa_wlan0
 	#   we will start as root and wpa_supplicant will switch to user wifi
 	#   after setting up the capabilities required for WEXT
-	#   user wifi
-	#   group wifi inet keystore
+	user wifi
+	group system wifi inet keystore
 	interface aidl android.hardware.wifi.supplicant.ISupplicant/default
 	interface aidl vendor.qti.hardware.wifi.supplicant.ISupplicantVendor/default
 	class main
