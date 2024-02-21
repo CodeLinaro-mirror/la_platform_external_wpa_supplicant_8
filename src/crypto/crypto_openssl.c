@@ -44,6 +44,8 @@
 #include "aes_wrap.h"
 #include "crypto.h"
 
+struct crypto_ec *ge;
+
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 /* Compatibility wrappers for older versions. */
 
@@ -2319,7 +2321,6 @@ static const char * crypto_ec_group_2_name(int group)
 }
 #endif /* OpenSSL version >= 3.0 */
 
-extern struct crypto_ec *ge;
 
 struct crypto_ec * crypto_ec_init(int group)
 {
