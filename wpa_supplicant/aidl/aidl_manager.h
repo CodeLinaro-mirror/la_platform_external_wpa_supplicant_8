@@ -184,6 +184,9 @@ public:
 	ssize_t listAliases(const char *prefix, char ***aliases);
 	void notifyQosPolicyScsResponse(struct wpa_supplicant *wpa_s,
 			unsigned int count, int **scs_resp);
+	void notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
+				       enum mlo_info_change_reason reason);
+
 #ifdef CONFIG_USE_VENDOR_AIDL
 	void notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char *msg);
 #endif
