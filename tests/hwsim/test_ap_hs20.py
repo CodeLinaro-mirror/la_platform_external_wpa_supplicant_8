@@ -4766,7 +4766,7 @@ def get_permanent_neighbors(ifname):
     cmd = subprocess.Popen(['ip', 'nei'], stdout=subprocess.PIPE)
     res = cmd.stdout.read().decode()
     cmd.stdout.close()
-    return [line for line in res.splitlines() if "PERMANENT" in line and ifname in line]
+    return [line.strip() for line in res.splitlines() if "PERMANENT" in line and ifname in line]
 
 def get_bridge_macs(ifname):
     cmd = subprocess.Popen(['brctl', 'showmacs', ifname],
@@ -5483,6 +5483,7 @@ def run_proxyarp_errors(dev, apdev, params):
         pkt = build_ns(src_ll=addr0, ip_src="aaaa:bbbb:cccc::2",
                        ip_dst="ff02::1:ff00:2", target="aaaa:bbbb:cccc::2",
                        opt=src_ll_opt0)
+        hwsim_utils.sync_carrier(dev[0])
         if "OK" not in dev[0].request("DATA_TEST_FRAME " + binascii.hexlify(pkt).decode()):
             raise Exception("DATA_TEST_FRAME failed")
         wait_fail_trigger(hapd, "GET_ALLOC_FAIL")

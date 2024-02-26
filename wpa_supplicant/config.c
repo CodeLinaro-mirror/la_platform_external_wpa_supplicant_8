@@ -2368,7 +2368,7 @@ static int wpa_config_parse_mac_value(const struct parse_data *data,
 	u8 mac_value[ETH_ALEN];
 
 	if (hwaddr_aton(value, mac_value) == 0) {
-		if (os_memcmp(mac_value, ssid->mac_value, ETH_ALEN) == 0)
+		if (ether_addr_equal(mac_value, ssid->mac_value))
 			return 1;
 		os_memcpy(ssid->mac_value, mac_value, ETH_ALEN);
 		return 0;
@@ -5545,6 +5545,7 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(mld_connect_band_pref, 0, MLD_CONNECT_BAND_PREF_MAX), 0 },
 	{ FUNC(mld_connect_bssid_pref), 0 },
 #endif /* CONFIG_TESTING_OPTIONS */
+	{ INT_RANGE(ft_prepend_pmkid, 0, 1), CFG_CHANGED_FT_PREPEND_PMKID },
 	/* NOTE: When adding new parameters here, add_interface() in
 	 * wpa_supplicant/dbus_new_introspect.c may need to be modified to
 	 * increase the size of the iface->xml buffer. */

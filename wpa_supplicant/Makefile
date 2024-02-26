@@ -65,6 +65,7 @@ ifdef CONFIG_TESTING_OPTIONS
 CFLAGS += -DCONFIG_TESTING_OPTIONS
 CONFIG_WPS_TESTING=y
 CONFIG_TDLS_TESTING=y
+NEED_AES_WRAP=y
 endif
 
 mkconfig:
@@ -200,7 +201,7 @@ CFLAGS += -Werror -DEAPOL_TEST
 endif
 
 ifdef CONFIG_CODE_COVERAGE
-CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+CFLAGS += -O0 -fprofile-arcs -ftest-coverage -U_FORTIFY_SOURCE
 LIBS += -lgcov
 LIBS_c += -lgcov
 LIBS_p += -lgcov
@@ -326,6 +327,12 @@ CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN_USD
+OBJS += ../src/common/nan_de.o
+OBJS += nan_usd.o
+CFLAGS += -DCONFIG_NAN_USD
+endif
+
 ifdef CONFIG_OWE
 CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
@@ -347,6 +354,10 @@ endif
 endif
 
 ifdef CONFIG_MBO
+CONFIG_WNM=y
+endif
+
+ifdef CONFIG_BGSCAN_SIMPLE
 CONFIG_WNM=y
 endif
 
@@ -1069,6 +1080,9 @@ OBJS += ../src/ap/dpp_hostapd.o
 OBJS += ../src/ap/gas_query_ap.o
 NEED_AP_GAS_SERV=y
 endif
+ifdef CONFIG_NAN_USD
+OBJS += ../src/ap/nan_usd_ap.o
+endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y
 endif
@@ -1102,17 +1116,20 @@ endif
 
 ifdef CONFIG_PCSC
 # PC/SC interface for smartcards (USIM, GSM SIM)
-CFLAGS += -DPCSC_FUNCS -I/usr/include/PCSC
+CFLAGS += -DPCSC_FUNCS
 OBJS += ../src/utils/pcsc_funcs.o
 ifdef CONFIG_NATIVE_WINDOWS
 #Once MinGW gets support for WinScard, -lwinscard could be used instead of the
 #dynamic symbol loading that is now used in pcsc_funcs.c
 #LIBS += -lwinscard
+CFLAGS += -I/usr/include/PCSC
 else
 ifdef CONFIG_OSX
 LIBS += -framework PCSC
+CFLAGS += -I/usr/include/PCSC
 else
 LIBS += $(shell $(PKG_CONFIG) --libs libpcsclite)
+CFLAGS += $(shell $(PKG_CONFIG) --cflags libpcsclite)
 endif
 endif
 endif

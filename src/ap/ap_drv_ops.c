@@ -269,7 +269,7 @@ static bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
 				    struct sta_info *sta)
 {
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
+	if (ap_sta_is_mld(hapd, sta) &&
 	    sta->mld_assoc_link_id != hapd->mld_link_id)
 		return true;
 #endif /* CONFIG_IEEE80211BE */
@@ -839,7 +839,7 @@ int hostapd_drv_sta_deauth(struct hostapd_data *hapd,
 		struct sta_info *sta = ap_get_sta(hapd, addr);
 
 		link_id = hapd->mld_link_id;
-		if (sta && sta->mld_info.mld_sta)
+		if (ap_sta_is_mld(hapd, sta))
 			own_addr = hapd->mld_addr;
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -860,7 +860,7 @@ int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,
 	if (hapd->conf->mld_ap) {
 		struct sta_info *sta = ap_get_sta(hapd, addr);
 
-		if (sta && sta->mld_info.mld_sta)
+		if (ap_sta_is_mld(hapd, sta))
 			own_addr = hapd->mld_addr;
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -882,9 +882,9 @@ int hostapd_drv_wnm_oper(struct hostapd_data *hapd, enum wnm_oper oper,
 }
 
 
-int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
-			    unsigned int wait, const u8 *dst, const u8 *data,
-			    size_t len)
+static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+				unsigned int wait, const u8 *dst,
+				const u8 *data, size_t len, bool addr3_ap)
 {
 	const u8 *own_addr = hapd->own_addr;
 	const u8 *bssid;
@@ -896,7 +896,7 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 	if (!hapd->driver || !hapd->driver->send_action || !hapd->drv_priv)
 		return 0;
 	bssid = hapd->own_addr;
-	if (!is_multicast_ether_addr(dst) &&
+	if (!addr3_ap && !is_multicast_ether_addr(dst) &&
 	    len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
 		/*
 		 * Public Action frames to a STA that is not a member of the BSS
@@ -905,7 +905,7 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 		sta = ap_get_sta(hapd, dst);
 		if (!sta || !(sta->flags & WLAN_STA_ASSOC))
 			bssid = wildcard_bssid;
-	} else if (is_broadcast_ether_addr(dst) &&
+	} else if (!addr3_ap && is_broadcast_ether_addr(dst) &&
 		   len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
 		/*
 		 * The only current use case of Public Action frames with
@@ -918,7 +918,7 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 	} else if (hapd->conf->mld_ap) {
 		sta = ap_get_sta(hapd, dst);
 
-		if (sta && sta->mld_info.mld_sta) {
+		if (ap_sta_is_mld(hapd, sta)) {
 			own_addr = hapd->mld_addr;
 			bssid = own_addr;
 		}
@@ -930,16 +930,20 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 }
 
 
+int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+			    unsigned int wait, const u8 *dst, const u8 *data,
+			    size_t len)
+{
+	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, false);
+}
+
+
 int hostapd_drv_send_action_addr3_ap(struct hostapd_data *hapd,
 				     unsigned int freq,
 				     unsigned int wait, const u8 *dst,
 				     const u8 *data, size_t len)
 {
-	if (hapd->driver == NULL || hapd->driver->send_action == NULL)
-		return 0;
-	return hapd->driver->send_action(hapd->drv_priv, freq, wait, dst,
-					 hapd->own_addr, hapd->own_addr, data,
-					 len, 0);
+	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, true);
 }
 
 
@@ -1091,6 +1095,12 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 
 	os_memset(&params, 0, sizeof(params));
 	params.hw_mode = hapd->iface->conf->hw_mode;
+	params.link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && hapd->iconf->ieee80211be &&
+	    !hapd->conf->disable_11be)
+		params.link_id = hapd->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 
 	/*
 	 * If no chanlist config parameter is provided, include all enabled

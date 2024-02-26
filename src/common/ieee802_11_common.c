@@ -1004,7 +1004,7 @@ ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
 			continue;
 		}
 
-		if (sub_elem_len < 3) {
+		if (sub_elem_len < 5) {
 			if (show_errors)
 				wpa_printf(MSG_DEBUG,
 					   "MLD: error: sub_elem_len=%zu < 5",
@@ -1073,7 +1073,8 @@ ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
 			non_inherit_len -= 1 + non_inherit[0];
 			non_inherit += 1 + non_inherit[0];
 
-			if (non_inherit_len < 1UL + non_inherit[0]) {
+			if (non_inherit_len < 1UL ||
+			    non_inherit_len < 1UL + non_inherit[0]) {
 				if (show_errors)
 					wpa_printf(MSG_DEBUG,
 						   "MLD: Invalid inheritance");
@@ -2834,6 +2835,21 @@ int get_6ghz_sec_channel(int channel)
 }
 
 
+bool is_same_band(int freq1, int freq2)
+{
+	if (IS_2P4GHZ(freq1) && IS_2P4GHZ(freq2))
+		return true;
+
+	if (IS_5GHZ(freq1) && IS_5GHZ(freq2))
+		return true;
+
+	if (is_6ghz_freq(freq1) && is_6ghz_freq(freq2))
+		return true;
+
+	return false;
+}
+
+
 int ieee802_11_parse_candidate_list(const char *pos, u8 *nei_rep,
 				    size_t nei_rep_len)
 {
@@ -3168,6 +3184,38 @@ enum oper_chan_width op_class_to_ch_width(u8 op_class)
 		return CONF_OPER_CHWIDTH_8640MHZ;
 	default:
 		return CONF_OPER_CHWIDTH_USE_HT;
+	}
+}
+
+
+/**
+ * chwidth_freq2_to_ch_width - Determine channel width as enum oper_chan_width
+ * @chwidth: Channel width integer
+ * @freq2: Value for frequency 2. 0 is not used
+ * Returns: enum oper_chan_width, -1 on failure
+ */
+int chwidth_freq2_to_ch_width(int chwidth, int freq2)
+{
+	if (freq2 < 0)
+		return -1;
+	if (freq2)
+		return CONF_OPER_CHWIDTH_80P80MHZ;
+
+	switch (chwidth) {
+	case 0:
+	case 20:
+	case 40:
+		return CONF_OPER_CHWIDTH_USE_HT;
+	case 80:
+		return CONF_OPER_CHWIDTH_80MHZ;
+	case 160:
+		return CONF_OPER_CHWIDTH_160MHZ;
+	case 320:
+		return CONF_OPER_CHWIDTH_320MHZ;
+	default:
+		wpa_printf(MSG_DEBUG, "Unknown max oper bandwidth: %d",
+			   chwidth);
+		return -1;
 	}
 }
 

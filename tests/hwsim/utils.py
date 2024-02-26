@@ -12,6 +12,7 @@ import subprocess
 import time
 import remotehost
 import logging
+import re
 logger = logging.getLogger()
 import hostapd
 
@@ -78,10 +79,8 @@ def wait_fail_trigger(dev, cmd, note="Failure not triggered", max_iter=40,
         time.sleep(timeout)
 
 def require_under_vm():
-    with open('/proc/1/cmdline', 'r') as f:
-        cmd = f.read()
-        if "inside.sh" not in cmd:
-            raise HwsimSkip("Not running under VM")
+    if os.getenv('VM') != 'VM':
+        raise HwsimSkip("Not running under VM")
 
 def iface_is_in_bridge(bridge, ifname):
     fname = "/sys/class/net/"+ifname+"/brport/bridge"
@@ -154,6 +153,29 @@ def vht_supported():
     reg = cmd.stdout.read().decode()
     if "@ 80)" in reg or "@ 160)" in reg:
         return True
+    return False
+
+def eht_320mhz_supported():
+    cmd = subprocess.Popen(["iw", "reg", "get"],
+                           stdout=subprocess.PIPE)
+    cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+    reg = cmd.stdout.read().decode()
+    if "@ 320)" in reg:
+        return True
+    return False
+
+def he_6ghz_supported(freq=5975):
+    cmd = subprocess.Popen(["iw", "reg", "get"],
+                           stdout=subprocess.PIPE)
+    reg_rules = cmd.stdout.read().decode().splitlines()
+    for rule in reg_rules:
+        m = re.search(r"\s*\(\d+\s*-\s*\d+", rule)
+        if not m:
+            continue
+        freqs = re.findall(r"\d+", m.group(0))
+        if int(freqs[0]) <= freq and freq <= int(freqs[1]):
+            return True
+
     return False
 
 # This function checks whether the provided dev, which may be either

@@ -351,6 +351,7 @@ def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None,
     logger.debug("Wait for GO Negotiation Request on r_dev")
     ev = r_dev.wait_global_event(["P2P-GO-NEG-REQUEST"], timeout=timeout - 5)
     if ev is None:
+        logger.debug("Wait for P2P-GO-NEG-REQUEST timed out on r_dev - wait for i_dev thread to complete")
         t.join()
         raise Exception("GO Negotiation timed out")
     r_dev.dump_monitor()
@@ -374,6 +375,7 @@ def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None,
         raise Exception("go_neg_init_pbc thread failed")
     logger.debug("i_res: " + str(i_res))
     logger.info("Group formed")
+    time.sleep(0.1)
     hwsim_utils.test_connectivity_p2p(r_dev, i_dev)
     i_dev.dump_monitor()
     return [i_res, r_res]

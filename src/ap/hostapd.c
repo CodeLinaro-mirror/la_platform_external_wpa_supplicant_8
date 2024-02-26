@@ -35,6 +35,7 @@
 #include "wpa_auth.h"
 #include "wps_hostapd.h"
 #include "dpp_hostapd.h"
+#include "nan_usd_ap.h"
 #include "gas_query_ap.h"
 #include "hw_features.h"
 #include "wpa_auth_glue.h"
@@ -496,6 +497,24 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 	hostapd_acl_deinit(hapd);
 #ifndef CONFIG_NO_RADIUS
 	if (!hapd->mld_first_bss) {
+		struct hapd_interfaces *ifaces = hapd->iface->interfaces;
+		size_t i;
+
+		for (i = 0; i < ifaces->count; i++) {
+			struct hostapd_iface *iface = ifaces->iface[i];
+			size_t j;
+
+			for (j = 0; iface && j < iface->num_bss; j++) {
+				struct hostapd_data *h = iface->bss[j];
+
+				if (hapd == h)
+					continue;
+				if (h->radius == hapd->radius)
+					h->radius = NULL;
+				if (h->radius_das == hapd->radius_das)
+					h->radius_das = NULL;
+			}
+		}
 		radius_client_deinit(hapd->radius);
 		radius_das_deinit(hapd->radius_das);
 	}
@@ -510,6 +529,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 	gas_query_ap_deinit(hapd->gas);
 	hapd->gas = NULL;
 #endif /* CONFIG_DPP */
+#ifdef CONFIG_NAN_USD
+	hostapd_nan_usd_deinit(hapd);
+#endif /* CONFIG_NAN_USD */
 
 	authsrv_deinit(hapd);
 
@@ -1497,6 +1519,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 	if (hostapd_dpp_init(hapd))
 		return -1;
 #endif /* CONFIG_DPP */
+
+#ifdef CONFIG_NAN_USD
+	if (hostapd_nan_usd_init(hapd) < 0)
+		return -1;
+#endif /* CONFIG_NAN_USD */
 
 	if (authsrv_init(hapd) < 0)
 		return -1;
@@ -3185,6 +3212,31 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
 		return -1;
 	}
 
+#ifdef CONFIG_IEEE80211BE
+	if (hapd_iface->bss[0]->conf->mld_ap &&
+	    !hapd_iface->bss[0]->mld_first_bss) {
+		/* Do not allow mld_first_bss disabling before other BSSs */
+		for (j = 0; j < hapd_iface->interfaces->count; ++j) {
+			struct hostapd_iface *h_iface =
+				hapd_iface->interfaces->iface[j];
+			struct hostapd_data *h_hapd = h_iface->bss[0];
+			struct hostapd_bss_config *h_conf = h_hapd->conf;
+
+			if (!h_conf->mld_ap ||
+			    h_conf->mld_id !=
+			    hapd_iface->bss[0]->conf->mld_id ||
+			    h_iface == hapd_iface)
+				continue;
+
+			if (h_iface->state != HAPD_IFACE_DISABLED) {
+				wpa_printf(MSG_INFO,
+					   "Do not allow disable mld_first_bss first");
+				return -1;
+			}
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 	wpa_msg(hapd_iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
 	place_marker(AP_EVENT_DISABLED);
 	driver = hapd_iface->bss[0]->driver;
@@ -3605,7 +3657,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
+	if (ap_sta_is_mld(hapd, sta) &&
 	    sta->mld_assoc_link_id != hapd->mld_link_id)
 		return;
 #endif /* CONFIG_IEEE80211BE */
@@ -3837,7 +3889,7 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 				      struct hostapd_freq_params *old_params)
 {
 	int channel;
-	u8 seg0, seg1;
+	u8 seg0 = 0, seg1 = 0;
 	struct hostapd_hw_modes *mode;
 
 	if (!params->channel) {
@@ -3913,10 +3965,14 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 	conf->ieee80211n = params->ht_enabled;
 	conf->ieee80211ac = params->vht_enabled;
 	conf->secondary_channel = params->sec_channel_offset;
-	ieee80211_freq_to_chan(params->center_freq1,
-			       &seg0);
-	ieee80211_freq_to_chan(params->center_freq2,
-			       &seg1);
+	if (params->center_freq1 &&
+	    ieee80211_freq_to_chan(params->center_freq1, &seg0) ==
+	    NUM_HOSTAPD_MODES)
+		return -1;
+	if (params->center_freq2 &&
+	    ieee80211_freq_to_chan(params->center_freq2,
+				   &seg1) == NUM_HOSTAPD_MODES)
+		return -1;
 	hostapd_set_oper_centr_freq_seg0_idx(conf, seg0);
 	hostapd_set_oper_centr_freq_seg1_idx(conf, seg1);
 

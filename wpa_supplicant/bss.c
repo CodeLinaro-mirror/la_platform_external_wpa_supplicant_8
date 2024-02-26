@@ -265,7 +265,7 @@ struct wpa_bss * wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
 	if (bssid && !wpa_supplicant_filter_bssid_match(wpa_s, bssid))
 		return NULL;
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if ((!bssid || os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
+		if ((!bssid || ether_addr_equal(bss->bssid, bssid)) &&
 		    bss->ssid_len == ssid_len &&
 		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
 			return bss;
@@ -360,12 +360,11 @@ static bool is_p2p_pending_bss(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_P2P
 	u8 addr[ETH_ALEN];
 
-	if (os_memcmp(bss->bssid, wpa_s->pending_join_iface_addr,
-		      ETH_ALEN) == 0)
+	if (ether_addr_equal(bss->bssid, wpa_s->pending_join_iface_addr))
 		return true;
 	if (!is_zero_ether_addr(wpa_s->pending_join_dev_addr) &&
 	    p2p_parse_dev_addr(wpa_bss_ie_ptr(bss), bss->ie_len, addr) == 0 &&
-	    os_memcmp(addr, wpa_s->pending_join_dev_addr, ETH_ALEN) == 0)
+	    ether_addr_equal(addr, wpa_s->pending_join_dev_addr))
 		return true;
 #endif /* CONFIG_P2P */
 	return false;
@@ -408,8 +407,8 @@ static int wpa_bss_in_use(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 		return 0; /* SSID has changed */
 
 	if (!is_zero_ether_addr(bss->bssid) &&
-	    (os_memcmp(bss->bssid, wpa_s->bssid, ETH_ALEN) == 0 ||
-	     os_memcmp(bss->bssid, wpa_s->pending_bssid, ETH_ALEN) == 0))
+	    (ether_addr_equal(bss->bssid, wpa_s->bssid) ||
+	     ether_addr_equal(bss->bssid, wpa_s->pending_bssid)))
 		return 1;
 
 	if (!wpa_s->valid_links)
@@ -419,7 +418,7 @@ static int wpa_bss_in_use(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 		if (!(wpa_s->valid_links & BIT(i)))
 			continue;
 
-		if (os_memcmp(bss->bssid, wpa_s->links[i].bssid, ETH_ALEN) == 0)
+		if (ether_addr_equal(bss->bssid, wpa_s->links[i].bssid))
 			return 1;
 	}
 
@@ -1104,7 +1103,7 @@ struct wpa_bss * wpa_bss_get_bssid(struct wpa_supplicant *wpa_s,
 	if (!wpa_supplicant_filter_bssid_match(wpa_s, bssid))
 		return NULL;
 	dl_list_for_each_reverse(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
+		if (ether_addr_equal(bss->bssid, bssid))
 			return bss;
 	}
 	return NULL;
@@ -1129,7 +1128,7 @@ struct wpa_bss * wpa_bss_get_bssid_latest(struct wpa_supplicant *wpa_s,
 	if (!wpa_supplicant_filter_bssid_match(wpa_s, bssid))
 		return NULL;
 	dl_list_for_each_reverse(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) != 0)
+		if (!ether_addr_equal(bss->bssid, bssid))
 			continue;
 		if (found == NULL ||
 		    os_reltime_before(&found->last_update, &bss->last_update))
@@ -1158,7 +1157,7 @@ struct wpa_bss * wpa_bss_get_p2p_dev_addr(struct wpa_supplicant *wpa_s,
 		u8 addr[ETH_ALEN];
 		if (p2p_parse_dev_addr(wpa_bss_ie_ptr(bss), bss->ie_len,
 				       addr) != 0 ||
-		    os_memcmp(addr, dev_addr, ETH_ALEN) != 0)
+		    !ether_addr_equal(addr, dev_addr))
 			continue;
 		if (!found ||
 		    os_reltime_before(&found->last_update, &bss->last_update))
@@ -1530,12 +1529,11 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 				   "MLD: Reported link not part of MLD");
 		} else if (!(BIT(link_id) & *seen)) {
 			struct wpa_bss *neigh_bss =
-				wpa_bss_get_bssid(wpa_s, ap_info->data + 1);
+				wpa_bss_get_bssid(wpa_s, pos + 1);
 
 			*seen |= BIT(link_id);
 			wpa_printf(MSG_DEBUG, "MLD: mld ID=%u, link ID=%u",
 				   *mld_params, link_id);
-
 
 			if (!neigh_bss) {
 				*missing |= BIT(link_id);
@@ -1550,9 +1548,10 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 
 				l = &bss->mld_links[bss->n_mld_links];
 				l->link_id = link_id;
-				os_memcpy(l->bssid, ap_info->data + 1,
-					  ETH_ALEN);
+				os_memcpy(l->bssid, pos + 1, ETH_ALEN);
 				l->freq = neigh_bss->freq;
+				l->disabled = mld_params[2] &
+					RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
 				bss->n_mld_links++;
 			}
 		}

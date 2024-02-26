@@ -1,6 +1,6 @@
 /*
  * hostapd / IEEE 802.11 Management
- * Copyright (c) 2002-2012, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -21,16 +21,25 @@
 #include "ieee802_11.h"
 
 
+static u8 * hostapd_eid_timeout_interval(u8 *pos, u8 type, u32 value)
+{
+	*pos++ = WLAN_EID_TIMEOUT_INTERVAL;
+	*pos++ = 5;
+	*pos++ = type;
+	WPA_PUT_LE32(pos, value);
+	pos += 4;
+
+	return pos;
+}
+
+
 u8 * hostapd_eid_assoc_comeback_time(struct hostapd_data *hapd,
 				     struct sta_info *sta, u8 *eid)
 {
-	u8 *pos = eid;
 	u32 timeout, tu;
 	struct os_reltime now, passed;
+	u8 type = WLAN_TIMEOUT_ASSOC_COMEBACK;
 
-	*pos++ = WLAN_EID_TIMEOUT_INTERVAL;
-	*pos++ = 5;
-	*pos++ = WLAN_TIMEOUT_ASSOC_COMEBACK;
 	os_get_reltime(&now);
 	os_reltime_sub(&now, &sta->sa_query_start, &passed);
 	tu = (passed.sec * 1000000 + passed.usec) / 1024;
@@ -40,10 +49,12 @@ u8 * hostapd_eid_assoc_comeback_time(struct hostapd_data *hapd,
 		timeout = 0;
 	if (timeout < hapd->conf->assoc_sa_query_max_timeout)
 		timeout++; /* add some extra time for local timers */
-	WPA_PUT_LE32(pos, timeout);
-	pos += 4;
 
-	return pos;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (hapd->conf->test_assoc_comeback_type != -1)
+		type = hapd->conf->test_assoc_comeback_type;
+#endif /* CONFIG_TESTING_OPTIONS */
+	return hostapd_eid_timeout_interval(eid, type, timeout);
 }
 
 
@@ -109,7 +120,7 @@ void ieee802_11_send_sa_query_req(struct hostapd_data *hapd,
 	}
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta)
+	if (ap_sta_is_mld(hapd, sta))
 		own_addr = hapd->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 
@@ -207,7 +218,7 @@ static void ieee802_11_send_sa_query_resp(struct hostapd_data *hapd,
 		   MACSTR, MAC2STR(sa));
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta)
+	if (ap_sta_is_mld(hapd, sta))
 		own_addr = hapd->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 
@@ -1147,4 +1158,45 @@ u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 
 	return WLAN_STATUS_SUCCESS;
+}
+
+
+struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
+					   struct sta_info *sta,
+					   struct hostapd_data **assoc_hapd)
+{
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_data *other_hapd = NULL;
+	struct sta_info *tmp_sta;
+
+	if (!ap_sta_is_mld(hapd, sta))
+		return NULL;
+
+	*assoc_hapd = hapd;
+
+	/* The station is the one on which the association was performed */
+	if (sta->mld_assoc_link_id == hapd->mld_link_id)
+		return sta;
+
+	other_hapd = hostapd_mld_get_link_bss(hapd, sta->mld_assoc_link_id);
+	if (!other_hapd) {
+		wpa_printf(MSG_DEBUG, "MLD: No link match for link_id=%u",
+			   sta->mld_assoc_link_id);
+		return sta;
+	}
+
+	/*
+	 * Iterate over the stations and find the one with the matching link ID
+	 * and association ID.
+	 */
+	for (tmp_sta = other_hapd->sta_list; tmp_sta; tmp_sta = tmp_sta->next) {
+		if (tmp_sta->mld_assoc_link_id == sta->mld_assoc_link_id &&
+		    tmp_sta->aid == sta->aid) {
+			*assoc_hapd = other_hapd;
+			return tmp_sta;
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	return sta;
 }
