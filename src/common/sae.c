@@ -434,7 +434,6 @@ fail:
 	crypto_bignum_deinit(qnr, 0);
 	os_free(stub_password);
 	crypto_bignum_deinit(y, 1);
-	os_free(dummy_password);
 	bin_clear_free(tmp_password, password_len);
 	crypto_bignum_deinit(x, 1);
 	os_memset(x_bin, 0, sizeof(x_bin));
