@@ -1069,8 +1069,12 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 			    // Invoke the failure callback on all registered
 			    // clients.
 			    for (const auto& callback : callbacks_) {
-				callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+				auto r = callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
 					iface_hapd->conf->bridge : iface_hapd->conf->iface);
+                                if (!r.isOk()) {
+		                    wpa_printf(MSG_ERROR, "Error when calling onFailure, "
+                                              "description=%s", r.description().c_str());
+                                }
 			    }
 		    }
 	    };
@@ -1083,9 +1087,13 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 			   MAC2STR(mac_addr),
 			   (authorized) ? "Connected" : "Disconnected");
 		for (const auto &callback : callbacks_) {
-		    callback->onConnectedClientsChanged(strlen(iface_hapd->conf->bridge) > 0 ?
+		    auto r = callback->onConnectedClientsChanged(strlen(iface_hapd->conf->bridge) > 0 ?
 			    iface_hapd->conf->bridge : iface_hapd->conf->iface,
 			    iface_hapd->conf->iface, mac_addr, authorized);
+                    if (!r.isOk()) {
+		        wpa_printf(MSG_ERROR, "Error when calling onConnectedClientsChanged, "
+                                              "description=%s", r.description().c_str());
+                    }
 		}
 	    };
 
@@ -1100,27 +1108,39 @@ V1_2::HostapdStatus Hostapd::addSingleAccessPoint(
 		    os_strncmp(txt, WPA_EVENT_CHANNEL_SWITCH,
 			       strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
 		    for (const auto &callback : callbacks_) {
-			callback->onApInstanceInfoChanged(
+			auto r = callback->onApInstanceInfoChanged(
 				strlen(iface_hapd->conf->bridge) > 0 ?
 				iface_hapd->conf->bridge : iface_hapd->conf->iface,
 				iface_hapd->conf->iface, iface_hapd->iface->freq,
 				getBandwidth(iface_hapd->iconf),
 				getGeneration(iface_hapd->iface->current_mode),
 				iface_hapd->own_addr);
+                        if (!r.isOk()) {
+		            wpa_printf(MSG_ERROR, "Error when calling onApInstanceInfoChanged, "
+                                              "description=%s", r.description().c_str());
+                        }
 		    }
 		} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0) {
 			// Invoke the failure callback on all registered clients.
 			for (const auto& callback : callbacks_) {
-				callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+				auto r = callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
 									iface_hapd->conf->bridge : iface_hapd->conf->iface);
+				if (!r.isOk()) {
+					wpa_printf(MSG_ERROR, "Error when calling onFailure, "
+						"description=%s", r.description().c_str());
+				}
 			}
 		}
 		else if (os_strncmp(txt, AP_EVENT_DISABLED,
 			 strlen(AP_EVENT_DISABLED)) == 0) {
 		    // Invoke the failure callback on all registered clients.
 		    for (const auto& callback : callbacks_) {
-			    callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+			    auto r = callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
 			        iface_hapd->conf->bridge : iface_hapd->conf->iface);
+			    if (!r.isOk()) {
+				    wpa_printf(MSG_ERROR, "Error when calling onFailure, "
+				    "description=%s", r.description().c_str());
+			    }
 		    }
 		}
 	};
