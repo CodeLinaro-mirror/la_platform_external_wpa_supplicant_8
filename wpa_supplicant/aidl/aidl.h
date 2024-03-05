@@ -205,9 +205,6 @@ static void wpas_aidl_notify_hs20_rx_deauth_imminent_notice(
 static void wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(
 		struct wpa_supplicant *wpa_s, const char *url)
 {}
-static void wpas_aidl_notify_mlo_info_change_reason(
-	struct wpa_supplicant *wpa_s, enum mlo_info_change_reason reason)
-{}
 static void wpas_aidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s) {}
 static void wpas_aidl_notify_mlo_info_change_reason(
 	struct wpa_supplicant *wpa_s, enum mlo_info_change_reason reason)
