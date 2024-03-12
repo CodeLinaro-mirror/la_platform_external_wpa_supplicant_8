@@ -1990,8 +1990,8 @@ endif
 
 else
 # wpa_supplicant for macsec
-# remove aidl control interface, standalone
-LOCAL_CFLAGS := $(patsubst -DCONFIG_CTRL_IFACE_AIDL,,$(patsubst -DCONFIG_AIDL,,$(L_CFLAGS)))
+# remove aidl control interface, standalone and supplicant vendor aidl
+LOCAL_CFLAGS := $(patsubst -DCONFIG_CTRL_IFACE_AIDL,,$(patsubst -DCONFIG_AIDL,,$(patsubst -DCONFIG_SUPPLICANT_VENDOR_AIDL,,$(L_CFLAGS))))
 LOCAL_CFLAGS += -DCONFIG_MACSEC -DCONFIG_DRIVER_MACSEC_LINUX
 # config macsec to use AIDL interface for CAK key.
 LOCAL_CFLAGS += -DCONFIG_AIDL_MACSEC_PSK_METHODS
