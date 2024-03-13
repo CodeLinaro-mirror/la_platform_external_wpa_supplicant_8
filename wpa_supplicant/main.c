@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include "includes.h"
 #ifdef __linux__
 #include <fcntl.h>
@@ -18,6 +24,9 @@
 #include "driver_i.h"
 #include "p2p_supplicant.h"
 
+#ifdef CONFIG_SOMEIP_SUPPORT
+#include "supplicant_someip_server.h"
+#endif
 
 static void usage(void)
 {
@@ -339,6 +348,15 @@ int main(int argc, char *argv[])
 		}
 	}
 
+#ifdef CONFIG_SOMEIP_SUPPORT
+	wpa_debug_level = MSG_DEBUG;
+#endif
+
+#ifdef CONFIG_SOMEIP_SUPPORT
+		if (!SupplicantSomeIPServerInit())
+			goto out;
+#endif
+
 	exitcode = 0;
 	global = wpa_supplicant_init(&params);
 	if (global == NULL) {
@@ -371,6 +389,9 @@ int main(int argc, char *argv[])
 #ifdef CONFIG_MATCH_IFACE
 						 params.match_iface_count ||
 #endif /* CONFIG_MATCH_IFACE */
+#ifdef CONFIG_SOMEIP_SUPPORT
+						 true ||
+#endif
 						 params.dbus_ctrl_interface))
 				break;
 			usage();
@@ -396,7 +417,13 @@ int main(int argc, char *argv[])
 
 	fst_global_deinit();
 
+#ifdef CONFIG_SOMEIP_SUPPORT
+	SupplicantSomeIPServerStop();
+#endif
 out:
+#ifdef CONFIG_SOMEIP_SUPPORT
+	SupplicantSomeIPServerDeinit();
+#endif
 	wpa_supplicant_fd_workaround(0);
 	os_free(ifaces);
 #ifdef CONFIG_MATCH_IFACE
