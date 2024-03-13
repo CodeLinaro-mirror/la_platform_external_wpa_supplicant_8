@@ -6,17 +6,24 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef WPA_SUPPLICANT_AIDL_IFACE_CONFIG_UTILS_H
 #define WPA_SUPPLICANT_AIDL_IFACE_CONFIG_UTILS_H
 
 #include <android-base/macros.h>
+#include <aidl/android/hardware/wifi/supplicant/ScopedAStatus.h>
 
 extern "C"
 {
 #include "utils/common.h"
 #include "utils/includes.h"
-#include "wpa_supplicant_i.h"
-#include "config.h"
+#include "../../wpa_supplicant_i.h"
+#include "../../config.h"
 }
 
 /**

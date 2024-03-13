@@ -6,8 +6,11 @@
  * See README for more details.
  */
 
-#include <android/binder_process.h>
-#include <android/binder_manager.h>
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "aidl_manager.h"
 
@@ -18,7 +21,7 @@ extern "C"
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/includes.h"
-#include "dpp.h"
+#include "common/dpp.h"
 }
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
@@ -31,6 +34,7 @@ static void wpas_aidl_notify_dpp_failure(struct wpa_supplicant *wpa_s, DppFailur
 static void wpas_aidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgressCode code);
 static void wpas_aidl_notify_dpp_success(struct wpa_supplicant *wpa_s, DppEventType code);
 
+#ifndef CONFIG_SOMEIP_SUPPORT
 void wpas_aidl_sock_handler(
 	int /* sock */, void * /* eloop_ctx */, void * /* sock_ctx */)
 {
@@ -92,6 +96,53 @@ void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
 	eloop_unregister_read_sock(priv->aidl_fd);
 	os_free(priv);
 }
+#else
+struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
+{
+	struct wpas_aidl_priv *priv;
+	AidlManager *aidl_manager;
+
+	priv = (wpas_aidl_priv *)os_zalloc(sizeof(*priv));
+	if (!priv)
+		return NULL;
+	priv->global = global;
+
+	wpa_printf(MSG_DEBUG, "Initing aidl control");
+
+	aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		goto err;
+	if (aidl_manager->registerAidlService(global)) {
+		goto err;
+	}
+#ifdef CONFIG_USE_VENDOR_AIDL
+	wpa_printf(MSG_INFO, "register vendor aidl service.");
+	if (aidl_manager->registerVendorAidlService(global)) {
+		goto err;
+	}
+#endif
+	// We may not need to store this aidl manager reference in the
+	// global data strucure because we've made it a singleton class.
+	priv->aidl_manager = (void *)aidl_manager;
+
+	return priv;
+err:
+	wpas_aidl_deinit(priv);
+	return NULL;
+
+}
+
+void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
+{
+	if (!priv)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Deiniting aidl control");
+
+	AidlManager::destroyInstance();
+	os_free(priv);
+}
+#endif
 
 int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -121,6 +172,9 @@ int wpas_aidl_unregister_interface(struct wpa_supplicant *wpa_s)
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)
 		return 1;
+	wpa_printf(
+		MSG_DEBUG, "Calling aidl_manager to handle: %s",
+		wpa_s->ifname);
 
 	return aidl_manager->unregisterInterface(wpa_s);
 }

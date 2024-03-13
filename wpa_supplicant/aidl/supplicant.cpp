@@ -6,11 +6,18 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include "aidl_manager.h"
 #include "aidl_return_util.h"
 #include "misc_utils.h"
 #include "supplicant.h"
-#include "p2p_iface.h"
+//#include "p2p_iface.h"
+#include "../wpa_supplicant/p2p_supplicant.h"
 
 #include <android-base/file.h>
 #include <fcntl.h>
@@ -27,12 +34,12 @@ static const char* kStaIfaceConfOverlayPaths[] = {
     "/apex/com.android.wifi.hal/etc/wifi/wpa_supplicant_overlay.conf",
     "/vendor/etc/wifi/wpa_supplicant_overlay.conf",
 };
-constexpr char kP2pIfaceConfPath[] =
-	"/data/vendor/wifi/wpa/p2p_supplicant.conf";
-static const char* kP2pIfaceConfOverlayPaths[] = {
-    "/apex/com.android.wifi.hal/etc/wifi/p2p_supplicant_overlay.conf",
-    "/vendor/etc/wifi/p2p_supplicant_overlay.conf",
-};
+//constexpr char kP2pIfaceConfPath[] =
+//	"/data/vendor/wifi/wpa/p2p_supplicant.conf";
+//static const char* kP2pIfaceConfOverlayPaths[] = {
+//    "/apex/com.android.wifi.hal/etc/wifi/p2p_supplicant_overlay.conf",
+//    "/vendor/etc/wifi/p2p_supplicant_overlay.conf",
+//};
 // Migrate conf files for existing devices.
 static const char* kTemplateConfPaths[] = {
     "/apex/com.android.wifi.hal/etc/wifi/wpa_supplicant.conf",
@@ -40,7 +47,7 @@ static const char* kTemplateConfPaths[] = {
     "/system/etc/wifi/wpa_supplicant.conf",
 };
 constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
-constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
+//constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
 constexpr mode_t kConfigFileMode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
 
 const char* resolvePath(const char* paths[], size_t size)
@@ -178,7 +185,7 @@ bool Supplicant::isValid()
 	// This top level object cannot be invalidated.
 	return true;
 }
-
+#if 0
 ::ndk::ScopedAStatus Supplicant::addP2pInterface(
 	const std::string& in_name,
 	std::shared_ptr<ISupplicantP2pIface>* _aidl_return)
@@ -187,7 +194,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::addP2pInterfaceInternal, _aidl_return, in_name);
 }
-
+#endif
 ::ndk::ScopedAStatus Supplicant::addStaInterface(
 	const std::string& in_name,
 	std::shared_ptr<ISupplicantStaIface>* _aidl_return)
@@ -204,7 +211,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::removeInterfaceInternal, in_ifaceInfo);
 }
-
+#if 0
 ::ndk::ScopedAStatus Supplicant::getP2pInterface(
 	const std::string& in_name,
 	std::shared_ptr<ISupplicantP2pIface>* _aidl_return)
@@ -230,15 +237,15 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::listInterfacesInternal, _aidl_return);
 }
-
+#endif
 ::ndk::ScopedAStatus Supplicant::registerCallback(
-	const std::shared_ptr<ISupplicantCallback>& in_callback)
+	const std::shared_ptr<SupplicantCallback>& in_callback)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::registerCallbackInternal, in_callback);
 }
-
+#if 0
 ::ndk::ScopedAStatus Supplicant::registerNonStandardCertCallback(
 	const std::shared_ptr<INonStandardCertCallback>& in_callback)
 {
@@ -246,7 +253,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::registerNonStandardCertCallbackInternal, in_callback);
 }
-
+#endif
 ::ndk::ScopedAStatus Supplicant::setDebugParams(
 	DebugLevel in_level, bool in_showTimestamp,
 	bool in_showKeys)
@@ -264,7 +271,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::setConcurrencyPriorityInternal, in_type);
 }
-
+#if 0
 ::ndk::ScopedAStatus Supplicant::getDebugLevel(DebugLevel* _aidl_return)
 {
 	*_aidl_return = static_cast<DebugLevel>(wpa_debug_level);
@@ -282,14 +289,14 @@ bool Supplicant::isValid()
 	*_aidl_return = ((wpa_debug_show_keys != 0) ? true : false);
 	return ndk::ScopedAStatus::ok();
 }
-
+#endif
 ::ndk::ScopedAStatus Supplicant::terminate()
 {
-	wpa_printf(MSG_INFO, "Terminating...");
-	wpa_supplicant_terminate_proc(wpa_global_);
+	wpa_printf(MSG_INFO, "Terminating...(not really)");
+//	wpa_supplicant_terminate_proc(wpa_global_);
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 ndk::ScopedAStatus Supplicant::addP2pDevInterface(struct wpa_interface iface_params)
 {
 	char primary_ifname[IFNAMSIZ];
@@ -412,7 +419,7 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 	// AidlManager when |wpa_supplicant_add_iface| is called.
 	return getP2pInterfaceInternal(name);
 }
-
+#endif
 std::pair<std::shared_ptr<ISupplicantStaIface>, ndk::ScopedAStatus>
 Supplicant::addStaInterfaceInternal(const std::string& name)
 {
@@ -452,11 +459,15 @@ Supplicant::addStaInterfaceInternal(const std::string& name)
 	iface_params.ifname = name.c_str();
 	if (strncmp(iface_params.ifname, P2P_MGMT_DEVICE_PREFIX,
 		strlen(P2P_MGMT_DEVICE_PREFIX)) == 0) {
+#if 0
 		status = addP2pDevInterface(iface_params);
 		if (!status.isOk()) {
 			return {iface, createStatus(static_cast<SupplicantStatusCode>(
 				status.getServiceSpecificError()))};
 		}
+#else
+		wpa_printf(MSG_ERROR, "[Error]: P2P not supported");
+#endif
 	} else {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_add_iface(wpa_global_, &iface_params, NULL);
@@ -486,7 +497,7 @@ ndk::ScopedAStatus Supplicant::removeInterfaceInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 std::pair<std::shared_ptr<ISupplicantP2pIface>, ndk::ScopedAStatus>
 Supplicant::getP2pInterfaceInternal(const std::string& name)
 {
@@ -508,7 +519,7 @@ Supplicant::getP2pInterfaceInternal(const std::string& name)
 	wpa_s->conf->persistent_reconnect = true;
 	return {iface, ndk::ScopedAStatus::ok()};
 }
-
+#endif
 std::pair<std::shared_ptr<ISupplicantStaIface>, ndk::ScopedAStatus>
 Supplicant::getStaInterfaceInternal(const std::string& name)
 {
@@ -526,7 +537,7 @@ Supplicant::getStaInterfaceInternal(const std::string& name)
 	}
 	return {iface, ndk::ScopedAStatus::ok()};
 }
-
+#if 0
 std::pair<std::vector<IfaceInfo>, ndk::ScopedAStatus>
 Supplicant::listInterfacesInternal()
 {
@@ -543,9 +554,9 @@ Supplicant::listInterfacesInternal()
 	}
 	return {std::move(ifaces), ndk::ScopedAStatus::ok()};
 }
-
+#endif
 ndk::ScopedAStatus Supplicant::registerCallbackInternal(
-	const std::shared_ptr<ISupplicantCallback>& callback)
+	const std::shared_ptr<SupplicantCallback>& callback)
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
@@ -554,7 +565,7 @@ ndk::ScopedAStatus Supplicant::registerCallbackInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 ndk::ScopedAStatus Supplicant::registerNonStandardCertCallbackInternal(
 	const std::shared_ptr<INonStandardCertCallback>& callback)
 {
@@ -565,7 +576,7 @@ ndk::ScopedAStatus Supplicant::registerNonStandardCertCallbackInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#endif
 ndk::ScopedAStatus Supplicant::setDebugParamsInternal(
 	DebugLevel level, bool show_timestamp, bool show_keys)
 {
@@ -590,6 +601,7 @@ ndk::ScopedAStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 	}
 	return ndk::ScopedAStatus::ok();
 }
+
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

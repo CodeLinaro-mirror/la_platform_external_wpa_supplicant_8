@@ -6,6 +6,12 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include "aidl_manager.h"
 #include "aidl_return_util.h"
 #include "iface_config_utils.h"
@@ -15,12 +21,12 @@
 extern "C"
 {
 #include "utils/eloop.h"
-#include "gas_query.h"
-#include "interworking.h"
-#include "hs20_supplicant.h"
-#include "wps_supplicant.h"
-#include "dpp.h"
-#include "dpp_supplicant.h"
+#include "../wpa_supplicant/gas_query.h"
+#include "../wpa_supplicant/interworking.h"
+#include "../wpa_supplicant/hs20_supplicant.h"
+#include "../wpa_supplicant/wps_supplicant.h"
+#include "common/dpp.h"
+#include "../wpa_supplicant/dpp_supplicant.h"
 #include "rsn_supp/wpa.h"
 #include "rsn_supp/pmksa_cache.h"
 }
@@ -306,16 +312,22 @@ namespace supplicant {
 using aidl_return_util::validateAndCall;
 using misc_utils::createStatus;
 
-StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[])
-	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true)
+StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[], int32_t id)
+	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true), ifId(id)
 {}
 
 void StaIface::invalidate() { is_valid_ = false; }
 bool StaIface::isValid()
 {
+	wpa_printf(MSG_DEBUG, "Iface valid check:%d, %d", is_valid_, (retrieveIfacePtr() != nullptr)?1:0);
 	return (is_valid_ && (retrieveIfacePtr() != nullptr));
 }
 
+int32_t StaIface::getIfaceInstanceId()
+{
+	return ifId;
+}
+#if 0
 ::ndk::ScopedAStatus StaIface::getName(
 	std::string* _aidl_return)
 {
@@ -331,7 +343,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::getTypeInternal, _aidl_return);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::addNetwork(
 	std::shared_ptr<ISupplicantStaNetwork>* _aidl_return)
 {
@@ -347,7 +359,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::removeNetworkInternal, in_id);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::filsHlpFlushRequest()
 {
 	return validateAndCall(
@@ -371,7 +383,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::getNetworkInternal, _aidl_return, in_id);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::listNetworks(
 	std::vector<int32_t>* _aidl_return)
 {
@@ -381,7 +393,7 @@ bool StaIface::isValid()
 }
 
 ::ndk::ScopedAStatus StaIface::registerCallback(
-	const std::shared_ptr<ISupplicantStaIfaceCallback>& in_callback)
+	const std::shared_ptr<SupplicantStaIfaceCallback>& in_callback)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
@@ -416,7 +428,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setPowerSaveInternal, in_enable);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::initiateTdlsDiscover(
 	const std::vector<uint8_t>& in_macAddress)
 {
@@ -469,7 +481,7 @@ bool StaIface::isValid()
 		&StaIface::initiateHs20IconQueryInternal, in_macAddress,
 		in_fileName);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::getMacAddress(
 	std::vector<uint8_t>* _aidl_return)
 {
@@ -540,7 +552,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setCountryCodeInternal, in_code);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::startWpsRegistrar(
 	const std::vector<uint8_t>& in_bssid,
 	const std::string& in_pin)
@@ -637,7 +649,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setWpsConfigMethodsInternal, in_configMethods);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::setExternalSim(
 	bool in_useExternalSim)
 {
@@ -645,7 +657,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setExternalSimInternal, in_useExternalSim);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::addExtRadioWork(
 	const std::string& in_name, int32_t in_freqInMhz,
 	int32_t in_timeoutInSec,
@@ -664,7 +676,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::removeExtRadioWorkInternal, in_id);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::enableAutoReconnect(
 	bool in_enable)
 {
@@ -680,7 +692,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaIface::getKeyMgmtCapabilitiesInternal, _aidl_return);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::addDppPeerUri(
 	const std::string& in_uri, int32_t* _aidl_return)
 {
@@ -726,7 +738,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaIface::stopDppInitiatorInternal);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::getConnectionCapabilities(
 	ConnectionCapabilities* _aidl_return)
 {
@@ -735,14 +747,14 @@ bool StaIface::isValid()
 		&StaIface::getConnectionCapabilitiesInternal,
 		_aidl_return);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::generateDppBootstrapInfoForResponder(
 	const std::vector<uint8_t>& in_macAddress, const std::string& in_deviceInfo,
 	DppCurve in_curve, DppResponderBootstrapInfo* _aidl_return)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-		&StaIface::generateDppBootstrapInfoForResponderInternal, _aidl_return, 
+		&StaIface::generateDppBootstrapInfoForResponderInternal, _aidl_return,
 		in_macAddress, in_deviceInfo, in_curve);
 }
 
@@ -769,7 +781,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::generateSelfDppConfigurationInternal, in_ssid, in_privEcKey);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::getWpaDriverCapabilities(
 	WpaDriverCapabilitiesMask* _aidl_return)
 {
@@ -777,7 +789,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::getWpaDriverCapabilitiesInternal, _aidl_return);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::setMboCellularDataStatus(
 	bool in_available)
 {
@@ -816,7 +828,7 @@ bool StaIface::isValid()
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::getConnectionMloLinksInfoInternal, _aidl_return);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::getSignalPollResults(
     std::vector<SignalPollResult> *results)
 {
@@ -824,7 +836,7 @@ bool StaIface::isValid()
 	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
 	    &StaIface::getSignalPollResultsInternal, results);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::addQosPolicyRequestForScs(
 		const std::vector<QosPolicyScsData>& in_qosPolicyData,
 		std::vector<QosPolicyScsRequestStatus>* _aidl_return)
@@ -842,7 +854,9 @@ bool StaIface::isValid()
 	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
 	    &StaIface::removeQosPolicyForScsInternal, _aidl_return, in_scsPolicyIds);
 }
+#endif
 
+#if 0
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -896,7 +910,7 @@ ndk::ScopedAStatus StaIface::filsHlpAddRequestInternal(
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #endif /* CONFIG_FILS */
 }
-
+#endif
 std::pair<std::shared_ptr<ISupplicantStaNetwork>, ndk::ScopedAStatus>
 StaIface::addNetworkInternal()
 {
@@ -927,7 +941,7 @@ ndk::ScopedAStatus StaIface::removeNetworkInternal(int32_t id)
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 std::pair<std::shared_ptr<ISupplicantStaNetwork>, ndk::ScopedAStatus>
 StaIface::getNetworkInternal(int32_t id)
 {
@@ -945,7 +959,7 @@ StaIface::getNetworkInternal(int32_t id)
 	}
 	return {network, ndk::ScopedAStatus::ok()};
 }
-
+#endif
 std::pair<std::vector<int32_t>, ndk::ScopedAStatus>
 StaIface::listNetworksInternal()
 {
@@ -959,7 +973,7 @@ StaIface::listNetworksInternal()
 }
 
 ndk::ScopedAStatus StaIface::registerCallbackInternal(
-	const std::shared_ptr<ISupplicantStaIfaceCallback> &callback)
+	const std::shared_ptr<SupplicantStaIfaceCallback> &callback)
 {
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
@@ -1013,7 +1027,7 @@ ndk::ScopedAStatus StaIface::setPowerSaveInternal(bool enable)
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 ndk::ScopedAStatus StaIface::initiateTdlsDiscoverInternal(
 	const std::vector<uint8_t> &mac_address)
 {
@@ -1144,7 +1158,7 @@ ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#endif
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>
 StaIface::getMacAddressInternal()
 {
@@ -1248,15 +1262,20 @@ ndk::ScopedAStatus StaIface::setCountryCodeInternal(
 	}
 	struct p2p_data *p2p = wpa_s->global->p2p;
 	if (p2p) {
+#if 0
 		char country[3];
 		country[0] = code[0];
 		country[1] = code[1];
 		country[2] = 0x04;
 		p2p_set_country(p2p, country);
+#else
+		wpa_printf(MSG_ERROR, "[Error]: <setCountryCodeInternal> P2P not supported");
+		return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+#endif
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 ndk::ScopedAStatus StaIface::startWpsRegistrarInternal(
 	const std::vector<uint8_t> &bssid, const std::string &pin)
 {
@@ -1368,13 +1387,13 @@ ndk::ScopedAStatus StaIface::setWpsConfigMethodsInternal(WpsConfigMethods config
 	return iface_config_utils::setWpsConfigMethods(
 		retrieveIfacePtr(), static_cast<uint16_t>(config_methods));
 }
-
+#endif
 ndk::ScopedAStatus StaIface::setExternalSimInternal(bool useExternalSim)
 {
 	return iface_config_utils::setExternalSim(
 		retrieveIfacePtr(), useExternalSim);
 }
-
+#if 0
 std::pair<uint32_t, ndk::ScopedAStatus> StaIface::addExtRadioWorkInternal(
 	const std::string &name, uint32_t freq_in_mhz, uint32_t timeout_in_sec)
 {
@@ -1429,14 +1448,14 @@ ndk::ScopedAStatus StaIface::removeExtRadioWorkInternal(uint32_t id)
 	}
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 }
-
+#endif
 ndk::ScopedAStatus StaIface::enableAutoReconnectInternal(bool enable)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	wpa_s->auto_reconnect_disabled = enable ? 0 : 1;
 	return ndk::ScopedAStatus::ok();
 }
-
+#if 0
 std::pair<uint32_t, ndk::ScopedAStatus>
 StaIface::addDppPeerUriInternal(const std::string& uri)
 {
@@ -1650,7 +1669,7 @@ ndk::ScopedAStatus StaIface::stopDppInitiatorInternal()
 
 std::pair<DppResponderBootstrapInfo, ndk::ScopedAStatus>
 StaIface::generateDppBootstrapInfoForResponderInternal(
-	const std::vector<uint8_t> &mac_address, 
+	const std::vector<uint8_t> &mac_address,
 	const std::string& device_info, DppCurve curve)
 {
 #ifdef CONFIG_DPP
@@ -1805,7 +1824,7 @@ ndk::ScopedAStatus StaIface::generateSelfDppConfigurationInternal(const std::str
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 #endif
 }
-
+#endif
 std::pair<ConnectionCapabilities, ndk::ScopedAStatus>
 StaIface::getConnectionCapabilitiesInternal()
 {
@@ -1826,7 +1845,7 @@ StaIface::getConnectionCapabilitiesInternal()
 			capa.technology = WifiTechnology::LEGACY;
 			if (wpas_freq_to_band(wpa_s->assoc_freq) == BAND_2_4_GHZ) {
 				capa.legacyMode = (wpa_s->connection_11b_only) ? LegacyMode::B_MODE
-						: LegacyMode::G_MODE; 
+						: LegacyMode::G_MODE;
 			} else {
 				capa.legacyMode = LegacyMode::A_MODE;
 			}
@@ -1900,7 +1919,7 @@ StaIface::getWpaDriverCapabilitiesInternal()
 	return {static_cast<WpaDriverCapabilitiesMask>(mask),
 		ndk::ScopedAStatus::ok()};
 }
-
+#if 0
 ndk::ScopedAStatus StaIface::setMboCellularDataStatusInternal(bool available)
 {
 #ifdef CONFIG_MBO
@@ -1930,7 +1949,7 @@ ndk::ScopedAStatus StaIface::setMboCellularDataStatusInternal(bool available)
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #endif
 }
-
+#endif
 std::pair<KeyMgmtMask, ndk::ScopedAStatus>
 StaIface::getKeyMgmtCapabilitiesInternal()
 {
@@ -1946,7 +1965,7 @@ StaIface::getKeyMgmtCapabilitiesInternal()
 	return {convertWpaKeyMgmtCapabilitiesToAidl(wpa_s, &capa),
 		ndk::ScopedAStatus::ok()};
 }
-
+#if 0
 ndk::ScopedAStatus StaIface::setQosPolicyFeatureEnabledInternal(bool enable)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
@@ -2057,7 +2076,7 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 
 	return {linksInfo, ndk::ScopedAStatus::ok()};
 }
-
+#endif
 std::pair<std::vector<SignalPollResult>, ndk::ScopedAStatus>
 StaIface::getSignalPollResultsInternal()
 {
@@ -2091,7 +2110,7 @@ StaIface::getSignalPollResultsInternal()
 
 	return {results, ndk::ScopedAStatus::ok()};
 }
-
+#if 0
 static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 				      struct type4_params *param)
 {
@@ -2414,7 +2433,7 @@ StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds
 	return {std::vector<QosPolicyScsRequestStatus>(reports),
 		ndk::ScopedAStatus::ok()};
 }
-
+#endif
 /**
  * Retrieve the underlying |wpa_supplicant| struct
  * pointer for this iface.

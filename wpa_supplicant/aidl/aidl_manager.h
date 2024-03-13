@@ -6,25 +6,34 @@
  * See README for more details.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef WPA_SUPPLICANT_AIDL_AIDL_MANAGER_H
 #define WPA_SUPPLICANT_AIDL_AIDL_MANAGER_H
 
 #include <map>
 #include <string>
+#include <functional>
 
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantP2pIfaceCallback.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantStaIfaceCallback.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantStaNetworkCallback.h>
+#include "SupplicantStaIfaceCallback.h"
+#include "SupplicantStaNetworkCallback.h"
 #ifdef CONFIG_USE_VENDOR_AIDL
 #include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendor.h>
 #include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIface.h>
 #include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIfaceCallback.h>
 #endif
 
-#include "certificate_utils.h"
-#include "p2p_iface.h"
-#include "p2p_network.h"
-#include "rsn_supp/pmksa_cache.h"
+//#include "certificate_utils.h"
+//#include "p2p_iface.h"
+//#include "p2p_network.h"
+#include <aidl/android/hardware/wifi/supplicant/INonStandardCertCallback.h>
+#include <aidl/android/hardware/wifi/supplicant/ISupplicantP2pIface.h>
+#include <aidl/android/hardware/wifi/supplicant/ISupplicantP2pNetwork.h>
 #include "sta_iface.h"
 #include "sta_network.h"
 #include "supplicant.h"
@@ -37,8 +46,9 @@ extern "C"
 {
 #include "utils/common.h"
 #include "utils/includes.h"
-#include "wpa_supplicant_i.h"
-#include "driver_i.h"
+#include "rsn_supp/pmksa_cache.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/driver_i.h"
 }
 
 namespace aidl {
@@ -195,6 +205,10 @@ public:
 	void notifyExtRadioWorkTimeout(
 		struct wpa_supplicant *wpa_s, uint32_t id);
 
+	int getSupplicantInstance(std::shared_ptr<Supplicant> *supplicant_object);
+	int getStaIfaceNameByInstanceId(int32_t id, std::string *name);
+	int getStaNetworkIdByInstanceId(int32_t id, int *nwid);
+
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
 		std::shared_ptr<ISupplicantP2pIface> *iface_object);
@@ -208,16 +222,16 @@ public:
 		const std::string &ifname, int network_id,
 		std::shared_ptr<ISupplicantStaNetwork> *network_object);
 	int addSupplicantCallbackAidlObject(
-		const std::shared_ptr<ISupplicantCallback> &callback);
+		const std::shared_ptr<SupplicantCallback> &callback);
 	int addP2pIfaceCallbackAidlObject(
 		const std::string &ifname,
 		const std::shared_ptr<ISupplicantP2pIfaceCallback> &callback);
 	int addStaIfaceCallbackAidlObject(
 		const std::string &ifname,
-		const std::shared_ptr<ISupplicantStaIfaceCallback> &callback);
+		const std::shared_ptr<SupplicantStaIfaceCallback> &callback);
 	int addStaNetworkCallbackAidlObject(
 		const std::string &ifname, int network_id,
-		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
+		const std::shared_ptr<SupplicantStaNetworkCallback> &callback);
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
 #ifdef CONFIG_USE_VENDOR_AIDL
@@ -231,7 +245,7 @@ public:
 #endif
 
 private:
-	AidlManager() = default;
+	AidlManager() : total_iface_ids_(0x0000), total_network_ids_(0x0000) {}
 	~AidlManager() = default;
 	AidlManager(const AidlManager &) = default;
 	AidlManager &operator=(const AidlManager &) = default;
@@ -239,20 +253,20 @@ private:
 	struct wpa_supplicant *getTargetP2pIfaceForGroup(
 		struct wpa_supplicant *wpa_s);
 	void removeSupplicantCallbackAidlObject(
-		const std::shared_ptr<ISupplicantCallback> &callback);
+		const std::shared_ptr<SupplicantCallback> &callback);
 	void removeP2pIfaceCallbackAidlObject(
 		const std::string &ifname,
 		const std::shared_ptr<ISupplicantP2pIfaceCallback> &callback);
 	void removeStaIfaceCallbackAidlObject(
 		const std::string &ifname,
-		const std::shared_ptr<ISupplicantStaIfaceCallback> &callback);
+		const std::shared_ptr<SupplicantStaIfaceCallback> &callback);
 	void removeStaNetworkCallbackAidlObject(
 		const std::string &ifname, int network_id,
-		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
+		const std::shared_ptr<SupplicantStaNetworkCallback> &callback);
 
 	void callWithEachSupplicantCallback(
 		const std::function<ndk::ScopedAStatus(
-		std::shared_ptr<ISupplicantCallback>)> &method);
+		std::shared_ptr<SupplicantCallback>)> &method);
 	void callWithEachP2pIfaceCallback(
 		const std::string &ifname,
 		const std::function<ndk::ScopedAStatus(
@@ -260,11 +274,11 @@ private:
 	void callWithEachStaIfaceCallback(
 		const std::string &ifname,
 		const std::function<ndk::ScopedAStatus(
-		std::shared_ptr<ISupplicantStaIfaceCallback>)> &method);
+		std::shared_ptr<SupplicantStaIfaceCallback>)> &method);
 	void callWithEachStaNetworkCallback(
 		const std::string &ifname, int network_id,
 		const std::function<::ndk::ScopedAStatus(
-		std::shared_ptr<ISupplicantStaNetworkCallback>)> &method);
+		std::shared_ptr<SupplicantStaNetworkCallback>)> &method);
 #ifdef CONFIG_USE_VENDOR_AIDL
 	void removeVendorStaIfaceCallbackAidlObject(
 		const std::string &ifname,
@@ -278,20 +292,20 @@ private:
 
 	// Singleton instance of this class.
 	static AidlManager *instance_;
-	// Death notifier.
-	AIBinder_DeathRecipient* death_notifier_;
 	// The main aidl service object.
 	std::shared_ptr<Supplicant> supplicant_object_;
 	// Map of all the P2P interface specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
 	// |ifname|.
-	std::map<const std::string, std::shared_ptr<P2pIface>>
-		p2p_iface_object_map_;
+//	std::map<const std::string, std::shared_ptr<P2pIface>>
+//		p2p_iface_object_map_;
 	// Map of all the STA interface specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
 	// |ifname|.
 	std::map<const std::string, std::shared_ptr<StaIface>>
 		sta_iface_object_map_;
+	std::map<const int32_t, std::string>
+		sta_iface_someip_map_;
 #ifdef CONFIG_USE_VENDOR_AIDL
 	// Map of all the STA interface specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
@@ -302,36 +316,38 @@ private:
 	// Map of all the P2P network specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
 	// |ifname| & |network_id|.
-	std::map<const std::string, std::shared_ptr<P2pNetwork>>
-		p2p_network_object_map_;
+//	std::map<const std::string, std::shared_ptr<P2pNetwork>>
+//		p2p_network_object_map_;
 	// Map of all the STA network specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
 	// |ifname| & |network_id|.
 	std::map<const std::string, std::shared_ptr<StaNetwork>>
 		sta_network_object_map_;
+	std::map<const int32_t, int>
+		sta_network_someip_map_;
 
 	// Callbacks registered for the main aidl service object.
-	std::vector<std::shared_ptr<ISupplicantCallback>> supplicant_callbacks_;
+	std::vector<std::shared_ptr<SupplicantCallback>> supplicant_callbacks_;
 	// Map of all the callbacks registered for P2P interface specific
 	// aidl objects controlled by wpa_supplicant.  This map is keyed in by
 	// the corresponding |ifname|.
-	std::map<
-		const std::string,
-		std::vector<std::shared_ptr<ISupplicantP2pIfaceCallback>>>
-		p2p_iface_callbacks_map_;
+//	std::map<
+//		const std::string,
+//		std::vector<std::shared_ptr<ISupplicantP2pIfaceCallback>>>
+//		p2p_iface_callbacks_map_;
 	// Map of all the callbacks registered for STA interface specific
 	// aidl objects controlled by wpa_supplicant.  This map is keyed in by
 	// the corresponding |ifname|.
 	std::map<
 		const std::string,
-		std::vector<std::shared_ptr<ISupplicantStaIfaceCallback>>>
+		std::vector<std::shared_ptr<SupplicantStaIfaceCallback>>>
 		sta_iface_callbacks_map_;
 	// Map of all the callbacks registered for STA network specific
 	// aidl objects controlled by wpa_supplicant.  This map is keyed in by
 	// the corresponding |ifname| & |network_id|.
 	std::map<
 		const std::string,
-		std::vector<std::shared_ptr<ISupplicantStaNetworkCallback>>>
+		std::vector<std::shared_ptr<SupplicantStaNetworkCallback>>>
 		sta_network_callbacks_map_;
 	// NonStandardCertCallback registered by the client.
 	std::shared_ptr<INonStandardCertCallback> non_standard_cert_callback_;
@@ -344,6 +360,8 @@ private:
 		std::vector<std::shared_ptr<ISupplicantVendorStaIfaceCallback>>>
 		vendor_sta_iface_callbacks_map_;
 #endif
+	int32_t total_iface_ids_;
+	int32_t total_network_ids_;
 };
 
 // The aidl interface uses some values which are the same as internal ones to
