@@ -751,6 +751,11 @@ struct wpa_supplicant {
 	int key_mgmt;
 	int wpa_proto;
 	int mgmt_group_cipher;
+	/*
+	 * Allowed key management suites for roaming/initial connection
+	 * when the driver's SME is in use.
+	 */
+	int allowed_key_mgmts;
 
 	void *drv_priv; /* private data used by driver_ops */
 	void *global_drv_priv;
@@ -934,6 +939,7 @@ struct wpa_supplicant {
 	unsigned int max_match_sets;
 	unsigned int max_remain_on_chan;
 	unsigned int max_stations;
+	unsigned int max_num_akms;
 
 	int pending_mic_error_report;
 	int pending_mic_error_pairwise;
@@ -1019,6 +1025,7 @@ struct wpa_supplicant {
 		unsigned int sae_pmksa_caching:1;
 		u16 seq_num;
 		u8 ext_auth_bssid[ETH_ALEN];
+		struct wpa_ssid *ext_auth_wpa_ssid;
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
 		int *sae_rejected_groups;
@@ -1562,7 +1569,8 @@ void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
 				struct wpa_ssid *ssid, struct wpa_ie_data *ie);
 int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss, struct wpa_ssid *ssid,
-			      u8 *wpa_ie, size_t *wpa_ie_len);
+			      u8 *wpa_ie, size_t *wpa_ie_len,
+			      bool skip_default_rsne);
 int wpas_restore_permanent_mac_addr(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss,
@@ -1806,6 +1814,7 @@ static inline int wpas_mode_to_ieee80211_mode(enum wpas_mode mode)
 int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int pmf_in_use(struct wpa_supplicant *wpa_s, const u8 *addr);
+void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid);
 
 int wpas_init_ext_pw(struct wpa_supplicant *wpa_s);
 

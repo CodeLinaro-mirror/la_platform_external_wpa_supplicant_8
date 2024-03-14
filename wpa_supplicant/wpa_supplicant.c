@@ -1116,6 +1116,7 @@ void wpa_supplicant_clear_status(struct wpa_supplicant *wpa_s)
 	wpa_s->group_cipher = 0;
 	wpa_s->mgmt_group_cipher = 0;
 	wpa_s->key_mgmt = 0;
+	wpa_s->allowed_key_mgmts = 0;
 	if (wpa_s->wpa_state != WPA_INTERFACE_DISABLED)
 		wpa_supplicant_set_state(wpa_s, new_state);
 
@@ -1336,6 +1337,111 @@ void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpas_update_allowed_key_mgmt(struct wpa_supplicant *wpa_s,
+					 struct wpa_ssid *ssid)
+{
+	int akm_count = wpa_s->max_num_akms;
+	u8 capab = 0;
+
+	if (akm_count < 2)
+		return;
+
+	akm_count--;
+	wpa_s->allowed_key_mgmts = 0;
+	switch (wpa_s->key_mgmt) {
+	case WPA_KEY_MGMT_PSK:
+		if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_SAE;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_SAE_EXT_KEY) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_SAE_EXT_KEY;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_PSK_SHA256)
+			wpa_s->allowed_key_mgmts |=
+				WPA_KEY_MGMT_PSK_SHA256;
+		break;
+	case WPA_KEY_MGMT_PSK_SHA256:
+		if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_SAE;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_SAE_EXT_KEY) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_SAE_EXT_KEY;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_PSK)
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_PSK;
+		break;
+	case WPA_KEY_MGMT_SAE:
+		if (ssid->key_mgmt & WPA_KEY_MGMT_PSK) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_PSK;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_SAE_EXT_KEY) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_SAE_EXT_KEY;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_PSK_SHA256)
+			wpa_s->allowed_key_mgmts |=
+				WPA_KEY_MGMT_PSK_SHA256;
+		break;
+	case WPA_KEY_MGMT_SAE_EXT_KEY:
+		if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_SAE;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_PSK) {
+			akm_count--;
+			wpa_s->allowed_key_mgmts |= WPA_KEY_MGMT_PSK;
+		}
+		if (!akm_count)
+			break;
+		if (ssid->key_mgmt & WPA_KEY_MGMT_PSK_SHA256)
+			wpa_s->allowed_key_mgmts |=
+				WPA_KEY_MGMT_PSK_SHA256;
+		break;
+	default:
+		return;
+	}
+
+	if (wpa_s->conf->sae_pwe)
+		capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+#ifdef CONFIG_SAE_PK
+	if (ssid->sae_pk)
+		capab |= BIT(WLAN_RSNX_CAPAB_SAE_PK);
+#endif /* CONFIG_SAE_PK */
+
+	if (!((wpa_s->allowed_key_mgmts &
+	       (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY)) && capab))
+		return;
+
+	if (!wpa_s->rsnxe_len) {
+		wpa_s->rsnxe_len = 3;
+		wpa_s->rsnxe[0] = WLAN_EID_RSNX;
+		wpa_s->rsnxe[1] = 1;
+		wpa_s->rsnxe[2] = 0;
+	}
+
+	wpa_s->rsnxe[2] |= capab;
+}
+
+
 /**
  * wpa_supplicant_set_suites - Set authentication and encryption parameters
  * @wpa_s: Pointer to wpa_supplicant data
@@ -1344,6 +1450,7 @@ void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
  * @wpa_ie: Buffer for the WPA/RSN IE
  * @wpa_ie_len: Maximum wpa_ie buffer size on input. This is changed to be the
  * used buffer length in case the functions returns success.
+ * @skip_default_rsne: Whether to skip setting of the default RSNE/RSNXE
  * Returns: 0 on success or -1 on failure
  *
  * This function is used to configure authentication and encryption parameters
@@ -1352,7 +1459,8 @@ void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
  */
 int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss, struct wpa_ssid *ssid,
-			      u8 *wpa_ie, size_t *wpa_ie_len)
+			      u8 *wpa_ie, size_t *wpa_ie_len,
+			      bool skip_default_rsne)
 {
 	struct wpa_ie_data ie;
 	int sel, proto, sae_pwe;
@@ -1562,7 +1670,8 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 #endif
 #ifdef CONFIG_SAE
 	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE))
-		sel &= ~(WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE);
+		sel &= ~(WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY |
+			 WPA_KEY_MGMT_FT_SAE | WPA_KEY_MGMT_FT_SAE_EXT_KEY);
 #endif /* CONFIG_SAE */
 #ifdef CONFIG_IEEE80211R
 	if (!(wpa_s->drv_flags & (WPA_DRIVER_FLAGS_SME |
@@ -1638,6 +1747,13 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_dbg(wpa_s, MSG_DEBUG, "RSN: using KEY_MGMT DPP");
 #endif /* CONFIG_DPP */
 #ifdef CONFIG_SAE
+	} else if (sel & WPA_KEY_MGMT_FT_SAE_EXT_KEY) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_FT_SAE_EXT_KEY;
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"RSN: using KEY_MGMT FT/SAE (ext key)");
+	} else if (sel & WPA_KEY_MGMT_SAE_EXT_KEY) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_SAE_EXT_KEY;
+		wpa_dbg(wpa_s, MSG_DEBUG, "RSN: using KEY_MGMT SAE (ext key)");
 	} else if (sel & WPA_KEY_MGMT_FT_SAE) {
 		wpa_s->key_mgmt = WPA_KEY_MGMT_FT_SAE;
 		wpa_dbg(wpa_s, MSG_DEBUG, "RSN: using KEY_MGMT FT/SAE");
@@ -1761,16 +1877,21 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_USE_EXT_KEY_ID, 0);
 	}
 
-	if (wpa_sm_set_assoc_wpa_ie_default(wpa_s->wpa, wpa_ie, wpa_ie_len)) {
-		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to generate WPA IE");
-		return -1;
-	}
+	if (!skip_default_rsne) {
+		if (wpa_sm_set_assoc_wpa_ie_default(wpa_s->wpa, wpa_ie,
+						    wpa_ie_len)) {
+			wpa_msg(wpa_s, MSG_WARNING,
+				"RSN: Failed to generate RSNE/WPA IE");
+			return -1;
+		}
 
-	wpa_s->rsnxe_len = sizeof(wpa_s->rsnxe);
-	if (wpa_sm_set_assoc_rsnxe_default(wpa_s->wpa, wpa_s->rsnxe,
-					   &wpa_s->rsnxe_len)) {
-		wpa_msg(wpa_s, MSG_WARNING, "RSN: Failed to generate RSNXE");
-		return -1;
+		wpa_s->rsnxe_len = sizeof(wpa_s->rsnxe);
+		if (wpa_sm_set_assoc_rsnxe_default(wpa_s->wpa, wpa_s->rsnxe,
+						   &wpa_s->rsnxe_len)) {
+			wpa_msg(wpa_s, MSG_WARNING,
+				"RSN: Failed to generate RSNXE");
+			return -1;
+		}
 	}
 
 	if (0) {
@@ -1910,6 +2031,10 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_s->deny_ptk0_rekey = 0;
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DENY_PTK0_REKEY, 0);
 	}
+
+	if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
+	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
+		wpas_update_allowed_key_mgmt(wpa_s, ssid);
 
 	return 0;
 }
@@ -2154,7 +2279,7 @@ int wpas_update_random_addr_disassoc(struct wpa_supplicant *wpa_s)
 }
 
 
-static void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid)
+void wpa_s_setup_sae_pt(struct wpa_config *conf, struct wpa_ssid *ssid)
 {
 #ifdef CONFIG_SAE
 	int *groups = conf->sae_groups;
@@ -2955,7 +3080,7 @@ static u8 * wpas_populate_assoc_ies(
 		}
 		wpa_ie_len = max_wpa_ie_len;
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
-					      wpa_ie, &wpa_ie_len)) {
+					      wpa_ie, &wpa_ie_len, false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to set WPA "
 				"key management and encryption suites");
 			os_free(wpa_ie);
@@ -2967,7 +3092,7 @@ static u8 * wpas_populate_assoc_ies(
 		/* No PMKSA caching, but otherwise similar to RSN/WPA */
 		wpa_ie_len = max_wpa_ie_len;
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
-					      wpa_ie, &wpa_ie_len)) {
+					      wpa_ie, &wpa_ie_len, false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to set WPA "
 				"key management and encryption suites");
 			os_free(wpa_ie);
@@ -2987,7 +3112,7 @@ static u8 * wpas_populate_assoc_ies(
 	} else if (wpa_key_mgmt_wpa_any(ssid->key_mgmt)) {
 		wpa_ie_len = max_wpa_ie_len;
 		if (wpa_supplicant_set_suites(wpa_s, NULL, ssid,
-					      wpa_ie, &wpa_ie_len)) {
+					      wpa_ie, &wpa_ie_len, false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to set WPA "
 				"key management and encryption suites (no "
 				"scan results)");
@@ -3058,7 +3183,7 @@ static u8 * wpas_populate_assoc_ies(
 #endif /* CONFIG_FILS */
 #endif /* IEEE8021X_EAPOL */
 #ifdef CONFIG_SAE
-	if (wpa_s->key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE))
+	if (wpa_key_mgmt_sae(wpa_s->key_mgmt))
 		algs = WPA_AUTH_ALG_SAE;
 #endif /* CONFIG_SAE */
 
@@ -3856,6 +3981,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	params.group_suite = cipher_group;
 	params.mgmt_group_suite = cipher_group_mgmt;
 	params.key_mgmt_suite = wpa_s->key_mgmt;
+	params.allowed_key_mgmts = wpa_s->allowed_key_mgmts;
 	params.wpa_proto = wpa_s->wpa_proto;
 	wpa_s->auth_alg = params.auth_alg;
 	params.mode = ssid->mode;
@@ -3875,7 +4001,9 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK) &&
 	    (params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
-	     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK)) {
+	     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
+	     (params.allowed_key_mgmts &
+	      (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_FT_PSK)))) {
 		params.passphrase = ssid->passphrase;
 		if (ssid->psk_set)
 			params.psk = ssid->psk;
@@ -3899,9 +4027,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		else
 			params.req_key_mgmt_offload = 1;
 
-		if ((params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
-		     params.key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256 ||
-		     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK) &&
+		if ((wpa_key_mgmt_wpa_psk_no_sae(params.key_mgmt_suite) ||
+		     wpa_key_mgmt_wpa_psk_no_sae(params.allowed_key_mgmts)) &&
 		    ssid->psk_set)
 			params.psk = ssid->psk;
 	}
@@ -3912,7 +4039,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	if (params.mgmt_frame_protection != NO_MGMT_FRAME_PROTECTION && bss) {
 		const u8 *rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
 		struct wpa_ie_data ie;
-		if (rsn && wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie) == 0 &&
+		if (!wpas_driver_bss_selection(wpa_s) && rsn &&
+		    wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie) == 0 &&
 		    ie.capabilities &
 		    (WPA_CAPABILITY_MFPC | WPA_CAPABILITY_MFPR)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "WPA: Selected AP supports "
@@ -4229,7 +4357,7 @@ struct wpa_ssid * wpa_supplicant_add_network(struct wpa_supplicant *wpa_s)
  */
 int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id)
 {
-	struct wpa_ssid *ssid;
+	struct wpa_ssid *ssid, *prev = wpa_s->current_ssid;
 	int was_disabled;
 
 	ssid = wpa_config_get_network(wpa_s->conf, id);
@@ -4237,10 +4365,7 @@ int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id)
 		return -1;
 	wpas_notify_network_removed(wpa_s, ssid);
 
-	if (wpa_s->last_ssid == ssid)
-		wpa_s->last_ssid = NULL;
-
-	if (ssid == wpa_s->current_ssid || !wpa_s->current_ssid) {
+	if (ssid == prev || !prev) {
 #ifdef CONFIG_SME
 		wpa_s->sme.prev_bssid_set = 0;
 #endif /* CONFIG_SME */
@@ -4251,7 +4376,7 @@ int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id)
 		eapol_sm_invalidate_cached_session(wpa_s->eapol);
 	}
 
-	if (ssid == wpa_s->current_ssid) {
+	if (ssid == prev) {
 		wpa_sm_set_config(wpa_s->wpa, NULL);
 		eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
 
@@ -4317,8 +4442,6 @@ int wpa_supplicant_remove_all_networks(struct wpa_supplicant *wpa_s)
 
 		id = ssid->id;
 		ssid = ssid->next;
-		if (wpa_s->last_ssid == remove_ssid)
-			wpa_s->last_ssid = NULL;
 		wpas_notify_network_removed(wpa_s, remove_ssid);
 		wpa_config_remove_network(wpa_s->conf, id);
 	}
@@ -6628,6 +6751,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		wpa_s->num_multichan_concurrent =
 			capa.num_multichan_concurrent;
 		wpa_s->wmm_ac_supported = capa.wmm_ac_supported;
+		wpa_s->max_num_akms = capa.max_num_akms;
 
 		if (capa.mac_addr_rand_scan_supported)
 			wpa_s->mac_addr_rand_supported |= MAC_ADDR_RAND_SCAN;
