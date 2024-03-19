@@ -43,15 +43,6 @@ using aidl::android::hardware::wifi::supplicant::GsmRand;
 using aidl::android::hardware::wifi::supplicant::KeyMgmtMask;
 
 /**
-  * Check that the AIDL service is running at least the expected version.
-  * Use to avoid the case where the AIDL interface version
-  * is greater than the version implemented by the service.
-  */
-inline int32_t isAidlServiceVersionAtLeast(int32_t expected_version)
-{
-	return expected_version <= aidl_service_version;
-}
-/**
  * Check if the provided |wpa_supplicant| structure represents a P2P iface or
  * not.
  */
@@ -411,6 +402,16 @@ void AidlManager::destroyInstance()
 	if (instance_)
 		delete instance_;
 	instance_ = NULL;
+}
+
+/**
+ * Check that the AIDL service is running at least the expected version.
+ * Use to avoid the case where the AIDL interface version
+ * is greater than the version implemented by the service.
+ */
+int32_t AidlManager::isAidlServiceVersionAtLeast(int32_t expected_version)
+{
+	return expected_version <= aidl_service_version;
 }
 
 int AidlManager::registerAidlService(struct wpa_global *global)
