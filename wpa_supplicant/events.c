@@ -6207,10 +6207,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			tmp.usec = 0;
 			os_reltime_sub(&tmp, &age, &clear_at);
 		}
-		eloop_register_timeout(clear_at.sec, clear_at.usec,
-				       wpas_clear_disabled_interface,
-				       wpa_s, NULL);
-		radio_remove_works(wpa_s, NULL, 0);
+		if(0) {
+			eloop_register_timeout(clear_at.sec, clear_at.usec,
+					       wpas_clear_disabled_interface,
+					       wpa_s, NULL);
+			radio_remove_works(wpa_s, NULL, 0);
+		}
 
 		wpa_supplicant_set_state(wpa_s, WPA_INTERFACE_DISABLED);
 		break;

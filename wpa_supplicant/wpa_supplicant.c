@@ -7544,6 +7544,9 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
 		return NULL;
 	}
 
+	wpa_s->next = global->ifaces;
+	global->ifaces = wpa_s;
+
 	/* Notify the control interfaces about new iface */
 	if (wpas_notify_iface_added(wpa_s)) {
 		wpa_supplicant_deinit_iface(wpa_s, 1, 0);
@@ -7560,9 +7563,6 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
 			wpas_notify_persistent_group_added(wpa_s, ssid);
 		}
 	}
-
-	wpa_s->next = global->ifaces;
-	global->ifaces = wpa_s;
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Added interface %s", wpa_s->ifname);
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);

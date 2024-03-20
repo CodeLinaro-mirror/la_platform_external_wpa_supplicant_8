@@ -427,10 +427,13 @@ int wpa_supplicant_conf_ap_ht(struct wpa_supplicant *wpa_s,
 			}
 		}
 	}
-
+#ifdef CONFIG_P2P
 	if (wpa_s->p2p_go_no_pri_sec_switch) {
 		conf->no_pri_sec_switch = 1;
 	} else if (conf->secondary_channel) {
+#else
+	if (conf->secondary_channel) {
+#endif
 		struct wpa_supplicant *iface;
 
 		for (iface = wpa_s->global->ifaces; iface; iface = iface->next)

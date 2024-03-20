@@ -1927,6 +1927,36 @@ ifdef CONFIG_NO_TKIP
 CFLAGS += -DCONFIG_NO_TKIP
 endif
 
+ifdef CONFIG_SOMEIP_SUPPORT
+CFLAGS += -DCONFIG_SOMEIP_SUPPORT -DCONFIG_CTRL_IFACE_AIDL -DCONFIG_AIDL -Wno-ignored-attributes
+CFLAGS += -I aidl
+CFLAGS += -I aidl/include
+CFLAGS += -I qrpc_server/include
+#Aidl
+OBJS += aidl/aidl.o
+OBJS += aidl/aidl_manager.o
+OBJS += aidl/iface_config_utils.o
+OBJS += aidl/sta_iface.o
+OBJS += aidl/sta_network.o
+OBJS += aidl/supplicant.o
+#Someip service
+OBJS += qrpc_server/src/supplicant_someip_server.o
+OBJS += qrpc_server/src/supplicant_event_callback.o
+OBJS += qrpc_server/src/supplicant_message_handler.o
+OBJS += qrpc_server/src/SupplicantReq.o
+OBJS += qrpc_server/src/SupplicantCallback.o
+OBJS += qrpc_server/src/SupplicantStaIfaceReq.o
+OBJS += qrpc_server/src/SupplicantStaIfaceCallback.o
+OBJS += qrpc_server/src/SupplicantStaNetworkReq.o
+OBJS += qrpc_server/src/SupplicantStaNetworkCallback.o
+LIBS += -lstdc++
+LIBS += -lbase -lutils -llog
+LIBS += -lwpa_supplicant_8_lib
+LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util
+LIBS += -lqti-wifi-supplicant-message
+CXXFLAGS += ${CFLAGS}
+endif
+
 dynamic_eap_methods: $(EAPDYN)
 
 _OBJS_VAR := OBJS_priv
