@@ -4,6 +4,11 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "includes.h"
@@ -187,7 +192,10 @@ static void wpa_priv_get_scan_results2(struct wpa_priv_interface *iface,
 	int val;
 	size_t i;
 
-	res = iface->driver->get_scan_results2(iface->drv_priv);
+	if (iface->driver->get_scan_results)
+		res = iface->driver->get_scan_results(iface->drv_priv, NULL);
+	else
+		res = iface->driver->get_scan_results2(iface->drv_priv);
 	if (res == NULL)
 		goto fail;
 
@@ -231,7 +239,7 @@ static void wpa_priv_cmd_get_scan_results(struct wpa_priv_interface *iface,
 	if (iface->drv_priv == NULL)
 		return;
 
-	if (iface->driver->get_scan_results2)
+	if (iface->driver->get_scan_results || iface->driver->get_scan_results2)
 		wpa_priv_get_scan_results2(iface, from, fromlen);
 	else
 		sendto(iface->fd, "", 0, 0, (struct sockaddr *) from, fromlen);

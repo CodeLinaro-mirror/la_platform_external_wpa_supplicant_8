@@ -4,6 +4,11 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef SCAN_H
@@ -48,8 +53,10 @@ int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
 				struct wpa_driver_scan_params *params);
 struct wpa_scan_results *
 wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
-				struct scan_info *info, int new_scan);
-int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s);
+				struct scan_info *info, int new_scan,
+				const u8 *bssid);
+int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s,
+							const u8 *bssid);
 const u8 * wpa_scan_get_ie(const struct wpa_scan_res *res, u8 ie);
 const u8 * wpa_scan_get_vendor_ie(const struct wpa_scan_res *res,
 				  u32 vendor_type);

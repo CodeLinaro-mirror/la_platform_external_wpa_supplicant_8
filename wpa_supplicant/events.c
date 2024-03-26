@@ -4,6 +4,11 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "includes.h"
@@ -149,12 +154,12 @@ static struct wpa_bss * wpa_supplicant_get_new_bss(
 }
 
 
-static void wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s)
+static void wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s, const u8 *bssid)
 {
 	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, wpa_s->bssid);
 
 	if (!bss) {
-		wpa_supplicant_update_scan_results(wpa_s);
+		wpa_supplicant_update_scan_results(wpa_s, bssid);
 
 		/* Get the BSS from the new scan results */
 		bss = wpa_supplicant_get_new_bss(wpa_s, wpa_s->bssid);
@@ -173,7 +178,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 	int res;
 
 	if (wpa_s->conf->ap_scan == 1 && wpa_s->current_ssid) {
-		wpa_supplicant_update_current_bss(wpa_s);
+		wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
 
 		if (wpa_s->current_ssid->ssid_len == 0)
 			return 0; /* current profile still in use */
@@ -250,7 +255,7 @@ static int wpa_supplicant_select_config(struct wpa_supplicant *wpa_s)
 	old_ssid = wpa_s->current_ssid;
 	wpa_s->current_ssid = ssid;
 
-	wpa_supplicant_update_current_bss(wpa_s);
+	wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
 
 	wpa_supplicant_rsn_supp_set_config(wpa_s, wpa_s->current_ssid);
 	wpa_supplicant_initiate_eapol(wpa_s);
@@ -2086,7 +2091,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 
 	scan_res = wpa_supplicant_get_scan_results(wpa_s,
 						   data ? &data->scan_info :
-						   NULL, 1);
+						   NULL, 1, NULL);
 	if (scan_res == NULL) {
 		if (wpa_s->conf->ap_scan == 2 || ap ||
 		    wpa_s->scan_res_handler == scan_only_handler)
@@ -3213,12 +3218,21 @@ no_pfs:
 	if (wpa_found || rsn_found)
 		wpa_s->ap_ies_from_associnfo = 1;
 
-	if (wpa_s->assoc_freq && data->assoc_info.freq &&
-	    wpa_s->assoc_freq != data->assoc_info.freq) {
-		wpa_printf(MSG_DEBUG, "Operating frequency changed from "
-			   "%u to %u MHz",
-			   wpa_s->assoc_freq, data->assoc_info.freq);
-		wpa_supplicant_update_scan_results(wpa_s);
+	if (wpa_s->assoc_freq && data->assoc_info.freq) {
+		struct wpa_bss *bss;
+		unsigned int freq = 0;
+
+		if (bssid_known) {
+			bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
+			if (bss)
+				freq = bss->freq;
+		}
+		if (freq != data->assoc_info.freq) {
+			wpa_printf(MSG_DEBUG,
+				   "Operating frequency changed from %u to %u MHz",
+				   wpa_s->assoc_freq, data->assoc_info.freq);
+			wpa_supplicant_update_scan_results(wpa_s, bssid);
+		}
 	}
 
 	wpa_s->assoc_freq = data->assoc_info.freq;
