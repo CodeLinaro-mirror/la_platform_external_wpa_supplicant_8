@@ -4,6 +4,11 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "utils/includes.h"
@@ -1305,7 +1310,7 @@ static int wnm_fetch_scan_results(struct wpa_supplicant *wpa_s)
 
 	wpa_dbg(wpa_s, MSG_DEBUG,
 		"WNM: Fetch current scan results from the driver for checking transition candidates");
-	scan_res = wpa_drv_get_scan_results2(wpa_s);
+	scan_res = wpa_drv_get_scan_results(wpa_s, NULL);
 	if (!scan_res) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "WNM: Failed to get scan results");
 		return 0;
