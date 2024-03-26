@@ -4,6 +4,11 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "utils/includes.h"
@@ -758,6 +763,9 @@ int hostapd_driver_scan(struct hostapd_data *hapd,
 struct wpa_scan_results * hostapd_driver_get_scan_results(
 	struct hostapd_data *hapd)
 {
+	if (hapd->driver && hapd->driver->get_scan_results)
+		return hapd->driver->get_scan_results(hapd->drv_priv, NULL);
+
 	if (hapd->driver && hapd->driver->get_scan_results2)
 		return hapd->driver->get_scan_results2(hapd->drv_priv);
 	return NULL;

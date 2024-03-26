@@ -8,6 +8,11 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef DRIVER_NL80211_H
@@ -391,7 +396,8 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
 int wpa_driver_nl80211_sched_scan(void *priv,
 				  struct wpa_driver_scan_params *params);
 int wpa_driver_nl80211_stop_sched_scan(void *priv);
-struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv);
+struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv,
+							      const u8 *bssid);
 void nl80211_dump_scan(struct wpa_driver_nl80211_data *drv);
 int wpa_driver_nl80211_abort_scan(void *priv, u64 scan_cookie);
 int wpa_driver_nl80211_vendor_scan(struct i802_bss *bss,
