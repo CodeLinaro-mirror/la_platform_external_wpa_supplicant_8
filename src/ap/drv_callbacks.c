@@ -987,7 +987,8 @@ void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
 					break;
 				}
 			}
-		}
+		} else if (!sta->mld_info.mld_sta)
+			goto legacy;
 		if (sta == NULL) {
 			wpa_printf(MSG_DEBUG,
 			   "Disassociation notification for unknown STA "
