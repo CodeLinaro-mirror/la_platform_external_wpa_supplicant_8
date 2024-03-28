@@ -614,7 +614,7 @@ std::string CreateHostapdConfig(
 			"he_oper_chwidth=0\n"
 #endif
 			"vht_oper_chwidth=0\n"
-			"%s\n", (band & band6Ghz) ? "op_class=131" : "");
+			"%s", (band & band6Ghz) ? "op_class=131" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_40:
 		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
@@ -626,7 +626,7 @@ std::string CreateHostapdConfig(
 			"he_oper_chwidth=0\n"
 #endif
 			"vht_oper_chwidth=0\n"
-			"%s\n", (band & band6Ghz) ? "op_class=132" : "");
+			"%s", (band & band6Ghz) ? "op_class=132" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_80:
 		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
@@ -638,9 +638,9 @@ std::string CreateHostapdConfig(
 			"he_oper_chwidth=%d\n"
 #endif
 			"vht_oper_chwidth=%d\n"
-			"%s\n",
+			"%s",
 #ifdef CONFIG_IEEE80211BE
-			(is_11be_supported && enable_11be && !is_60Ghz_used) ? 1 : 0,
+			(iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) ? 1 : 0,
 #endif
 #ifdef CONFIG_IEEE80211AX
 			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 1 : 0,
@@ -658,9 +658,9 @@ std::string CreateHostapdConfig(
 			"he_oper_chwidth=%d\n"
 #endif
 			"vht_oper_chwidth=%d\n"
-			"%s\n",
+			"%s",
 #ifdef CONFIG_IEEE80211BE
-			(is_11be_supported && enable_11be && !is_60Ghz_used) ? 2 : 0,
+			(iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) ? 2 : 0,
 #endif
 #ifdef CONFIG_IEEE80211AX
 			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 2 : 0,
@@ -677,7 +677,7 @@ std::string CreateHostapdConfig(
 			}
 			if (band & band6Ghz) {
 #ifdef CONFIG_IEEE80211BE
-				if (is_11be_supported && enable_11be)
+				if (iface_params.hwModeParams.enable80211BE)
 					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=137\n";
 				else
 					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
@@ -691,8 +691,8 @@ std::string CreateHostapdConfig(
 			}
 #endif
 #ifdef CONFIG_IEEE80211BE
-			if (is_11be_supported && enable_11be) {
-				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1\n";
+			if (iface_params.hwModeParams.enable80211BE) {
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1";
 			}
 #endif
 		}
