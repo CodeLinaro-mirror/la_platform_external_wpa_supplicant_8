@@ -1000,6 +1000,16 @@ struct wpa_driver_associate_params {
 	unsigned int key_mgmt_suite;
 
 	/**
+	 * allowed_key_mgmts - Bitfield of allowed key management suites
+	 * (WPA_KEY_MGMT_*) other than @key_mgmt_suite for current connection
+	 *
+	 * SME in driver may choose key_mgmt from this list for initial
+	 * connection or roaming. Driver which doesn't support this
+	 * ignores this param.
+	 */
+	unsigned int allowed_key_mgmts;
+
+	/**
 	 * auth_alg - Allowed authentication algorithms
 	 * Bit field of WPA_AUTH_ALG_*
 	 */
@@ -2182,6 +2192,9 @@ struct wpa_driver_capa {
 
 	/* Maximum number of supported CSA counters */
 	u16 max_csa_counters;
+
+	/* Maximum number of supported AKM suites in connect request */
+	u8 max_num_akms_connect;
 };
 
 
