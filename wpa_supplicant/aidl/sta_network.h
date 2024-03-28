@@ -58,13 +58,11 @@ class StaNetwork : public BnSupplicantStaNetwork
 {
 public:
 	StaNetwork(
-		struct wpa_global* wpa_global, const char ifname[], int network_id, int32_t id);
+		struct wpa_global* wpa_global, const char ifname[], int network_id);
 	~StaNetwork() = default;
 	// Refer to |StaIface::invalidate()|.
 	void invalidate();
 	bool isValid();
-
-	int32_t getNetworkInstanceId();
 
 	// Aidl methods exposed.
 	::ndk::ScopedAStatus getId(int32_t* _aidl_return) override;
@@ -406,8 +404,6 @@ private:
 	const std::string ifname_;
 	// Id of the network this aidl object controls.
 	const int network_id_;
-	// Unique id for someip instance
-	const int32_t NwId;
 	bool is_valid_;
 	int tlsFlags;
 

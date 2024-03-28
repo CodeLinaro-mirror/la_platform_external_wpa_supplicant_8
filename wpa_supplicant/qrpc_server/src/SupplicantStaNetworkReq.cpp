@@ -42,17 +42,11 @@ bool StaNetworkMsgHandlerGetId(uint8_t* data, size_t length, std::vector<uint8_t
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -86,17 +80,11 @@ bool StaNetworkMsgHandlerSetSsid(uint8_t* data, size_t length, std::vector<uint8
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -134,17 +122,11 @@ bool StaNetworkMsgHandlerSetBssid(uint8_t* data, size_t length, std::vector<uint
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -182,17 +164,11 @@ bool StaNetworkMsgHandlerSetScanSsid(uint8_t* data, size_t length, std::vector<u
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -228,17 +204,11 @@ bool StaNetworkMsgHandlerSetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -274,17 +244,11 @@ bool StaNetworkMsgHandlerSetProto(uint8_t* data, size_t length, std::vector<uint
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -320,17 +284,11 @@ bool StaNetworkMsgHandlerSetAuthAlg(uint8_t* data, size_t length, std::vector<ui
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -366,17 +324,11 @@ bool StaNetworkMsgHandlerSetGroupCipher(uint8_t* data, size_t length, std::vecto
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -412,17 +364,11 @@ bool StaNetworkMsgHandlerSetPairwiseCipher(uint8_t* data, size_t length, std::ve
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -458,17 +404,11 @@ bool StaNetworkMsgHandlerSetPskPassphrase(uint8_t* data, size_t length, std::vec
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -504,17 +444,11 @@ bool StaNetworkMsgHandlerSetPsk(uint8_t* data, size_t length, std::vector<uint8_
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -552,17 +486,11 @@ bool StaNetworkMsgHandlerSetWepKey(uint8_t* data, size_t length, std::vector<uin
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -600,17 +528,11 @@ bool StaNetworkMsgHandlerSetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -646,17 +568,11 @@ bool StaNetworkMsgHandlerSetRequirePmf(uint8_t* data, size_t length, std::vector
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -692,17 +608,11 @@ bool StaNetworkMsgHandlerSetIdStr(uint8_t* data, size_t length, std::vector<uint
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -738,17 +648,11 @@ bool StaNetworkMsgHandlerGetSsid(uint8_t* data, size_t length, std::vector<uint8
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -784,17 +688,11 @@ bool StaNetworkMsgHandlerGetBssid(uint8_t* data, size_t length, std::vector<uint
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -830,17 +728,11 @@ bool StaNetworkMsgHandlerGetScanSsid(uint8_t* data, size_t length, std::vector<u
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -874,17 +766,11 @@ bool StaNetworkMsgHandlerGetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -918,17 +804,11 @@ bool StaNetworkMsgHandlerGetProto(uint8_t* data, size_t length, std::vector<uint
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -962,17 +842,11 @@ bool StaNetworkMsgHandlerGetAuthAlg(uint8_t* data, size_t length, std::vector<ui
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1006,17 +880,11 @@ bool StaNetworkMsgHandlerGetGroupCipher(uint8_t* data, size_t length, std::vecto
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1050,17 +918,11 @@ bool StaNetworkMsgHandlerGetPairwiseCipher(uint8_t* data, size_t length, std::ve
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1094,17 +956,11 @@ bool StaNetworkMsgHandlerGetPskPassphrase(uint8_t* data, size_t length, std::vec
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1138,17 +994,11 @@ bool StaNetworkMsgHandlerGetPsk(uint8_t* data, size_t length, std::vector<uint8_
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1184,17 +1034,11 @@ bool StaNetworkMsgHandlerGetSaePassword(uint8_t* data, size_t length, std::vecto
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1228,17 +1072,11 @@ bool StaNetworkMsgHandlerGetWepKey(uint8_t* data, size_t length, std::vector<uin
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1281,17 +1119,11 @@ bool StaNetworkMsgHandlerGetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1325,17 +1157,11 @@ bool StaNetworkMsgHandlerGetRequirePmf(uint8_t* data, size_t length, std::vector
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1369,17 +1195,11 @@ bool StaNetworkMsgHandlerGetIdStr(uint8_t* data, size_t length, std::vector<uint
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1413,17 +1233,11 @@ bool StaNetworkMsgHandlerEnable(uint8_t* data, size_t length, std::vector<uint8_
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1459,17 +1273,11 @@ bool StaNetworkMsgHandlerDisable(uint8_t* data, size_t length, std::vector<uint8
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1498,17 +1306,11 @@ bool StaNetworkMsgHandlerSelect(uint8_t* data, size_t length, std::vector<uint8_
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1537,17 +1339,11 @@ bool StaNetworkMsgHandlerSetGroupMgmtCipher(uint8_t* data, size_t length, std::v
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1584,17 +1380,11 @@ bool StaNetworkMsgHandlerGetGroupMgmtCipher(uint8_t* data, size_t length, std::v
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1628,17 +1418,11 @@ bool StaNetworkMsgHandlerSetSaePassword(uint8_t* data, size_t length, std::vecto
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1674,17 +1458,11 @@ bool StaNetworkMsgHandlerSetPmkCache(uint8_t* data, size_t length, std::vector<u
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1723,17 +1501,11 @@ bool StaNetworkMsgHandlerSetSaeH2eMode(uint8_t* data, size_t length, std::vector
     }
 
     std::string ifName;
-    int networkId;
     int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 8);
-    int32_t nwId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
         LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
-        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
-        return StaNetworkSerializeStatus(status, outData);
-    }
-    if(aidl_manager->getStaNetworkIdByInstanceId(nwId, &networkId)){
-        LOG(ERROR) << "[Fail] Network instance id" << nwId << "not found";
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }

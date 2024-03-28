@@ -19,8 +19,8 @@ static char SUPPLICANT_SERVICE_NAME[] = "supplicant_someip_service";
 
 std::shared_ptr<std::thread> someip_server_thread_t;
 
-#define SUPPLICANT_INSTANCE_ID                              ((uint16_t) 0x1110)
-#define SUPPLICANT_EVENTGROUP_ID                            ((uint16_t) 0xAAA0)
+#define SUPPLICANT_INSTANCE_ID                              ((uint16_t) 0x3330)
+#define SUPPLICANT_EVENTGROUP_ID                            ((uint16_t) 0xCCC0)
 
 static void SupplicantInitSomeIPRegisterInfo(SomeipRegisterInfo* info)
 {

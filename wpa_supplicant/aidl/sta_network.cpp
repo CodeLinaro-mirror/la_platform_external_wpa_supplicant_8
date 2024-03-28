@@ -123,12 +123,11 @@ using misc_utils::createStatus;
 using misc_utils::createStatusWithMsg;
 
 StaNetwork::StaNetwork(
-	struct wpa_global *wpa_global, const char ifname[], int network_id, int32_t id)
+	struct wpa_global *wpa_global, const char ifname[], int network_id)
 	: wpa_global_(wpa_global),
 	  ifname_(ifname),
 	  network_id_(network_id),
-	  is_valid_(true),
-	  NwId(id)
+	  is_valid_(true)
 {
 	tlsFlags = 0;
 }
@@ -137,11 +136,6 @@ void StaNetwork::invalidate() { is_valid_ = false; }
 bool StaNetwork::isValid()
 {
 	return (is_valid_ && (retrieveNetworkPtr() != nullptr));
-}
-
-int32_t StaNetwork::getNetworkInstanceId()
-{
-	return NwId;
 }
 
 ::ndk::ScopedAStatus StaNetwork::getId(

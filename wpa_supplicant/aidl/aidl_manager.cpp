@@ -600,7 +600,7 @@ int AidlManager::registerNetwork(
 	} else {
 		if (addAidlObjectToMap<StaNetwork>(
 			network_key,
-			std::make_shared<StaNetwork>(wpa_s->global, wpa_s->ifname, ssid->id, ++total_network_ids_),
+			std::make_shared<StaNetwork>(wpa_s->global, wpa_s->ifname, ssid->id),
 			sta_network_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -609,22 +609,21 @@ int AidlManager::registerNetwork(
 				ssid->id);
 			return 1;
 		}
-		sta_network_someip_map_[total_network_ids_] = ssid->id;
 		sta_network_callbacks_map_[network_key] =
 			std::vector<std::shared_ptr<SupplicantStaNetworkCallback>>();
 
 		std::shared_ptr<StaIface> StaIface_instance = sta_iface_object_map_.find(wpa_s->ifname)->second;
 		int32_t ifId = StaIface_instance->getIfaceInstanceId();
 		std::shared_ptr<SupplicantStaNetworkCallback> StaNetworkCb =
-					std::make_shared<SupplicantStaNetworkCallback>(ifId, total_network_ids_);
+					std::make_shared<SupplicantStaNetworkCallback>(ifId, ssid->id);
 		std::shared_ptr<StaNetwork> StaNetwork_instance = sta_network_object_map_.find(network_key)->second;
 		int reason = static_cast<int>((StaNetwork_instance->registerCallback(StaNetworkCb)).getServiceSpecificError());
 		if(reason){
-			wpa_printf(MSG_ERROR, "[Fail] Supplicant Network Callback not registered for %s(%d)-%d(%d), reason: %d", 
-						wpa_s->ifname, ifId, ssid->id, total_network_ids_, reason);
+			wpa_printf(MSG_ERROR, "[Fail] Supplicant Network Callback not registered for %s(%d)-%d, reason: %d", 
+						wpa_s->ifname, ifId, ssid->id, reason);
 			return 1;
 		}
-		wpa_printf(MSG_INFO, "Supplicant Network Callback registered for %s(%d)-%d(%d)", wpa_s->ifname, ifId, ssid->id, total_network_ids_);
+		wpa_printf(MSG_INFO, "Supplicant Network Callback registered for %s(%d)-%d", wpa_s->ifname, ifId, ssid->id);
 
 		// Invoke the |onNetworkAdded| method on all registered
 		// callbacks.
@@ -2297,19 +2296,6 @@ int AidlManager::getStaIfaceNameByInstanceId(int32_t id, std::string *name)
 		return 1;
 
 	*name = iface_object_iter->second;
-	return 0;
-}
-
-/**
- * Get Sta Network Id
- */
-int AidlManager::getStaNetworkIdByInstanceId(int32_t id, int *nwid)
-{
-	auto iface_object_iter = sta_network_someip_map_.find(id);
-	if (iface_object_iter == sta_network_someip_map_.end())
-		return 1;
-
-	*nwid = iface_object_iter->second;
 	return 0;
 }
 

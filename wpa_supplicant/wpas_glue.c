@@ -1076,7 +1076,7 @@ static void wpa_supplicant_port_cb(void *ctx, int authorized)
 
 static void wpa_supplicant_permanent_id_req_denied_cb(void *ctx)
 {
-	struct wpas_supplicant *wpa_s = ctx;
+	struct wpa_supplicant *wpa_s = ctx;
 
 	wpas_notify_permanent_id_req_denied(wpa_s);
 }

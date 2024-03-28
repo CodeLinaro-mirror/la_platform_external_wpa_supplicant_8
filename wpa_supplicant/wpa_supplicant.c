@@ -458,8 +458,14 @@ void free_hw_features(struct wpa_supplicant *wpa_s)
 		return;
 
 	for (i = 0; i < wpa_s->hw.num_modes; i++) {
-		os_free(wpa_s->hw.modes[i].channels);
-		os_free(wpa_s->hw.modes[i].rates);
+		if (wpa_s->hw.modes[i].channels != NULL) {
+			wpa_printf(MSG_DEBUG, "Freeing mode channels");
+			os_free(wpa_s->hw.modes[i].channels);
+		}
+		if (wpa_s->hw.modes[i].rates != NULL) {
+			wpa_printf(MSG_DEBUG, "Freeing mode rates");
+			os_free(wpa_s->hw.modes[i].rates);
+		}
 	}
 
 	os_free(wpa_s->hw.modes);
@@ -9002,12 +9008,21 @@ struct hostapd_hw_modes * get_mode(struct hostapd_hw_modes *modes,
 struct hostapd_hw_modes * get_mode_with_freq(struct hostapd_hw_modes *modes,
 					     u16 num_modes, int freq)
 {
+	if (modes == NULL) {
+		wpa_printf(MSG_ERROR, "get_mode_with_freq: Null modes");
+		return NULL;
+	}
+
 	int i, j;
 
 	for (i = 0; i < num_modes; i++) {
-		for (j = 0; j < modes[i].num_channels; j++) {
-			if (freq == modes[i].channels[j].freq)
-				return &modes[i];
+		if (modes[i].channels == NULL) {
+			wpa_printf(MSG_ERROR, "[Null] No(%d) channnels", j);
+		} else {
+			for (j = 0; j < modes[i].num_channels; j++) {
+				if (freq == modes[i].channels[j].freq)
+					return &modes[i];
+			}
 		}
 	}
 

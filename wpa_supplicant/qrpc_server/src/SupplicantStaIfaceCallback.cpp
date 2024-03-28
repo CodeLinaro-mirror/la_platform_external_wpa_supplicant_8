@@ -69,7 +69,16 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onBssidChanged(::aidl::android::hardware::wifi::supplicant::BssidChangeReason in_reason, const std::vector<uint8_t>& in_bssid)
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    std::vector<uint8_t> data;
+    if (!SupplicantStaIfaceSerializeOnBssidChangedInd(in_reason, in_bssid, data)) {
+        ALOGE("[Fail] Serializing StaIface Event <onBssidChanged>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_IFACE_ON_BSSID_CHANGED_IND, data);
 }
 
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onDisconnected(const std::vector<uint8_t>& in_bssid, bool in_locallyGenerated, ::aidl::android::hardware::wifi::supplicant::StaIfaceReasonCode in_reasonCode)

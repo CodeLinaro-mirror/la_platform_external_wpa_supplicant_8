@@ -15,7 +15,7 @@
 #include <aidl/android/hardware/wifi/supplicant/ScopedAStatus.h>
 
 /*Supported events for Phase 1*/
-#define SUPPLICANT_EVENT_COUNTS    10
+#define SUPPLICANT_EVENT_COUNTS    11
 
 extern uint16_t SupplicantEventArray[SUPPLICANT_EVENT_COUNTS];
 

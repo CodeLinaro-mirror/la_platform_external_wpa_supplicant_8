@@ -66,7 +66,7 @@ bool StaIfaceMsgHandlerAddNetwork(uint8_t* data, size_t length, std::vector<uint
 
     int32_t instanceId;
     if (status.isOk() && staNetwork != nullptr)
-        instanceId = std::dynamic_pointer_cast<StaNetwork>(staNetwork)->getNetworkInstanceId();
+        std::dynamic_pointer_cast<StaNetwork>(staNetwork)->getId(&instanceId);
     LOG(INFO) << "Sending <AddNetwork> resp: (" << std::hex << instanceId << ")";
 
     HalStatusParam param;

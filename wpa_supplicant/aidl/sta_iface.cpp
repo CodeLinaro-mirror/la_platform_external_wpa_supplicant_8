@@ -319,7 +319,7 @@ StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[], int32_t i
 void StaIface::invalidate() { is_valid_ = false; }
 bool StaIface::isValid()
 {
-	wpa_printf(MSG_DEBUG, "Iface valid check:%d, %d", is_valid_, (retrieveIfacePtr() != nullptr)?1:0);
+//	wpa_printf(MSG_DEBUG, "Iface valid check:%d, %d", is_valid_, (retrieveIfacePtr() != nullptr)?1:0);
 	return (is_valid_ && (retrieveIfacePtr() != nullptr));
 }
 

@@ -207,7 +207,6 @@ public:
 
 	int getSupplicantInstance(std::shared_ptr<Supplicant> *supplicant_object);
 	int getStaIfaceNameByInstanceId(int32_t id, std::string *name);
-	int getStaNetworkIdByInstanceId(int32_t id, int *nwid);
 
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
@@ -245,7 +244,7 @@ public:
 #endif
 
 private:
-	AidlManager() : total_iface_ids_(0x0000), total_network_ids_(0x0000) {}
+	AidlManager() : total_iface_ids_(0x0000) {}
 	~AidlManager() = default;
 	AidlManager(const AidlManager &) = default;
 	AidlManager &operator=(const AidlManager &) = default;
@@ -323,8 +322,6 @@ private:
 	// |ifname| & |network_id|.
 	std::map<const std::string, std::shared_ptr<StaNetwork>>
 		sta_network_object_map_;
-	std::map<const int32_t, int>
-		sta_network_someip_map_;
 
 	// Callbacks registered for the main aidl service object.
 	std::vector<std::shared_ptr<SupplicantCallback>> supplicant_callbacks_;
@@ -361,7 +358,6 @@ private:
 		vendor_sta_iface_callbacks_map_;
 #endif
 	int32_t total_iface_ids_;
-	int32_t total_network_ids_;
 };
 
 // The aidl interface uses some values which are the same as internal ones to
