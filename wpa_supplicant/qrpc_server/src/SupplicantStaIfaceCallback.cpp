@@ -72,7 +72,7 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
     int32_t ifId = getIfaceInstanceId();
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnBssidChangedInd(in_reason, in_bssid, data)) {
-        ALOGE("[Fail] Serializing StaIface Event <onBssidChanged>");
+        LOG(ERROR) << "[Fail] Serializing StaIface Event <onBssidChanged>.";
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
