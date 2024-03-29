@@ -3663,3 +3663,50 @@ struct wpabuf * ieee802_11_defrag_mle(struct ieee802_11_elems *elems, u8 type)
 
 	return ieee802_11_defrag_data(data, len, true);
 }
+
+
+unsigned int is_ap_t2lm_negotiation_supported(const u8 *mle, size_t mle_len)
+{
+	u16 ml_control;
+	u16 mld_capabilities;
+	size_t offset =
+		2 /* Multi Link Control */ +
+		1 /* Common Info Length field */ +
+		ETH_ALEN /* MLD MAC Address field */;
+
+	if(!mle || mle_len < offset)
+	    return 0;
+
+	ml_control = WPA_GET_LE16(mle);
+	wpa_printf(MSG_DEBUG, "%s: ML control field 0x%x", __func__, ml_control);
+
+	if (!(ml_control & BASIC_MULTI_LINK_CTRL_PRES_MLD_CAPA)) {
+	    wpa_printf(MSG_DEBUG, "MLD capabilities not present");
+	    return 0;
+	}
+
+	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_LINK_ID)
+	    offset++;
+
+	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_BSS_PARAM_CH_COUNT)
+	    offset++;
+
+	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_MSD_INFO)
+	    offset += 2;
+
+	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_EML_CAPA)
+	    offset += 2;
+
+	if (mle_len < (offset + 2)) {
+	    wpa_printf(MSG_ERROR, "Not suffcient length for MLD capabilities");
+	    return 0;
+	}
+
+	mld_capabilities = WPA_GET_LE16(mle + offset);
+	wpa_printf(MSG_DEBUG, "MLD capabilities 0x%x", mld_capabilities);
+	if(!(mld_capabilities &
+	     EHT_ML_MLD_CAPA_TID_TO_LINK_MAP_NEG_SUPP_MSK))
+	    return 0;
+
+	return 1;
+}

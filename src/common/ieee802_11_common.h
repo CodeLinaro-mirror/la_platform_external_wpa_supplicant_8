@@ -374,4 +374,5 @@ enum chan_width get_operation_channel_width(struct ieee802_11_elems *elems);
 enum chan_width get_sta_operation_chan_width(enum chan_width ap_operation_chan_width,
 					     struct supported_chan_width sta_supported_width);
 
+unsigned int is_ap_t2lm_negotiation_supported(const u8 *mle, size_t mle_len);
 #endif /* IEEE802_11_COMMON_H */
