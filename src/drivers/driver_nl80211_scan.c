@@ -931,9 +931,7 @@ nl80211_get_scan_results(struct wpa_driver_nl80211_data *drv)
 	struct wpa_scan_results *res;
 	int ret;
 	struct nl80211_bss_info_arg arg;
-	int count = 0;
 
-try_again:
 	res = os_zalloc(sizeof(*res));
 	if (res == NULL)
 		return NULL;
@@ -946,19 +944,12 @@ try_again:
 	arg.drv = drv;
 	arg.res = res;
 	ret = send_and_recv_msgs(drv, msg, bss_info_handler, &arg, NULL, NULL);
-	if (ret == -EAGAIN) {
-		count++;
-		if (count >= 10) {
-			wpa_printf(MSG_INFO,
-				   "nl80211: Failed to receive consistent scan result dump");
-		} else {
+	if (ret == 0 || ret == -EAGAIN) {
+		if (ret == -EAGAIN)
 			wpa_printf(MSG_DEBUG,
-				   "nl80211: Failed to receive consistent scan result dump - try again");
-			wpa_scan_results_free(res);
-			goto try_again;
-		}
-	}
-	if (ret == 0) {
+					   "nl80211: Failed to receive consistent scan result dump, "
+					   "dump partial scan results");
+
 		struct nl80211_noise_info info;
 
 		wpa_printf(MSG_DEBUG, "nl80211: Received scan results (%lu "
