@@ -1929,6 +1929,7 @@ endif
 
 ifdef CONFIG_SOMEIP_SUPPORT
 CFLAGS += -DCONFIG_SOMEIP_SUPPORT -DCONFIG_CTRL_IFACE_AIDL -DCONFIG_AIDL -Wno-ignored-attributes
+CFLAGS += -DWPA_QRPC_LOG -DENABLE_LOG
 CFLAGS += -I aidl
 CFLAGS += -I aidl/include
 CFLAGS += -I qrpc_server/include
@@ -1953,6 +1954,7 @@ LIBS += -lstdc++
 LIBS += -lbase -lutils -llog
 LIBS += -lwpa_supplicant_8_lib
 LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util
+LIBS_c += -lqti_log_util
 LIBS += -lqti-wifi-supplicant-message
 CXXFLAGS += ${CFLAGS}
 endif
