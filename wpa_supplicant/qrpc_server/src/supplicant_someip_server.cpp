@@ -5,10 +5,10 @@
 
 #include <iostream>
 #include <thread>
-#include <android-base/logging.h>
 
 #include <rpc/util/someip_api.h>
 #include <rpc/util/someip_common_def.h>
+#include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
 
 #include "supplicant_someip_server.h"
@@ -40,18 +40,18 @@ bool SupplicantSomeIPServerInit()
     SomeipRegisterInfo registerInfo;
     SupplicantInitSomeIPRegisterInfo(&registerInfo);
 
-    LOG(INFO) << "Supplicant someip service init...";
+    ALOGI("Supplicant someip service init...");
 
     uint8_t retryCount = 0;
     while (true) {
         retryCount++;
     if (someip_init(&registerInfo)) {
-            LOG(INFO) << "Supplicant someip service app init successful";
+            ALOGI("Supplicant someip service app init successful");
             break;
         }
 
         if (retryCount > 20) {
-            LOG(ERROR) << "Supplicant Someip service init fail";
+            ALOGE("Supplicant Someip service init fail");
             return -1;
         }
 
@@ -67,19 +67,19 @@ bool SupplicantSomeIPServerInit()
 
 void SupplicantSomeIPServerDeinit()
 {
-    LOG(INFO) << "Supplicant someip service deinit...";
+    ALOGI("Supplicant someip service deinit...");
     someip_deinit();
 }
 
 bool SupplicantSomeIPServerStart()
 {
-    LOG(INFO) << "Supplicant someip service main loop start...";
+    ALOGI("Supplicant someip service main loop start...");
     return someip_open();
 }
 
 void SupplicantSomeIPServerStop()
 {
-    LOG(INFO) << "Supplicant someip service main loop stop...";
+    ALOGI("Supplicant someip service main loop stop...");
     someip_close();
     if(someip_server_thread_t) {
         if (someip_server_thread_t->joinable())

@@ -3,11 +3,13 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include <android-base/logging.h>
-
 #include <rpc/util/common_util.h>
 #include <rpc/util/someip_api.h>
+#include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_sta_network_msg.h>
+#include <iostream>
+#include <sstream>
+#include <iomanip>
 
 #include "SupplicantStaNetworkReq.h"
 
@@ -18,9 +20,18 @@ using namespace aidl::android::hardware::wifi::supplicant;
 
 #define SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(function, status) \
     do { \
-        LOG(INFO) << "Supplicant Someip Service: " << (function) \
-                   << " return status: " << toString((status).code); \
+        ALOGI("Supplicant Someip Service: <%s>, return status: (%s)", __func__, toString((status).code).c_str()); \
     } while (0)
+
+static inline void v2s(const vector<uint8_t>& v, string& s)
+{
+    std::stringstream buffer;
+    buffer << " ";
+    for (const auto& value : v) {
+        buffer << std::setfill('0') << std::setw(2) << std::hex << value+0 << " ";
+    }
+    s = buffer.str();
+}
 
 static inline void ScopedAStatus2HalStatusParam(const ndk::ScopedAStatus& status, HalStatusParam& param)
 {
@@ -36,7 +47,7 @@ static inline bool StaNetworkSerializeStatus(const ndk::ScopedAStatus& status, s
 bool StaNetworkMsgHandlerGetId(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -46,16 +57,16 @@ bool StaNetworkMsgHandlerGetId(uint8_t* data, size_t length, std::vector<uint8_t
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetId> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetId> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -64,7 +75,7 @@ bool StaNetworkMsgHandlerGetId(uint8_t* data, size_t length, std::vector<uint8_t
     ndk::ScopedAStatus status = stanetwork_instance->getId(&id);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetId> resp: (" << id << ")";
+    ALOGI("Sending <GetId> resp: (%d)", id);
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -74,7 +85,7 @@ bool StaNetworkMsgHandlerGetId(uint8_t* data, size_t length, std::vector<uint8_t
 bool StaNetworkMsgHandlerSetSsid(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -84,25 +95,25 @@ bool StaNetworkMsgHandlerSetSsid(uint8_t* data, size_t length, std::vector<uint8
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::vector<uint8_t> ssid;
     if (!SupplicantStaNetworkParseSetSsidReq(data, length - 8, ssid)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetSsid>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetSsid>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string temp;
-    Vector2String(ssid, temp);
-    LOG(INFO) << "Processing StaNetwork Req <SetSsid>: (" << temp << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    v2s(ssid, temp);
+    ALOGI("Processing StaNetwork Req <SetSsid>: (%s) for network -> %d of iface --> %s", temp.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -116,7 +127,7 @@ bool StaNetworkMsgHandlerSetSsid(uint8_t* data, size_t length, std::vector<uint8
 bool StaNetworkMsgHandlerSetBssid(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -126,25 +137,25 @@ bool StaNetworkMsgHandlerSetBssid(uint8_t* data, size_t length, std::vector<uint
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::vector<uint8_t> bssid;
     if (!SupplicantStaNetworkParseSetBssidReq(data, length - 8, bssid)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetBssid>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetBssid>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string temp;
-    Vector2String(bssid, temp);
-    LOG(INFO) << "Processing StaNetwork Req <SetBssid>: (" << temp << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    v2s(bssid, temp);
+    ALOGI("Processing StaNetwork Req <SetBssid>: (%s) for network -> %d of iface --> %s", temp.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -158,7 +169,7 @@ bool StaNetworkMsgHandlerSetBssid(uint8_t* data, size_t length, std::vector<uint
 bool StaNetworkMsgHandlerSetScanSsid(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -168,23 +179,23 @@ bool StaNetworkMsgHandlerSetScanSsid(uint8_t* data, size_t length, std::vector<u
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     bool enable;
     if (!SupplicantStaNetworkParseSetScanSsidReq(data, length - 8, enable)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetScanSsid>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetScanSsid>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetScanSsid>: (" << enable << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetScanSsid>: (%d) for network -> %d of iface --> %s", enable, networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -198,7 +209,7 @@ bool StaNetworkMsgHandlerSetScanSsid(uint8_t* data, size_t length, std::vector<u
 bool StaNetworkMsgHandlerSetKeyMgmt(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -208,23 +219,23 @@ bool StaNetworkMsgHandlerSetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     KeyMgmtMask keyMgmtMask;
     if (!SupplicantStaNetworkParseSetKeyMgmtReq(data, length - 8, keyMgmtMask)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetKeyMgmt>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetKeyMgmt>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetKeyMgmt>: (" << toString(keyMgmtMask) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetKeyMgmt>: (%s) for network -> %d of iface --> %s", toString(keyMgmtMask).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -238,7 +249,7 @@ bool StaNetworkMsgHandlerSetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
 bool StaNetworkMsgHandlerSetProto(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -248,23 +259,23 @@ bool StaNetworkMsgHandlerSetProto(uint8_t* data, size_t length, std::vector<uint
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     ProtoMask protoMask;
     if (!SupplicantStaNetworkParseSetProtoReq(data, length - 8, protoMask)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetProto>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetProto>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetProto>: (" << toString(protoMask) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetProto>: (%s) for network -> %d of iface --> %s", toString(protoMask).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -278,7 +289,7 @@ bool StaNetworkMsgHandlerSetProto(uint8_t* data, size_t length, std::vector<uint
 bool StaNetworkMsgHandlerSetAuthAlg(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -288,23 +299,23 @@ bool StaNetworkMsgHandlerSetAuthAlg(uint8_t* data, size_t length, std::vector<ui
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     AuthAlgMask authAlgMask;
     if (!SupplicantStaNetworkParseSetAuthAlgReq(data, length - 8, authAlgMask)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetAuthAlg>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetAuthAlg>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetAuthAlg>: (" << toString(authAlgMask) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetAuthAlg>: (%s) for network -> %d of iface --> %s", toString(authAlgMask).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -318,7 +329,7 @@ bool StaNetworkMsgHandlerSetAuthAlg(uint8_t* data, size_t length, std::vector<ui
 bool StaNetworkMsgHandlerSetGroupCipher(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -328,23 +339,23 @@ bool StaNetworkMsgHandlerSetGroupCipher(uint8_t* data, size_t length, std::vecto
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     GroupCipherMask groupCipherMask;
     if (!SupplicantStaNetworkParseSetGroupCipherReq(data, length - 8, groupCipherMask)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetGroupCipher>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetGroupCipher>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetGroupCipher>: (" << toString(groupCipherMask) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetGroupCipher>: (%s) for network -> %d of iface --> %s", toString(groupCipherMask).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -358,7 +369,7 @@ bool StaNetworkMsgHandlerSetGroupCipher(uint8_t* data, size_t length, std::vecto
 bool StaNetworkMsgHandlerSetPairwiseCipher(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -368,23 +379,23 @@ bool StaNetworkMsgHandlerSetPairwiseCipher(uint8_t* data, size_t length, std::ve
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     PairwiseCipherMask pairwiseCipherMask;
     if (!SupplicantStaNetworkParseSetPairwiseCipherReq(data, length - 8, pairwiseCipherMask)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetPairwiseCipher>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetPairwiseCipher>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetPairwiseCipher>: (" << toString(pairwiseCipherMask) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetPairwiseCipher>: (%s) for network -> %d of iface --> %s", toString(pairwiseCipherMask).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -398,7 +409,7 @@ bool StaNetworkMsgHandlerSetPairwiseCipher(uint8_t* data, size_t length, std::ve
 bool StaNetworkMsgHandlerSetPskPassphrase(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -408,23 +419,23 @@ bool StaNetworkMsgHandlerSetPskPassphrase(uint8_t* data, size_t length, std::vec
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string psk;
     if (!SupplicantStaNetworkParseSetPskPassphraseReq(data, length - 8, psk)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetPskPassphrase>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetPskPassphrase>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetPskPassphrase>: (" << psk << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetPskPassphrase>: (%s) for network -> %d of iface --> %s", psk.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -438,7 +449,7 @@ bool StaNetworkMsgHandlerSetPskPassphrase(uint8_t* data, size_t length, std::vec
 bool StaNetworkMsgHandlerSetPsk(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -448,25 +459,25 @@ bool StaNetworkMsgHandlerSetPsk(uint8_t* data, size_t length, std::vector<uint8_
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::vector<uint8_t> psk;
     if (!SupplicantStaNetworkParseSetPskReq(data, length - 8, psk)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetPsk>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetPsk>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string temp;
-    Vector2String(psk, temp);
-    LOG(INFO) << "Processing StaNetwork Req <SetPsk>: (" << temp << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    v2s(psk, temp);
+    ALOGI("Processing StaNetwork Req <SetPsk>: (%s) for network -> %d of iface --> %s", temp.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -480,7 +491,7 @@ bool StaNetworkMsgHandlerSetPsk(uint8_t* data, size_t length, std::vector<uint8_
 bool StaNetworkMsgHandlerSetWepKey(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -490,25 +501,25 @@ bool StaNetworkMsgHandlerSetWepKey(uint8_t* data, size_t length, std::vector<uin
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     SetWepKeyReqStaNetworkParam buff;
     if (!SupplicantStaNetworkParseSetWepKeyReq(data, length - 8, buff)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetWepKey>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetWepKey>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string temp;
-    Vector2String(buff.wepKey, temp);
-    LOG(INFO) << "Processing StaNetwork Req <SetWepKey>: (" << buff.keyIdx << "), (" << temp << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    v2s(buff.wepKey, temp);
+    ALOGI("Processing StaNetwork Req <SetWepKey>: (%d), (%s) for network -> %d of iface --> %s", buff.keyIdx, temp.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -522,7 +533,7 @@ bool StaNetworkMsgHandlerSetWepKey(uint8_t* data, size_t length, std::vector<uin
 bool StaNetworkMsgHandlerSetWepTxKeyIdx(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -532,23 +543,23 @@ bool StaNetworkMsgHandlerSetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     int32_t keyIdx;
     if (!SupplicantStaNetworkParseSetWepTxKeyIdxReq(data, length - 8, keyIdx)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetWepTxKeyIdx>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetWepTxKeyIdx>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetWepTxKeyIdx>: (" << keyIdx << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetWepTxKeyIdx>: (%d) for network -> %d of iface --> %s", keyIdx, networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -562,7 +573,7 @@ bool StaNetworkMsgHandlerSetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
 bool StaNetworkMsgHandlerSetRequirePmf(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -572,23 +583,23 @@ bool StaNetworkMsgHandlerSetRequirePmf(uint8_t* data, size_t length, std::vector
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     bool enable;
     if (!SupplicantStaNetworkParseSetRequirePmfReq(data, length - 8, enable)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetRequirePmf>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetRequirePmf>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetRequirePmf>: (" << enable << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetRequirePmf>: (%d) for network -> %d of iface --> %s", enable, networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -602,7 +613,7 @@ bool StaNetworkMsgHandlerSetRequirePmf(uint8_t* data, size_t length, std::vector
 bool StaNetworkMsgHandlerSetIdStr(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -612,23 +623,23 @@ bool StaNetworkMsgHandlerSetIdStr(uint8_t* data, size_t length, std::vector<uint
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string idStr;
     if (!SupplicantStaNetworkParseSetIdStrReq(data, length - 8, idStr)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetIdStr>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetIdStr>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetIdStr>: (" << idStr << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetIdStr>: (%s) for network -> %d of iface --> %s", idStr.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -642,7 +653,7 @@ bool StaNetworkMsgHandlerSetIdStr(uint8_t* data, size_t length, std::vector<uint
 bool StaNetworkMsgHandlerGetSsid(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -652,16 +663,16 @@ bool StaNetworkMsgHandlerGetSsid(uint8_t* data, size_t length, std::vector<uint8
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetSsid> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetSsid> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -671,8 +682,8 @@ bool StaNetworkMsgHandlerGetSsid(uint8_t* data, size_t length, std::vector<uint8
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     std::string temp;
-    Vector2String(ssid, temp);
-    LOG(INFO) << "Sending <GetSsid> resp: (" << temp << ")";
+    v2s(ssid, temp);
+    ALOGI("Sending <GetSsid> resp: (%s)", temp.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -682,7 +693,7 @@ bool StaNetworkMsgHandlerGetSsid(uint8_t* data, size_t length, std::vector<uint8
 bool StaNetworkMsgHandlerGetBssid(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -692,16 +703,16 @@ bool StaNetworkMsgHandlerGetBssid(uint8_t* data, size_t length, std::vector<uint
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetBssid> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetBssid> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -711,8 +722,8 @@ bool StaNetworkMsgHandlerGetBssid(uint8_t* data, size_t length, std::vector<uint
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     std::string temp;
-    Vector2String(bssid, temp);
-    LOG(INFO) << "Sending <GetBssid> resp: (" << temp << ")";
+    v2s(bssid, temp);
+    ALOGI("Sending <GetBssid> resp: (%s)", temp.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -722,7 +733,7 @@ bool StaNetworkMsgHandlerGetBssid(uint8_t* data, size_t length, std::vector<uint
 bool StaNetworkMsgHandlerGetScanSsid(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -732,16 +743,16 @@ bool StaNetworkMsgHandlerGetScanSsid(uint8_t* data, size_t length, std::vector<u
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetScanSsid> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetScanSsid> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -750,7 +761,7 @@ bool StaNetworkMsgHandlerGetScanSsid(uint8_t* data, size_t length, std::vector<u
     ndk::ScopedAStatus status = stanetwork_instance->getScanSsid(&res);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetScanSsid> resp: (" << res << ")";
+    ALOGI("Sending <GetScanSsid> resp: (%d)", res);
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -760,7 +771,7 @@ bool StaNetworkMsgHandlerGetScanSsid(uint8_t* data, size_t length, std::vector<u
 bool StaNetworkMsgHandlerGetKeyMgmt(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -770,16 +781,16 @@ bool StaNetworkMsgHandlerGetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetKeyMgmt> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetKeyMgmt> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -788,7 +799,7 @@ bool StaNetworkMsgHandlerGetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
     ndk::ScopedAStatus status = stanetwork_instance->getKeyMgmt(&mask);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetKeyMgmt> resp: (" << toString(mask) << ")";
+    ALOGI("Sending <GetKeyMgmt> resp: (%s)", toString(mask).c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -798,7 +809,7 @@ bool StaNetworkMsgHandlerGetKeyMgmt(uint8_t* data, size_t length, std::vector<ui
 bool StaNetworkMsgHandlerGetProto(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -808,16 +819,16 @@ bool StaNetworkMsgHandlerGetProto(uint8_t* data, size_t length, std::vector<uint
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetProto> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetProto> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -826,7 +837,7 @@ bool StaNetworkMsgHandlerGetProto(uint8_t* data, size_t length, std::vector<uint
     ndk::ScopedAStatus status = stanetwork_instance->getProto(&mask);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetProto> resp: (" << toString(mask) << ")";
+    ALOGI("Sending <GetProto> resp: (%s)", toString(mask).c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -836,7 +847,7 @@ bool StaNetworkMsgHandlerGetProto(uint8_t* data, size_t length, std::vector<uint
 bool StaNetworkMsgHandlerGetAuthAlg(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -846,16 +857,16 @@ bool StaNetworkMsgHandlerGetAuthAlg(uint8_t* data, size_t length, std::vector<ui
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetAuthAlg> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetAuthAlg> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -864,7 +875,7 @@ bool StaNetworkMsgHandlerGetAuthAlg(uint8_t* data, size_t length, std::vector<ui
     ndk::ScopedAStatus status = stanetwork_instance->getAuthAlg(&mask);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetAuthAlg> resp: (" << toString(mask) << ")";
+    ALOGI("Sending <GetAuthAlg> resp: (%s)", toString(mask).c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -874,7 +885,7 @@ bool StaNetworkMsgHandlerGetAuthAlg(uint8_t* data, size_t length, std::vector<ui
 bool StaNetworkMsgHandlerGetGroupCipher(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -884,16 +895,16 @@ bool StaNetworkMsgHandlerGetGroupCipher(uint8_t* data, size_t length, std::vecto
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetGroupCipher> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetGroupCipher> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -902,7 +913,7 @@ bool StaNetworkMsgHandlerGetGroupCipher(uint8_t* data, size_t length, std::vecto
     ndk::ScopedAStatus status = stanetwork_instance->getGroupCipher(&mask);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetGroupCipher> resp: (" << toString(mask) << ")";
+    ALOGI("Sending <GetGroupCipher> resp: (%s)", toString(mask).c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -912,7 +923,7 @@ bool StaNetworkMsgHandlerGetGroupCipher(uint8_t* data, size_t length, std::vecto
 bool StaNetworkMsgHandlerGetPairwiseCipher(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -922,16 +933,16 @@ bool StaNetworkMsgHandlerGetPairwiseCipher(uint8_t* data, size_t length, std::ve
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetPairwiseCipher> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetPairwiseCipher> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -940,7 +951,7 @@ bool StaNetworkMsgHandlerGetPairwiseCipher(uint8_t* data, size_t length, std::ve
     ndk::ScopedAStatus status = stanetwork_instance->getPairwiseCipher(&mask);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetPairwiseCipher> resp: (" << toString(mask) << ")";
+    ALOGI("Sending <GetPairwiseCipher> resp: (%s)", toString(mask).c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -950,7 +961,7 @@ bool StaNetworkMsgHandlerGetPairwiseCipher(uint8_t* data, size_t length, std::ve
 bool StaNetworkMsgHandlerGetPskPassphrase(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -960,16 +971,16 @@ bool StaNetworkMsgHandlerGetPskPassphrase(uint8_t* data, size_t length, std::vec
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetPskPassphrase> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetPskPassphrase> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -978,7 +989,7 @@ bool StaNetworkMsgHandlerGetPskPassphrase(uint8_t* data, size_t length, std::vec
     ndk::ScopedAStatus status = stanetwork_instance->getPskPassphrase(&psk);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetPskPassphrase> resp: (" << psk << ")";
+    ALOGI("Sending <GetPskPassphrase> resp: (%s)", psk.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -988,7 +999,7 @@ bool StaNetworkMsgHandlerGetPskPassphrase(uint8_t* data, size_t length, std::vec
 bool StaNetworkMsgHandlerGetPsk(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -998,16 +1009,16 @@ bool StaNetworkMsgHandlerGetPsk(uint8_t* data, size_t length, std::vector<uint8_
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetPsk> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetPsk> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1017,8 +1028,8 @@ bool StaNetworkMsgHandlerGetPsk(uint8_t* data, size_t length, std::vector<uint8_
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     std::string temp;
-    Vector2String(psk, temp);
-    LOG(INFO) << "Sending <GetPsk> resp: (" << temp << ")";
+    v2s(psk, temp);
+    ALOGI("Sending <GetPsk> resp: (%s)", temp.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1028,7 +1039,7 @@ bool StaNetworkMsgHandlerGetPsk(uint8_t* data, size_t length, std::vector<uint8_
 bool StaNetworkMsgHandlerGetSaePassword(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1038,16 +1049,16 @@ bool StaNetworkMsgHandlerGetSaePassword(uint8_t* data, size_t length, std::vecto
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetSaePassword> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetSaePassword> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1056,7 +1067,7 @@ bool StaNetworkMsgHandlerGetSaePassword(uint8_t* data, size_t length, std::vecto
     ndk::ScopedAStatus status = stanetwork_instance->getSaePassword(&saePw);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetSaePassword> resp: (" << saePw << ")";
+    ALOGI("Sending <GetSaePassword> resp: (%s)", saePw.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1066,7 +1077,7 @@ bool StaNetworkMsgHandlerGetSaePassword(uint8_t* data, size_t length, std::vecto
 bool StaNetworkMsgHandlerGetWepKey(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1076,23 +1087,23 @@ bool StaNetworkMsgHandlerGetWepKey(uint8_t* data, size_t length, std::vector<uin
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     int32_t keyIdx;
     if (!SupplicantStaNetworkParseGetWepKeyReq(data, length - 8, keyIdx)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <GetWepKey>";
+        ALOGE("[Fail] Parsing StaNetwork Req <GetWepKey>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetWepKey>: (" << keyIdx << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetWepKey>: (%d) for network -> %d of iface --> %s", keyIdx, networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1102,8 +1113,8 @@ bool StaNetworkMsgHandlerGetWepKey(uint8_t* data, size_t length, std::vector<uin
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     std::string temp;
-    Vector2String(key, temp);
-    LOG(INFO) << "Sending <GetWepKey> resp: (" << temp << ")";
+    v2s(key, temp);
+    ALOGI("Sending <GetWepKey> resp: (%s)", temp.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1113,7 +1124,7 @@ bool StaNetworkMsgHandlerGetWepKey(uint8_t* data, size_t length, std::vector<uin
 bool StaNetworkMsgHandlerGetWepTxKeyIdx(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1123,16 +1134,16 @@ bool StaNetworkMsgHandlerGetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetWepTxKeyIdx> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetWepTxKeyIdx> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1141,7 +1152,7 @@ bool StaNetworkMsgHandlerGetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
     ndk::ScopedAStatus status = stanetwork_instance->getWepTxKeyIdx(&index);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetWepTxKeyIdx> resp: (" << index << ")";
+    ALOGI("Sending <GetWepTxKeyIdx> resp: (%d)", index);
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1151,7 +1162,7 @@ bool StaNetworkMsgHandlerGetWepTxKeyIdx(uint8_t* data, size_t length, std::vecto
 bool StaNetworkMsgHandlerGetRequirePmf(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1161,16 +1172,16 @@ bool StaNetworkMsgHandlerGetRequirePmf(uint8_t* data, size_t length, std::vector
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetRequirePmf> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetRequirePmf> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1179,7 +1190,7 @@ bool StaNetworkMsgHandlerGetRequirePmf(uint8_t* data, size_t length, std::vector
     ndk::ScopedAStatus status = stanetwork_instance->getRequirePmf(&res);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetRequirePmf> resp: (" << res << ")";
+    ALOGI("Sending <GetRequirePmf> resp: (%d)", res);
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1189,7 +1200,7 @@ bool StaNetworkMsgHandlerGetRequirePmf(uint8_t* data, size_t length, std::vector
 bool StaNetworkMsgHandlerGetIdStr(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1199,16 +1210,16 @@ bool StaNetworkMsgHandlerGetIdStr(uint8_t* data, size_t length, std::vector<uint
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetIdStr> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetIdStr> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1217,7 +1228,7 @@ bool StaNetworkMsgHandlerGetIdStr(uint8_t* data, size_t length, std::vector<uint
     ndk::ScopedAStatus status = stanetwork_instance->getIdStr(&id);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetIdStr> resp: (" << id << ")";
+    ALOGI("Sending <GetIdStr> resp: (%s)", id.c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1227,7 +1238,7 @@ bool StaNetworkMsgHandlerGetIdStr(uint8_t* data, size_t length, std::vector<uint
 bool StaNetworkMsgHandlerEnable(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1237,23 +1248,23 @@ bool StaNetworkMsgHandlerEnable(uint8_t* data, size_t length, std::vector<uint8_
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     bool noConnect;
     if (!SupplicantStaNetworkParseEnableReq(data, length - 8, noConnect)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <Enable>";
+        ALOGE("[Fail] Parsing StaNetwork Req <Enable>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <Enable>: (" << noConnect << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <Enable>: (%d) for network -> %d of iface --> %s", noConnect, networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1267,7 +1278,7 @@ bool StaNetworkMsgHandlerEnable(uint8_t* data, size_t length, std::vector<uint8_
 bool StaNetworkMsgHandlerDisable(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1277,16 +1288,16 @@ bool StaNetworkMsgHandlerDisable(uint8_t* data, size_t length, std::vector<uint8
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <Disable> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <Disable> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1300,7 +1311,7 @@ bool StaNetworkMsgHandlerDisable(uint8_t* data, size_t length, std::vector<uint8
 bool StaNetworkMsgHandlerSelect(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1310,16 +1321,16 @@ bool StaNetworkMsgHandlerSelect(uint8_t* data, size_t length, std::vector<uint8_
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <Select> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <Select> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1333,7 +1344,7 @@ bool StaNetworkMsgHandlerSelect(uint8_t* data, size_t length, std::vector<uint8_
 bool StaNetworkMsgHandlerSetGroupMgmtCipher(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {    
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1343,23 +1354,23 @@ bool StaNetworkMsgHandlerSetGroupMgmtCipher(uint8_t* data, size_t length, std::v
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     GroupMgmtCipherMask groupMgmtCipherMask;
     if (!SupplicantStaNetworkParseSetGroupMgmtCipherReq(data, length - 8, groupMgmtCipherMask)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetGroupMgmtCipher>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetGroupMgmtCipher>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetGroupMgmtCipher>: (" << toString(groupMgmtCipherMask) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetGroupMgmtCipher>: (%s) for network -> %d of iface --> %s", toString(groupMgmtCipherMask).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1374,7 +1385,7 @@ bool StaNetworkMsgHandlerSetGroupMgmtCipher(uint8_t* data, size_t length, std::v
 bool StaNetworkMsgHandlerGetGroupMgmtCipher(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1384,16 +1395,16 @@ bool StaNetworkMsgHandlerGetGroupMgmtCipher(uint8_t* data, size_t length, std::v
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <GetGroupMgmtCipher> for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <GetGroupMgmtCipher> for network -> %d of iface --> %s", networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1402,7 +1413,7 @@ bool StaNetworkMsgHandlerGetGroupMgmtCipher(uint8_t* data, size_t length, std::v
     ndk::ScopedAStatus status = stanetwork_instance->getGroupMgmtCipher(&mask);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
-    LOG(INFO) << "Sending <GetGroupMgmtCipher> resp: (" << toString(mask) << ")";
+    ALOGI("Sending <GetGroupMgmtCipher> resp: (%s)", toString(mask).c_str());
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -1412,7 +1423,7 @@ bool StaNetworkMsgHandlerGetGroupMgmtCipher(uint8_t* data, size_t length, std::v
 bool StaNetworkMsgHandlerSetSaePassword(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1422,23 +1433,23 @@ bool StaNetworkMsgHandlerSetSaePassword(uint8_t* data, size_t length, std::vecto
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string saePassword;
     if (!SupplicantStaNetworkParseSetSaePasswordReq(data, length - 8, saePassword)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetSaePassword>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetSaePassword>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetSaePassword>: (" << saePassword << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetSaePassword>: (%s) for network -> %d of iface --> %s", saePassword.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1452,7 +1463,7 @@ bool StaNetworkMsgHandlerSetSaePassword(uint8_t* data, size_t length, std::vecto
 bool StaNetworkMsgHandlerSetPmkCache(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1462,25 +1473,25 @@ bool StaNetworkMsgHandlerSetPmkCache(uint8_t* data, size_t length, std::vector<u
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::vector<uint8_t> serializedEntry;
     if (!SupplicantStaNetworkParseSetPmkCacheReq(data, length - 8, serializedEntry)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetPmkCache>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetPmkCache>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     std::string temp;
-    Vector2String(serializedEntry, temp);
-    LOG(INFO) << "Processing StaNetwork Req <SetPmkCache>: (" << temp << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    v2s(serializedEntry, temp);
+    ALOGI("Processing StaNetwork Req <SetPmkCache>: (%s) for network -> %d of iface --> %s", temp.c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1495,7 +1506,7 @@ bool StaNetworkMsgHandlerSetPmkCache(uint8_t* data, size_t length, std::vector<u
 bool StaNetworkMsgHandlerSetSaeH2eMode(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {    
     if (!data || length < 8) {
-        LOG(ERROR) << "Invalid data payload length " << std::to_string(length);
+        ALOGE("Invalid data payload length: %zu", length);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
@@ -1505,23 +1516,23 @@ bool StaNetworkMsgHandlerSetSaeH2eMode(uint8_t* data, size_t length, std::vector
     int32_t networkId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
     AidlManager *aidl_manager = AidlManager::getInstance();
     if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
-        LOG(ERROR) << "[Fail] Interface instance id" << ifId << "not found";
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
     SaeH2eMode mode;
     if (!SupplicantStaNetworkParseSetSaeH2eModeReq(data, length - 8, mode)) {
-        LOG(ERROR) << "[Fail] Parsing StaNetwork Req <SetSaeH2eMode>";
+        ALOGE("[Fail] Parsing StaNetwork Req <SetSaeH2eMode>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing StaNetwork Req <SetSaeH2eMode>: (" << toString(mode) << ") for network -> " << networkId <<" of iface --> "<< ifName;
+    ALOGI("Processing StaNetwork Req <SetSaeH2eMode>: (%s) for network -> %d of iface --> %s", toString(mode).c_str(), networkId, ifName.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
-        LOG(ERROR) << "[Fail] Network not found";
+        ALOGE("[Fail] Network not found");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
         return StaNetworkSerializeStatus(status, outData);
     }

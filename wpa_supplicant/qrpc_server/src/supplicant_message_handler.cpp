@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include <android-base/logging.h>
 #include <map>
+#include <functional>
 
 #include <rpc/util/common_util.h>
 #include <rpc/util/someip_api.h>
+#include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
 
 #include "supplicant_message_handler.h"
@@ -101,22 +102,22 @@ static inline MessageHandler SupplicantGetMessageHandler(uint16_t methodId)
 
 void SupplicantProcessSomeIPRequestMessage(uint16_t methodId, uint8_t *data, size_t length)
 {
-    LOG(DEBUG) << "Recv Someip Request message with method_id 0x" << std::hex << methodId;
+    ALOGI("Recv Someip Request message with method_id 0x%04X", methodId);
 
     MessageHandler handler = SupplicantGetMessageHandler(methodId);
     if (!handler) {
-        LOG(ERROR) << "Unspported SomeIP request method id 0x" << std::hex << methodId;
-    return;
+        ALOGE("Unspported SomeIP request method id 0x%04X", methodId);
+        return;
     }
 
     std::vector<uint8_t> response;
     bool ret = handler(data, length, response);
     if (!ret) {
-        LOG(ERROR) << "Process SomeIP Request fail";
-    return;
+        ALOGE("Process SomeIP Request fail");
+        return;
     }
 
     ret = someip_send_response(methodId, response.data(), response.size());
     if (!ret)
-        LOG(ERROR) << "Send SomeIP Response fail";
+        ALOGE("Send SomeIP Response fail");
 }

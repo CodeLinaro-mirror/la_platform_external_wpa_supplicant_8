@@ -63,7 +63,7 @@ uint16_t SupplicantEventArray[SUPPLICANT_EVENT_COUNTS] = {
 ndk::ScopedAStatus SupplicantSendEvent(uint16_t eventId, std::vector<uint8_t>& data)
 {
     if (!someip_send_event(eventId, data.data(), data.size())) {
-        LOG(ERROR) << "Failed to send event ID: " << eventId;
+        ALOGE("Failed to send event ID: 0x%04X", eventId);
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNKNOWN);
     }
 

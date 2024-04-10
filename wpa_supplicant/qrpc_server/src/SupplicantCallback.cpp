@@ -15,18 +15,18 @@ namespace wifi {
 namespace supplicant {
 ::ndk::ScopedAStatus SupplicantCallback::onInterfaceCreated(const std::string& in_ifaceName)
 {
-    LOG(INFO) << "Sending Supplicant Event <onInterfaceCreated>";
+    ALOGI("Sending Supplicant Event <onInterfaceCreated>");
     /*This is not used. Result is already sent back via status in create req.*/
     return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus SupplicantCallback::onInterfaceRemoved(const std::string& in_ifaceName)
 {
-    LOG(INFO) << "Sending Supplicant Event <onInterfaceRemoved>: (" << in_ifaceName <<")";
+    ALOGI("Sending Supplicant Event <onInterfaceRemoved>: %s", in_ifaceName.c_str());
 #if 0
     std::vector<uint8_t> data;
     if (!SupplicantSerializeOnInterfaceRemovedInd(in_ifaceName, data)) {
-        LOG(ERROR) << "[Fail] Serializing Supplicant Event <onInterfaceRemoved>.";
+        ALOGE("[Fail] Serializing Supplicant Event <onInterfaceRemoved>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 

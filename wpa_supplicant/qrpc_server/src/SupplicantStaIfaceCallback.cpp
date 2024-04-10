@@ -7,6 +7,19 @@
 
 #include "SupplicantStaIfaceCallback.h"
 #include "supplicant_event_callback.h"
+#include <iostream>
+#include <sstream>
+#include <iomanip>
+
+static inline void v2s(const vector<uint8_t>& v, string& s)
+{
+    std::stringstream buffer;
+    buffer << " ";
+    for (const auto& value : v) {
+        buffer << std::setfill('0') << std::setw(2) << std::hex << value+0 << " ";
+    }
+    s = buffer.str();
+}
 
 namespace aidl {
 namespace android {
@@ -26,11 +39,11 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onAssociationRejected(const ::aidl::android::hardware::wifi::supplicant::AssociationRejectionData& in_assocRejectData)
 {
     int32_t ifId = getIfaceInstanceId();
-    LOG(INFO) << "Sending StaIface Event <onAssociationRejected> for ifaceId -->" << ifId;
+    ALOGI("Sending StaIface Event <onAssociationRejected> for ifaceId --> %d", ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnAssociationRejectedInd(in_assocRejectData, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onAssociationRejected>.";
+        ALOGE("[Fail] Serializing StaIface Event <onAssociationRejected>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -43,12 +56,13 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 {
     int32_t ifId = getIfaceInstanceId();
     std::string temp;
-    Vector2String(in_bssid, temp);
-    LOG(INFO) << "Sending StaIface Event <onAuthenticationTimeout>: (" << temp <<") for ifaceId -->" << ifId;
+
+    v2s(in_bssid, temp);
+    ALOGI("Sending StaIface Event <onAuthenticationTimeout>: (%s) for ifaceId --> %d", temp.c_str(), ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnAuthenticationTimeoutInd(in_bssid, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onAuthenticationTimeout>.";
+        ALOGE("[Fail] Serializing StaIface Event <onAuthenticationTimeout>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -70,9 +84,13 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onBssidChanged(::aidl::android::hardware::wifi::supplicant::BssidChangeReason in_reason, const std::vector<uint8_t>& in_bssid)
 {
     int32_t ifId = getIfaceInstanceId();
+    std::string temp;
+    v2s(in_bssid, temp);
+    ALOGI("Sending StaIface Event <onBssidChanged>: (%s), (%s) for ifaceId --> %d", toString(in_reason).c_str(), temp.c_str(), ifId);
+
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnBssidChangedInd(in_reason, in_bssid, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onBssidChanged>.";
+        ALOGE("[Fail] Serializing StaIface Event <onBssidChanged>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -85,12 +103,12 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 {
     int32_t ifId = getIfaceInstanceId();
     std::string temp;
-    Vector2String(in_bssid, temp);
-    LOG(INFO) << "Sending StaIface Event <onDisconnected>: (" << temp <<"), ("<< in_locallyGenerated <<") for ifaceId -->" << ifId;
+    v2s(in_bssid, temp);
+    ALOGI("Sending StaIface Event <onDisconnected>: (%s), (%d) for ifaceId --> %d", temp.c_str(), in_locallyGenerated, ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnDisconnectedInd(in_bssid, in_locallyGenerated, in_reasonCode, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onDisconnected>.";
+        ALOGE("[Fail] Serializing StaIface Event <onDisconnected>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -158,12 +176,12 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 {
     int32_t ifId = getIfaceInstanceId();
     std::string temp;
-    Vector2String(in_bssid, temp);
-    LOG(INFO) << "Sending StaIface Event <onHs20TermsAndConditionsAcceptanceRequestedNotification>: (" << temp <<"), ("<< in_url <<") for ifaceId -->" << ifId;
+    v2s(in_bssid, temp);
+    ALOGI("Sending StaIface Event <onHs20TermsAndConditionsAcceptanceRequestedNotification>: (%s), (%s) for ifaceId --> %d", temp.c_str(), in_url.c_str(), ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnHs20TermsAndConditionsAcceptanceRequestedNotificationInd(in_bssid, in_url, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onHs20TermsAndConditionsAcceptanceRequestedNotification>.";
+        ALOGE("[Fail] Serializing StaIface Event <onHs20TermsAndConditionsAcceptanceRequestedNotification>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -174,7 +192,7 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onNetworkAdded(int32_t in_id)
 {
-    LOG(INFO) << "Sending StaIface Event <onNetworkAdded>";
+    ALOGI("Sending StaIface Event <onNetworkAdded>");
     /*This is not used. Result is already sent back via status in create req.*/
     return ndk::ScopedAStatus::ok();
 }
@@ -183,12 +201,12 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 {
     int32_t ifId = getIfaceInstanceId();
     std::string temp;
-    Vector2String(in_ssid, temp);
-    LOG(INFO) << "Sending StaIface Event <onNetworkNotFound>: (" << temp <<") for ifaceId -->" << ifId;
+    v2s(in_ssid, temp);
+    ALOGI("Sending StaIface Event <onNetworkNotFound>: (%s) for ifaceId --> %d", temp.c_str(), ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnNetworkNotFoundInd(in_ssid, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onNetworkNotFound>.";
+        ALOGE("[Fail] Serializing StaIface Event <onNetworkNotFound>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -200,11 +218,11 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onNetworkRemoved(int32_t in_id)
 {
     int32_t ifId = getIfaceInstanceId();
-    LOG(INFO) << "Sending StaIface Event <onNetworkRemoved>: (" << in_id <<") for ifaceId -->" << ifId;
+    ALOGI("Sending StaIface Event <onNetworkRemoved>: (%d) for ifaceId --> %d", in_id, ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnNetworkRemovedInd(in_id, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onNetworkRemoved>.";
+        ALOGE("[Fail] Serializing StaIface Event <onNetworkRemoved>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -271,11 +289,11 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onSupplicantStateChanged(const ::aidl::android::hardware::wifi::supplicant::SupplicantStateChangeData& in_stateChangeData)
 {
     int32_t ifId = getIfaceInstanceId();
-    LOG(INFO) << "Sending StaIface Event <onSupplicantStateChanged>: (" << toString(in_stateChangeData.newState) << ") for ifaceId -->" << ifId;
+    ALOGI("Sending StaIface Event <onSupplicantStateChanged>: (%s) for ifaceId --> %d", toString(in_stateChangeData.newState).c_str(), ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnSupplicantStateChangedInd(in_stateChangeData, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onSupplicantStateChanged>.";
+        ALOGE("[Fail] Serializing StaIface Event <onSupplicantStateChanged>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
@@ -293,12 +311,12 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 {
     int32_t ifId = getIfaceInstanceId();
     std::string temp;
-    Vector2String(in_pmkSaData.serializedEntry, temp);
-    LOG(INFO) << "Sending StaIface Event <onPmkSaCacheAdded>: (" << temp << ") for ifaceId -->" << ifId;
+    v2s(in_pmkSaData.serializedEntry, temp);
+    ALOGI("Sending StaIface Event <onPmkSaCacheAdded>: (%s) for ifaceId --> %d", temp.c_str(), ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaIfaceSerializeOnPmkSaCacheAddedInd(in_pmkSaData, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaIface Event <onPmkSaCacheAdded>.";
+        ALOGE("[Fail] Serializing StaIface Event <onPmkSaCacheAdded>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 

@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include <android-base/logging.h>
-
 #include <rpc/util/common_util.h>
 #include <rpc/util/someip_api.h>
+#include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_msg.h>
 
 #include "SupplicantReq.h"
@@ -19,8 +18,7 @@ using namespace aidl::android::hardware::wifi::supplicant;
 
 #define SUPPLICANT_PRINT_CFM_STATUS(function, status) \
     do { \
-        LOG(INFO) << "Supplicant Someip Service: " << (function) \
-                   << " return status: " << toString((status).code); \
+        ALOGI("Supplicant Someip Service: <%s>, return status: (%s)", __func__, toString((status).code).c_str()); \
     } while (0)
 
 static inline void ScopedAStatus2HalStatusParam(const ndk::ScopedAStatus& status, HalStatusParam& param)
@@ -38,17 +36,17 @@ bool SupplicantMsgHandlerAddStaInterface(uint8_t* data, size_t length, std::vect
 {
     std::string ifName;
     if (!SupplicantParseAddStaInterfaceReq(data, length, ifName)) {
-        LOG(ERROR) << "[Fail] Parsing Supplicant Req <AddStaInterface>";
+        ALOGE("[Fail] Parsing Supplicant Req <AddStaInterface>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing Supplicant Req <AddStaInterface>: (" << ifName <<")";
+    ALOGI("Processing Supplicant Req <AddStaInterface>: (%s)", ifName.c_str());
 
     AidlManager *aidl_manager = AidlManager::getInstance();
     std::shared_ptr<Supplicant> supplicant_instance;
     if(aidl_manager->getSupplicantInstance(&supplicant_instance)){
-        LOG(ERROR) << "[Fail] No Supplicant instance";
+        ALOGE("[Fail] No Supplicant instance");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNKNOWN);
         return SupplicantSerializeStatus(status, outData);
     }
@@ -60,7 +58,7 @@ bool SupplicantMsgHandlerAddStaInterface(uint8_t* data, size_t length, std::vect
     int32_t instanceId;
     if (status.isOk() && staIface != nullptr)
         instanceId = std::dynamic_pointer_cast<StaIface>(staIface)->getIfaceInstanceId();
-    LOG(INFO) << "Sending <AddStaInterface> resp: (" << std::hex << instanceId << ")";
+    ALOGI("Sending <AddStaInterface> resp: (%d)", instanceId);
 
     HalStatusParam param;
     ScopedAStatus2HalStatusParam(status, param);
@@ -71,17 +69,17 @@ bool SupplicantMsgHandlerRemoveInterface(uint8_t* data, size_t length, std::vect
 {
     IfaceInfo ifaceInfo;
     if (!SupplicantParseRemoveInterfaceReq(data, length, ifaceInfo)) {
-        LOG(ERROR) << "[Fail] Parsing Supplicant Req <RemoveInterface>";
+        ALOGE("[Fail] Parsing Supplicant Req <RemoveInterface>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
     }
 
-    LOG(INFO) << "Processing Supplicant Req <RemoveInterface>: (" << ifaceInfo.name << ")";
+    ALOGI("Processing Supplicant Req <RemoveInterface>: (%s)", ifaceInfo.name.c_str());
 
     AidlManager *aidl_manager = AidlManager::getInstance();
     std::shared_ptr<Supplicant> supplicant_instance;
     if(aidl_manager->getSupplicantInstance(&supplicant_instance)){
-        LOG(ERROR) << "[Fail] No Supplicant instance";
+        ALOGE("[Fail] No Supplicant instance");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNKNOWN);
         return SupplicantSerializeStatus(status, outData);
     }
@@ -96,16 +94,17 @@ bool SupplicantMsgHandlerSetDebugParams(uint8_t* data, size_t length, std::vecto
 {
     SetDebugParamsReqParam buff;
     if (!SupplicantParseSetDebugParamsReq(data, length, buff)) {
-        LOG(ERROR) << "[Fail] Parsing Supplicant Req <SetDebugParams>";
+        ALOGE("[Fail] Parsing Supplicant Req <SetDebugParams>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
     }
-    LOG(INFO) << "Processing Supplicant Req <SetDebugParams>: (" << toString(buff.level) << "), (" << buff.showTimestamp << "), (" << buff.showKeys << ")"; 
+    ALOGI("Processing Supplicant Req <SetDebugParams>: (%s), (%d), (%d),", 
+            toString(buff.level).c_str(), buff.showTimestamp, buff.showKeys); 
 
     AidlManager *aidl_manager = AidlManager::getInstance();
     std::shared_ptr<Supplicant> supplicant_instance;
     if(aidl_manager->getSupplicantInstance(&supplicant_instance)){
-        LOG(ERROR) << "[Fail] No Supplicant instance";
+        ALOGE("[Fail] No Supplicant instance");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNKNOWN);
         return SupplicantSerializeStatus(status, outData);
     }
@@ -120,16 +119,16 @@ bool SupplicantMsgHandlerSetConcurrencyPriority(uint8_t* data, size_t length, st
 {
     IfaceType ifaceType;
     if (!SupplicantParseSetConcurrencyPriorityReq(data, length, ifaceType)) {
-        LOG(ERROR) << "[Fail] Parsing Supplicant Req <SetConcurrencyPriority>";
+        ALOGE("[Fail] Parsing Supplicant Req <SetConcurrencyPriority>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
     }
-    LOG(INFO) << "Processing Supplicant Req <SetConcurrencyPriority>: (" << toString(ifaceType) << ")"; 
+    ALOGI("Processing Supplicant Req <SetConcurrencyPriority>: (%s)", toString(ifaceType).c_str()); 
 
     AidlManager *aidl_manager = AidlManager::getInstance();
     std::shared_ptr<Supplicant> supplicant_instance;
     if(aidl_manager->getSupplicantInstance(&supplicant_instance)){
-        LOG(ERROR) << "[Fail] No Supplicant instance";
+        ALOGE("[Fail] No Supplicant instance");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNKNOWN);
         return SupplicantSerializeStatus(status, outData);
     }
@@ -142,12 +141,12 @@ bool SupplicantMsgHandlerSetConcurrencyPriority(uint8_t* data, size_t length, st
 
 bool SupplicantMsgHandlerTerminate(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
-    LOG(INFO) << "Processing Supplicant Req <Terminate>";
+    ALOGI("Processing Supplicant Req <Terminate>");
 
     AidlManager *aidl_manager = AidlManager::getInstance();
     std::shared_ptr<Supplicant> supplicant_instance;
     if(aidl_manager->getSupplicantInstance(&supplicant_instance)){
-        LOG(ERROR) << "[Fail] No Supplicant instance";
+        ALOGE("[Fail] No Supplicant instance");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNKNOWN);
         return SupplicantSerializeStatus(status, outData);
     }

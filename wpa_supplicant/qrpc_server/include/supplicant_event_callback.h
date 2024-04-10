@@ -6,10 +6,9 @@
 #ifndef SUPPLICANT_EVENT_CALLBACK_H
 #define SUPPLICANT_EVENT_CALLBACK_H
 
-#include <android-base/logging.h>
-
 #include <rpc/util/common_util.h>
 #include <rpc/util/someip_api.h>
+#include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
 
 #include <aidl/android/hardware/wifi/supplicant/ScopedAStatus.h>

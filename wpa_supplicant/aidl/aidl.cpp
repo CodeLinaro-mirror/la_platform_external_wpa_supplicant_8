@@ -853,7 +853,7 @@ static void wpas_aidl_notify_dpp_failure(struct wpa_supplicant *wpa_s, DppFailur
 
 	wpa_printf(
 		MSG_DEBUG,
-		"Notifying DPP failure event %d", code);
+		"Notifying DPP failure event %s", toString(code).c_str());
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)
@@ -869,7 +869,7 @@ static void wpas_aidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgr
 
 	wpa_printf(
 		MSG_DEBUG,
-		"Notifying DPP progress event %d", code);
+		"Notifying DPP progress event %s", toString(code).c_str());
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)
@@ -895,7 +895,7 @@ static void wpas_aidl_notify_dpp_success(struct wpa_supplicant *wpa_s, DppEventT
 
 	wpa_printf(
 		MSG_DEBUG,
-		"Notifying DPP progress event %d", code);
+		"Notifying DPP progress event %s", toString(code).c_str());
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)

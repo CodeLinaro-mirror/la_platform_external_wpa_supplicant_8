@@ -42,11 +42,11 @@ int32_t SupplicantStaNetworkCallback::getNetworkInstanceId()
 {
     int32_t ifId = getIfaceInstanceId();
     int32_t nwId = getNetworkInstanceId();
-    LOG(INFO) << "Sending StaNetwork Event <onTransitionDisable> for network -> " << nwId <<" of iface --> "<< ifId;
+    ALOGI("Sending StaNetwork Event <onTransitionDisable> for network -> %d of iface --> %d", nwId, ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaNetworkSerializeOnTransitionDisableInd(in_ind, data)) {
-        LOG(ERROR) << "[Fail] Serializing StaNetwork Event <onTransitionDisable>.";
+        ALOGE("[Fail] Serializing StaNetwork Event <onTransitionDisable>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
