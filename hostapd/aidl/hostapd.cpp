@@ -61,6 +61,24 @@ int band5Ghz = (int)BandMask::BAND_5_GHZ;
 int band6Ghz = (int)BandMask::BAND_6_GHZ;
 int band60Ghz = (int)BandMask::BAND_60_GHZ;
 
+int32_t aidl_client_version = 0;
+int32_t aidl_service_version = 0;
+
+/**
+ * Check that the AIDL service is running at least the expected version.
+ * Use to avoid the case where the AIDL interface version
+ * is greater than the version implemented by the service.
+ */
+inline int32_t isAidlServiceVersionAtLeast(int32_t expected_version)
+{
+	return expected_version <= aidl_service_version;
+}
+
+inline int32_t isAidlClientVersionAtLeast(int32_t expected_version)
+{
+	return expected_version <= aidl_client_version;
+}
+
 #define MAX_PORTS 1024
 bool GetInterfacesInBridge(std::string br_name,
                            std::vector<std::string>* interfaces) {
@@ -1121,9 +1139,13 @@ std::vector<uint8_t>  generateRandomOweSsid()
 				// Invoke the failure callback on all registered
 				// clients.
 				for (const auto& callback : callbacks_) {
-					callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+					auto status = callback->onFailure(
+						strlen(iface_hapd->conf->bridge) > 0 ?
 						iface_hapd->conf->bridge : iface_hapd->conf->iface,
 							    iface_hapd->conf->iface);
+					if (!status.isOk()) {
+						wpa_printf(MSG_ERROR, "Failed to invoke onFailure");
+					}
 				}
 			}
 		};
@@ -1142,7 +1164,10 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		info.clientAddress.assign(mac_addr, mac_addr + ETH_ALEN);
 		info.isConnected = authorized;
 		for (const auto &callback : callbacks_) {
-			callback->onConnectedClientsChanged(info);
+			auto status = callback->onConnectedClientsChanged(info);
+			if (!status.isOk()) {
+				wpa_printf(MSG_ERROR, "Failed to invoke onConnectedClientsChanged");
+			}
 		}
 		};
 
@@ -1166,16 +1191,23 @@ std::vector<uint8_t>  generateRandomOweSsid()
 			info.apIfaceInstanceMacAddress.assign(iface_hapd->own_addr,
 				iface_hapd->own_addr + ETH_ALEN);
 			for (const auto &callback : callbacks_) {
-				callback->onApInstanceInfoChanged(info);
+				auto status = callback->onApInstanceInfoChanged(info);
+				if (!status.isOk()) {
+					wpa_printf(MSG_ERROR,
+						   "Failed to invoke onApInstanceInfoChanged");
+				}
 			}
 		} else if (os_strncmp(txt, AP_EVENT_DISABLED, strlen(AP_EVENT_DISABLED)) == 0
                            || os_strncmp(txt, INTERFACE_DISABLED, strlen(INTERFACE_DISABLED)) == 0)
 		{
 			// Invoke the failure callback on all registered clients.
 			for (const auto& callback : callbacks_) {
-				callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
+				auto status = callback->onFailure(strlen(iface_hapd->conf->bridge) > 0 ?
 					iface_hapd->conf->bridge : iface_hapd->conf->iface,
 						    iface_hapd->conf->iface);
+				if (!status.isOk()) {
+					wpa_printf(MSG_ERROR, "Failed to invoke onFailure");
+				}
 			}
 		}
 	};
@@ -1239,6 +1271,14 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
 	callbacks_.push_back(callback);
+	if (aidl_service_version == 0) {
+	    aidl_service_version = Hostapd::version;
+	    wpa_printf(MSG_INFO, "AIDL service version: %d", aidl_service_version);
+	}
+	if (aidl_client_version == 0) {
+	    callback->getInterfaceVersion(&aidl_client_version);
+	    wpa_printf(MSG_INFO, "AIDL client version: %d", aidl_client_version);
+	}
 	return ndk::ScopedAStatus::ok();
 }
 
