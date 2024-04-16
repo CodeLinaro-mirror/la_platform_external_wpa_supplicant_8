@@ -179,8 +179,8 @@ public:
 		int32_t in_qosPolicyRequestId, bool in_morePolicies,
 		const std::vector<QosPolicyStatus>& in_qosPolicyStatusList) override;
 	::ndk::ScopedAStatus removeAllQosPolicies() override;
-	::ndk::ScopedAStatus getConnectionMloLinksInfo(MloLinksInfo* _aidl_return) override;
 #endif
+	::ndk::ScopedAStatus getConnectionMloLinksInfo(MloLinksInfo* _aidl_return) override;
 	::ndk::ScopedAStatus getSignalPollResults(
 		std::vector<SignalPollResult>* results) override;
 #if 0
@@ -309,8 +309,8 @@ private:
 		int32_t qos_policy_request_id, bool more_policies,
 		const std::vector<QosPolicyStatus>& qos_policy_status_list);
 	ndk::ScopedAStatus removeAllQosPoliciesInternal();
-	std::pair<MloLinksInfo, ndk::ScopedAStatus> getConnectionMloLinksInfoInternal();
 #endif
+	std::pair<MloLinksInfo, ndk::ScopedAStatus> getConnectionMloLinksInfoInternal();
 	std::pair<std::vector<SignalPollResult>, ndk::ScopedAStatus>
 		getSignalPollResultsInternal();
 #if 0

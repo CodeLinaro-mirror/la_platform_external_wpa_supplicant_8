@@ -824,6 +824,43 @@ bool StaIfaceMsgHandlerGetWpaDriverCapabilities(uint8_t* data, size_t length, st
     return SupplicantStaIfaceSerializeGetWpaDriverCapabilitiesCfm(param, capabilityMask, outData);
 }
 
+bool StaIfaceMsgHandlerGetConnectionMloLinksInfo(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
+{
+    if (!data || length < 4) {
+        ALOGE("Invalid data payload length: (%zu)", length);
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+        return StaIfaceSerializeStatus(status, outData);
+    }
+
+    std::string ifName;
+    int32_t ifId = CONVERT_INT32_FROM_VECTOR(data, length - 4);
+    AidlManager *aidl_manager = AidlManager::getInstance();
+    if(aidl_manager->getStaIfaceNameByInstanceId(ifId, &ifName)){
+        ALOGE("[Fail] Interface instance id (%d) not found", ifId);
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+        return StaIfaceSerializeStatus(status, outData);
+    }
+
+    ALOGI("Processing StaIface Req <GetConnectionMloLinksInfo> for iface --> %s", ifName.c_str());
+
+    std::shared_ptr<ISupplicantStaIface> staiface_instance;
+    if(aidl_manager->getStaIfaceAidlObjectByIfname(ifName, &staiface_instance)) {
+        ALOGE("[Fail] Interface not found");
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_IFACE_INVALID);
+        return StaIfaceSerializeStatus(status, outData);
+    }
+
+    MloLinksInfo mloLinksInfo;
+    ndk::ScopedAStatus status = staiface_instance->getConnectionMloLinksInfo(&mloLinksInfo);
+    SUPPLICANT_STAIFACE_PRINT_CFM_STATUS(__func__, status);
+
+    ALOGI("Sending <GetConnectionMloLinksInfo> resp: (%d)", mloLinksInfo.apMloLinkId);
+
+    HalStatusParam param;
+    ScopedAStatus2HalStatusParam(status, param);
+    return SupplicantStaIfaceSerializeGetConnectionMloLinksInfoCfm(param, mloLinksInfo, outData);
+}
+
 bool StaIfaceMsgHandlerGetSignalPollResults(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     if (!data || length < 4) {

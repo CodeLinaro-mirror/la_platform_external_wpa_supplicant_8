@@ -72,7 +72,7 @@ public:
 //  virtual ::ndk::ScopedAStatus generateDppBootstrapInfoForResponder(const std::vector<uint8_t>& in_macAddress, const std::string& in_deviceInfo, ::aidl::android::hardware::wifi::supplicant::DppCurve in_curve, ::aidl::android::hardware::wifi::supplicant::DppResponderBootstrapInfo* _aidl_return) = 0;
 //  virtual ::ndk::ScopedAStatus generateSelfDppConfiguration(const std::string& in_ssid, const std::vector<uint8_t>& in_privEcKey) = 0;
   virtual ::ndk::ScopedAStatus getConnectionCapabilities(::aidl::android::hardware::wifi::supplicant::ConnectionCapabilities* _aidl_return) = 0;
-//  virtual ::ndk::ScopedAStatus getConnectionMloLinksInfo(::aidl::android::hardware::wifi::supplicant::MloLinksInfo* _aidl_return) = 0;
+  virtual ::ndk::ScopedAStatus getConnectionMloLinksInfo(::aidl::android::hardware::wifi::supplicant::MloLinksInfo* _aidl_return) = 0;
   virtual ::ndk::ScopedAStatus getKeyMgmtCapabilities(::aidl::android::hardware::wifi::supplicant::KeyMgmtMask* _aidl_return) = 0;
   virtual ::ndk::ScopedAStatus getMacAddress(std::vector<uint8_t>* _aidl_return) = 0;
 //  virtual ::ndk::ScopedAStatus getName(std::string* _aidl_return) = 0;

@@ -268,7 +268,18 @@ int32_t SupplicantStaIfaceCallback::getIfaceInstanceId()
 
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onMloLinksInfoChanged(::aidl::android::hardware::wifi::supplicant::ISupplicantStaIfaceCallback::MloLinkInfoChangeReason in_reason)
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    ALOGI("Sending StaIface Event <onMloLinksInfoChanged>: (%s) for ifaceId --> %d", toString(in_reason).c_str(), ifId);
+
+    std::vector<uint8_t> data;
+    if (!SupplicantStaIfaceSerializeOnMloLinksInfoChangedInd(in_reason, data)) {
+        ALOGE("[Fail] Serializing StaIface Event <onMloLinksInfoChanged>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_IFACE_ON_MLO_LINKS_INFO_CHANGED_IND, data);
 }
 
 ::ndk::ScopedAStatus SupplicantStaIfaceCallback::onDppConfigReceived(const ::aidl::android::hardware::wifi::supplicant::DppConfigurationData& in_configData)

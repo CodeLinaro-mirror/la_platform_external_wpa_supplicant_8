@@ -48,6 +48,7 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {SUPPLICANT_STA_IFACE_GET_KEY_MGMT_CAPABILITIES_REQ, &StaIfaceMsgHandlerGetKeyMgmtCapabilities},
     {SUPPLICANT_STA_IFACE_GET_CONNECTION_CAPABILITIES_REQ, &StaIfaceMsgHandlerGetConnectionCapabilities},
     {SUPPLICANT_STA_IFACE_GET_WPA_DRIVER_CAPABILITIES_REQ, &StaIfaceMsgHandlerGetWpaDriverCapabilities},
+    {SUPPLICANT_STA_IFACE_GET_CONNECTION_MLO_LINKS_INFO_REQ, &StaIfaceMsgHandlerGetConnectionMloLinksInfo},
     {SUPPLICANT_STA_IFACE_GET_SIGNAL_POLL_RESULTS_REQ, &StaIfaceMsgHandlerGetSignalPollResults},
 
     /* ISupplicantStaNetwork method handlers */

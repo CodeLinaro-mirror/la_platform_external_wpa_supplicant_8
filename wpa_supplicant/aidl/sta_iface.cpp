@@ -822,13 +822,13 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::removeAllQosPoliciesInternal);
 }
-
+#endif
 ::ndk::ScopedAStatus StaIface::getConnectionMloLinksInfo(MloLinksInfo* _aidl_return) {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::getConnectionMloLinksInfoInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::getSignalPollResults(
     std::vector<SignalPollResult> *results)
 {
@@ -2024,7 +2024,7 @@ ndk::ScopedAStatus StaIface::removeAllQosPoliciesInternal()
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
+#endif
 std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoInternal()
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
@@ -2076,7 +2076,7 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 
 	return {linksInfo, ndk::ScopedAStatus::ok()};
 }
-#endif
+
 std::pair<std::vector<SignalPollResult>, ndk::ScopedAStatus>
 StaIface::getSignalPollResultsInternal()
 {
