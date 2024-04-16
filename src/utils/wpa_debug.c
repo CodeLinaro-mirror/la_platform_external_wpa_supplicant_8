@@ -9,6 +9,7 @@
 #include "includes.h"
 
 #include "common.h"
+#include <rpc/util/log_common.h>
 
 #ifdef CONFIG_DEBUG_SYSLOG
 #include <syslog.h>
@@ -211,6 +212,11 @@ void wpa_printf(int level, const char *fmt, ...)
 	va_list ap;
 
 	if (level >= wpa_debug_level) {
+#ifdef WPA_QRPC_LOG
+		va_start(ap, fmt);
+		IFDBG(DebugOutVa(DEBUG_WPA, (char*)fmt, ap));
+		va_end(ap);
+#else
 #ifdef CONFIG_ANDROID_LOG
 		va_start(ap, fmt);
 		__android_log_vprint(wpa_to_android_level(level),
@@ -240,6 +246,7 @@ void wpa_printf(int level, const char *fmt, ...)
 			va_end(ap);
 		}
 #endif /* CONFIG_ANDROID_LOG */
+#endif /* WPA_QRPC_LOG */
 	}
 
 #ifdef CONFIG_DEBUG_LINUX_TRACING
@@ -280,6 +287,28 @@ static void _wpa_hexdump(int level, const char *title, const u8 *buf,
 
 	if (level < wpa_debug_level)
 		return;
+#ifdef WPA_QRPC_LOG
+	char buff[1024];
+	size_t start = 0;
+	int remained;
+	snprintf(buff, sizeof(buff), "%s - hexdump(len=%lu):", title, (unsigned long) len);
+	if (buf == NULL) {
+		start = strlen(buff);
+		snprintf((char*)&buff[start], sizeof(buff)-start, " [NULL]");
+	} else if (show) {
+		for (i = 0; i < len; i++) {
+			start = strlen(buff);
+			remained = sizeof(buff) - start;
+			if (remained <= 0)
+				break;
+			snprintf((char*)&buff[start], remained, " %02x", buf[i]);
+		}
+	} else {
+		start = strlen(buff);
+		snprintf((char*)&buff[start], sizeof(buff)-start, " [REMOVED]");
+	}
+	WPA_LOG("%s", buff);
+#else
 #ifdef CONFIG_ANDROID_LOG
 	{
 		const char *display;
@@ -380,6 +409,7 @@ static void _wpa_hexdump(int level, const char *title, const u8 *buf,
 		printf("\n");
 	}
 #endif /* CONFIG_ANDROID_LOG */
+#endif /* WPA_QRPC_LOG */
 }
 
 void wpa_hexdump(int level, const char *title, const void *buf, size_t len)
@@ -422,6 +452,77 @@ static void _wpa_hexdump_ascii(int level, const char *title, const void *buf,
 
 	if (level < wpa_debug_level)
 		return;
+#ifdef WPA_QRPC_LOG
+	if (!show) {
+		ALOGE("%s - hexdump_ascii(len=%lu): [REMOVED]",
+			   title, (unsigned long) len);
+		return;
+	}
+	if (buf == NULL) {
+		ALOGE("%s - hexdump_ascii(len=%lu): [NULL]",
+			   title, (unsigned long) len);
+		return;
+	}
+	char buff[1024];
+	size_t start = 0;
+	int remained;
+	snprintf(buff, sizeof(buff), "%s - hexdump_ascii(len=%lu):", title,
+		   (unsigned long) len);
+	while (len) {
+		start = strlen(buff);
+		remained = sizeof(buff) - start;
+		if (remained <= 0)
+			break;
+		snprintf((char*)&buff[start], sizeof(buff)-start, "\n");
+		llen = len > line_len ? line_len : len;
+		start = strlen(buff);
+		remained = sizeof(buff) - start;
+		if (remained <= 0)
+			break;
+		snprintf((char*)&buff[start], sizeof(buff)-start, "    ");
+		for (i = 0; i < llen; i++) {
+			start = strlen(buff);
+			remained = sizeof(buff) - start;
+			if (remained <= 0)
+				goto buff_full;
+			snprintf((char*)&buff[start], sizeof(buff)-start, " %02x", pos[i]);
+		}
+		for (i = llen; i < line_len; i++) {
+			start = strlen(buff);
+			remained = sizeof(buff) - start;
+			if (remained <= 0)
+				goto buff_full;
+			snprintf((char*)&buff[start], sizeof(buff)-start, "   ");
+		}
+		start = strlen(buff);
+		remained = sizeof(buff) - start;
+		if (remained <= 0)
+			break;
+		snprintf((char*)&buff[start], sizeof(buff)-start, "   ");
+		for (i = 0; i < llen; i++) {
+			start = strlen(buff);
+			remained = sizeof(buff) - start;
+			if (remained <= 0)
+				goto buff_full;
+			if (isprint(pos[i])) {
+				snprintf((char*)&buff[start], sizeof(buff)-start, "%c", pos[i]);
+			} else {
+				snprintf((char*)&buff[start], sizeof(buff)-start, "_");
+			}
+		}
+		for (i = llen; i < line_len; i++) {
+			start = strlen(buff);
+			remained = sizeof(buff) - start;
+			if (remained <= 0)
+				goto buff_full;
+			snprintf((char*)&buff[start], sizeof(buff)-start, " ");
+		}
+		pos += llen;
+		len -= llen;
+	}
+buff_full:
+	WPA_LOG("%s", buff);
+#else
 #ifdef CONFIG_ANDROID_LOG
 	_wpa_hexdump(level, title, buf, len, show, 0);
 #else /* CONFIG_ANDROID_LOG */
@@ -504,6 +605,7 @@ file_done:
 		}
 	}
 #endif /* CONFIG_ANDROID_LOG */
+#endif /* WPA_QRPC_LOG */
 }
 
 
