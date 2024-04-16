@@ -959,6 +959,7 @@ try_again:
 	arg.drv = drv;
 	arg.res = res;
 	arg.bssid = bssid;
+	ret = send_and_recv_msgs(drv, msg, bss_info_handler, &arg, NULL, NULL);
 	if (ret == -EAGAIN) {
 		count++;
 		if (count >= 10) {
