@@ -1276,8 +1276,12 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 		if (data.ch_switch.link_id != NL80211_DRV_LINK_ID_NA) {
 			struct i802_link *mld_link = nl80211_get_link(bss, data.ch_switch.link_id);
 			mld_link->freq = data.ch_switch.freq;
+			if (bw)
+				mld_link->bandwidth = channel_width_to_int(data.ch_switch.ch_width);
 		} else {
 			bss->flink->freq = data.ch_switch.freq;
+			if (bw)
+				bss->flink->bandwidth = channel_width_to_int(data.ch_switch.ch_width);
 		}
 	}
 
