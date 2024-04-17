@@ -2040,6 +2040,13 @@ int is_dfs_global_op_class(u8 op_class)
 }
 
 
+bool is_80plus_op_class(u8 op_class)
+{
+	/* Operating classes with "80+" behavior indication in Table E-4 */
+	return op_class == 130 || op_class == 135;
+}
+
+
 static int is_11b(u8 rate)
 {
 	return rate == 0x02 || rate == 0x04 || rate == 0x0b || rate == 0x16;
@@ -2406,15 +2413,26 @@ const struct oper_class_map global_op_class[] = {
 	 * channel center frequency index value, but it happens to be a 20 MHz
 	 * channel and the channel number in the channel set would match the
 	 * value in for the frequency center.
+	 *
+	 * Operating class value pair 128 and 130 is used to describe a 80+80
+	 * MHz channel on the 5 GHz band. 130 is identified with "80+", so this
+	 * is encoded with two octets 130 and 128. Similarly, operating class
+	 * value pair 133 and 135 is used to describe a 80+80 MHz channel on
+	 * the 6 GHz band (135 being the one with "80+" indication). All other
+	 * operating classes listed here are used as 1-octet values.
 	 */
 	{ HOSTAPD_MODE_IEEE80211A, 128, 36, 177, 4, BW80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 129, 36, 177, 4, BW160, P2P_SUPP },
+	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 177, 4, BW80P80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 132, 1, 233, 8, BW40, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 133, 1, 233, 16, BW80, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 134, 1, 233, 32, BW160, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 135, 1, 233, 16, BW80P80, NO_P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211A, 136, 2, 2, 4, BW20, NO_P2P_SUPP },
+
+	/* IEEE P802.11be/D5.0, Table E-4 (Global operating classes) */
+	{ HOSTAPD_MODE_IEEE80211A, 137, 31, 191, 32, BW320, NO_P2P_SUPP },
 
 	/*
 	 * IEEE Std 802.11ad-2012 and P802.ay/D5.0 60 GHz operating classes.
@@ -2426,11 +2444,6 @@ const struct oper_class_map global_op_class[] = {
 	{ HOSTAPD_MODE_IEEE80211AD, 182, 17, 20, 1, BW6480, P2P_SUPP },
 	{ HOSTAPD_MODE_IEEE80211AD, 183, 25, 27, 1, BW8640, P2P_SUPP },
 
-	/* Keep the operating class 130 as the last entry as a workaround for
-	 * the OneHundredAndThirty Delimiter value used in the Supported
-	 * Operating Classes element to indicate the end of the Operating
-	 * Classes field. */
-	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 177, 4, BW80P80, P2P_SUPP },
 	{ -1, 0, 0, 0, 0, BW20, NO_P2P_SUPP }
 };
 
@@ -2558,21 +2571,141 @@ size_t mbo_add_ie(u8 *buf, size_t len, const u8 *attr, size_t attr_len)
 }
 
 
-size_t add_multi_ap_ie(u8 *buf, size_t len, u8 value)
+u16 check_multi_ap_ie(const u8 *multi_ap_ie, size_t multi_ap_len,
+		      struct multi_ap_params *multi_ap)
+{
+	const struct element *elem;
+	bool ext_present = false;
+	unsigned int vlan_id;
+
+	os_memset(multi_ap, 0, sizeof(*multi_ap));
+
+	/* Default profile is 1, when Multi-AP profile subelement is not
+	 * present in the element. */
+	multi_ap->profile = 1;
+
+	for_each_element(elem, multi_ap_ie, multi_ap_len) {
+		u8 id = elem->id, elen = elem->datalen;
+		const u8 *pos = elem->data;
+
+		switch (id) {
+		case MULTI_AP_SUB_ELEM_TYPE:
+			if (elen >= 1) {
+				multi_ap->capability = *pos;
+				ext_present = true;
+			} else {
+				wpa_printf(MSG_DEBUG,
+					   "Multi-AP invalid Multi-AP subelement");
+				return WLAN_STATUS_INVALID_IE;
+			}
+			break;
+		case MULTI_AP_PROFILE_SUB_ELEM_TYPE:
+			if (elen < 1) {
+				wpa_printf(MSG_DEBUG,
+					   "Multi-AP IE invalid Multi-AP profile subelement");
+				return WLAN_STATUS_INVALID_IE;
+			}
+
+			multi_ap->profile = *pos;
+			if (multi_ap->profile > MULTI_AP_PROFILE_MAX) {
+				wpa_printf(MSG_DEBUG,
+					   "Multi-AP IE with invalid profile 0x%02x",
+					   multi_ap->profile);
+				return WLAN_STATUS_ASSOC_DENIED_UNSPEC;
+			}
+			break;
+		case MULTI_AP_VLAN_SUB_ELEM_TYPE:
+			if (multi_ap->profile < MULTI_AP_PROFILE_2) {
+				wpa_printf(MSG_DEBUG,
+					   "Multi-AP IE invalid profile to read VLAN IE");
+				return WLAN_STATUS_INVALID_IE;
+			}
+			if (elen < 2) {
+				wpa_printf(MSG_DEBUG,
+					   "Multi-AP IE invalid Multi-AP VLAN subelement");
+				return WLAN_STATUS_INVALID_IE;
+			}
+
+			vlan_id = WPA_GET_LE16(pos);
+			if (vlan_id < 1 || vlan_id > 4094) {
+				wpa_printf(MSG_INFO,
+					   "Multi-AP IE invalid Multi-AP VLAN ID %d",
+					   vlan_id);
+				return WLAN_STATUS_INVALID_IE;
+			}
+			multi_ap->vlanid = vlan_id;
+			break;
+		default:
+			wpa_printf(MSG_DEBUG,
+				   "Ignore unknown subelement %u in Multi-AP IE",
+				   id);
+			break;
+		}
+	}
+
+	if (!for_each_element_completed(elem, multi_ap_ie, multi_ap_len)) {
+		wpa_printf(MSG_DEBUG, "Multi AP IE parse failed @%d",
+			   (int) (multi_ap_ie + multi_ap_len -
+				  (const u8 *) elem));
+		wpa_hexdump(MSG_MSGDUMP, "IEs", multi_ap_ie, multi_ap_len);
+	}
+
+	if (!ext_present) {
+		wpa_printf(MSG_DEBUG,
+			   "Multi-AP element without Multi-AP Extension subelement");
+		return WLAN_STATUS_INVALID_IE;
+	}
+
+	return WLAN_STATUS_SUCCESS;
+}
+
+
+size_t add_multi_ap_ie(u8 *buf, size_t len,
+		       const struct multi_ap_params *multi_ap)
 {
 	u8 *pos = buf;
+	u8 *len_ptr;
 
-	if (len < 9)
+	if (len < 6)
 		return 0;
 
 	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
-	*pos++ = 7; /* len */
+	len_ptr = pos; /* Length field to be set at the end */
+	pos++;
 	WPA_PUT_BE24(pos, OUI_WFA);
 	pos += 3;
 	*pos++ = MULTI_AP_OUI_TYPE;
+
+	/* Multi-AP Extension subelement */
+	if (buf + len - pos < 3)
+		return 0;
 	*pos++ = MULTI_AP_SUB_ELEM_TYPE;
 	*pos++ = 1; /* len */
-	*pos++ = value;
+	*pos++ = multi_ap->capability;
+
+	/* Add Multi-AP Profile subelement only for R2 or newer configuration */
+	if (multi_ap->profile >= MULTI_AP_PROFILE_2) {
+		if (buf + len - pos < 3)
+			return 0;
+		*pos++ = MULTI_AP_PROFILE_SUB_ELEM_TYPE;
+		*pos++ = 1;
+		*pos++ = multi_ap->profile;
+	}
+
+	/* Add Multi-AP Default 802.1Q Setting subelement only for backhaul BSS
+	 */
+	if (multi_ap->vlanid &&
+	    multi_ap->profile >= MULTI_AP_PROFILE_2 &&
+	    (multi_ap->capability & MULTI_AP_BACKHAUL_BSS)) {
+		if (buf + len - pos < 4)
+			return 0;
+		*pos++ = MULTI_AP_VLAN_SUB_ELEM_TYPE;
+		*pos++ = 2;
+		WPA_PUT_LE16(pos, multi_ap->vlanid);
+		pos += 2;
+	}
+
+	*len_ptr = pos - len_ptr - 1;
 
 	return pos - buf;
 }
@@ -2737,6 +2870,8 @@ int oper_class_bw_to_int(const struct oper_class_map *map)
 	case BW80P80:
 	case BW160:
 		return 160;
+	case BW320:
+		return 320;
 	case BW2160:
 		return 2160;
 	default:

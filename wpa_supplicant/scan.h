@@ -62,7 +62,7 @@ wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
 				struct scan_info *info, int new_scan,
 				const u8 *bssid);
 int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s,
-							const u8 *bssid);
+				       const u8 *bssid);
 const u8 * wpa_scan_get_ie(const struct wpa_scan_res *res, u8 ie);
 const u8 * wpa_scan_get_ml_ie(const struct wpa_scan_res *res, u8 type);
 const u8 * wpa_scan_get_vendor_ie(const struct wpa_scan_res *res,
@@ -93,8 +93,6 @@ int wpas_mac_addr_rand_scan_set(struct wpa_supplicant *wpa_s,
 int wpas_mac_addr_rand_scan_get_mask(struct wpa_supplicant *wpa_s,
 				     unsigned int type, u8 *mask);
 int wpas_abort_ongoing_scan(struct wpa_supplicant *wpa_s);
-void filter_scan_res(struct wpa_supplicant *wpa_s,
-		     struct wpa_scan_results *res);
 void scan_snr(struct wpa_scan_res *res);
 void scan_est_throughput(struct wpa_supplicant *wpa_s,
 			 struct wpa_scan_res *res);

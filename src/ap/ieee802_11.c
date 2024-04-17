@@ -88,18 +88,31 @@ static int add_associated_sta(struct hostapd_data *hapd,
 			      struct sta_info *sta, int reassoc);
 
 
-u8 * hostapd_eid_multi_ap(struct hostapd_data *hapd, u8 *eid)
+static u8 * hostapd_eid_multi_ap(struct hostapd_data *hapd, u8 *eid, size_t len)
 {
-	u8 multi_ap_val = 0;
+	struct multi_ap_params multi_ap = { 0 };
 
 	if (!hapd->conf->multi_ap)
 		return eid;
-	if (hapd->conf->multi_ap & BACKHAUL_BSS)
-		multi_ap_val |= MULTI_AP_BACKHAUL_BSS;
-	if (hapd->conf->multi_ap & FRONTHAUL_BSS)
-		multi_ap_val |= MULTI_AP_FRONTHAUL_BSS;
 
-	return eid + add_multi_ap_ie(eid, 9, multi_ap_val);
+	if (hapd->conf->multi_ap & BACKHAUL_BSS)
+		multi_ap.capability |= MULTI_AP_BACKHAUL_BSS;
+	if (hapd->conf->multi_ap & FRONTHAUL_BSS)
+		multi_ap.capability |= MULTI_AP_FRONTHAUL_BSS;
+
+	if (hapd->conf->multi_ap_client_disallow &
+	    PROFILE1_CLIENT_ASSOC_DISALLOW)
+		multi_ap.capability |=
+			MULTI_AP_PROFILE1_BACKHAUL_STA_DISALLOWED;
+	if (hapd->conf->multi_ap_client_disallow &
+	    PROFILE2_CLIENT_ASSOC_DISALLOW)
+		multi_ap.capability |=
+			MULTI_AP_PROFILE2_BACKHAUL_STA_DISALLOWED;
+
+	multi_ap.profile = hapd->conf->multi_ap_profile;
+	multi_ap.vlanid = hapd->conf->multi_ap_vlanid;
+
+	return eid + add_multi_ap_ie(eid, len, &multi_ap);
 }
 
 
@@ -409,7 +422,7 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 	 * the addresses.
 	 */
 	if (ap_sta_is_mld(hapd, sta)) {
-		sa = hapd->mld_addr;
+		sa = hapd->mld->mld_addr;
 
 		ml_resp = hostapd_ml_auth_resp(hapd);
 		if (!ml_resp)
@@ -610,7 +623,7 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 
 #ifdef CONFIG_IEEE80211BE
 	if (ap_sta_is_mld(hapd, sta))
-		own_addr = hapd->mld_addr;
+		own_addr = hapd->mld->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 
 	if (sta->sae->tmp) {
@@ -2390,7 +2403,7 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 	wpa_hexdump(MSG_DEBUG, "RSN: Generated FILS ANonce",
 		    fils->anonce, FILS_NONCE_LEN);
 
-	ret = fils_rmsk_to_pmk(pasn->akmp, msk, msk_len, fils->nonce,
+	ret = fils_rmsk_to_pmk(pasn_get_akmp(pasn), msk, msk_len, fils->nonce,
 			       fils->anonce, NULL, 0, pmk, &pmk_len);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "FILS: Failed to derive PMK");
@@ -2400,15 +2413,16 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 	ret = pasn_pmk_to_ptk(pmk, pmk_len, sta->addr, hapd->own_addr,
 			      wpabuf_head(pasn->secret),
 			      wpabuf_len(pasn->secret),
-			      &sta->pasn->ptk, sta->pasn->akmp,
-			      sta->pasn->cipher, sta->pasn->kdk_len);
+			      pasn_get_ptk(sta->pasn), pasn_get_akmp(sta->pasn),
+			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
 		goto fail;
 	}
 
 	if (pasn->secure_ltf) {
-		ret = wpa_ltf_keyseed(&pasn->ptk, pasn->akmp, pasn->cipher);
+		ret = wpa_ltf_keyseed(pasn_get_ptk(pasn), pasn_get_akmp(pasn),
+				      pasn_get_cipher(pasn));
 		if (ret) {
 			wpa_printf(MSG_DEBUG,
 				   "PASN: FILS: Failed to derive LTF keyseed");
@@ -2554,7 +2568,8 @@ static int pasn_wd_handle_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	 * Calculate pending PMKID here so that we do not need to maintain a
 	 * copy of the EAP-Initiate/Reautt message.
 	 */
-	fils_pmkid_erp(pasn->akmp, wpabuf_head(fils_wd), wpabuf_len(fils_wd),
+	fils_pmkid_erp(pasn_get_akmp(pasn),
+		       wpabuf_head(fils_wd), wpabuf_len(fils_wd),
 		       fils->erp_pmkid);
 
 	wpabuf_free(fils_wd);
@@ -2579,32 +2594,35 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 {
 	struct pasn_data *pasn = sta->pasn;
 
-	pasn->cb_ctx = hapd;
-	pasn->send_mgmt = hapd_pasn_send_mlme;
+	pasn_register_callbacks(pasn, hapd, hapd_pasn_send_mlme, NULL);
+	pasn_set_bssid(pasn, hapd->own_addr);
+	pasn_set_own_addr(pasn, hapd->own_addr);
+	pasn_set_peer_addr(pasn, sta->addr);
+	pasn_set_wpa_key_mgmt(pasn, hapd->conf->wpa_key_mgmt);
+	pasn_set_rsn_pairwise(pasn, hapd->conf->rsn_pairwise);
 	pasn->pasn_groups = hapd->conf->pasn_groups;
 	pasn->noauth = hapd->conf->pasn_noauth;
-	pasn->wpa_key_mgmt = hapd->conf->wpa_key_mgmt;
-	pasn->rsn_pairwise = hapd->conf->rsn_pairwise;
-	pasn->derive_kdk = hapd->iface->drv_flags2 &
-		WPA_DRIVER_FLAGS2_SEC_LTF_AP;
+	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP)
+		pasn_enable_kdk_derivation(pasn);
+
 #ifdef CONFIG_TESTING_OPTIONS
 	pasn->corrupt_mic = hapd->conf->pasn_corrupt_mic;
 	if (hapd->conf->force_kdk_derivation)
-		pasn->derive_kdk = true;
+		pasn_enable_kdk_derivation(pasn);
 #endif /* CONFIG_TESTING_OPTIONS */
 	pasn->use_anti_clogging = use_anti_clogging(hapd);
-	pasn->password = sae_get_password(hapd, sta, NULL, NULL, &pasn->pt,
-					  NULL);
+	pasn_set_password(pasn, sae_get_password(hapd, sta, NULL, NULL,
+						 &pasn->pt, NULL));
 	pasn->rsn_ie = wpa_auth_get_wpa_ie(hapd->wpa_auth, &pasn->rsn_ie_len);
-	pasn->rsnxe_ie = hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
+	pasn_set_rsnxe_ie(pasn, hostapd_wpa_ie(hapd, WLAN_EID_RSNX));
 	pasn->disable_pmksa_caching = hapd->conf->disable_pmksa_caching;
-	pasn->pmksa = wpa_auth_get_pmksa_cache(hapd->wpa_auth);
+	pasn_set_responder_pmksa(pasn,
+				 wpa_auth_get_pmksa_cache(hapd->wpa_auth));
 
 	pasn->comeback_after = hapd->conf->pasn_comeback_after;
 	pasn->comeback_idx = hapd->comeback_idx;
 	pasn->comeback_key =  hapd->comeback_key;
 	pasn->comeback_pending_idx = hapd->comeback_pending_idx;
-	os_memcpy(pasn->bssid, hapd->own_addr, ETH_ALEN);
 }
 
 
@@ -2652,6 +2670,7 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
 	struct wpa_pasn_params_data pasn_params;
 	struct wpabuf *wrapped_data = NULL;
 #endif /* CONFIG_FILS */
+	int akmp;
 
 	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
 				   len - offsetof(struct ieee80211_mgmt,
@@ -2675,10 +2694,12 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
 		return;
 	}
 
-	pasn->akmp = rsn_data.key_mgmt;
-	pasn->cipher = rsn_data.pairwise_cipher;
+	pasn_set_akmp(pasn, rsn_data.key_mgmt);
+	pasn_set_cipher(pasn, rsn_data.pairwise_cipher);
 
-	if (wpa_key_mgmt_ft(pasn->akmp) && rsn_data.num_pmkid) {
+	akmp = pasn_get_akmp(pasn);
+
+	if (wpa_key_mgmt_ft(akmp) && rsn_data.num_pmkid) {
 #ifdef CONFIG_IEEE80211R_AP
 		pasn->pmk_r1_len = 0;
 		wpa_ft_fetch_pmk_r1(hapd->wpa_auth, sta->addr,
@@ -2689,8 +2710,8 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211R_AP */
 	}
 #ifdef CONFIG_FILS
-	if (pasn->akmp != WPA_KEY_MGMT_FILS_SHA256 &&
-	    pasn->akmp != WPA_KEY_MGMT_FILS_SHA384)
+	if (akmp != WPA_KEY_MGMT_FILS_SHA256 &&
+	    akmp != WPA_KEY_MGMT_FILS_SHA384)
 		return;
 	if (!elems.pasn_params ||
 	    wpa_pasn_parse_parameter_ie(elems.pasn_params - 3,
@@ -2743,7 +2764,7 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
 			return;
 		}
 
-		sta->pasn = os_zalloc(sizeof(*sta->pasn));
+		sta->pasn = pasn_data_init();
 		if (!sta->pasn) {
 			wpa_printf(MSG_DEBUG,
 				   "PASN: Failed to allocate PASN context");
@@ -2773,13 +2794,14 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
 		if (handle_auth_pasn_3(sta->pasn, hapd->own_addr,
 				       sta->addr, mgmt, len) == 0) {
 			ptksa_cache_add(hapd->ptksa, hapd->own_addr, sta->addr,
-					sta->pasn->cipher, 43200,
-					&sta->pasn->ptk, NULL, NULL,
-					sta->pasn->akmp);
+					pasn_get_cipher(sta->pasn), 43200,
+					pasn_get_ptk(sta->pasn), NULL, NULL,
+					pasn_get_akmp(sta->pasn));
 
 			pasn_set_keys_from_cache(hapd, hapd->own_addr,
-						 sta->addr, sta->pasn->cipher,
-						 sta->pasn->akmp);
+						 sta->addr,
+						 pasn_get_cipher(sta->pasn),
+						 pasn_get_akmp(sta->pasn));
 		}
 		ap_free_sta(hapd, sta);
 	} else {
@@ -2806,7 +2828,9 @@ static void handle_auth(struct hostapd_data *hapd,
 	u16 seq_ctrl;
 	struct radius_sta rad_info;
 	const u8 *dst, *sa, *bssid;
+#ifdef CONFIG_IEEE80211BE
 	bool mld_sta = false;
+#endif /* CONFIG_IEEE80211BE */
 
 	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
 		wpa_printf(MSG_INFO, "handle_auth - too short payload (len=%lu)",
@@ -2924,15 +2948,17 @@ static void handle_auth(struct hostapd_data *hapd,
 		goto fail;
 	}
 
+#ifdef CONFIG_IEEE80211BE
 	if (mld_sta &&
 	    (ether_addr_equal(sa, hapd->own_addr) ||
-	     ether_addr_equal(sa, hapd->mld_addr))) {
+	     ether_addr_equal(sa, hapd->mld->mld_addr))) {
 		wpa_printf(MSG_INFO,
 			   "Station " MACSTR " not allowed to authenticate",
 			   MAC2STR(sa));
 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto fail;
 	}
+#endif /* CONFIG_IEEE80211BE */
 
 	if (hapd->conf->no_auth_if_seen_on) {
 		struct hostapd_data *other;
@@ -3032,15 +3058,6 @@ static void handle_auth(struct hostapd_data *hapd,
 				       seq_ctrl);
 			return;
 		}
-#ifdef CONFIG_MESH
-		if ((hapd->conf->mesh & MESH_ENABLED) &&
-		    sta->plink_state == PLINK_BLOCKED) {
-			wpa_printf(MSG_DEBUG, "Mesh peer " MACSTR
-				   " is blocked - drop Authentication frame",
-				   MAC2STR(sa));
-			return;
-		}
-#endif /* CONFIG_MESH */
 #ifdef CONFIG_PASN
 		if (auth_alg == WLAN_AUTH_PASN &&
 		    (sta->flags & WLAN_STA_ASSOC)) {
@@ -3078,7 +3095,12 @@ static void handle_auth(struct hostapd_data *hapd,
 	}
 
 #ifdef CONFIG_IEEE80211BE
-	if (auth_transaction == 1) {
+	/* Set the non-AP MLD information based on the initial Authentication
+	 * frame. Once the STA entry has been added to the driver, the driver
+	 * will translate addresses in the frame and we need to avoid overriding
+	 * peer_addr based on mgmt->sa which would have been translated to the
+	 * MLD MAC address. */
+	if (!sta->added_unassoc && auth_transaction == 1) {
 		ap_sta_free_sta_profile(&sta->mld_info);
 		os_memset(&sta->mld_info, 0, sizeof(sta->mld_info));
 
@@ -3250,7 +3272,7 @@ static void handle_auth(struct hostapd_data *hapd,
 	  */
 	if (ap_sta_is_mld(hapd, sta)) {
 		dst = sta->addr;
-		bssid = hapd->mld_addr;
+		bssid = hapd->mld->mld_addr;
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -3410,37 +3432,58 @@ static u16 check_wmm(struct hostapd_data *hapd, struct sta_info *sta,
 static u16 check_multi_ap(struct hostapd_data *hapd, struct sta_info *sta,
 			  const u8 *multi_ap_ie, size_t multi_ap_len)
 {
-	u8 multi_ap_value = 0;
+	struct multi_ap_params multi_ap;
+	u16 status;
 
 	sta->flags &= ~WLAN_STA_MULTI_AP;
 
 	if (!hapd->conf->multi_ap)
 		return WLAN_STATUS_SUCCESS;
 
-	if (multi_ap_ie) {
-		const u8 *multi_ap_subelem;
-
-		multi_ap_subelem = get_ie(multi_ap_ie + 4,
-					  multi_ap_len - 4,
-					  MULTI_AP_SUB_ELEM_TYPE);
-		if (multi_ap_subelem && multi_ap_subelem[1] == 1) {
-			multi_ap_value = multi_ap_subelem[2];
-		} else {
+	if (!multi_ap_ie) {
+		if (!(hapd->conf->multi_ap & FRONTHAUL_BSS)) {
 			hostapd_logger(hapd, sta->addr,
 				       HOSTAPD_MODULE_IEEE80211,
 				       HOSTAPD_LEVEL_INFO,
-				       "Multi-AP IE has missing or invalid Multi-AP subelement");
-			return WLAN_STATUS_INVALID_IE;
+				       "Non-Multi-AP STA tries to associate with backhaul-only BSS");
+			return WLAN_STATUS_ASSOC_DENIED_UNSPEC;
 		}
+
+		return WLAN_STATUS_SUCCESS;
 	}
 
-	if (multi_ap_value && multi_ap_value != MULTI_AP_BACKHAUL_STA)
+	status = check_multi_ap_ie(multi_ap_ie + 4, multi_ap_len - 4,
+				   &multi_ap);
+	if (status != WLAN_STATUS_SUCCESS)
+		return status;
+
+	if (multi_ap.capability && multi_ap.capability != MULTI_AP_BACKHAUL_STA)
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_INFO,
 			       "Multi-AP IE with unexpected value 0x%02x",
-			       multi_ap_value);
+			       multi_ap.capability);
 
-	if (!(multi_ap_value & MULTI_AP_BACKHAUL_STA)) {
+	if (multi_ap.profile == MULTI_AP_PROFILE_1 &&
+	    (hapd->conf->multi_ap_client_disallow &
+	     PROFILE1_CLIENT_ASSOC_DISALLOW)) {
+		hostapd_logger(hapd, sta->addr,
+			       HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_INFO,
+			       "Multi-AP Profile-1 clients not allowed");
+		return WLAN_STATUS_ASSOC_DENIED_UNSPEC;
+	}
+
+	if (multi_ap.profile >= MULTI_AP_PROFILE_2 &&
+	    (hapd->conf->multi_ap_client_disallow &
+	     PROFILE2_CLIENT_ASSOC_DISALLOW)) {
+		hostapd_logger(hapd, sta->addr,
+			       HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_INFO,
+			       "Multi-AP Profile-2 clients not allowed");
+		return WLAN_STATUS_ASSOC_DENIED_UNSPEC;
+	}
+
+	if (!(multi_ap.capability & MULTI_AP_BACKHAUL_STA)) {
 		if (hapd->conf->multi_ap & FRONTHAUL_BSS)
 			return WLAN_STATUS_SUCCESS;
 
@@ -3740,7 +3783,7 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 	}
 #ifdef CONFIG_IEEE80211BE
 	if (ap_sta_is_mld(hapd, sta))
-		wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld_addr,
+		wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld->mld_addr,
 				     sta->mld_assoc_link_id, &sta->mld_info);
 #endif /* CONFIG_IEEE80211BE */
 	rsn_ie -= 2;
@@ -4025,7 +4068,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 				wpa_printf(MSG_DEBUG,
 					   "MLD: Set ML info in RSN Authenticator");
 				wpa_auth_set_ml_info(sta->wpa_sm,
-						     hapd->mld_addr,
+						     hapd->mld->mld_addr,
 						     sta->mld_assoc_link_id,
 						     info);
 			}
@@ -4559,8 +4602,7 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 			if (hapd->iface == iface)
 				continue;
 
-			if (iface->bss[0]->conf->mld_ap &&
-			    hapd->conf->mld_id == iface->bss[0]->conf->mld_id &&
+			if (hostapd_is_ml_partner(hapd, iface->bss[0]) &&
 			    i == iface->bss[0]->mld_link_id)
 				break;
 		}
@@ -4787,7 +4829,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	 * MLD MAC address.
 	 */
 	if (ap_sta_is_mld(hapd, sta) && allow_mld_addr_trans)
-		sa = hapd->mld_addr;
+		sa = hapd->mld->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 
 	os_memcpy(reply->da, addr, ETH_ALEN);
@@ -4991,7 +5033,7 @@ rsnxe_done:
 #endif /* CONFIG_WPS */
 
 	if (sta && (sta->flags & WLAN_STA_MULTI_AP))
-		p = hostapd_eid_multi_ap(hapd, p);
+		p = hostapd_eid_multi_ap(hapd, p, buf + buflen - p);
 
 #ifdef CONFIG_P2P
 	if (sta && sta->p2p_ie && hapd->p2p_group) {
@@ -5775,8 +5817,7 @@ static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
 			tmp_hapd =
 				assoc_hapd->iface->interfaces->iface[i]->bss[0];
 
-			if (!tmp_hapd->conf->mld_ap ||
-			    assoc_hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+			if (!hostapd_is_ml_partner(assoc_hapd, tmp_hapd))
 				continue;
 
 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
@@ -6206,7 +6247,7 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
 #endif /* CONFIG_MESH */
 #ifdef CONFIG_IEEE80211BE
 	    !(hapd->conf->mld_ap &&
-	      ether_addr_equal(hapd->mld_addr, mgmt->bssid)) &&
+	      ether_addr_equal(hapd->mld->mld_addr, mgmt->bssid)) &&
 #endif /* CONFIG_IEEE80211BE */
 	    !ether_addr_equal(mgmt->bssid, hapd->own_addr)) {
 		wpa_printf(MSG_INFO, "MGMT: BSSID=" MACSTR " not our address",
@@ -6229,7 +6270,7 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
 	     stype != WLAN_FC_STYPE_ACTION) &&
 #ifdef CONFIG_IEEE80211BE
 	    !(hapd->conf->mld_ap &&
-	      ether_addr_equal(hapd->mld_addr, mgmt->bssid)) &&
+	      ether_addr_equal(hapd->mld->mld_addr, mgmt->bssid)) &&
 #endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_NAN_USD
 	    !ether_addr_equal(mgmt->da, nan_network_id) &&
@@ -6443,8 +6484,7 @@ static void hostapd_ml_handle_assoc_cb(struct hostapd_data *hapd,
 			struct hostapd_data *tmp_hapd =
 				hapd->iface->interfaces->iface[i]->bss[0];
 
-			if (!tmp_hapd->conf->mld_ap ||
-			    hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+			if (!hostapd_is_ml_partner(tmp_hapd, hapd))
 				continue;
 
 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
@@ -7407,12 +7447,12 @@ static size_t hostapd_eid_rnr_multi_iface_len(struct hostapd_data *hapd,
 		bool ap_mld = false;
 
 #ifdef CONFIG_IEEE80211BE
-		if (hapd->conf->mld_ap && iface->bss[0]->conf->mld_ap &&
-		    hapd->conf->mld_id == iface->bss[0]->conf->mld_id)
+		if (hostapd_is_ml_partner(hapd, iface->bss[0]))
 			ap_mld = true;
 #endif /* CONFIG_IEEE80211BE */
 
 		if (iface == hapd->iface ||
+		    iface->state != HAPD_IFACE_ENABLED ||
 		    !(is_6ghz_op_class(iface->conf->op_class) || ap_mld))
 			continue;
 
@@ -7580,11 +7620,10 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
 #ifdef CONFIG_IEEE80211BE
 		u8 param_ch = hapd->eht_mld_bss_param_change;
 
-		if (reporting_hapd->conf->mld_ap &&
-		    bss->conf->mld_id == reporting_hapd->conf->mld_id)
+		if (hostapd_is_ml_partner(bss, reporting_hapd))
 			*eid++ = 0;
 		else
-			*eid++ = hapd->conf->mld_id;
+			*eid++ = hostapd_get_mld_id(hapd);
 
 		*eid++ = hapd->mld_link_id | ((param_ch & 0xF) << 4);
 		*eid = (param_ch >> 4) & 0xF;
@@ -7682,12 +7721,12 @@ static u8 * hostapd_eid_rnr_multi_iface(struct hostapd_data *hapd, u8 *eid,
 		bool ap_mld = false;
 
 #ifdef CONFIG_IEEE80211BE
-		if (hapd->conf->mld_ap && iface->bss[0]->conf->mld_ap &&
-		    hapd->conf->mld_id == iface->bss[0]->conf->mld_id)
+		if (hostapd_is_ml_partner(hapd, iface->bss[0]))
 			ap_mld = true;
 #endif /* CONFIG_IEEE80211BE */
 
 		if (iface == hapd->iface ||
+		    iface->state != HAPD_IFACE_ENABLED ||
 		    !(is_6ghz_op_class(iface->conf->op_class) || ap_mld))
 			continue;
 
@@ -7754,6 +7793,27 @@ static bool mbssid_known_bss(unsigned int i, const u8 *known_bss,
 }
 
 
+static size_t hostapd_mbssid_ext_capa(struct hostapd_data *bss,
+				      struct hostapd_data *tx_bss, u8 *buf)
+{
+	u8 ext_capa_tx[20], *ext_capa_tx_end, ext_capa[20], *ext_capa_end;
+	size_t ext_capa_len, ext_capa_tx_len;
+
+	ext_capa_tx_end = hostapd_eid_ext_capab(tx_bss, ext_capa_tx,
+						true);
+	ext_capa_tx_len = ext_capa_tx_end - ext_capa_tx;
+	ext_capa_end = hostapd_eid_ext_capab(bss, ext_capa, true);
+	ext_capa_len = ext_capa_end - ext_capa;
+	if (ext_capa_tx_len != ext_capa_len ||
+	    os_memcmp(ext_capa_tx, ext_capa, ext_capa_len) != 0) {
+		os_memcpy(buf, ext_capa, ext_capa_len);
+		return ext_capa_len;
+	}
+
+	return 0;
+}
+
+
 static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
 					  u32 frame_type, size_t *bss_index,
 					  const u8 *known_bss,
@@ -7761,6 +7821,7 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
 {
 	struct hostapd_data *tx_bss = hostapd_mbssid_get_tx_bss(hapd);
 	size_t len, i;
+	u8 ext_capa[20];
 
 	/* Element ID: 1 octet
 	 * Length: 1 octet
@@ -7806,6 +7867,10 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
 			if (rsnx)
 				nontx_profile_len += 2 + rsnx[1];
 		}
+
+		nontx_profile_len += hostapd_mbssid_ext_capa(bss, tx_bss,
+							     ext_capa);
+
 		if (!rsn && hostapd_wpa_ie(tx_bss, WLAN_EID_RSN))
 			ie_count++;
 		if (!rsnx && hostapd_wpa_ie(tx_bss, WLAN_EID_RSNX))
@@ -7955,6 +8020,9 @@ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
 				eid += 2 + rsnx[1];
 			}
 		}
+
+		eid += hostapd_mbssid_ext_capa(bss, tx_bss, eid);
+
 		/* List of Element ID values in increasing order */
 		if (!rsn && hostapd_wpa_ie(tx_bss, WLAN_EID_RSN))
 			non_inherit_ie[ie_count++] = WLAN_EID_RSN;
@@ -8060,75 +8128,6 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 	}
 
 	return eid;
-}
-
-
-static void punct_update_legacy_bw_80(u8 bitmap, u8 pri_chan, u8 *seg0)
-{
-	u8 first_chan = *seg0 - 6, sec_chan;
-
-	switch (bitmap) {
-	case 0x6:
-		*seg0 = 0;
-		return;
-	case 0x8:
-	case 0x4:
-	case 0x2:
-	case 0x1:
-	case 0xC:
-	case 0x3:
-		if (pri_chan < *seg0)
-			*seg0 -= 4;
-		else
-			*seg0 += 4;
-		break;
-	}
-
-	if (pri_chan < *seg0)
-		sec_chan = pri_chan + 4;
-	else
-		sec_chan = pri_chan - 4;
-
-	if (bitmap & BIT((sec_chan - first_chan) / 4))
-		*seg0 = 0;
-}
-
-
-static void punct_update_legacy_bw_160(u8 bitmap, u8 pri,
-				       enum oper_chan_width *width, u8 *seg0)
-{
-	if (pri < *seg0) {
-		*seg0 -= 8;
-		if (bitmap & 0x0F) {
-			*width = 0;
-			punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
-		}
-	} else {
-		*seg0 += 8;
-		if (bitmap & 0xF0) {
-			*width = 0;
-			punct_update_legacy_bw_80((bitmap & 0xF0) >> 4, pri,
-						  seg0);
-		}
-	}
-}
-
-
-void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
-			    u8 *seg0, u8 *seg1)
-{
-	if (*width == CONF_OPER_CHWIDTH_80MHZ && (bitmap & 0xF)) {
-		*width = CONF_OPER_CHWIDTH_USE_HT;
-		punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
-	}
-
-	if (*width == CONF_OPER_CHWIDTH_160MHZ && (bitmap & 0xFF)) {
-		*width = CONF_OPER_CHWIDTH_80MHZ;
-		*seg1 = 0;
-		punct_update_legacy_bw_160(bitmap & 0xFF, pri, width, seg0);
-	}
-
-	/* TODO: 320 MHz */
 }
 
 #endif /* CONFIG_NATIVE_WINDOWS */

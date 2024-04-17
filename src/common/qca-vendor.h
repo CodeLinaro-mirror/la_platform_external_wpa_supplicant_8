@@ -1053,6 +1053,10 @@ enum qca_radiotap_vendor_ids {
  *	adjust transmit power. The attributes used with this subcommand are
  *	defined in enum qca_wlan_vendor_attr_adjust_tx_power.
  *
+ * @QCA_NL80211_VENDOR_SUBCMD_SPECTRAL_SCAN_COMPLETE: Event indication from the
+ *	driver to notify user application about the spectral scan completion.
+ *	The attributes used with this subcommand are defined in
+ *	enum qca_wlan_vendor_attr_spectral_scan_complete.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1278,6 +1282,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_FLOW_POLICY = 239,
 	QCA_NL80211_VENDOR_SUBCMD_DISASSOC_PEER = 240,
 	QCA_NL80211_VENDOR_SUBCMD_ADJUST_TX_POWER = 241,
+	QCA_NL80211_VENDOR_SUBCMD_SPECTRAL_SCAN_COMPLETE = 242,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -7763,6 +7768,20 @@ enum qca_wlan_vendor_attr_spectral_scan {
 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_FFT_RECAPTURE = 31,
 	/* Attribute used for padding for 64-bit alignment */
 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_PAD = 32,
+	/* Spectral data transport mode. u32 attribute. It uses values
+	 * defined in enum qca_wlan_vendor_spectral_data_transport_mode.
+	 * This is an optional attribute. If this attribute is not populated,
+	 * the driver should configure the default transport mode to netlink.
+	 */
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE = 33,
+	/* Spectral scan completion timeout. u32 attribute. This
+	 * attribute is used to configure a timeout value (in us). The
+	 * timeout value would be from the beginning of a spectral
+	 * scan. This is an optional attribute. If this attribute is
+	 * not populated, the driver would internally derive the
+	 * timeout value.
+	 */
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETION_TIMEOUT = 34,
 
 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_MAX =
@@ -12069,6 +12088,14 @@ enum qca_wlan_vendor_attr_oem_data_params {
  * %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_POWER_CAP_DBM or based on
  * regulatory/SAE limits if %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_POWER_CAP_DBM
  * is not provided.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFINDEX: u32 attribute, optional.
+ * This specifies the interface index (netdev) for which the corresponding
+ * configurations are applied. If the interface index is not specified, the
+ * configurations are applied based on
+ * %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFACES_BITMASK.
+ * %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFACES_BITMASK along with this
+ * attribute shall have the matching nl80211_iftype.
  */
 enum qca_wlan_vendor_attr_avoid_frequency_ext {
 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_INVALID = 0,
@@ -12077,6 +12104,7 @@ enum qca_wlan_vendor_attr_avoid_frequency_ext {
 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_END = 3,
 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_POWER_CAP_DBM = 4,
 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFACES_BITMASK = 5,
+	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFINDEX = 6,
 
 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_MAX =
@@ -14277,7 +14305,11 @@ enum qca_wlan_ratemask_params_type {
  * @QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_BITMAP: binary, rate mask bitmap.
  * A bit value of 1 represents rate is enabled and a value of 0
  * represents rate is disabled.
- * For HE targets, 12 bits correspond to one NSS setting.
+ * For EHT targets,
+ * b0-1  => NSS1, MCS 14-15
+ * b2-15 => NSS1, MCS 0-13
+ * b16-29 => NSS2, MCS 0-13
+ * For HE targets, 14 bits correspond to one NSS setting.
  * b0-13  => NSS1, MCS 0-13
  * b14-27 => NSS2, MCS 0-13 and so on for other NSS.
  * For VHT targets, 10 bits correspond to one NSS setting.
@@ -14287,12 +14319,18 @@ enum qca_wlan_ratemask_params_type {
  * b0-7  => NSS1, MCS 0-7
  * b8-15 => NSS2, MCS 0-7 and so on for other NSS.
  * For OFDM/CCK targets, 8 bits correspond to one NSS setting.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_LINK_ID: u8, used to specify the
+ * MLO link ID of a link to be configured. Optional attribute.
+ * No need of this attribute in non-MLO cases. If the attribute is
+ * not provided, ratemask will be applied for setup link.
  */
 enum qca_wlan_vendor_attr_ratemask_params {
 	QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_INVALID = 0,
 	QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_LIST = 1,
 	QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_TYPE = 2,
 	QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_BITMAP = 3,
+	QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_LINK_ID = 4,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_AFTER_LAST,
@@ -16949,6 +16987,59 @@ enum qca_wlan_vendor_attr_adjust_tx_power {
 	QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_MAX =
 	QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_spectral_data_transport_mode - Attribute
+ * values for QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE.
+ *
+ * @QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_NETLINK: Use netlink to
+ * send spectral data to userspace applications.
+ * @QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_RELAY: Use relay interface
+ * to send spectral data to userspace applications.
+ */
+enum qca_wlan_vendor_spectral_data_transport_mode {
+	QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_NETLINK = 0,
+	QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_RELAY = 1,
+};
+
+/* enum qca_wlan_vendor_spectral_scan_complete_status - Attribute
+ * values for QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_STATUS to
+ * indicate the completion status for a spectral scan.
+ *
+ * @QCA_WLAN_VENDOR_SPECTRAL_SCAN_COMPLETE_STATUS_SUCCESSFUL:
+ * Indicates a successful completion of the scan.
+ *
+ * @QCA_WLAN_VENDOR_SPECTRAL_SCAN_COMPLETE_STATUS_TIMEOUT: Indicates
+ * a timeout has occured while processing the spectral reports.
+ */
+enum qca_wlan_vendor_spectral_scan_complete_status {
+	QCA_WLAN_VENDOR_SPECTRAL_SCAN_COMPLETE_STATUS_SUCCESSFUL = 0,
+	QCA_WLAN_VENDOR_SPECTRAL_SCAN_COMPLETE_STATUS_TIMEOUT = 1,
+};
+
+/* enum qca_wlan_vendor_attr_spectral_scan_complete - Definition of
+ * attributes for @QCA_NL80211_VENDOR_SUBCMD_SPECTRAL_SCAN_COMPLETE
+ * to indicate scan status and samples received from hardware.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_INVALID: Invalid attribute
+ *
+ * @QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_STATUS: u32 attribute.
+ * Indicates completion status, either the scan is successful or a timeout
+ * is issued by the driver.
+ * See enum qca_wlan_vendor_spectral_scan_complete_status.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_RECEIVED_SAMPLES: u32
+ * attribute. Number of spectral samples received after the scan has started.
+ */
+enum qca_wlan_vendor_attr_spectral_scan_complete {
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_STATUS = 1,
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_RECEIVED_SAMPLES = 2,
+
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_MAX =
+	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_AFTER_LAST - 1,
 };
 
 #endif /* QCA_VENDOR_H */

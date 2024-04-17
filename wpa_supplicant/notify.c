@@ -559,6 +559,15 @@ void wpas_notify_bss_seen(struct wpa_supplicant *wpa_s, unsigned int id)
 }
 
 
+void wpas_notify_bss_anqp_changed(struct wpa_supplicant *wpa_s, unsigned int id)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_bss_signal_prop_changed(wpa_s, WPAS_DBUS_BSS_PROP_ANQP, id);
+}
+
+
 void wpas_notify_blob_added(struct wpa_supplicant *wpa_s, const char *name)
 {
 	if (wpa_s->p2p_mgmt)
@@ -776,7 +785,7 @@ void wpas_notify_p2p_invitation_received(struct wpa_supplicant *wpa_s,
 
 static void wpas_notify_ap_sta_authorized(struct wpa_supplicant *wpa_s,
 					  const u8 *sta,
-					  const u8 *p2p_dev_addr)
+					  const u8 *p2p_dev_addr, const u8 *ip)
 {
 #ifdef CONFIG_P2P
 	wpas_p2p_notify_ap_sta_authorized(wpa_s, p2p_dev_addr);
@@ -820,10 +829,11 @@ static void wpas_notify_ap_sta_deauthorized(struct wpa_supplicant *wpa_s,
 
 void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
 				const u8 *mac_addr, int authorized,
-				const u8 *p2p_dev_addr)
+				const u8 *p2p_dev_addr, const u8 *ip)
 {
 	if (authorized)
-		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr);
+		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr,
+					      ip);
 	else
 		wpas_notify_ap_sta_deauthorized(wpa_s, mac_addr, p2p_dev_addr);
 }
@@ -1010,6 +1020,16 @@ void wpas_notify_interworking_ap_added(struct wpa_supplicant *wpa_s,
 void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s)
 {
 	wpas_dbus_signal_interworking_select_done(wpa_s);
+}
+
+
+void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s,
+				 const u8 *dst, const char *result)
+{
+	wpa_msg(wpa_s, MSG_INFO, ANQP_QUERY_DONE "addr=" MACSTR " result=%s",
+		MAC2STR(dst), result);
+
+	wpas_dbus_signal_anqp_query_done(wpa_s, dst, result);
 }
 
 #endif /* CONFIG_INTERWORKING */

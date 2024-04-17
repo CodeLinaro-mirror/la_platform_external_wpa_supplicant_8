@@ -12,6 +12,7 @@ import time
 import shutil
 import struct
 import sys
+from test_ap_hs20 import hs20_ap_params
 
 try:
     if sys.version_info[0] > 2:
@@ -6094,7 +6095,7 @@ def test_dbus_roam(dev, apdev):
             raise Exception("Expected signals not seen")
 
 def test_dbus_creds(dev, apdev):
-    "D-Bus interworking credentials"
+    """D-Bus interworking credentials"""
     (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
     iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
 
@@ -6141,7 +6142,7 @@ def test_dbus_creds(dev, apdev):
         raise Exception("Credential remove failed")
 
 def test_dbus_interworking(dev, apdev):
-    "D-Bus interworking selection"
+    """D-Bus interworking selection"""
     (bus, wpas_obj, path, if_obj) = prepare_dbus(dev[0])
     iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
 
@@ -6207,7 +6208,7 @@ def test_dbus_interworking(dev, apdev):
             raise Exception("Expected signals not seen")
 
 def test_dbus_hs20_terms_and_conditions(dev, apdev):
-    "D-Bus HS2.0 Terms and Conditions acceptance"
+    """D-Bus HS2.0 Terms and Conditions acceptance"""
     check_eap_capa(dev[0], "MSCHAPV2")
 
     (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
@@ -6265,5 +6266,143 @@ def test_dbus_hs20_terms_and_conditions(dev, apdev):
             return self.hs20_t_and_c_seen
 
     with TestDbusInterworking(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
+
+def test_dbus_anqp_get(dev, apdev):
+    """D-Bus ANQP get test"""
+    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    bssid = apdev[0]['bssid']
+    params = hs20_ap_params(ssid="test-anqp")
+    params["hessid"] = bssid
+    params['mbo'] = '1'
+    params['mbo_cell_data_conn_pref'] = '1'
+    params['hs20_oper_friendly_name'] = ["eng:Example operator",
+                                         "fin:Esimerkkioperaattori"]
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    dev[0].flush_scan_cache()
+    dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+    iface.ANQPGet({"addr": bssid,
+                   "ids": dbus.Array([257], dbus.Signature("q")),
+                   "mbo_ids": dbus.Array([2], dbus.Signature("y")),
+                   "hs20_ids": dbus.Array([3, 4], dbus.Signature("y"))})
+
+    ev = dev[0].wait_event(["GAS-QUERY-DONE"], timeout=10)
+    if ev is None:
+        raise Exception("GAS query timed out")
+
+    ev = dev[0].wait_event(["RX-ANQP"], timeout=1)
+    if ev is None or "ANQP Capability list" not in ev:
+        raise Exception("Did not receive Capability list")
+
+    ev = dev[0].wait_event(["RX-HS20-ANQP"], timeout=1)
+    if ev is None or "Operator Friendly Name" not in ev:
+        raise Exception("Did not receive Operator Friendly Name")
+
+    ev = dev[0].wait_event(["RX-MBO-ANQP"], timeout=1)
+    if ev is None or "cell_conn_pref" not in ev:
+        raise Exception("Did not receive MBO Cellular Data Connection Preference")
+
+    bss = dev[0].get_bss(bssid)
+    if 'anqp_capability_list' not in bss:
+        raise Exception("Capability List ANQP-element not seen")
+
+def test_dbus_anqp_query_done(dev, apdev):
+    """D-Bus ANQP get test"""
+    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    bssid = apdev[0]['bssid']
+    params = hs20_ap_params(ssid="test-anqp")
+    params["hessid"] = bssid
+    params['mbo'] = '1'
+    params['mbo_cell_data_conn_pref'] = '1'
+    params['hs20_oper_friendly_name'] = ["eng:Example operator",
+                                         "fin:Esimerkkioperaattori"]
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    class TestDbusANQPGet(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.anqp_query_done = False
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_query)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.anqpQueryDone, WPAS_DBUS_IFACE,
+                            "ANQPQueryDone")
+            self.loop.run()
+            return self
+
+        def anqpQueryDone(self, addr, result):
+            logger.debug("anqpQueryDone: addr=%s result=%s" % (addr, result))
+            if addr == bssid and "SUCCESS" in result:
+                self.anqp_query_done = True
+
+        def run_query(self, *args):
+            dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+            iface.ANQPGet({"addr": bssid,
+                           "ids": dbus.Array([257], dbus.Signature("q"))})
+            return False
+
+        def success(self):
+            return self.anqp_query_done
+
+    with TestDbusANQPGet(bus) as t:
+        if not t.success():
+            raise Exception("Expected signals not seen")
+
+def test_dbus_bss_anqp_properties(dev, apdev):
+    """D-Bus ANQP BSS properties changed"""
+    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
+    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
+
+    bssid = apdev[0]['bssid']
+    params = hs20_ap_params(ssid="test-anqp")
+    params["hessid"] = bssid
+    params['mbo'] = '1'
+    params['mbo_cell_data_conn_pref'] = '1'
+    params['hs20_oper_friendly_name'] = ["eng:Example operator",
+                                         "fin:Esimerkkioperaattori"]
+    hapd = hostapd.add_ap(apdev[0], params)
+
+    class TestDbusANQPBSSPropertiesChanged(TestDbus):
+        def __init__(self, bus):
+            TestDbus.__init__(self, bus)
+            self.capability_list = False
+            self.venue_name = False
+            self.roaming_consortium = False
+            self.nai_realm = False
+
+        def __enter__(self):
+            gobject.timeout_add(1, self.run_query)
+            gobject.timeout_add(15000, self.timeout)
+            self.add_signal(self.propertiesChanged, WPAS_DBUS_BSS,
+                            "PropertiesChanged")
+            self.loop.run()
+            return self
+
+        def propertiesChanged(self, properties):
+            logger.debug("propertiesChanged: %s" % str(properties))
+            if 'ANQP' in properties:
+                anqp_properties = properties['ANQP']
+                self.capability_list = 'CapabilityList' in anqp_properties
+                self.venue_name = 'VenueName' in anqp_properties
+                self.roaming_consortium = 'RoamingConsortium' in anqp_properties
+                self.nai_realm = 'NAIRealm' in anqp_properties
+
+        def run_query(self, *args):
+            dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+            iface.ANQPGet({"addr": bssid,
+                           "ids": dbus.Array([257,258,261,263], dbus.Signature("q"))})
+            return False
+
+        def success(self):
+            return self.capability_list and self.venue_name and self.roaming_consortium and self.nai_realm
+
+    with TestDbusANQPBSSPropertiesChanged(bus) as t:
         if not t.success():
             raise Exception("Expected signals not seen")

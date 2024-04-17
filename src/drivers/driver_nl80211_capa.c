@@ -889,6 +889,10 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
 				nla_get_u16(tb1[NL80211_ATTR_MLD_CAPA_AND_OPS]);
 		}
 
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: EML Capability: 0x%x MLD Capability: 0x%x",
+			   capa->eml_capa, capa->mld_capa_and_ops);
+
 		drv->num_iface_capa++;
 		if (drv->num_iface_capa == NL80211_IFTYPE_MAX)
 			break;
@@ -2156,6 +2160,9 @@ wpa_driver_nl80211_postprocess_modes(struct hostapd_hw_modes *modes,
 	for (m = 0; m < *num_modes; m++) {
 		if (!modes[m].num_channels)
 			continue;
+
+		modes[m].is_6ghz = false;
+
 		if (modes[m].channels[0].freq < 2000) {
 			modes[m].num_channels = 0;
 			continue;
@@ -2167,10 +2174,14 @@ wpa_driver_nl80211_postprocess_modes(struct hostapd_hw_modes *modes,
 					break;
 				}
 			}
-		} else if (modes[m].channels[0].freq > 50000)
+		} else if (modes[m].channels[0].freq > 50000) {
 			modes[m].mode = HOSTAPD_MODE_IEEE80211AD;
-		else
+		} else if (is_6ghz_freq(modes[m].channels[0].freq)) {
 			modes[m].mode = HOSTAPD_MODE_IEEE80211A;
+			modes[m].is_6ghz = true;
+		} else {
+			modes[m].mode = HOSTAPD_MODE_IEEE80211A;
+		}
 	}
 
 	/* Remove unsupported bands */
@@ -2398,6 +2409,57 @@ static void nl80211_reg_rule_vht(struct nlattr *tb[],
 }
 
 
+static void nl80211_set_6ghz_mode(struct hostapd_hw_modes *mode, int start,
+				  int end, int max_bw)
+{
+	int c;
+
+	for (c = 0; c < mode->num_channels; c++) {
+		struct hostapd_channel_data *chan = &mode->channels[c];
+
+		if (chan->freq - 10 < start || chan->freq + 10 > end)
+			continue;
+
+		if (max_bw >= 80)
+			chan->flag |= HOSTAPD_CHAN_VHT_80MHZ_SUBCHANNEL;
+
+		if (max_bw >= 160)
+			chan->flag |= HOSTAPD_CHAN_VHT_160MHZ_SUBCHANNEL;
+
+		if (max_bw >= 320)
+			chan->flag |= HOSTAPD_CHAN_EHT_320MHZ_SUBCHANNEL;
+	}
+}
+
+
+static void nl80211_reg_rule_6ghz(struct nlattr *tb[],
+				 struct phy_info_arg *results)
+{
+	u32 start, end, max_bw;
+	u16 m;
+
+	if (!tb[NL80211_ATTR_FREQ_RANGE_START] ||
+	    !tb[NL80211_ATTR_FREQ_RANGE_END] ||
+	    !tb[NL80211_ATTR_FREQ_RANGE_MAX_BW])
+		return;
+
+	start = nla_get_u32(tb[NL80211_ATTR_FREQ_RANGE_START]) / 1000;
+	end = nla_get_u32(tb[NL80211_ATTR_FREQ_RANGE_END]) / 1000;
+	max_bw = nla_get_u32(tb[NL80211_ATTR_FREQ_RANGE_MAX_BW]) / 1000;
+
+	if (max_bw < 80)
+		return;
+
+	for (m = 0; m < *results->num_modes; m++) {
+		if (results->modes[m].num_channels == 0 ||
+		    !is_6ghz_freq(results->modes[m].channels[0].freq))
+			continue;
+
+		nl80211_set_6ghz_mode(&results->modes[m], start, end, max_bw);
+	}
+}
+
+
 static void nl80211_set_dfs_domain(enum nl80211_dfs_regions region,
 				   u8 *dfs_domain)
 {
@@ -2514,6 +2576,13 @@ static int nl80211_get_reg(struct nl_msg *msg, void *arg)
 		nla_parse(tb_rule, NL80211_FREQUENCY_ATTR_MAX,
 			  nla_data(nl_rule), nla_len(nl_rule), reg_policy);
 		nl80211_reg_rule_vht(tb_rule, results);
+	}
+
+	nla_for_each_nested(nl_rule, tb_msg[NL80211_ATTR_REG_RULES], rem_rule)
+	{
+		nla_parse(tb_rule, NL80211_FREQUENCY_ATTR_MAX,
+			  nla_data(nl_rule), nla_len(nl_rule), reg_policy);
+		nl80211_reg_rule_6ghz(tb_rule, results);
 	}
 
 	return NL_SKIP;

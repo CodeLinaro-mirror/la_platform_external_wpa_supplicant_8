@@ -117,6 +117,8 @@ OBJS += ../src/utils/wpabuf.o
 OBJS += ../src/utils/bitfield.o
 OBJS += ../src/utils/ip_addr.o
 OBJS += ../src/utils/crc32.o
+OBJS += ../src/common/ptksa_cache.o
+OBJS += ../src/rsn_supp/pmksa_cache.o
 OBJS += twt.o
 OBJS_p = wpa_passphrase.o
 OBJS_p += ../src/utils/common.o
@@ -382,7 +384,6 @@ endif
 ifndef CONFIG_NO_WPA
 OBJS += ../src/rsn_supp/wpa.o
 OBJS += ../src/rsn_supp/preauth.o
-OBJS += ../src/rsn_supp/pmksa_cache.o
 OBJS += ../src/rsn_supp/wpa_ie.o
 OBJS += ../src/common/wpa_common.o
 NEED_AES=y
@@ -443,8 +444,8 @@ NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
-OBJS += ../src/common/ptksa_cache.o
 OBJS += ../src/pasn/pasn_initiator.o
+OBJS += ../src/pasn/pasn_common.o
 OBJS += pasn_supplicant.o
 endif
 
@@ -1195,6 +1196,10 @@ ifdef CONFIG_TLSV12
 CFLAGS += -DCONFIG_TLSV12
 endif
 
+ifdef CONFIG_RADIUS_TLS
+TLS_FUNCS=y
+endif
+
 ifeq ($(CONFIG_TLS), wolfssl)
 ifdef TLS_FUNCS
 CFLAGS += -DWOLFSSL_DER_LOAD
@@ -1933,6 +1938,9 @@ OBJS += wpa_supplicant.o events.o bssid_ignore.o wpas_glue.o scan.o
 OBJS_t := $(OBJS) $(OBJS_l2) eapol_test.o
 OBJS_t += ../src/radius/radius_client.o
 OBJS_t += ../src/radius/radius.o
+ifdef CONFIG_RADIUS_TLS
+CFLAGS += -DCONFIG_RADIUS_TLS
+endif
 OBJS_t2 := $(OBJS) $(OBJS_l2) preauth_test.o
 
 OBJS_nfc := $(OBJS) $(OBJS_l2) nfc_pw_token.o
@@ -2227,9 +2235,9 @@ LIBPASNSO += ../src/common/dragonfly.c
 endif
 
 LIBPASNSO += ../src/common/ptksa_cache.c
+LIBPASNSO += ../src/rsn_supp/pmksa_cache.c
 
 ifndef CONFIG_NO_WPA
-LIBPASNSO += ../src/rsn_supp/pmksa_cache.c
 LIBPASNSO += ../src/rsn_supp/wpa_ie.c
 endif
 
@@ -2324,6 +2332,7 @@ endif
 
 LIBPASNSO += ../src/pasn/pasn_initiator.c
 LIBPASNSO += ../src/pasn/pasn_responder.c
+LIBPASNSO += ../src/pasn/pasn_common.c
 
 libpasn.so: $(LIBPASNSO)
 	@$(E) "  CC  $@ ($^)"
