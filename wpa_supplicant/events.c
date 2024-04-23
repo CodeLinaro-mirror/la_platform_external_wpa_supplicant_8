@@ -3167,6 +3167,9 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			} else {
 				wpa_s->connection_channel_bandwidth = CHAN_WIDTH_20;
 			}
+			wpa_s->ap_t2lm_negotiation_support =
+				is_ap_t2lm_negotiation_supported(resp_elems.basic_mle,
+				resp_elems.basic_mle_len);
 		}
 	}
 
