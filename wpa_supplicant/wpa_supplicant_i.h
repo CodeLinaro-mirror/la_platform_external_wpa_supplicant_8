@@ -679,6 +679,11 @@ struct wpa_supplicant {
 	int key_mgmt;
 	int wpa_proto;
 	int mgmt_group_cipher;
+	/*
+	 * Allowed key management suites for roaming/initial connection
+	 * when the driver's SME is in use.
+	 */
+	int allowed_key_mgmts;
 
 	void *drv_priv; /* private data used by driver_ops */
 	void *global_drv_priv;
@@ -868,6 +873,7 @@ struct wpa_supplicant {
 	unsigned int max_match_sets;
 	unsigned int max_remain_on_chan;
 	unsigned int max_stations;
+	unsigned int max_num_akms;
 
 	int pending_mic_error_report;
 	int pending_mic_error_pairwise;
@@ -1474,9 +1480,12 @@ int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s);
 const char * wpa_supplicant_state_txt(enum wpa_states state);
 int wpa_supplicant_update_mac_addr(struct wpa_supplicant *wpa_s);
 int wpa_supplicant_driver_init(struct wpa_supplicant *wpa_s);
+void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
+				struct wpa_ssid *ssid, struct wpa_ie_data *ie);
 int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss, struct wpa_ssid *ssid,
-			      u8 *wpa_ie, size_t *wpa_ie_len);
+			      u8 *wpa_ie, size_t *wpa_ie_len,
+			      bool skip_default_rsne);
 void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss,
 			      struct wpa_ssid *ssid);
