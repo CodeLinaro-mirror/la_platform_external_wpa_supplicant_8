@@ -4,10 +4,19 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <android/binder_process.h>
 #include <android/binder_manager.h>
+#ifdef CONFIG_SUPPLICANT_RPC
+#include <aidl_rpc_manager.h>
+#include <cutils/properties.h>
+#endif
 
 #include "aidl_manager.h"
 
@@ -22,6 +31,9 @@ extern "C"
 }
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
+#ifdef CONFIG_SUPPLICANT_RPC
+using aidl::android::hardware::wifi::supplicant::AidlRpcManager;
+#endif
 using aidl::android::hardware::wifi::supplicant::AuxiliarySupplicantEventCode;
 using aidl::android::hardware::wifi::supplicant::DppEventType;
 using aidl::android::hardware::wifi::supplicant::DppFailureCode;
@@ -59,6 +71,25 @@ struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 		priv->aidl_fd, wpas_aidl_sock_handler, global, priv) < 0)
 		goto err;
 
+#ifdef CONFIG_SUPPLICANT_RPC
+	if (property_get_bool("persist.vendor.wlan.hal.rpc", false)) {
+		AidlRpcManager *rpc_manager = AidlRpcManager::getInstance();
+		if (!rpc_manager) {
+			wpa_printf(MSG_ERROR, "get rpc manager instance fail");
+			goto err;
+		}
+		if (rpc_manager->startRpcClient()) {
+			wpa_printf(MSG_ERROR, "start rpc client fail");
+			goto err;
+		}
+
+		// May not need to store this rpc manager reference in the
+		// priv data strucure because we've made it a singleton class.
+		priv->aidl_manager = (void *)rpc_manager;
+		return priv;
+	}
+#endif
+
 	aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)
 		goto err;
@@ -88,7 +119,13 @@ void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
 
 	wpa_printf(MSG_DEBUG, "Deiniting aidl control");
 
+#ifdef CONFIG_SUPPLICANT_RPC
+	if (property_get_bool("persist.vendor.wlan.hal.rpc", false))
+		AidlRpcManager::destroyInstance();
+	else
+#endif
 	AidlManager::destroyInstance();
+
 	eloop_unregister_read_sock(priv->aidl_fd);
 	os_free(priv);
 }

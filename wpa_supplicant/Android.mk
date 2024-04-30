@@ -1956,6 +1956,11 @@ ifeq ($(DBUS), y)
 LOCAL_SHARED_LIBRARIES += libdbus
 endif
 ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
+ifeq ($(ENABLE_SOMEIP), true)
+LOCAL_CFLAGS += -DCONFIG_SUPPLICANT_RPC
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libqti_supplicant_rpc_impl
+endif
 LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V2-ndk
 LOCAL_SHARED_LIBRARIES += android.system.keystore2-V1-ndk
 ifeq ($(WPA_SUPPLICANT_USE_VENDOR_AIDL), y)
@@ -2040,6 +2045,11 @@ LOCAL_SHARED_LIBRARIES := \
     libutils \
     liblog \
     libssl
+ifeq ($(ENABLE_SOMEIP), true)
+LOCAL_CPPFLAGS += -DCONFIG_SUPPLICANT_RPC
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libqti_supplicant_rpc_impl
+endif
 ifeq ($(WPA_SUPPLICANT_USE_VENDOR_AIDL), y)
 LOCAL_SRC_FILES += \
     aidl/supplicant_vendor.cpp \
