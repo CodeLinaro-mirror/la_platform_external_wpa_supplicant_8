@@ -22,6 +22,8 @@ extern "C"
 #include "utils/eloop.h"
 #include "utils/includes.h"
 #include "common/dpp.h"
+
+#include "aidl_sock.h"
 }
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
@@ -107,7 +109,17 @@ struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 		return NULL;
 	priv->global = global;
 
-	wpa_printf(MSG_DEBUG, "Initing aidl control");
+	wpa_printf(MSG_INFO, "Initing aidl control");
+
+	wpas_create_aidl_socket(&priv->aidl_fd);
+	if (priv->aidl_fd < 0)
+		goto err;
+
+	wpa_printf(MSG_INFO, "Processing aidl events on FD %d", priv->aidl_fd);
+	// Look for read events from the aidl socket in the eloop.
+	if (eloop_register_read_sock(
+		priv->aidl_fd, wpas_aidl_sock_handler, global, priv) < 0)
+		goto err;
 
 	aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)
@@ -140,6 +152,8 @@ void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
 	wpa_printf(MSG_DEBUG, "Deiniting aidl control");
 
 	AidlManager::destroyInstance();
+	eloop_unregister_read_sock(priv->aidl_fd);
+	wpas_destroy_aidl_socket();
 	os_free(priv);
 }
 #endif

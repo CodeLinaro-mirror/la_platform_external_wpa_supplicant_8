@@ -14,13 +14,13 @@
 #include "supplicant_someip_server.h"
 #include "supplicant_message_handler.h"
 #include "supplicant_event_callback.h"
-
-static char SUPPLICANT_SERVICE_NAME[] = "supplicant_someip_service";
-
-std::shared_ptr<std::thread> someip_server_thread_t;
+#include "aidl_sock.h"
 
 #define SUPPLICANT_INSTANCE_ID                              ((uint16_t) 0x3330)
 #define SUPPLICANT_EVENTGROUP_ID                            ((uint16_t) 0xCCC0)
+
+static char SUPPLICANT_SERVICE_NAME[] = "supplicant_someip_service";
+std::shared_ptr<std::thread> wpas_someip_service_thread;
 
 static void SupplicantInitSomeIPRegisterInfo(SomeipRegisterInfo* info)
 {
@@ -32,7 +32,7 @@ static void SupplicantInitSomeIPRegisterInfo(SomeipRegisterInfo* info)
     info->context.event_id_number = SUPPLICANT_EVENT_COUNTS;
     info->context.event_id = SupplicantEventArray;
 
-    info->dataCallback = &SupplicantProcessSomeIPRequestMessage; 
+    info->dataCallback = wpas_sendto_aidl_socket;
 }
 
 bool SupplicantSomeIPServerInit()
@@ -58,31 +58,35 @@ bool SupplicantSomeIPServerInit()
         usleep(1000);
     }
 
-    /* Start SomeIP Main Loop */
-    someip_server_thread_t  = std::make_shared<std::thread>(
-                                &SupplicantSomeIPServerStart);
-
     return true;
-}
-
-void SupplicantSomeIPServerDeinit()
-{
-    ALOGI("Supplicant someip service deinit...");
-    someip_deinit();
 }
 
 bool SupplicantSomeIPServerStart()
 {
+    if(!wpas_connect_aidl_socket())
+        return false;
+
     ALOGI("Supplicant someip service main loop start...");
-    return someip_open();
+    wpas_someip_service_thread  = std::make_shared<std::thread>(&someip_open);
+
+    return true;
 }
 
 void SupplicantSomeIPServerStop()
 {
     ALOGI("Supplicant someip service main loop stop...");
     someip_close();
-    if(someip_server_thread_t) {
-        if (someip_server_thread_t->joinable())
-            someip_server_thread_t->join();
+
+    wpas_disconnect_aidl_socket();
+
+    if(wpas_someip_service_thread) {
+        if (wpas_someip_service_thread->joinable())
+            wpas_someip_service_thread->join();
     }
+}
+
+void SupplicantSomeIPServerDeinit()
+{
+    ALOGI("Supplicant someip service deinit...");
+    someip_deinit();
 }

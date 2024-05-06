@@ -1941,6 +1941,7 @@ OBJS += aidl/sta_iface.o
 OBJS += aidl/sta_network.o
 OBJS += aidl/supplicant.o
 #Someip service
+OBJS += qrpc_server/src/aidl_sock.o
 OBJS += qrpc_server/src/supplicant_someip_server.o
 OBJS += qrpc_server/src/supplicant_event_callback.o
 OBJS += qrpc_server/src/supplicant_message_handler.o

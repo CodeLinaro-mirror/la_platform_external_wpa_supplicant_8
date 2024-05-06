@@ -11,10 +11,9 @@ extern "C" {
 #endif
 
 bool SupplicantSomeIPServerInit();
-void SupplicantSomeIPServerDeinit();
-
 bool SupplicantSomeIPServerStart();
 void SupplicantSomeIPServerStop();
+void SupplicantSomeIPServerDeinit();
 
 #ifdef __cplusplus
 }
