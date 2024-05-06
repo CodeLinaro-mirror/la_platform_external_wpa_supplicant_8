@@ -330,7 +330,7 @@ private:
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
 	// Unique id for someip instance
-	const int32_t ifId;
+	const int32_t ifId_;
 	bool is_valid_;
 
 	DISALLOW_COPY_AND_ASSIGN(StaIface);

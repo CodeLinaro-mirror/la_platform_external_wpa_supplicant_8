@@ -23,9 +23,7 @@
 #include "SupplicantStaIfaceCallback.h"
 #include "SupplicantStaNetworkCallback.h"
 #ifdef CONFIG_USE_VENDOR_AIDL
-#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendor.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIface.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIfaceCallback.h>
+#include "SupplicantVendorStaIfaceCallback.h"
 #endif
 
 //#include "certificate_utils.h"
@@ -58,7 +56,7 @@ namespace wifi {
 namespace supplicant {
 
 #ifdef CONFIG_USE_VENDOR_AIDL
-using aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendorStaIfaceCallback;
+using aidl::vendor::qti::hardware::wifi::supplicant::SupplicantVendorStaIfaceCallback;
 using aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendorStaIface;
 using aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendor;
 using aidl::vendor::qti::hardware::wifi::supplicant::VendorStaIface;
@@ -235,12 +233,13 @@ public:
 		const std::shared_ptr<INonStandardCertCallback> &callback);
 #ifdef CONFIG_USE_VENDOR_AIDL
 	int registerVendorAidlService(struct wpa_global *global);
+	int getSupplicantVendorInstance(std::shared_ptr<SupplicantVendor> *supplicantvendor_object);
 	int getVendorStaIfaceAidlObjectByIfname(
 		const std::string &ifname,
 		std::shared_ptr<ISupplicantVendorStaIface> *iface_object);
 	int addVendorStaIfaceCallbackAidlObject(
 		const std::string &ifname,
-		const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback);
+		const std::shared_ptr<SupplicantVendorStaIfaceCallback> &callback);
 #endif
 
 private:
@@ -281,12 +280,12 @@ private:
 #ifdef CONFIG_USE_VENDOR_AIDL
 	void removeVendorStaIfaceCallbackAidlObject(
 		const std::string &ifname,
-		const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback);
+		const std::shared_ptr<SupplicantVendorStaIfaceCallback> &callback);
 	bool checkForVendorStaIfaceCallback(const std::string &ifname);
 	void callWithEachVendorStaIfaceCallback(
 		const std::string &ifname,
 		const std::function<ndk::ScopedAStatus(
-		std::shared_ptr<ISupplicantVendorStaIfaceCallback>)> &method);
+		std::shared_ptr<SupplicantVendorStaIfaceCallback>)> &method);
 #endif
 
 	// Singleton instance of this class.
@@ -305,13 +304,6 @@ private:
 		sta_iface_object_map_;
 	std::map<const int32_t, std::string>
 		sta_iface_someip_map_;
-#ifdef CONFIG_USE_VENDOR_AIDL
-	// Map of all the STA interface specific aidl objects controlled by
-	// wpa_supplicant. This map is keyed in by the corresponding
-	// |ifname|.
-	std::map<const std::string, std::shared_ptr<VendorStaIface>>
-		vendorsta_iface_object_map_;
-#endif
 	// Map of all the P2P network specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
 	// |ifname| & |network_id|.
@@ -354,7 +346,7 @@ private:
 	std::map<const std::string, std::shared_ptr<VendorStaIface>>
 		vendor_sta_iface_object_map_;
 	std::map<const std::string,
-		std::vector<std::shared_ptr<ISupplicantVendorStaIfaceCallback>>>
+		std::vector<std::shared_ptr<SupplicantVendorStaIfaceCallback>>>
 		vendor_sta_iface_callbacks_map_;
 #endif
 	int32_t total_iface_ids_;

@@ -362,7 +362,7 @@ namespace supplicant {
 #ifdef CONFIG_USE_VENDOR_AIDL
 using ::aidl::vendor::qti::hardware::wifi::supplicant::VendorStaIface;
 using ::aidl::vendor::qti::hardware::wifi::supplicant::SupplicantVendor;
-using ::aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendorStaIfaceCallback;
+using ::aidl::vendor::qti::hardware::wifi::supplicant::SupplicantVendorStaIfaceCallback;
 #endif
 
 AidlManager *AidlManager::instance_ = NULL;
@@ -401,8 +401,10 @@ int AidlManager::registerVendorAidlService(struct wpa_global *global)
 {
 	// Create the main aidl service object and register it.
 	wpa_printf(MSG_INFO, "Starting vendor AIDL supplicant");
+	wpa_printf(MSG_INFO, "Interface version: %d", SupplicantVendor::version);
 	supplicantvendor_object_ = std::make_shared<SupplicantVendor>(global);
 	wpa_global_ = global;
+
 	return 0;
 }
 #endif
@@ -439,6 +441,7 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		return 1;
 #endif
 	} else {
+		int reason = 1;
 		if (addAidlObjectToMap<StaIface>(
 			wpa_s->ifname,
 			std::make_shared<StaIface>(wpa_s->global, wpa_s->ifname, ++total_iface_ids_),
@@ -457,7 +460,7 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		std::shared_ptr<SupplicantStaIfaceCallback> StaIfaceCb =
 					std::make_shared<SupplicantStaIfaceCallback>(total_iface_ids_);
 		std::shared_ptr<StaIface> StaIface_instance = sta_iface_object_map_.find(wpa_s->ifname)->second;
-		int reason = static_cast<int>((StaIface_instance->registerCallback(StaIfaceCb)).getServiceSpecificError());
+		reason = static_cast<int>((StaIface_instance->registerCallback(StaIfaceCb)).getServiceSpecificError());
 		if(reason){
 			wpa_printf(MSG_ERROR, "[Fail] Supplicant StaIface Callback not registered for %s(%d), reason: %d", 
 						wpa_s->ifname, total_iface_ids_, reason);
@@ -468,7 +471,7 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 #ifdef CONFIG_USE_VENDOR_AIDL
 		if (addAidlObjectToMap<VendorStaIface>(
 			wpa_s->ifname,
-			std::make_shared<VendorStaIface>(wpa_s->global, wpa_s->ifname),
+			std::make_shared<VendorStaIface>(wpa_s->global, wpa_s->ifname, total_iface_ids_),
 			vendor_sta_iface_object_map_)) {
 			wpa_printf(
 				MSG_ERROR,
@@ -478,7 +481,18 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 			return 1;
 		}
 		vendor_sta_iface_callbacks_map_[wpa_s->ifname] =
-			std::vector<std::shared_ptr<ISupplicantVendorStaIfaceCallback>>();
+			std::vector<std::shared_ptr<SupplicantVendorStaIfaceCallback>>();
+
+		std::shared_ptr<SupplicantVendorStaIfaceCallback> VendorStaIfaceCb =
+					std::make_shared<SupplicantVendorStaIfaceCallback>(total_iface_ids_);
+		std::shared_ptr<VendorStaIface> VendorStaIface_instance = vendor_sta_iface_object_map_.find(wpa_s->ifname)->second;
+		reason = static_cast<int>((VendorStaIface_instance->registerSupplicantVendorStaIfaceCallback(VendorStaIfaceCb)).getServiceSpecificError());
+		if(reason){
+			wpa_printf(MSG_ERROR, "[Fail] Vendor Supplicant StaIface Callback not registered for %s(%d), reason: %d", 
+						wpa_s->ifname, total_iface_ids_, reason);
+			return 1;
+		}
+		wpa_printf(MSG_INFO, "Vendor Supplicant StaIface Callback registered for %s(%d)", wpa_s->ifname, total_iface_ids_);
 #endif
 		// Turn on Android specific customizations for STA interfaces
 		// here!
@@ -2267,7 +2281,7 @@ void AidlManager::notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char
 		const std::string event_str(msg);
 		callWithEachVendorStaIfaceCallback(
 			wpa_s->ifname, std::bind(
-			&ISupplicantVendorStaIfaceCallback::onCtrlEvent,
+			&SupplicantVendorStaIfaceCallback::onCtrlEvent,
 			std::placeholders::_1, ifname, event_str));
 	}
 }
@@ -2285,7 +2299,20 @@ int AidlManager::getSupplicantInstance(std::shared_ptr<Supplicant> *supplicant_o
 	}
 	return 1;
 }
-
+#ifdef CONFIG_USE_VENDOR_AIDL
+/**
+ * Get Supplicant Vendor instance
+ */
+int AidlManager::getSupplicantVendorInstance(std::shared_ptr<SupplicantVendor> *supplicantvendor_object)
+{
+	if(supplicantvendor_object_)
+	{
+		*supplicantvendor_object = supplicantvendor_object_;
+		return 0;
+	}
+	return 1;
+}
+#endif
 /**
  * Get Sta Iface Name
  */
@@ -2517,7 +2544,7 @@ int AidlManager::addStaIfaceCallbackAidlObject(
  */
 int AidlManager::addVendorStaIfaceCallbackAidlObject(
 	const std::string &ifname,
-	const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback)
+	const std::shared_ptr<SupplicantVendorStaIfaceCallback> &callback)
 {
 	return addIfaceCallbackAidlObjectToMap(
 		ifname, callback, vendor_sta_iface_callbacks_map_);
@@ -2642,7 +2669,7 @@ void AidlManager::removeStaIfaceCallbackAidlObject(
  */
 void AidlManager::removeVendorStaIfaceCallbackAidlObject(
 	const std::string &ifname,
-	const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback)
+	const std::shared_ptr<SupplicantVendorStaIfaceCallback> &callback)
 {
 	return removeIfaceCallbackAidlObjectFromMap(
 		ifname, callback, vendor_sta_iface_callbacks_map_);
@@ -2755,7 +2782,7 @@ void AidlManager::callWithEachStaIfaceCallback(
  */
 void AidlManager::callWithEachVendorStaIfaceCallback(
 	const std::string &ifname,
-	const std::function<ndk::ScopedAStatus(std::shared_ptr<ISupplicantVendorStaIfaceCallback>)>
+	const std::function<ndk::ScopedAStatus(std::shared_ptr<SupplicantVendorStaIfaceCallback>)>
 	&method)
 {
 	callWithEachIfaceCallback(ifname, method, vendor_sta_iface_callbacks_map_);

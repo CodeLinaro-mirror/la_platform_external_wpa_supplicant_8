@@ -14,17 +14,8 @@
 #ifndef WPA_SUPPLICANT_VENDOR_AIDL_SUPPLICANT_H
 #define WPA_SUPPLICANT_VENDOR_AIDL_SUPPLICANT_H
 
-#include <aidl/android/hardware/wifi/supplicant/BnSupplicant.h>
-#include <aidl/android/hardware/wifi/supplicant/DebugLevel.h>
-#include <aidl/android/hardware/wifi/supplicant/IfaceInfo.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantCallback.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantP2pIface.h>
-#include <aidl/android/hardware/wifi/supplicant/ISupplicantStaIface.h>
 #include <aidl/vendor/qti/hardware/wifi/supplicant/BnSupplicantVendor.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIface.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIfaceCallback.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/IVendorIfaceInfo.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/IVendorIfaceType.h>
+
 #include <android-base/macros.h>
 
 extern "C"
@@ -32,8 +23,8 @@ extern "C"
 #include "utils/common.h"
 #include "utils/includes.h"
 #include "utils/wpa_debug.h"
-#include "wpa_supplicant_i.h"
-#include "scan.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/scan.h"
 }
 
 namespace aidl {
@@ -52,7 +43,7 @@ class SupplicantVendor : public BnSupplicantVendor
 {
 public:
 	SupplicantVendor(struct wpa_global* global);
-	~SupplicantVendor() override = default;
+	~SupplicantVendor() = default;
 	bool isValid();
 
 	// Aidl methods exposed.

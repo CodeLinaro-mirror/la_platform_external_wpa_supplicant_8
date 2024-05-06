@@ -20,16 +20,17 @@
 #include <android-base/macros.h>
 
 #include <aidl/vendor/qti/hardware/wifi/supplicant/BnSupplicantVendorStaIface.h>
-#include <aidl/vendor/qti/hardware/wifi/supplicant/ISupplicantVendorStaIfaceCallback.h>
+
+#include "SupplicantVendorStaIfaceCallback.h"
 
 extern "C"
 {
 #include "utils/common.h"
 #include "utils/includes.h"
-#include "wpa_supplicant_i.h"
-#include "config.h"
-#include "driver_i.h"
-#include "wpa.h"
+#include "../wpa_supplicant/wpa_supplicant_i.h"
+#include "../wpa_supplicant/config.h"
+#include "../wpa_supplicant/driver_i.h"
+#include "rsn_supp/wpa.h"
 }
 
 namespace aidl {
@@ -47,8 +48,8 @@ namespace supplicant {
 class VendorStaIface : public BnSupplicantVendorStaIface
 {
 public:
-	VendorStaIface(struct wpa_global* wpa_global, const char ifname[]);
-	~VendorStaIface() override = default;
+	VendorStaIface(struct wpa_global* wpa_global, const char ifname[], int32_t id);
+	~VendorStaIface() = default;
 	// AIDL does not provide a built-in mechanism to let the server
 	// invalidate a AIDL interface object after creation. If any client
 	// process holds onto a reference to the object in their context,
@@ -66,14 +67,14 @@ public:
 
 	// Aidl methods exposed.
 	::ndk::ScopedAStatus registerSupplicantVendorStaIfaceCallback(
-		const std::shared_ptr<ISupplicantVendorStaIfaceCallback>& in_callback) override;
+		const std::shared_ptr<SupplicantVendorStaIfaceCallback>& in_callback);
 	::ndk::ScopedAStatus doDriverCmd(
 		const std::string& cmd, std::string* _aidl_return) override;
 
 private:
 	// Corresponding worker functions for the AIDL methods.
 	ndk::ScopedAStatus registerSupplicantVendorStaIfaceCallbackInternal(
-		const std::shared_ptr<ISupplicantVendorStaIfaceCallback>& callback);
+		const std::shared_ptr<SupplicantVendorStaIfaceCallback>& callback);
 	std::pair<std::string, ndk::ScopedAStatus> doDriverCmdInternal(
 		const std::string& cmd);
 
@@ -84,6 +85,8 @@ private:
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
+	// Unique id for someip instance
+	const int32_t ifId_;
 	bool is_valid_;
 
 	DISALLOW_COPY_AND_ASSIGN(VendorStaIface);
