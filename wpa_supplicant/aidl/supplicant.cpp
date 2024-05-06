@@ -50,6 +50,8 @@ constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
 //constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
 constexpr mode_t kConfigFileMode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
 
+constexpr char ctrl_path[] = "/var/run/wpa_supplicant";
+
 const char* resolvePath(const char* paths[], size_t size)
 {
 	for (int i = 0; i < size; ++i) {
@@ -457,6 +459,7 @@ Supplicant::addStaInterfaceInternal(const std::string& name)
 	}
 
 	iface_params.ifname = name.c_str();
+	iface_params.ctrl_interface = ctrl_path;
 	if (strncmp(iface_params.ifname, P2P_MGMT_DEVICE_PREFIX,
 		strlen(P2P_MGMT_DEVICE_PREFIX)) == 0) {
 #if 0
