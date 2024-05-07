@@ -30,7 +30,10 @@ cc_library_headers {
 cc_library_static {
     name: "libwpa_aidl_bp",
     srcs: ["*.cpp"],
-    defaults: ["wpa_supplicant_cflags_defaults"],
+    defaults: [
+        "libwpa_aidl_cflags_defaults",
+        "wpa_supplicant_cflags_defaults",
+    ],
     soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.supplicant-V3-ndk",
@@ -59,4 +62,23 @@ cc_library_static {
 filegroup {
     name: "android.hardware.wifi.supplicant.xml",
     srcs: ["android.hardware.wifi.supplicant.xml"],
+}
+
+soong_config_module_type {
+    name: "libwpa_aidl_cflags_cc_defaults",
+    module_type: "cc_defaults",
+    config_namespace: "libwpa_aidl",
+    value_variables: [
+        "nl80211_driver",
+    ],
+    properties: ["cflags"],
+}
+
+libwpa_aidl_cflags_cc_defaults {
+    name: "libwpa_aidl_cflags_defaults",
+    soong_config_variables: {
+        nl80211_driver: {
+            cflags: ["-D%s"],
+        },
+    },
 }
