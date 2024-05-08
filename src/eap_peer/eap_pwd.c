@@ -999,7 +999,7 @@ eap_pwd_process(struct eap_sm *sm, void *priv, struct eap_method_ret *ret,
 		}
 		wpabuf_put_data(data->inbuf, pos, len);
 	}
-	if (EAP_PWD_GET_MORE_BIT(lm_exch)) {
+	if (EAP_PWD_GET_MORE_BIT(lm_exch) && data->inbuf) {
 		resp = eap_msg_alloc(EAP_VENDOR_IETF, EAP_TYPE_PWD,
 				     EAP_PWD_HDR_SIZE,
 				     EAP_CODE_RESPONSE, eap_get_id(reqData));
