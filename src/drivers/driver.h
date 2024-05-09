@@ -962,6 +962,17 @@ struct wpa_driver_associate_params {
 	unsigned int key_mgmt_suite;
 
 	/**
+	 * allowed_key_mgmts - Bitfield of allowed key management suites
+	 * (WPA_KEY_MGMT_*) other than @key_mgmt_suite for the current
+	 * connection
+	 *
+	 * SME in the driver may choose key_mgmt from this list for the initial
+	 * connection or roaming. The driver which doesn't support this
+	 * ignores this parameter.
+	 */
+	unsigned int allowed_key_mgmts;
+
+	/**
 	 * auth_alg - Allowed authentication algorithms
 	 * Bit field of WPA_AUTH_ALG_*
 	 */
@@ -1938,6 +1949,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_CONTROL_PORT_RX	0x0000000000000001ULL
 /** Driver supports of adaptive 11r feature */
 #define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x0000000000000002ULL
+/** Driver supports Operating Channel Validation */
+#define WPA_DRIVER_FLAGS2_OCV			0x0000000000000080ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -2050,6 +2063,9 @@ struct wpa_driver_capa {
 
 	/* Maximum number of supported CSA counters */
 	u16 max_csa_counters;
+
+	/* Maximum number of supported AKM suites in commands */
+	unsigned int max_num_akms;
 };
 
 
