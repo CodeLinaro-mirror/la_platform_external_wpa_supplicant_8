@@ -3540,9 +3540,7 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 
 	if (!sta->wpa_sm)
 		sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,	sta->addr,
-						sta->is_mld ?
-						sta->link_addr : NULL,
-						NULL);
+						NULL, NULL);
 	if (!sta->wpa_sm) {
 		wpa_printf(MSG_WARNING,
 			   "OWE: Failed to initialize WPA state machine");
@@ -3594,9 +3592,7 @@ end:
 	wpa_printf(MSG_DEBUG, "OWE: Update status %d, ie len %d for peer "
 			      MACSTR, status, (unsigned int) ie_len,
 			      MAC2STR(sta->addr));
-	hostapd_drv_update_dh_ie(hapd,
-				 sta->is_mld ? sta->link_addr : sta->addr,
-				 status,
+	hostapd_drv_update_dh_ie(hapd, sta->addr, status,
 				 status == WLAN_STATUS_SUCCESS ? ie : NULL,
 				 ie_len);
 
