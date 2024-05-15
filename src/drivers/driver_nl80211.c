@@ -6195,7 +6195,6 @@ static int wpa_driver_nl80211_hapd_send_eapol(
 
 
 static int wpa_driver_nl80211_sta_set_flags(void *priv, const u8 *addr,
-					    const u8 *link_addr,
 					    unsigned int total_flags,
 					    unsigned int flags_or,
 					    unsigned int flags_and)
@@ -6206,20 +6205,13 @@ static int wpa_driver_nl80211_sta_set_flags(void *priv, const u8 *addr,
 	struct nl80211_sta_flag_update upd;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Set STA flags - ifname=%s addr=" MACSTR
-		   " link_id=%d total_flags=0x%x flags_or=0x%x flags_and=0x%x"
-		   " authorized=%d", bss->ifname, MAC2STR(addr), bss->link_id,
-		   total_flags, flags_or, flags_and,
+		   " total_flags=0x%x flags_or=0x%x flags_and=0x%x authorized=%d",
+		   bss->ifname, MAC2STR(addr), total_flags, flags_or, flags_and,
 		   !!(total_flags & WPA_STA_AUTHORIZED));
 
 	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_SET_STATION)) ||
-	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN,
-		    link_addr ? link_addr : addr))
+	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr))
 		goto fail;
-
-	if (bss->link_id != -1 &&
-	    (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, bss->link_id) ||
-	     (link_addr && nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN, addr))))
-			goto fail;
 
 	/*
 	 * Backwards compatibility version using NL80211_ATTR_STA_FLAGS. This

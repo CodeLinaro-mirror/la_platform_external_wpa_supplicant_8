@@ -3630,14 +3630,13 @@ struct wpa_driver_ops {
 	/**
 	 * sta_set_flags - Set station flags (AP only)
 	 * @priv: Private driver interface data
-	 * @addr: Station address. For MLD STA, MLD address
-	 * @link_addr: link address when MLD STA, Otherwise NULL.
+	 * @addr: Station address
 	 * @total_flags: Bitmap of all WPA_STA_* flags currently set
 	 * @flags_or: Bitmap of WPA_STA_* flags to add
 	 * @flags_and: Bitmap of WPA_STA_* flags to us as a mask
 	 * Returns: 0 on success, -1 on failure
 	 */
-	int (*sta_set_flags)(void *priv, const u8 *addr, const u8 *link_addr,
+	int (*sta_set_flags)(void *priv, const u8 *addr,
 			     unsigned int total_flags, unsigned int flags_or,
 			     unsigned int flags_and);
 
@@ -5825,11 +5824,6 @@ union wpa_event_data {
 		 * fils_pmkid - PMKID used or generated in FILS authentication
 		 */
 		const u8 *fils_pmkid;
-
-		/**
-		 * link_addr - MLD STA link address (for AP mode)
-		 */
-		const u8 *link_addr;
 	} assoc_info;
 
 	/**
@@ -6522,9 +6516,7 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
  */
 
 static inline void drv_event_assoc(void *ctx, const u8 *addr, const u8 *ie,
-				   size_t ielen, const u8 *link_addr,
-				   const u8 *resp_ie, size_t resp_ie_len,
-				   int reassoc)
+				   size_t ielen, int reassoc)
 {
 	union wpa_event_data event;
 	os_memset(&event, 0, sizeof(event));
@@ -6532,9 +6524,6 @@ static inline void drv_event_assoc(void *ctx, const u8 *addr, const u8 *ie,
 	event.assoc_info.req_ies = ie;
 	event.assoc_info.req_ies_len = ielen;
 	event.assoc_info.addr = addr;
-	event.assoc_info.resp_ies = resp_ie;
-	event.assoc_info.resp_ies_len = resp_ie_len;
-	event.assoc_info.link_addr = link_addr;
 	wpa_supplicant_event(ctx, EVENT_ASSOC, &event);
 }
 

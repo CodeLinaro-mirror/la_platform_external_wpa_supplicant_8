@@ -2962,7 +2962,7 @@ static void handle_auth(struct hostapd_data *hapd,
 		}
 #endif /* CONFIG_MESH */
 
-		sta = ap_sta_add(hapd, mgmt->sa, NULL);
+		sta = ap_sta_add(hapd, mgmt->sa);
 		if (!sta) {
 			wpa_printf(MSG_DEBUG, "ap_sta_add() failed");
 			resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
@@ -4753,7 +4753,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 
 			/* DMG/IEEE 802.11ad does not use authentication.
 			 * Allocate sta entry upon association. */
-			sta = ap_sta_add(hapd, mgmt->sa, NULL);
+			sta = ap_sta_add(hapd, mgmt->sa);
 			if (!sta) {
 				hostapd_logger(hapd, mgmt->sa,
 					       HOSTAPD_MODULE_IEEE80211,

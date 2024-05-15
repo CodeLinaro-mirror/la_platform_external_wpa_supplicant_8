@@ -391,7 +391,7 @@ static inline int wpa_drv_sta_set_flags(struct wpa_supplicant *wpa_s,
 					int flags_or, int flags_and)
 {
 	if (wpa_s->driver->sta_set_flags)
-		return wpa_s->driver->sta_set_flags(wpa_s->drv_priv, addr, NULL,
+		return wpa_s->driver->sta_set_flags(wpa_s->drv_priv, addr,
 						    total_flags, flags_or,
 						    flags_and);
 	return -1;

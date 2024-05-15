@@ -297,8 +297,6 @@ struct sta_info {
 #ifdef CONFIG_PASN
 	struct pasn_data *pasn;
 #endif /* CONFIG_PASN */
-	bool is_mld;
-	u8 link_addr[ETH_ALEN];
 };
 
 
@@ -337,8 +335,7 @@ void ap_sta_no_session_timeout(struct hostapd_data *hapd,
 			       struct sta_info *sta);
 void ap_sta_session_warning_timeout(struct hostapd_data *hapd,
 				    struct sta_info *sta, int warning_time);
-struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr,
-			     const u8 *link_addr);
+struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr);
 void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
 			 u16 reason);
 void ap_sta_deauthenticate(struct hostapd_data *hapd, struct sta_info *sta,

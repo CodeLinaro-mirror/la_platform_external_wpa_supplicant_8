@@ -126,7 +126,7 @@ static int hostapd_ctrl_iface_new_sta(struct hostapd_data *hapd,
 
 	wpa_printf(MSG_DEBUG, "Add new STA " MACSTR " based on ctrl_iface "
 		   "notification", MAC2STR(addr));
-	sta = ap_sta_add(hapd, addr, NULL);
+	sta = ap_sta_add(hapd, addr);
 	if (sta == NULL)
 		return -1;
 
