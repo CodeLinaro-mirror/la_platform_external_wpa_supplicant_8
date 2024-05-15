@@ -172,7 +172,6 @@ static int __mesh_rsn_auth_init(struct mesh_rsn *rsn, const u8 *addr,
 #ifdef CONFIG_OCV
 	conf.ocv = ocv;
 #endif /* CONFIG_OCV */
-	conf.link_id = -1;
 
 	rsn->auth = wpa_init(addr, &conf, &cb, rsn);
 	if (rsn->auth == NULL) {
@@ -375,7 +374,7 @@ int mesh_rsn_auth_sae_sta(struct wpa_supplicant *wpa_s,
 	if (pmksa) {
 		if (!sta->wpa_sm)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL, NULL);
+							sta->addr, NULL);
 		if (!sta->wpa_sm) {
 			wpa_printf(MSG_ERROR,
 				   "mesh: Failed to initialize RSN state machine");

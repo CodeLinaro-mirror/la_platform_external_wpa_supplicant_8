@@ -345,15 +345,12 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
 							sta->addr,
-							sta->is_mld ?
-							sta->link_addr : NULL,
 							p2p_dev_addr);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_ERROR,
 				   "Failed to initialize WPA state machine");
 			return -1;
 		}
-
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  ie, ielen,
@@ -510,7 +507,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL, NULL);
+							sta->addr, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_WARNING,
 				   "Failed to initialize WPA state machine");
@@ -1322,7 +1319,7 @@ static void hostapd_notif_auth(struct hostapd_data *hapd,
 		sta->auth_alg = WLAN_AUTH_FT;
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL, NULL);
+							sta->addr, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_DEBUG,
 				   "FT: Failed to initialize WPA state machine");

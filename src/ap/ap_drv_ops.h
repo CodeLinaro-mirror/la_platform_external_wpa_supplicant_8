@@ -61,7 +61,7 @@ int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 		      const char *ifname);
 int hostapd_set_ieee8021x(struct hostapd_data *hapd,
 			  struct wpa_bss_params *params);
-int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd, int link_id,
+int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
 		       const u8 *addr, int idx, u8 *seq);
 int hostapd_flush(struct hostapd_data *hapd);
 int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
@@ -93,12 +93,6 @@ int hostapd_driver_set_noa(struct hostapd_data *hapd, u8 count, int start,
 			   int duration);
 int hostapd_drv_set_key(const char *ifname,
 			struct hostapd_data *hapd,
-			enum wpa_alg alg, const u8 *addr,
-			int key_idx, int vlan_id, int set_tx,
-			const u8 *seq, size_t seq_len,
-			const u8 *key, size_t key_len, enum key_flag key_flag);
-int hostapd_drv_mlo_set_key(const char *ifname,
-			struct hostapd_data *hapd, int link_id,
 			enum wpa_alg alg, const u8 *addr,
 			int key_idx, int vlan_id, int set_tx,
 			const u8 *seq, size_t seq_len,

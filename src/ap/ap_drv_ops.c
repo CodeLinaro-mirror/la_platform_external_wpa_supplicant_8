@@ -536,12 +536,12 @@ int hostapd_set_ieee8021x(struct hostapd_data *hapd,
 }
 
 
-int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd, int link_id,
+int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
 		       const u8 *addr, int idx, u8 *seq)
 {
 	if (hapd->driver == NULL || hapd->driver->get_seqnum == NULL)
 		return 0;
-	return hapd->driver->get_seqnum(ifname, hapd->drv_priv, link_id, addr, idx,
+	return hapd->driver->get_seqnum(ifname, hapd->drv_priv, addr, idx,
 					seq);
 }
 
@@ -700,8 +700,8 @@ int hostapd_driver_set_noa(struct hostapd_data *hapd, u8 count, int start,
 }
 
 
-int hostapd_drv_mlo_set_key(const char *ifname, struct hostapd_data *hapd,
-			int link_id, enum wpa_alg alg, const u8 *addr,
+int hostapd_drv_set_key(const char *ifname, struct hostapd_data *hapd,
+			enum wpa_alg alg, const u8 *addr,
 			int key_idx, int vlan_id, int set_tx,
 			const u8 *seq, size_t seq_len,
 			const u8 *key, size_t key_len, enum key_flag key_flag)
@@ -723,21 +723,9 @@ int hostapd_drv_mlo_set_key(const char *ifname, struct hostapd_data *hapd,
 	params.key_len = key_len;
 	params.vlan_id = vlan_id;
 	params.key_flag = key_flag;
-	params.link_id = link_id;
+	params.link_id = -1;
 
 	return hapd->driver->set_key(hapd->drv_priv, &params);
-}
-
-
-int hostapd_drv_set_key(const char *ifname, struct hostapd_data *hapd,
-			enum wpa_alg alg, const u8 *addr,
-			int key_idx, int vlan_id, int set_tx,
-			const u8 *seq, size_t seq_len,
-			const u8 *key, size_t key_len, enum key_flag key_flag)
-{
-	return hostapd_drv_mlo_set_key(ifname, hapd, -1, alg, addr, key_idx,
-				       vlan_id, set_tx, seq, seq_len, key, key_len,
-				       key_flag);
 }
 
 

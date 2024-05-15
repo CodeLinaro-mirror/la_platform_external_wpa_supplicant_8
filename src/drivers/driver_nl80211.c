@@ -7482,7 +7482,7 @@ static int get_key_handler(struct nl_msg *msg, void *arg)
 }
 
 
-static int i802_get_seqnum(const char *iface, void *priv, int link_id, const u8 *addr,
+static int i802_get_seqnum(const char *iface, void *priv, const u8 *addr,
 			   int idx, u8 *seq)
 {
 	struct i802_bss *bss = priv;
@@ -7493,8 +7493,7 @@ static int i802_get_seqnum(const char *iface, void *priv, int link_id, const u8 
 				  NL80211_CMD_GET_KEY);
 	if (!msg ||
 	    (addr && nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr)) ||
-	    nla_put_u8(msg, NL80211_ATTR_KEY_IDX, idx) ||
-	    (link_id >= 0 && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id))) {
+	    nla_put_u8(msg, NL80211_ATTR_KEY_IDX, idx)) {
 		nlmsg_free(msg);
 		return -ENOBUFS;
 	}

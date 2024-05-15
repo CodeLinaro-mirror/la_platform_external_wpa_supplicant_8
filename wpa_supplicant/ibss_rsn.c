@@ -456,7 +456,6 @@ static int ibss_rsn_auth_init_group(struct ibss_rsn *ibss_rsn,
 	conf.wpa_group_rekey = ssid->group_rekey ? ssid->group_rekey : 600;
 	conf.wpa_group_update_count = 4;
 	conf.wpa_pairwise_update_count = 4;
-	conf.link_id = -1;
 
 	ibss_rsn->auth_group = wpa_init(own_addr, &conf, &cb, ibss_rsn);
 	if (ibss_rsn->auth_group == NULL) {
@@ -473,8 +472,7 @@ static int ibss_rsn_auth_init_group(struct ibss_rsn *ibss_rsn,
 static int ibss_rsn_auth_init(struct ibss_rsn *ibss_rsn,
 			      struct ibss_rsn_peer *peer)
 {
-	peer->auth = wpa_auth_sta_init(ibss_rsn->auth_group, peer->addr, NULL,
-				       NULL);
+	peer->auth = wpa_auth_sta_init(ibss_rsn->auth_group, peer->addr, NULL);
 	if (peer->auth == NULL) {
 		wpa_printf(MSG_DEBUG, "AUTH: wpa_auth_sta_init() failed");
 		return -1;

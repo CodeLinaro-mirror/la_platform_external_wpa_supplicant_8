@@ -3414,7 +3414,7 @@ struct wpa_driver_ops {
 	 * keys, so there is no strict requirement on implementing support for
 	 * unicast keys (i.e., addr != %NULL).
 	 */
-	int (*get_seqnum)(const char *ifname, void *priv, int link_id, const u8 *addr,
+	int (*get_seqnum)(const char *ifname, void *priv, const u8 *addr,
 			  int idx, u8 *seq);
 
 	/**

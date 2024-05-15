@@ -445,17 +445,6 @@ static int hostapd_wpa_auth_get_msk(void *ctx, const u8 *addr, u8 *msk,
 }
 
 
-static int hostapd_wpa_auth_mlo_set_key(void *ctx, int link_id, int vlan_id, enum wpa_alg alg,
-				    const u8 *addr, int idx, u8 *key,
-				    size_t key_len, enum key_flag key_flag)
-{
-	struct hostapd_data *hapd = ctx;
-	const char *ifname = hapd->conf->iface;
-	return hostapd_drv_mlo_set_key(ifname, hapd, link_id, alg, addr, idx, vlan_id, 1,
-				   NULL, 0, key, key_len, key_flag);
-}
-
-
 static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 				    const u8 *addr, int idx, u8 *key,
 				    size_t key_len, enum key_flag key_flag)
@@ -519,11 +508,11 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 }
 
 
-static int hostapd_wpa_auth_get_seqnum(void *ctx, int link_id, const u8 *addr,
-				       int idx, u8 *seq)
+static int hostapd_wpa_auth_get_seqnum(void *ctx, const u8 *addr, int idx,
+				       u8 *seq)
 {
 	struct hostapd_data *hapd = ctx;
-	return hostapd_get_seqnum(hapd->conf->iface, hapd, link_id, addr, idx, seq);
+	return hostapd_get_seqnum(hapd->conf->iface, hapd, addr, idx, seq);
 }
 
 
@@ -1093,7 +1082,7 @@ hostapd_wpa_auth_add_sta(void *ctx, const u8 *sta_addr)
 		return sta->wpa_sm;
 	}
 
-	sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth, sta->addr, NULL, NULL);
+	sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth, sta->addr, NULL);
 	if (sta->wpa_sm == NULL) {
 		ap_free_sta(hapd, sta);
 		return NULL;
@@ -1511,7 +1500,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.get_psk = hostapd_wpa_auth_get_psk,
 		.get_msk = hostapd_wpa_auth_get_msk,
 		.set_key = hostapd_wpa_auth_set_key,
-		.mlo_set_key = hostapd_wpa_auth_mlo_set_key,
 		.get_seqnum = hostapd_wpa_auth_get_seqnum,
 		.send_eapol = hostapd_wpa_auth_send_eapol,
 		.for_each_sta = hostapd_wpa_auth_for_each_sta,
@@ -1590,8 +1578,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	_conf.prot_range_neg =
 		!!(hapd->iface->drv_flags2 &
 		   WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_AP);
-
-	_conf.link_id = hapd_link_id(hapd);
 
 	hapd->wpa_auth = wpa_init(hapd->own_addr, &_conf, &cb, hapd);
 	if (hapd->wpa_auth == NULL) {
