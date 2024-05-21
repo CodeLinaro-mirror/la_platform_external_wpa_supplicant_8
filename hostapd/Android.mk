@@ -1208,6 +1208,13 @@ LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libhostapd_aidl
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
+ifeq ($(HOSTAPD_USE_AIDL), y)
+ifeq ($(ENABLE_SOMEIP), true)
+LOCAL_CFLAGS += -DCONFIG_HOSTAPD_RPC
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libqti_hostapd_rpc_impl
+endif
+endif
 LOCAL_SRC_FILES := $(OBJS)
 LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_INIT_RC := hostapd.android.rc
@@ -1265,6 +1272,11 @@ LOCAL_SHARED_LIBRARIES := \
 ifeq ($(HOSTAPD_USE_VENDOR_AIDL), y)
 LOCAL_SRC_FILES += aidl/hostapd_vendor.cpp
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd-V1-ndk
+endif
+ifeq ($(ENABLE_SOMEIP), true)
+LOCAL_CFLAGS += -DCONFIG_HOSTAPD_RPC
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libqti_hostapd_rpc_impl
 endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/aidl
