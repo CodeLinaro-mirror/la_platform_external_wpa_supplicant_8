@@ -352,11 +352,6 @@ int main(int argc, char *argv[])
 	wpa_debug_level = MSG_DEBUG;
 #endif
 
-#ifdef CONFIG_SOMEIP_SUPPORT
-		if (!SupplicantSomeIPServerInit())
-			goto out;
-#endif
-
 	exitcode = 0;
 	global = wpa_supplicant_init(&params);
 	if (global == NULL) {
@@ -373,6 +368,17 @@ int main(int argc, char *argv[])
 		exitcode = -1;
 		goto out;
 	}
+
+#ifdef CONFIG_SOMEIP_SUPPORT
+	if (!SupplicantSomeIPServerInit()){
+		wpa_printf(MSG_ERROR, "Failed to initialize wpas someip server");		
+		goto out;
+	}
+	if (!SupplicantSomeIPServerStart()){
+		wpa_printf(MSG_ERROR, "Failed to start wpas someip server");		
+		goto out;
+	}
+#endif
 
 #if defined(CONFIG_FST) && defined(CONFIG_CTRL_IFACE)
 	if (!fst_global_add_ctrl(fst_ctrl_cli))
