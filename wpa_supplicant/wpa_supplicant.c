@@ -2582,8 +2582,11 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 		}
 		if (wpa_supplicant_create_ap(wpa_s, ssid) < 0) {
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
-			if (ssid->mode == WPAS_MODE_P2P_GROUP_FORMATION)
+			if (ssid->mode == WPAS_MODE_P2P_GROUP_FORMATION ||
+				ssid->mode == WPAS_MODE_P2P_GO) {
+				wpa_msg(wpa_s, MSG_ERROR, "create ap failed. clean up the states");
 				wpas_p2p_ap_setup_failed(wpa_s);
+			}
 			return;
 		}
 		wpa_s->current_bss = bss;
@@ -4538,7 +4541,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		eapol_sm_invalidate_cached_session(wpa_s->eapol);
 	}
 
-	if (!wpas_driver_bss_selection(wpa_s) || ssid->bssid_set) {
+	if (!wpas_driver_bss_selection(wpa_s) ||
+#ifdef CONFIG_P2P
+	    wpa_s->p2p_in_invitation ||
+#endif /* CONFIG_P2P */
+	    ssid->bssid_set) {
 		wpa_s->current_bss = bss;
 #ifdef CONFIG_HS20
 		hs20_configure_frame_filters(wpa_s);
