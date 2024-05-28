@@ -14,7 +14,7 @@ void wpas_create_aidl_socket(int *fd);
 void wpas_destroy_aidl_socket();
 bool wpas_connect_aidl_socket();
 void wpas_disconnect_aidl_socket();
-void wpas_sendto_aidl_socket(uint16_t message_type, uint8_t *data, size_t length);
+void wpas_notify_aidl_socket();
 void wpas_aidl_sock_handler(int sock, void *eloop_ctx, void *sock_ctx);
 
 #ifdef __cplusplus

@@ -7,7 +7,7 @@
 #include <functional>
 
 #include <rpc/util/common_util.h>
-#include <rpc/util/someip_api.h>
+#include <rpc/util/someip_util.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
 
@@ -19,14 +19,14 @@
 
 typedef std::function< bool (uint8_t* data, size_t length, std::vector<uint8_t>& outData) > MessageHandler;
 static std::map<uint16_t, MessageHandler> msgHandlerMap = {
-    /* ISupplicant method handlers */
+    /* ISupplicant */
     {SUPPLICANT_ADD_STA_INTERFACE_REQ, &SupplicantMsgHandlerAddStaInterface},
     {SUPPLICANT_REMOVE_INTERFACE_REQ, &SupplicantMsgHandlerRemoveInterface},
     {SUPPLICANT_SET_DEBUG_PARAMS_REQ, &SupplicantMsgHandlerSetDebugParams},
     {SUPPLICANT_SET_CONCURRENCY_PRIORITY_REQ, &SupplicantMsgHandlerSetConcurrencyPriority},
     {SUPPLICANT_TERMINATE_REQ, &SupplicantMsgHandlerTerminate},
 
-    /* ISupplicantStaIface method handlers */
+    /* ISupplicantStaIface */
     {SUPPLICANT_STA_IFACE_ADD_NETWORK_REQ, &StaIfaceMsgHandlerAddNetwork},
     {SUPPLICANT_STA_IFACE_REMOVE_NETWORK_REQ, &StaIfaceMsgHandlerRemoveNetwork},
     {SUPPLICANT_STA_IFACE_LIST_NETWORKS_REQ, &StaIfaceMsgHandlerListNetworks},
@@ -51,7 +51,7 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {SUPPLICANT_STA_IFACE_GET_CONNECTION_MLO_LINKS_INFO_REQ, &StaIfaceMsgHandlerGetConnectionMloLinksInfo},
     {SUPPLICANT_STA_IFACE_GET_SIGNAL_POLL_RESULTS_REQ, &StaIfaceMsgHandlerGetSignalPollResults},
 
-    /* ISupplicantStaNetwork method handlers */
+    /* ISupplicantStaNetwork */
     {SUPPLICANT_STA_NETWORK_GET_ID_REQ, &StaNetworkMsgHandlerGetId},
     {SUPPLICANT_STA_NETWORK_SET_SSID_REQ, &StaNetworkMsgHandlerSetSsid},
     {SUPPLICANT_STA_NETWORK_SET_BSSID_REQ, &StaNetworkMsgHandlerSetBssid},
@@ -101,8 +101,10 @@ static inline MessageHandler SupplicantGetMessageHandler(uint16_t methodId)
     return nullptr;
 }
 
-void SupplicantProcessSomeIPRequestMessage(uint16_t methodId, uint8_t *data, size_t length)
+void SupplicantProcessSomeIPRequestMessage(const std::shared_ptr<SomeipMessage> &msg)
 {
+    uint16_t methodId = msg->getMethodId();
+
     ALOGI("Recv Someip Request message with method_id 0x%04X", methodId);
 
     MessageHandler handler = SupplicantGetMessageHandler(methodId);
@@ -111,14 +113,15 @@ void SupplicantProcessSomeIPRequestMessage(uint16_t methodId, uint8_t *data, siz
         return;
     }
 
-    std::vector<uint8_t> response;
-    bool ret = handler(data, length, response);
+    std::vector<uint8_t> response_data;
+    bool ret = handler(msg->getData(), msg->getLength(), response_data);
     if (!ret) {
         ALOGE("Process SomeIP Request fail");
         return;
     }
 
-    ret = someip_send_response(methodId, response.data(), response.size());
+    std::shared_ptr<SomeipMessage> response = std::make_shared<SomeipMessage>(msg->createResponse(response_data));
+    ret = someip_send_message(response);
     if (!ret)
         ALOGE("Send SomeIP Response fail");
 }

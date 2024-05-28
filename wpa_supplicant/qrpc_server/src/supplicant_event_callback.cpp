@@ -7,13 +7,12 @@
 
 using aidl::android::hardware::wifi::supplicant::SupplicantStatusCode;
 
-
-uint16_t SupplicantEventArray[SUPPLICANT_EVENT_COUNTS] = {
-    /* ISUPPLICANT */
+std::vector<uint16_t> SupplicantEvent{
+    /* ISupplicant */
 //    SUPPLICANT_ON_INTERFACE_CREATED_IND,
     SUPPLICANT_ON_INTERFACE_REMOVED_IND,
 
-    /* ISUPPLICANTSTAIFACE */
+    /* ISupplicantStaIface */
 //    SUPPLICANT_STA_IFACE_ON_ANQP_QUERY_DONE_IND,
     SUPPLICANT_STA_IFACE_ON_ASSOCIATION_REJECTED_IND,
     SUPPLICANT_STA_IFACE_ON_AUTHENTICATION_TIMEOUT_IND,
@@ -51,7 +50,7 @@ uint16_t SupplicantEventArray[SUPPLICANT_EVENT_COUNTS] = {
 //    SUPPLICANT_STA_IFACE_ON_QOS_POLICY_RESPONSE_FOR_SCS_IND,
     SUPPLICANT_STA_IFACE_ON_PMK_SA_CACHE_ADDED_IND,
 
-    /* ISUPPLICANTSTANETWORK */
+    /* ISupplicantStaNetwork */
 //    SUPPLICANT_STA_NETWORK_ON_NETWORK_EAP_IDENTITY_REQUEST_IND,
 //    SUPPLICANT_STA_NETWORK_ON_NETWORK_EAP_SIM_GSM_AUTH_REQUEST_IND,
 //    SUPPLICANT_STA_NETWORK_ON_NETWORK_EAP_SIM_UMTS_AUTH_REQUEST_IND,
@@ -62,7 +61,7 @@ uint16_t SupplicantEventArray[SUPPLICANT_EVENT_COUNTS] = {
 
 ndk::ScopedAStatus SupplicantSendEvent(uint16_t eventId, std::vector<uint8_t>& data)
 {
-    if (!someip_send_event(eventId, data.data(), data.size())) {
+    if (!someip_send_event(eventId, data)) {
         ALOGE("Failed to send event ID: 0x%04X", eventId);
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNKNOWN);
     }

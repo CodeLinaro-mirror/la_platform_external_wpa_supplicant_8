@@ -45,14 +45,13 @@
 
 #include "aidl_sock.h"
 #include "aidl_i.h"
-#include "supplicant_message_handler.h"
+
+#include "supplicant_someip_server.h"
 
 static const char* spath = "/data/vendor/wifi/wpa/aidl_server";
 static const char* cpath = "/data/vendor/wifi/wpa/aidl_client";
 int server_sockect_fd = -1;
 int client_sockect_fd = -1;
-uint16_t method_id_buf = 0;
-uint16_t method_id_count = 0;
 
 void wpas_create_aidl_socket(int *fd)
 {
@@ -201,7 +200,7 @@ try_again:
 			/* Not fatal, continue on.*/
 		}
 	}
-	wpa_printf(MSG_DEBUG, "Aidl sockect connected");
+	wpa_printf(MSG_DEBUG, "Aidl socket connected");
 	return true;
 }
 
@@ -213,24 +212,24 @@ void wpas_disconnect_aidl_socket()
 		close(client_sockect_fd);
 		client_sockect_fd = -1;
 	}
+	wpa_printf(MSG_DEBUG, "Aidl sockect disconnected");
 }
 
-void wpas_sendto_aidl_socket(uint16_t message_type, uint8_t *data, size_t length)
+void wpas_notify_aidl_socket()
 {
-	wpa_printf(MSG_DEBUG, "Sending to Aidl sockect, 0x%04X", message_type);
-
-	method_id_buf = message_type;
-	method_id_count++;
+	wpa_printf(MSG_DEBUG, "Notifying aidl sockect");
 
 	struct os_reltime started_at;
 	int res;
+
+	char flag[] = {0x01};
 
 	errno = 0;
 	started_at.sec = 0;
 	started_at.usec = 0;
 retry_send:
-	if (send(client_sockect_fd, data, length, 0) < 0) {
-		wpa_printf(MSG_DEBUG, "Initial Sending failed, %s", strerror(errno));
+	if (send(client_sockect_fd, flag, 1, 0) < 0) {
+		wpa_printf(MSG_DEBUG, "Initial notify failed, %s", strerror(errno));
 		if (errno == EAGAIN || errno == EBUSY || errno == EWOULDBLOCK)
 		{
 			/*
@@ -247,14 +246,14 @@ retry_send:
 					goto send_err;
 			}
 			os_sleep(1, 0);
-			wpa_printf(MSG_DEBUG, "Retrying send ...");
+			wpa_printf(MSG_DEBUG, "Re-notifying...");
 			goto retry_send;
 		}
 	send_err:
-		wpa_printf(MSG_DEBUG, "Sending failed, %s", strerror(errno));
+		wpa_printf(MSG_DEBUG, "Fail to notify, %s", strerror(errno));
 		return;
 	}
-	wpa_printf(MSG_DEBUG, "Message sent");
+	wpa_printf(MSG_DEBUG, "Aidl socket notified");
 }
 
 void wpas_aidl_sock_handler(int sock, void *eloop_ctx, void *sock_ctx)
@@ -266,10 +265,10 @@ void wpas_aidl_sock_handler(int sock, void *eloop_ctx, void *sock_ctx)
 	struct sockaddr_storage from;
 	socklen_t fromlen = sizeof(from);
 
-	buf = os_malloc(8192);
+	buf = os_malloc(1);
 	if (!buf)
 		return;
-	res = recvfrom(sock, buf, 8192, 0,
+	res = recvfrom(sock, buf, 1, 0,
 			   (struct sockaddr *) &from, &fromlen);
 	if (res < 0) {
 		wpa_printf(MSG_ERROR, "recvfrom(ctrl_iface): %s",
@@ -277,19 +276,15 @@ void wpas_aidl_sock_handler(int sock, void *eloop_ctx, void *sock_ctx)
 		os_free(buf);
 		return;
 	}
-	if ((size_t) res > 8192) {
-		wpa_printf(MSG_ERROR, "recvform(ctrl_iface): input truncated");
+	if ((size_t) res > 1) {
+		wpa_printf(MSG_ERROR, "Notification error: %ld", res);
 		os_free(buf);
 		return;
 	}
 
 	wpa_printf(MSG_DEBUG, "Message received");
 
-	while(method_id_count == 1)
-	{
-		SupplicantProcessSomeIPRequestMessage(method_id_buf, buf, res);
-		method_id_count--;
-	}
+	someip_process_queued_msg();
 
 	os_memset(buf, 0, res);
 	os_free(buf);

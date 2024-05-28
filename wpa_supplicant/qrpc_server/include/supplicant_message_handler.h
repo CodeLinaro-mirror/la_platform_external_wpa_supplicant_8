@@ -6,15 +6,12 @@
 #ifndef SUPPLICANT_MESSAGE_HANDLER_H
 #define SUPPLICANT_MESSAGE_HANDLER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <rpc/util/someip_util.h>
 
-void SupplicantProcessSomeIPRequestMessage(uint16_t methodId, uint8_t *data, size_t length);
+using qti::hal::rpc::SomeipMessage;
 
-#ifdef __cplusplus
-}
-#endif
+void SupplicantProcessSomeIPRequestMessage(const std::shared_ptr<SomeipMessage> &msg);
 
+bool someip_send_message(std::shared_ptr<SomeipMessage> message);
 
 #endif /* SUPPLICANT_MESSAGE_HANDLER_H */
