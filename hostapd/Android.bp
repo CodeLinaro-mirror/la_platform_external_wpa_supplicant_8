@@ -304,6 +304,7 @@ filegroup {
         "src/eap_server/eap_server_methods.c",
         "src/eap_server/eap_server_identity.c",
         "src/common/dragonfly.c",
+	"src/common/ptksa_cache.c",
         "src/crypto/ms_funcs.c",
         "src/eap_common/chap.c",
         "src/eap_server/eap_server_tls_common.c",

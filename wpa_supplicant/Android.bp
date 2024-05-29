@@ -325,6 +325,7 @@ filegroup {
         "src/common/dpp_reconfig.c",
         "src/common/dpp_tcp.c",
         "src/common/dragonfly.c",
+        "src/common/ptksa_cache.c",
         "src/common/gas.c",
         "src/common/gas_server.c",
         "src/common/hw_features_common.c",
