@@ -1548,7 +1548,9 @@ static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx)
 
 void hostapd_channel_list_updated(struct hostapd_iface *iface, int initiator)
 {
-	if (!iface->wait_channel_update || initiator != REGDOM_SET_BY_USER)
+	if (!iface->wait_channel_update ||
+		(initiator != REGDOM_SET_BY_USER &&
+		initiator != REGDOM_SET_BY_DRIVER))
 		return;
 
 	wpa_printf(MSG_DEBUG, "Channel list updated - continue setup");
