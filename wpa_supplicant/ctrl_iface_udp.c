@@ -473,8 +473,12 @@ fail:
 }
 
 
-void wpa_supplicant_ctrl_iface_deinit(struct ctrl_iface_priv *priv)
+void wpa_supplicant_ctrl_iface_deinit(struct wpa_supplicant *wpa_s,
+				      struct ctrl_iface_priv *priv)
 {
+	if (!priv)
+		return;
+
 	if (priv->sock > -1) {
 		eloop_unregister_read_sock(priv->sock);
 		if (priv->ctrl_dst) {
@@ -516,7 +520,7 @@ static void wpa_supplicant_ctrl_iface_send(struct wpa_supplicant *wpa_s,
 		return;
 
 	if (ifname)
-		os_snprintf(levelstr, sizeof(levelstr), "IFACE=%s <%d>",
+		os_snprintf(levelstr, sizeof(levelstr), "IFNAME=%s <%d>",
 			    ifname, level);
 	else
 		os_snprintf(levelstr, sizeof(levelstr), "<%d>", level);
