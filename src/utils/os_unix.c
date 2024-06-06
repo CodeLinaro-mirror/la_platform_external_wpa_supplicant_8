@@ -359,8 +359,19 @@ int os_program_init(void)
 	if (!gid_wifi || !uid_wifi) return -1;
 	setgroups(ARRAY_SIZE(groups), groups);
 #else /* ANDROID_SETGROUPS_OVERRIDE */
+
+#ifdef CONFIG_SUPPLICANT_RPC
+	gid_t groups[5];
+	int group_idx = 0;
+
+	grp = getgrnam("system");
+	groups[group_idx] = grp ? grp->gr_gid : 0;
+	if (!groups[group_idx]) return -1;
+	group_idx++;
+#else
 	gid_t groups[4];
 	int group_idx = 0;
+#endif
 
 	if (!gid_wifi || !uid_wifi) return -1;
 	groups[group_idx] = gid_wifi;
