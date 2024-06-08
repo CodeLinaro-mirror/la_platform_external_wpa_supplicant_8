@@ -415,7 +415,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
 					      wpa_s->sme.assoc_req_ie,
-					      &wpa_s->sme.assoc_req_ie_len)) {
+					      &wpa_s->sme.assoc_req_ie_len,
+					      false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
 				"key management and encryption suites");
 			wpas_connect_work_done(wpa_s);
@@ -428,7 +429,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
 		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
 					      wpa_s->sme.assoc_req_ie,
-					      &wpa_s->sme.assoc_req_ie_len)) {
+					      &wpa_s->sme.assoc_req_ie_len,
+					      false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
 				"key management and encryption suites");
 			wpas_connect_work_done(wpa_s);
@@ -448,7 +450,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
 		if (wpa_supplicant_set_suites(wpa_s, NULL, ssid,
 					      wpa_s->sme.assoc_req_ie,
-					      &wpa_s->sme.assoc_req_ie_len)) {
+					      &wpa_s->sme.assoc_req_ie_len,
+					      false)) {
 			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
 				"key management and encryption suites (no "
 				"scan results)");
