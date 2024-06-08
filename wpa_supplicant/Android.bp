@@ -457,6 +457,7 @@ filegroup {
     name: "wpa_cli_srcs",
     srcs: [
         "src/common/cli.c",
+        "src/common/wpa_ctrl.c",
         "src/utils/common.c",
         "src/utils/edit.c",
         "src/utils/eloop.c",
