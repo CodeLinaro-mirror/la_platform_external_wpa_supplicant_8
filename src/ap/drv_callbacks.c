@@ -870,8 +870,10 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 
 	hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
 		       HOSTAPD_LEVEL_INFO,
-		       "driver %s channel switch: freq=%d, ht=%d, vht_ch=0x%x, he_ch=0x%x, offset=%d, width=%d (%s), cf1=%d, cf2=%d",
+		       "driver %s channel switch: iface->freq=%d, freq=%d, ht=%d, vht_ch=0x%x, "
+		       "he_ch=0x%x, offset=%d, width=%d (%s), cf1=%d, cf2=%d",
 		       finished ? "had" : "starting",
+		       hapd->iface->freq,
 		       freq, ht, hapd->iconf->ch_switch_vht_config,
 		       hapd->iconf->ch_switch_he_config, offset,
 		       width, channel_width_to_string(width), cf1, cf2);
@@ -883,8 +885,8 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		return;
 	}
 
-	/* configured channel is dfs or not */
-	is_dfs0 = ieee80211_is_dfs(hapd->iface->freq, hapd->iface->hw_features, hapd->iface->num_hw_features);
+	/* Check if any of configured channels require DFS */
+	is_dfs0 = hostapd_is_dfs_required(hapd->iface);
 	hapd->iface->freq = freq;
 
 	channel = hostapd_hw_get_channel(hapd, freq);
@@ -977,11 +979,11 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 				  hapd->iface->num_hw_features);
 
 	wpa_msg(hapd->msg_ctx, MSG_INFO,
-		"%sfreq=%d ht_enabled=%d ch_offset=%d ch_width=%s cf1=%d cf2=%d dfs=%d",
+		"%sfreq=%d ht_enabled=%d ch_offset=%d ch_width=%s cf1=%d cf2=%d is_dfs0=%d dfs=%d",
 		finished ? WPA_EVENT_CHANNEL_SWITCH :
 		WPA_EVENT_CHANNEL_SWITCH_STARTED,
 		freq, ht, offset, channel_width_to_string(width),
-		cf1, cf2, is_dfs);
+		cf1, cf2, is_dfs0, is_dfs);
 	if (!finished)
 		return;
 
@@ -994,8 +996,10 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 			"freq=%d dfs=%d", freq, is_dfs);
 	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
 		/* Complete AP configuration for the first bring up. */
-		if (is_dfs0 && !is_dfs && hapd->iface->state != HAPD_IFACE_ENABLED) {
-			/* fake a CAC start bit to skip setting channel */
+		if (is_dfs0 > 0 &&
+		    hostapd_is_dfs_required(hapd->iface) <= 0 &&
+		    hapd->iface->state != HAPD_IFACE_ENABLED) {
+			/* Fake a CAC start bit to skip setting channel */
 			hapd->iface->cac_started = 1;
 			hostapd_setup_interface_complete(hapd->iface, 0);
 		}
