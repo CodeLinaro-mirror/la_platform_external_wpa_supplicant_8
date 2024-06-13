@@ -2237,6 +2237,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_MLO			0x0000000000004000ULL
 /** Driver supports of adaptive 11r feature */
 #define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x8000000000000000ULL
+/** Driver supports RSN override elements */
+#define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
