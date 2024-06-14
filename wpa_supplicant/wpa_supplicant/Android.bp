@@ -39,14 +39,22 @@ wifi_cc_defaults {
             conditions_default: {
                 static_libs: ["lib_driver_cmd_fallback"],
             },
-        }
-    }
+        },
+    },
 }
 
 cc_binary {
     name: "wpa_supplicant",
     defaults: [
         "wpa_supplicant_defaults",
+        "lib_vendor_wpa_supplicant",
+    ],
+}
+
+cc_binary {
+    name: "hostapd",
+    defaults: [
+        "hostapd_defaults",
         "lib_vendor_wpa_supplicant",
     ],
 }
