@@ -2956,12 +2956,12 @@ void AidlManager::notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
 }
 
 ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
-#if 0
+#ifdef CONFIG_USE_NONSTD_CALLBACK
 	if (alias == nullptr || value == nullptr) {
 		wpa_printf(MSG_ERROR, "Null pointer argument was passed to getCertificate");
 		return -1;
 	}
-	if (auto cert = certificate_utils::getCertificate(alias, non_standard_cert_callback_)) {
+	if (auto cert = NonStdGetCertificate(alias)) {
 		*value = (uint8_t *) os_malloc(cert->size());
 		if (*value == nullptr) return -1;
 		os_memcpy(*value, cert->data(), cert->size());
@@ -2972,14 +2972,13 @@ ssize_t AidlManager::getCertificate(const char* alias, uint8_t** value) {
 }
 
 ssize_t AidlManager::listAliases(const char *prefix, char ***aliases) {
-#if 0
+#ifdef CONFIG_USE_NONSTD_CALLBACK
 	if (prefix == nullptr || aliases == nullptr) {
 		wpa_printf(MSG_ERROR, "Null pointer argument was passed to listAliases");
 		return -1;
 	}
 
-	if (auto results =
-			certificate_utils::listAliases(prefix, non_standard_cert_callback_)) {
+	if (auto results = NonStdListAliases(prefix)) {
 		int count = results->size();
 		*aliases = (char **) os_malloc(sizeof(char *) * count);
 		if (*aliases == nullptr) {

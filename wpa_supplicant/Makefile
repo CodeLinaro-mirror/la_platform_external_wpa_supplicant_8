@@ -1954,6 +1954,9 @@ OBJS += qrpc_server/src/supplicant_event_callback.o
 OBJS += qrpc_server/src/supplicant_message_handler.o
 OBJS += qrpc_server/src/SupplicantReq.o
 OBJS += qrpc_server/src/SupplicantCallback.o
+ifdef CONFIG_USE_NONSTD_CALLBACK
+OBJS += qrpc_server/src/SupplicantNonStdCallback.o
+endif
 OBJS += qrpc_server/src/SupplicantStaIfaceReq.o
 OBJS += qrpc_server/src/SupplicantStaIfaceCallback.o
 OBJS += qrpc_server/src/SupplicantStaNetworkReq.o

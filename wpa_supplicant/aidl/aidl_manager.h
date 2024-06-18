@@ -25,8 +25,10 @@
 #ifdef CONFIG_USE_VENDOR_AIDL
 #include "SupplicantVendorStaIfaceCallback.h"
 #endif
+#ifdef CONFIG_USE_NONSTD_CALLBACK
+#include "SupplicantNonStdCallback.h"
+#endif
 
-//#include "certificate_utils.h"
 //#include "p2p_iface.h"
 //#include "p2p_network.h"
 #include <aidl/android/hardware/wifi/supplicant/INonStandardCertCallback.h>
