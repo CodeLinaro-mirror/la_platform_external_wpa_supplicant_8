@@ -321,12 +321,40 @@ bool validatePassphrase(int passphrase_len, int min_len, int max_len)
 	return true;
 }
 
+std::string getInterfaceMacAddress(const std::string& if_name)
+{
+	u8 addr[ETH_ALEN] = {};
+	struct ifreq ifr;
+	std::string mac_addr;
+
+	android::base::unique_fd sock(socket(PF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+	if (sock.get() < 0) {
+		wpa_printf(MSG_ERROR, "Failed to create sock (%s) in %s",
+			strerror(errno), __FUNCTION__);
+		return "";
+	}
+
+	memset(&ifr, 0, sizeof(ifr));
+	strlcpy(ifr.ifr_name, if_name.c_str(), IFNAMSIZ);
+	if (ioctl(sock.get(), SIOCGIFHWADDR, &ifr) < 0) {
+		wpa_printf(MSG_ERROR, "Could not get interface %s hwaddr: %s",
+			   if_name.c_str(), strerror(errno));
+		return "";
+	}
+
+	memcpy(addr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+	mac_addr = StringPrintf("" MACSTR, MAC2STR(addr));
+
+	return mac_addr;
+}
+
 std::string CreateHostapdConfig(
 	const IfaceParams& iface_params,
 	const ChannelParams& channelParams,
 	const NetworkParams& nw_params,
 	const std::string br_name,
-	const std::string owe_transition_ifname)
+	const std::string owe_transition_ifname,
+	bool enable_11be)
 {
 	if (nw_params.ssid.size() >
 		static_cast<uint32_t>(
@@ -345,6 +373,8 @@ std::string CreateHostapdConfig(
 	}
 	const std::string ssid_as_string = ss.str();
 
+	bool is_11be_supported = true;
+
 	// Encryption config string
 	uint32_t band = 0;
 	band |= static_cast<uint32_t>(channelParams.bandMask);
@@ -355,6 +385,11 @@ std::string CreateHostapdConfig(
 	switch (nw_params.encryptionType) {
 	case EncryptionType::NONE:
 		// no security params
+		if (enable_11be) {
+			// Don't enable 11BE SAP in pre-WPA3 only security modes
+			wpa_printf(MSG_DEBUG, "11BE SAP cannot be enabled in pre-WPA3 security modes");
+			is_11be_supported = false;
+		}
 		break;
 	case EncryptionType::WPA:
 		if (!validatePassphrase(
@@ -371,6 +406,11 @@ std::string CreateHostapdConfig(
 			"wpa_passphrase=%s",
 			is_60Ghz_band_only ? "GCMP" : "TKIP CCMP",
 			nw_params.passphrase.c_str());
+		if (enable_11be) {
+			// Don't enable 11BE SAP in pre-WPA3 only security modes
+			wpa_printf(MSG_DEBUG, "11BE SAP cannot be enabled in pre-WPA3 security modes");
+			is_11be_supported = false;
+		}
 		break;
 	case EncryptionType::WPA2:
 		if (!validatePassphrase(
@@ -390,6 +430,11 @@ std::string CreateHostapdConfig(
 			"wpa_passphrase=%s",
 			is_60Ghz_band_only ? "GCMP" : "CCMP",
 			nw_params.passphrase.c_str());
+		if (enable_11be) {
+			// Don't enable 11BE SAP in pre-WPA3 only security modes
+			wpa_printf(MSG_DEBUG, "11BE SAP cannot be enabled in pre-WPA3 security modes");
+			is_11be_supported = false;
+		}
 		break;
 	case EncryptionType::WPA3_SAE_TRANSITION:
 		if (!validatePassphrase(
@@ -407,15 +452,17 @@ std::string CreateHostapdConfig(
 				   "Enable only SAE in key_mgmt");
 			encryption_config_as_string = StringPrintf(
 				"wpa=2\n"
-				"rsn_pairwise=CCMP\n"
+				"rsn_pairwise=%s\n"
 				"wpa_key_mgmt=%s\n"
-				"ieee80211w=2\n"
-				"sae_require_mfp=2\n"
-				"sae_pwe=%d\n"
-				"sae_password=%s",
+				"ieee80211w=1\n"
+				"sae_require_mfp=1\n"
+				"wpa_passphrase=%s\n"
+				"sae_password=%s\n"
+				"sae_pwe=2",
+				is_60Ghz_band_only ? "GCMP" : "CCMP",
 #ifdef CONFIG_IEEE80211BE
-				iface_params.hwModeParams.enable80211BE ?
-					"SAE SAE-EXT-KEY" : "SAE",
+				(is_11be_supported && enable_11be) ?
+				    "WPA-PSK SAE SAE-EXT-KEY" : "WPA-PSK SAE",
 #else
 					"SAE",
 #endif
@@ -455,7 +502,8 @@ std::string CreateHostapdConfig(
 			"sae_password=%s",
 			is_60Ghz_band_only ? "GCMP" : "CCMP",
 #ifdef CONFIG_IEEE80211BE
-			iface_params.hwModeParams.enable80211BE ? "SAE SAE-EXT-KEY" : "SAE",
+			(is_11be_supported && enable_11be) ?
+			    "SAE SAE-EXT-KEY" : "SAE",
 #else
 			"SAE",
 #endif
@@ -504,7 +552,7 @@ std::string CreateHostapdConfig(
 		channel_config_as_string = StringPrintf(
 			"channel=0\n"
 			"acs_exclude_dfs=%d\n"
-			"freqlist=%s",
+			"freqlist=%s\n",
 			channelParams.acsShouldExcludeDfs,
 			freqList_as_string.c_str());
 	} else {
@@ -573,63 +621,97 @@ std::string CreateHostapdConfig(
 #endif /* CONFIG_IEEE80211AX */
 	std::string eht_params_as_string;
 #ifdef CONFIG_IEEE80211BE
-	if (iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) {
-		eht_params_as_string = "ieee80211be=1";
+	if (is_11be_supported && enable_11be && !is_60Ghz_used) {
+		std::string interface_mac_addr = getInterfaceMacAddress(iface_params.name);
+		if (interface_mac_addr.empty()) {
+			wpa_printf(MSG_ERROR, "Unable to set interface mac address as bssid for 11BE SAP");
+			return "";
+		}
+		eht_params_as_string = StringPrintf(
+			"ieee80211be=1\n"
+			"bssid=%s\n"
+			"mld_ap=1\n",
+			interface_mac_addr.c_str());
 		/* TODO set eht_su_beamformer, eht_su_beamformee, eht_mu_beamformer */
 	} else {
 		eht_params_as_string = "ieee80211be=0";
 	}
 #endif /* CONFIG_IEEE80211BE */
 
-	std::string ht_cap_vht_oper_he_oper_chwidth_as_string;
+	std::string ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string;
 	switch (iface_params.hwModeParams.maximumChannelBandwidth) {
 	case ChannelBandwidth::BANDWIDTH_20:
-		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
+#ifdef CONFIG_IEEE80211BE
+			"eht_oper_chwidth=0\n"
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 			"he_oper_chwidth=0\n"
 #endif
-			"vht_oper_chwidth=0");
+			"vht_oper_chwidth=0\n"
+			"%s\n", (band & band6Ghz) ? "op_class=131" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_40:
-		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
 			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211BE
+			"eht_oper_chwidth=0\n"
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 			"he_oper_chwidth=0\n"
 #endif
-			"vht_oper_chwidth=0");
+			"vht_oper_chwidth=0\n"
+			"%s\n", (band & band6Ghz) ? "op_class=132" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_80:
-		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
 			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211BE
+			"eht_oper_chwidth=%d\n"
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 			"he_oper_chwidth=%d\n"
 #endif
-			"vht_oper_chwidth=%d",
+			"vht_oper_chwidth=%d\n"
+			"%s\n",
+#ifdef CONFIG_IEEE80211BE
+			(is_11be_supported && enable_11be && !is_60Ghz_used) ? 1 : 0,
+#endif
 #ifdef CONFIG_IEEE80211AX
 			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 1 : 0,
 #endif
-			iface_params.hwModeParams.enable80211AC ? 1 : 0);
+			iface_params.hwModeParams.enable80211AC ? 1 : 0,
+			(band & band6Ghz) ? "op_class=133" : "");
 		break;
 	case ChannelBandwidth::BANDWIDTH_160:
-		ht_cap_vht_oper_he_oper_chwidth_as_string = StringPrintf(
+		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = StringPrintf(
 			"ht_capab=[HT40+]\n"
+#ifdef CONFIG_IEEE80211BE
+			"eht_oper_chwidth=%d\n"
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 			"he_oper_chwidth=%d\n"
 #endif
-			"vht_oper_chwidth=%d",
+			"vht_oper_chwidth=%d\n"
+			"%s\n",
+#ifdef CONFIG_IEEE80211BE
+			(is_11be_supported && enable_11be && !is_60Ghz_used) ? 2 : 0,
+#endif
 #ifdef CONFIG_IEEE80211AX
 			(iface_params.hwModeParams.enable80211AX && !is_60Ghz_used) ? 2 : 0,
 #endif
-			iface_params.hwModeParams.enable80211AC ? 2 : 0);
+			iface_params.hwModeParams.enable80211AC ? 2 : 0,
+			(band & band6Ghz) ? "op_class=134" : "");
 		break;
 	default:
 		if (!is_2Ghz_band_only && !is_60Ghz_used) {
 			if (iface_params.hwModeParams.enable80211AC) {
-				ht_cap_vht_oper_he_oper_chwidth_as_string =
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string =
+					"ht_capab=[HT40+]\n"
 					"vht_oper_chwidth=1\n";
 				if (allowed_ht40_first_channel_list.end()
 				    == allowed_ht40_first_channel_list.find(channelParams.channel)) {
-				    ht_cap_vht_oper_he_oper_chwidth_as_string +=
+				    ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
 					"ht_capab=[HT40-]\n";
 				} else {
 					if (channelParams.channel >
@@ -637,17 +719,32 @@ std::string CreateHostapdConfig(
 						channel_config_as_string.replace(8, 3,
 							std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
 					}
-					ht_cap_vht_oper_he_oper_chwidth_as_string +=
+					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
 						"ht_capab=[HT40+]\n";
 				}
 			}
+			if (band & band6Ghz) {
+#ifdef CONFIG_IEEE80211BE
+				if (is_11be_supported && enable_11be)
+					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=137\n";
+				else
+					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
+#else /* CONFIG_IEEE80211BE */
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "op_class=134\n";
+#endif /* CONFIG_IEEE80211BE */
+			}
 #ifdef CONFIG_IEEE80211AX
 			if (iface_params.hwModeParams.enable80211AX) {
-				ht_cap_vht_oper_he_oper_chwidth_as_string += "he_oper_chwidth=1";
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "he_oper_chwidth=1\n";
+			}
+#endif
+#ifdef CONFIG_IEEE80211BE
+			if (is_11be_supported && enable_11be) {
+				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1\n";
 			}
 #endif
 		} else if (is_2Ghz_band_only) {
-			ht_cap_vht_oper_he_oper_chwidth_as_string = "ht_capab=[HT40+][HT40-]";
+			ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = "ht_capab=[HT40+][HT40-]";
 		}
 		break;
 	}
@@ -713,14 +810,18 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"%s\n"
 		"%s\n"
-		"%s\n",
+		"%s\n"
+#ifdef CONFIG_OCV
+		"ocv=%d\n"
+#endif
+		"beacon_prot=1\n",
 		iface_params.name.c_str(), ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
 		iface_params.hwModeParams.enable80211AC ? 1 : 0,
 		he_params_as_string.c_str(),
 		eht_params_as_string.c_str(),
-		hw_mode_as_string.c_str(), ht_cap_vht_oper_he_oper_chwidth_as_string.c_str(),
+		hw_mode_as_string.c_str(), ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string.c_str(),
 		nw_params.isHidden ? 1 : 0,
 #ifdef CONFIG_INTERWORKING
 		access_network_params_as_string.c_str(),
@@ -730,7 +831,16 @@ std::string CreateHostapdConfig(
 		owe_transition_ifname_as_string.c_str(),
 		enable_edmg_as_string.c_str(),
 		edmg_channel_as_string.c_str(),
-		vendor_elements_as_string.c_str());
+		vendor_elements_as_string.c_str()
+#ifdef CONFIG_OCV
+#ifdef CONFIG_IEEE80211BE
+		/* TODO: Don't enable OCV for Wi-Fi 7 until further notice from WFA */
+		, (is_11be_supported && enable_11be) ? 0 : 2
+#else /* CONFIG_IEEE80211BE */
+		, 2
+#endif /* CONFIG_IEEE80211BE */
+#endif /* CONFIG_OCV */
+		);
 }
 
 Generation getGeneration(hostapd_hw_modes *current_mode)
@@ -938,10 +1048,11 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 	int channelParamsSize = iface_params.channelParams.size();
 	if (channelParamsSize == 1) {
 		// Single AP
-		wpa_printf(MSG_INFO, "AddSingleAccessPoint, iface=%s",
-			iface_params.name.c_str());
+		wpa_printf(MSG_INFO, "AddSingleAccessPoint, iface=%s, enable80211BE=%s",
+			iface_params.name.c_str(),
+			iface_params.hwModeParams.enable80211BE ? "true" : "false");
 		return addSingleAccessPoint(iface_params, iface_params.channelParams[0],
-		    nw_params, "", "");
+		    nw_params, "", "", iface_params.hwModeParams.enable80211BE);
 	} else if (channelParamsSize == 2) {
 		// Concurrent APs
 		wpa_printf(MSG_INFO, "AddDualAccessPoint, iface=%s",
@@ -999,7 +1110,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 
 		ndk::ScopedAStatus status = addSingleAccessPoint(
 		    iface_params_new, iface_params.channelParams[i], nw_params_new,
-		    br_name, owe_transition_ifname);
+		    br_name, owe_transition_ifname, false);
 		if (!status.isOk()) {
 			wpa_printf(MSG_ERROR, "Failed to addAccessPoint %s",
 				   managed_interfaces[i].c_str());
@@ -1016,7 +1127,8 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	const ChannelParams& channelParams,
 	const NetworkParams& nw_params,
 	const std::string br_name,
-	const std::string owe_transition_ifname)
+	const std::string owe_transition_ifname,
+	bool enable_11be)
 {
 	if (hostapd_get_iface(interfaces_, iface_params.name.c_str())) {
 		wpa_printf(
@@ -1025,7 +1137,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
 	}
 	const auto conf_params = CreateHostapdConfig(iface_params, channelParams, nw_params,
-					br_name, owe_transition_ifname);
+					br_name, owe_transition_ifname, enable_11be);
 	if (conf_params.empty()) {
 		wpa_printf(MSG_ERROR, "Failed to create config params");
 		return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);

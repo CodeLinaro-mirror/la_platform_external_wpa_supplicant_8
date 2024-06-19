@@ -362,8 +362,9 @@ static int dfs_get_start_chan_idx(struct hostapd_iface *iface, int *seg1_start)
 	if (iface->conf->ieee80211n && iface->conf->secondary_channel == -1)
 		channel_no -= 4;
 
-	/* VHT/HE */
-	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax) {
+	/* VHT/HE/EHT */
+	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax ||
+	    iface->conf->ieee80211be) {
 		switch (hostapd_get_oper_chwidth(iface->conf)) {
 		case CONF_OPER_CHWIDTH_USE_HT:
 			break;
@@ -381,9 +382,13 @@ static int dfs_get_start_chan_idx(struct hostapd_iface *iface, int *seg1_start)
 			chan_seg1 = hostapd_get_oper_centr_freq_seg1_idx(
 				iface->conf) - 6;
 			break;
+		case CONF_OPER_CHWIDTH_320MHZ:
+			channel_no = hostapd_get_oper_centr_freq_seg0_idx(
+				iface->conf) - 30;
+			break;
 		default:
 			wpa_printf(MSG_INFO,
-				   "DFS only VHT20/40/80/160/80+80 is supported now");
+				   "DFS only EHT20/40/80/160/80+80/320 is supported now");
 			channel_no = -1;
 			break;
 		}
@@ -978,6 +983,11 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
 	os_memset(&csa_settings, 0, sizeof(csa_settings));
 	csa_settings.cs_count = 5;
 	csa_settings.block_tx = 1;
+	csa_settings.link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (iface->bss[0]->conf->mld_ap)
+		csa_settings.link_id = iface->bss[0]->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_MESH
 	if (iface->mconf)
 		ieee80211_mode = IEEE80211_MODE_MESH;

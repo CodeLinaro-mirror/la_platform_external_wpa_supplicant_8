@@ -517,8 +517,11 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
 	int ret;
 
 	/* Check that HT40 is used and PRI / SEC switch is allowed */
-	if (!iface->conf->secondary_channel || iface->conf->no_pri_sec_switch)
+	if (!iface->conf->secondary_channel || iface->conf->no_pri_sec_switch) {
+		if (iface->conf->ht_capab & HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET)
+			iface->conf->ht_capab &= ~HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
 		return 0;
+	}
 
 	hostapd_set_state(iface, HAPD_IFACE_HT_SCAN);
 	wpa_printf(MSG_DEBUG, "Scan for neighboring BSSes prior to enabling "
@@ -897,7 +900,8 @@ static bool hostapd_is_usable_punct_bitmap(struct hostapd_iface *iface)
 {
 #ifdef CONFIG_IEEE80211BE
 	struct hostapd_config *conf = iface->conf;
-	u8 bw, start_chan;
+	u16 bw;
+	u8 start_chan;
 
 	if (!conf->punct_bitmap)
 		return true;
@@ -914,21 +918,30 @@ static bool hostapd_is_usable_punct_bitmap(struct hostapd_iface *iface)
 		return false;
 	}
 
-	switch (conf->eht_oper_chwidth) {
-	case 0:
-		wpa_printf(MSG_ERROR,
-			   "RU puncturing is supported only in 80 MHz and 160 MHz");
-		return false;
-	case 1:
-		bw = 80;
-		start_chan = conf->eht_oper_centr_freq_seg0_idx - 6;
-		break;
-	case 2:
-		bw = 160;
-		start_chan = conf->eht_oper_centr_freq_seg0_idx - 14;
-		break;
-	default:
-		return false;
+	/*
+	 * In the 6 GHz band, eht_oper_chwidth is ignored. Use operating class
+	 * to determine channel width.
+	 */
+	if (conf->op_class == 137) {
+		bw = 320;
+		start_chan = conf->eht_oper_centr_freq_seg0_idx - 30;
+	} else {
+		switch (conf->eht_oper_chwidth) {
+		case 0:
+			wpa_printf(MSG_ERROR,
+				   "RU puncturing is supported only in 80 MHz and 160 MHz");
+			return false;
+		case 1:
+			bw = 80;
+			start_chan = conf->eht_oper_centr_freq_seg0_idx - 6;
+			break;
+		case 2:
+			bw = 160;
+			start_chan = conf->eht_oper_centr_freq_seg0_idx - 14;
+			break;
+		default:
+			return false;
+		}
 	}
 
 	if (!is_punct_bitmap_valid(bw, (conf->channel - start_chan) / 4,
