@@ -6,16 +6,17 @@
 #include <map>
 #include <functional>
 
-#include <rpc/util/common_util.h>
-#include <rpc/util/someip_util.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
+#include <rpc/message/wpa_supplicant_vendor/supplicant_vendor_message_def.h>
 
 #include "supplicant_message_handler.h"
 
 #include "SupplicantReq.h"
 #include "SupplicantStaIfaceReq.h"
 #include "SupplicantStaNetworkReq.h"
+#include "SupplicantVendorReq.h"
+#include "SupplicantVendorStaIfaceReq.h"
 
 typedef std::function< bool (uint8_t* data, size_t length, std::vector<uint8_t>& outData) > MessageHandler;
 static std::map<uint16_t, MessageHandler> msgHandlerMap = {
@@ -89,7 +90,14 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {SUPPLICANT_STA_NETWORK_GET_GROUP_MGMT_CIPHER_REQ, &StaNetworkMsgHandlerGetGroupMgmtCipher},
     {SUPPLICANT_STA_NETWORK_SET_SAE_PASSWORD_REQ, &StaNetworkMsgHandlerSetSaePassword},
     {SUPPLICANT_STA_NETWORK_SET_PMK_CACHE_REQ, &StaNetworkMsgHandlerSetPmkCache},
-    {SUPPLICANT_STA_NETWORK_SET_SAE_H2E_MODE_REQ, &StaNetworkMsgHandlerSetSaeH2eMode}
+    {SUPPLICANT_STA_NETWORK_SET_SAE_H2E_MODE_REQ, &StaNetworkMsgHandlerSetSaeH2eMode},
+
+    /* ISupplicantVendor */
+    {SUPPLICANT_VENDOR_LIST_VENDOR_INTERFACES_REQ, &SupplicantVendorMsgHandlerListVendorInterfaces},
+
+    /* ISupplicantVendorStaIface */
+    {SUPPLICANT_VENDOR_STA_IFACE_DO_DRIVER_CMD_REQ, &VendorStaIfaceMsgHandlerDoDriverCmd}
+
 };
 
 static inline MessageHandler SupplicantGetMessageHandler(uint16_t methodId)

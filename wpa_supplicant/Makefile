@@ -1930,6 +1930,9 @@ endif
 ifdef CONFIG_SOMEIP_SUPPORT
 CFLAGS += -DCONFIG_SOMEIP_SUPPORT -DCONFIG_CTRL_IFACE_AIDL -DCONFIG_AIDL -Wno-ignored-attributes
 CFLAGS += -DWPA_QRPC_LOG -DENABLE_LOG
+ifdef CONFIG_USE_VENDOR_AIDL
+CFLAGS += -DCONFIG_USE_VENDOR_AIDL
+endif
 CFLAGS += -I aidl
 CFLAGS += -I aidl/include
 CFLAGS += -I qrpc_server/include
@@ -1937,9 +1940,13 @@ CFLAGS += -I qrpc_server/include
 OBJS += aidl/aidl.o
 OBJS += aidl/aidl_manager.o
 OBJS += aidl/iface_config_utils.o
+OBJS += aidl/supplicant.o
 OBJS += aidl/sta_iface.o
 OBJS += aidl/sta_network.o
-OBJS += aidl/supplicant.o
+ifdef CONFIG_USE_VENDOR_AIDL
+OBJS += aidl/supplicant_vendor.o
+OBJS += aidl/vendorsta_iface.o
+endif
 #Someip service
 OBJS += qrpc_server/src/aidl_sock.o
 OBJS += qrpc_server/src/supplicant_someip_server.o
@@ -1951,12 +1958,20 @@ OBJS += qrpc_server/src/SupplicantStaIfaceReq.o
 OBJS += qrpc_server/src/SupplicantStaIfaceCallback.o
 OBJS += qrpc_server/src/SupplicantStaNetworkReq.o
 OBJS += qrpc_server/src/SupplicantStaNetworkCallback.o
+ifdef CONFIG_USE_VENDOR_AIDL
+OBJS += qrpc_server/src/SupplicantVendorReq.o
+OBJS += qrpc_server/src/SupplicantVendorStaIfaceReq.o
+OBJS += qrpc_server/src/SupplicantVendorStaIfaceCallback.o
+endif
 LIBS += -lstdc++
 LIBS += -lbase -lvsomeip3
 LIBS += -lwpa_supplicant_8_lib
 LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util
 LIBS_c += -lqti_log_util
 LIBS += -lqti-wifi-supplicant-message
+ifdef CONFIG_USE_VENDOR_AIDL
+LIBS += -lqti-supplicant-vendor-message
+endif
 CXXFLAGS += ${CFLAGS}
 endif
 

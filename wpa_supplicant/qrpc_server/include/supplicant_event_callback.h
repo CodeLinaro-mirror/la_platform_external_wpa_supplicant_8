@@ -9,6 +9,7 @@
 #include <rpc/util/common_util.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
+#include <rpc/message/wpa_supplicant_vendor/supplicant_vendor_message_def.h>
 
 #include <aidl/android/hardware/wifi/supplicant/ScopedAStatus.h>
 
