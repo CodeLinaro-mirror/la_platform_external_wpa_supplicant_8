@@ -21,12 +21,12 @@
 extern "C"
 {
 #include "utils/eloop.h"
-#include "gas_query.h"
-#include "interworking.h"
-#include "hs20_supplicant.h"
-#include "wps_supplicant.h"
-#include "dpp.h"
-#include "dpp_supplicant.h"
+#include "../wpa_supplicant/gas_query.h"
+#include "../wpa_supplicant/interworking.h"
+#include "../wpa_supplicant/hs20_supplicant.h"
+#include "../wpa_supplicant/wps_supplicant.h"
+#include "common/dpp.h"
+#include "../wpa_supplicant/dpp_supplicant.h"
 #include "rsn_supp/wpa.h"
 #include "rsn_supp/pmksa_cache.h"
 }
@@ -48,8 +48,8 @@ namespace supplicant {
 
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
 
-VendorStaIface::VendorStaIface(struct wpa_global *wpa_global, const char ifname[])
-	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true)
+VendorStaIface::VendorStaIface(struct wpa_global *wpa_global, const char ifname[], int32_t id)
+	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true), ifId_(id)
 {}
 
 void VendorStaIface::invalidate() { is_valid_ = false; }
@@ -59,7 +59,7 @@ bool VendorStaIface::isValid()
 }
 
 ::ndk::ScopedAStatus VendorStaIface::registerSupplicantVendorStaIfaceCallback(
-	const std::shared_ptr<ISupplicantVendorStaIfaceCallback>& in_callback)
+	const std::shared_ptr<SupplicantVendorStaIfaceCallback>& in_callback)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
@@ -75,7 +75,7 @@ bool VendorStaIface::isValid()
 }
 
 ndk::ScopedAStatus VendorStaIface::registerSupplicantVendorStaIfaceCallbackInternal(
-	const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback)
+	const std::shared_ptr<SupplicantVendorStaIfaceCallback> &callback)
 {
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||

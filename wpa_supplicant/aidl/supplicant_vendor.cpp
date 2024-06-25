@@ -16,7 +16,7 @@
 #include "misc_utils.h"
 #include "supplicant.h"
 #include "supplicant_vendor.h"
-#include "p2p_iface.h"
+//#include "p2p_iface.h"
 
 #include <android-base/file.h>
 #include <fcntl.h>

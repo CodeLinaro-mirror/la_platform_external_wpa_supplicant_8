@@ -313,7 +313,7 @@ using aidl_return_util::validateAndCall;
 using misc_utils::createStatus;
 
 StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[], int32_t id)
-	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true), ifId(id)
+	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true), ifId_(id)
 {}
 
 void StaIface::invalidate() { is_valid_ = false; }
@@ -325,7 +325,7 @@ bool StaIface::isValid()
 
 int32_t StaIface::getIfaceInstanceId()
 {
-	return ifId;
+	return ifId_;
 }
 #if 0
 ::ndk::ScopedAStatus StaIface::getName(
