@@ -1365,7 +1365,7 @@ static int wnm_fetch_scan_results(struct wpa_supplicant *wpa_s)
 
 	wpa_dbg(wpa_s, MSG_DEBUG,
 		"WNM: Fetch current scan results from the driver for checking transition candidates");
-	scan_res = wpa_drv_get_scan_results2(wpa_s);
+	scan_res = wpa_drv_get_scan_results(wpa_s, NULL);
 	if (!scan_res) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "WNM: Failed to get scan results");
 		return 0;
