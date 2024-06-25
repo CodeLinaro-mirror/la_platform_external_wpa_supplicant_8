@@ -144,8 +144,18 @@ bool HostapdVendor::isValid()
 			}
 			const std::string ifname(iface_hapd->conf->iface);
 			const std::string event_str(msg);
-			for (const auto& callback : callbacks_) {
-				callback->onCtrlEvent(ifname, event_str);
+			for (auto callback = callbacks_.begin(); callback != callbacks_.end();) {
+				auto ret = (*callback)->onCtrlEvent(ifname, event_str);
+				if (!ret.isOk()) {
+					AIBinder* binder = (*callback)->asBinder().get();
+					wpa_printf(MSG_ERROR, "%s: onCtrlEvent failed with error.", __func__);
+					if (!AIBinder_isAlive(binder)) {
+						wpa_printf(MSG_ERROR, "%s: Unable to process the request due to binder died", __func__);
+						callback = callbacks_.erase(callback);
+					}
+				} else {
+					++callback;
+				}
 			}
 		};
 	}
