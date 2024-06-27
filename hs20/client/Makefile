@@ -6,6 +6,9 @@ CFLAGS += -I../../src/utils
 CFLAGS += -I../../src/common
 CFLAGS += -I../../src
 
+CONFIG_NO_BROWSER=y
+CONFIG_BROWSER_SYSTEM=y
+
 ifndef CONFIG_NO_BROWSER
 ifndef CONFIG_BROWSER_SYSTEM
 TEST_WK := $(shell pkg-config --silence-errors --cflags webkitgtk-3.0)
@@ -57,8 +60,7 @@ OBJS += ../../src/crypto/md5-internal.o
 OBJS += ../../src/crypto/sha1-internal.o
 OBJS += ../../src/crypto/sha256-internal.o
 
-CFLAGS += $(shell xml2-config --cflags)
-LIBS += $(shell xml2-config --libs)
+LIBS += -lxml2
 
 # Allow static/custom linking of libcurl.
 ifdef CUST_CURL_LINKAGE
@@ -70,6 +72,11 @@ endif
 CFLAGS += -DEAP_TLS_OPENSSL
 OBJS += ../../src/crypto/tls_openssl_ocsp.o
 LIBS += -lssl -lcrypto
+
+$(DESTDIR)$(BINDIR)/%: %
+	install -D $(<) $(@)
+
+install: $(addprefix $(DESTDIR)$(BINDIR)/,$(ALL))
 
 _OBJS_VAR := OBJS
 include ../../src/objs.mk
