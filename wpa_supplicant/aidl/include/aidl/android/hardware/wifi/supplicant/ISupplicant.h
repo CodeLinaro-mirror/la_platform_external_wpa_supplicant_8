@@ -46,12 +46,12 @@ public:
   static const std::shared_ptr<ISupplicant>& getDefaultImpl();
 //  virtual ::ndk::ScopedAStatus addP2pInterface(const std::string& in_ifName, std::shared_ptr<::aidl::android::hardware::wifi::supplicant::ISupplicantP2pIface>* _aidl_return) = 0;
   virtual ::ndk::ScopedAStatus addStaInterface(const std::string& in_ifName, std::shared_ptr<::aidl::android::hardware::wifi::supplicant::ISupplicantStaIface>* _aidl_return) = 0;
-//  virtual ::ndk::ScopedAStatus getDebugLevel(::aidl::android::hardware::wifi::supplicant::DebugLevel* _aidl_return) = 0;
+  virtual ::ndk::ScopedAStatus getDebugLevel(::aidl::android::hardware::wifi::supplicant::DebugLevel* _aidl_return) = 0;
 //  virtual ::ndk::ScopedAStatus getP2pInterface(const std::string& in_ifName, std::shared_ptr<::aidl::android::hardware::wifi::supplicant::ISupplicantP2pIface>* _aidl_return) = 0;
 //  virtual ::ndk::ScopedAStatus getStaInterface(const std::string& in_ifName, std::shared_ptr<::aidl::android::hardware::wifi::supplicant::ISupplicantStaIface>* _aidl_return) = 0;
-//  virtual ::ndk::ScopedAStatus isDebugShowKeysEnabled(bool* _aidl_return) = 0;
-//  virtual ::ndk::ScopedAStatus isDebugShowTimestampEnabled(bool* _aidl_return) = 0;
-//  virtual ::ndk::ScopedAStatus listInterfaces(std::vector<::aidl::android::hardware::wifi::supplicant::IfaceInfo>* _aidl_return) = 0;
+  virtual ::ndk::ScopedAStatus isDebugShowKeysEnabled(bool* _aidl_return) = 0;
+  virtual ::ndk::ScopedAStatus isDebugShowTimestampEnabled(bool* _aidl_return) = 0;
+  virtual ::ndk::ScopedAStatus listInterfaces(std::vector<::aidl::android::hardware::wifi::supplicant::IfaceInfo>* _aidl_return) = 0;
 //  virtual ::ndk::ScopedAStatus registerCallback(const std::shared_ptr<::aidl::android::hardware::wifi::supplicant::ISupplicantCallback>& in_callback) = 0;
   virtual ::ndk::ScopedAStatus removeInterface(const ::aidl::android::hardware::wifi::supplicant::IfaceInfo& in_ifaceInfo) = 0;
   virtual ::ndk::ScopedAStatus setConcurrencyPriority(::aidl::android::hardware::wifi::supplicant::IfaceType in_type) = 0;
