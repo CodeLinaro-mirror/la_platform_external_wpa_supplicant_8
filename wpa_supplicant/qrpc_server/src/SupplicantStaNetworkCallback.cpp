@@ -25,24 +25,67 @@ int32_t SupplicantStaNetworkCallback::getNetworkInstanceId()
 
 ::ndk::ScopedAStatus SupplicantStaNetworkCallback::onNetworkEapIdentityRequest()
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    int32_t nwId = getNetworkInstanceId();
+
+    ALOGI("Sending StaNetwork Event <onNetworkEapIdentityRequest> for network -> %d of iface --> %d", nwId, ifId);
+
+    std::vector<uint8_t> data;
+    if (!SupplicantStaNetworkSerializeOnNetworkEapIdentityRequestInd(data)) {
+        ALOGE("[Fail] Serializing StaNetwork Event <onNetworkEapIdentityRequest>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+    ADD_INT32_TO_VECTOR(nwId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_NETWORK_ON_NETWORK_EAP_IDENTITY_REQUEST_IND, data);
 }
 
 ::ndk::ScopedAStatus SupplicantStaNetworkCallback::onNetworkEapSimGsmAuthRequest(const ::aidl::android::hardware::wifi::supplicant::NetworkRequestEapSimGsmAuthParams& in_params)
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    int32_t nwId = getNetworkInstanceId();
+
+    ALOGI("Sending StaNetwork Event <onNetworkEapSimGsmAuthRequest> for network -> %d of iface --> %d", nwId, ifId);
+
+    std::vector<uint8_t> data;
+    if (!SupplicantStaNetworkSerializeOnNetworkEapSimGsmAuthRequestInd(in_params, data)) {
+        ALOGE("[Fail] Serializing StaNetwork Event <onNetworkEapSimGsmAuthRequest>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+    ADD_INT32_TO_VECTOR(nwId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_NETWORK_ON_NETWORK_EAP_SIM_GSM_AUTH_REQUEST_IND, data);
 }
 
 ::ndk::ScopedAStatus SupplicantStaNetworkCallback::onNetworkEapSimUmtsAuthRequest(const ::aidl::android::hardware::wifi::supplicant::NetworkRequestEapSimUmtsAuthParams& in_params)
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    int32_t nwId = getNetworkInstanceId();
+
+    ALOGI("Sending StaNetwork Event <onNetworkEapSimUmtsAuthRequest> for network -> %d of iface --> %d", nwId, ifId);
+
+    std::vector<uint8_t> data;
+    if (!SupplicantStaNetworkSerializeOnNetworkEapSimUmtsAuthRequestInd(in_params, data)) {
+        ALOGE("[Fail] Serializing StaNetwork Event <onNetworkEapSimUmtsAuthRequest>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+    ADD_INT32_TO_VECTOR(nwId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_NETWORK_ON_NETWORK_EAP_SIM_UMTS_AUTH_REQUEST_IND, data);
 }
 
 ::ndk::ScopedAStatus SupplicantStaNetworkCallback::onTransitionDisable(::aidl::android::hardware::wifi::supplicant::TransitionDisableIndication in_ind)
 {
     int32_t ifId = getIfaceInstanceId();
     int32_t nwId = getNetworkInstanceId();
-    ALOGI("Sending StaNetwork Event <onTransitionDisable> for network -> %d of iface --> %d", nwId, ifId);
+
+    ALOGI("Sending StaNetwork Event <onTransitionDisable> (%d) for network -> %d of iface --> %d", in_ind, nwId, ifId);
 
     std::vector<uint8_t> data;
     if (!SupplicantStaNetworkSerializeOnTransitionDisableInd(in_ind, data)) {
@@ -58,12 +101,40 @@ int32_t SupplicantStaNetworkCallback::getNetworkInstanceId()
 
 ::ndk::ScopedAStatus SupplicantStaNetworkCallback::onServerCertificateAvailable(int32_t in_depth, const std::vector<uint8_t>& in_subject, const std::vector<uint8_t>& in_certHash, const std::vector<uint8_t>& in_certBlob)
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    int32_t nwId = getNetworkInstanceId();
+
+    ALOGI("Sending StaNetwork Event <onServerCertificateAvailable> (%d) for network -> %d of iface --> %d", in_depth, nwId, ifId);
+
+    std::vector<uint8_t> data;
+    if (!SupplicantStaNetworkSerializeOnServerCertificateAvailableInd(in_depth, in_subject, in_certHash, in_certBlob, data)) {
+        ALOGE("[Fail] Serializing StaNetwork Event <onServerCertificateAvailable>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+    ADD_INT32_TO_VECTOR(nwId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_NETWORK_ON_SERVER_CERTIFICATE_AVAILABLE_IND, data);
 }
 
 ::ndk::ScopedAStatus SupplicantStaNetworkCallback::onPermanentIdReqDenied()
 {
-    return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    int32_t ifId = getIfaceInstanceId();
+    int32_t nwId = getNetworkInstanceId();
+
+    ALOGI("Sending StaNetwork Event <onPermanentIdReqDenied> for network -> %d of iface --> %d", nwId, ifId);
+
+    std::vector<uint8_t> data;
+    if (!SupplicantStaNetworkSerializeOnPermanentIdReqDeniedInd(data)) {
+        ALOGE("[Fail] Serializing StaNetwork Event <onPermanentIdReqDenied>");
+        return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+    }
+
+    ADD_INT32_TO_VECTOR(ifId, data);
+    ADD_INT32_TO_VECTOR(nwId, data);
+
+    return SupplicantSendEvent(SUPPLICANT_STA_NETWORK_ON_PERMANENT_ID_REQ_DENIED_IND, data);
 }
 }  // namespace supplicant
 }  // namespace wifi

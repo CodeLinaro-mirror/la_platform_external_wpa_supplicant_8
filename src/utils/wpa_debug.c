@@ -454,12 +454,12 @@ static void _wpa_hexdump_ascii(int level, const char *title, const void *buf,
 		return;
 #ifdef WPA_QRPC_LOG
 	if (!show) {
-		ALOGE("%s - hexdump_ascii(len=%lu): [REMOVED]",
+		WPA_LOG("%s - hexdump_ascii(len=%lu): [REMOVED]",
 			   title, (unsigned long) len);
 		return;
 	}
 	if (buf == NULL) {
-		ALOGE("%s - hexdump_ascii(len=%lu): [NULL]",
+		WPA_LOG("%s - hexdump_ascii(len=%lu): [NULL]",
 			   title, (unsigned long) len);
 		return;
 	}
