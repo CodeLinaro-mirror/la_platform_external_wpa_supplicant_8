@@ -327,7 +327,7 @@ int32_t StaIface::getIfaceInstanceId()
 {
 	return ifId_;
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::getName(
 	std::string* _aidl_return)
 {
@@ -343,7 +343,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::getTypeInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::addNetwork(
 	std::shared_ptr<ISupplicantStaNetwork>* _aidl_return)
 {
@@ -359,7 +359,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::removeNetworkInternal, in_id);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::filsHlpFlushRequest()
 {
 	return validateAndCall(
@@ -375,7 +375,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::filsHlpAddRequestInternal, in_dst_mac, in_pkt);
 }
-
+#if 0
 ::ndk::ScopedAStatus StaIface::getNetwork(
 	int32_t in_id, std::shared_ptr<ISupplicantStaNetwork>* _aidl_return)
 {
@@ -428,7 +428,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setPowerSaveInternal, in_enable);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::initiateTdlsDiscover(
 	const std::vector<uint8_t>& in_macAddress)
 {
@@ -481,7 +481,7 @@ int32_t StaIface::getIfaceInstanceId()
 		&StaIface::initiateHs20IconQueryInternal, in_macAddress,
 		in_fileName);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::getMacAddress(
 	std::vector<uint8_t>* _aidl_return)
 {
@@ -552,7 +552,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setCountryCodeInternal, in_code);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::startWpsRegistrar(
 	const std::vector<uint8_t>& in_bssid,
 	const std::string& in_pin)
@@ -649,7 +649,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setWpsConfigMethodsInternal, in_configMethods);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::setExternalSim(
 	bool in_useExternalSim)
 {
@@ -657,7 +657,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::setExternalSimInternal, in_useExternalSim);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::addExtRadioWork(
 	const std::string& in_name, int32_t in_freqInMhz,
 	int32_t in_timeoutInSec,
@@ -676,7 +676,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::removeExtRadioWorkInternal, in_id);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::enableAutoReconnect(
 	bool in_enable)
 {
@@ -692,7 +692,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaIface::getKeyMgmtCapabilitiesInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::addDppPeerUri(
 	const std::string& in_uri, int32_t* _aidl_return)
 {
@@ -738,7 +738,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaIface::stopDppInitiatorInternal);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::getConnectionCapabilities(
 	ConnectionCapabilities* _aidl_return)
 {
@@ -747,7 +747,7 @@ int32_t StaIface::getIfaceInstanceId()
 		&StaIface::getConnectionCapabilitiesInternal,
 		_aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::generateDppBootstrapInfoForResponder(
 	const std::vector<uint8_t>& in_macAddress, const std::string& in_deviceInfo,
 	DppCurve in_curve, DppResponderBootstrapInfo* _aidl_return)
@@ -781,7 +781,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&StaIface::generateSelfDppConfigurationInternal, in_ssid, in_privEcKey);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::getWpaDriverCapabilities(
 	WpaDriverCapabilitiesMask* _aidl_return)
 {
@@ -789,7 +789,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::getWpaDriverCapabilitiesInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::setMboCellularDataStatus(
 	bool in_available)
 {
@@ -822,7 +822,7 @@ int32_t StaIface::getIfaceInstanceId()
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
 		&StaIface::removeAllQosPoliciesInternal);
 }
-#endif
+
 ::ndk::ScopedAStatus StaIface::getConnectionMloLinksInfo(MloLinksInfo* _aidl_return) {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
@@ -836,7 +836,7 @@ int32_t StaIface::getIfaceInstanceId()
 	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
 	    &StaIface::getSignalPollResultsInternal, results);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaIface::addQosPolicyRequestForScs(
 		const std::vector<QosPolicyScsData>& in_qosPolicyData,
 		std::vector<QosPolicyScsRequestStatus>* _aidl_return)
@@ -854,9 +854,7 @@ int32_t StaIface::getIfaceInstanceId()
 	    this, SupplicantStatusCode::FAILURE_UNKNOWN,
 	    &StaIface::removeQosPolicyForScsInternal, _aidl_return, in_scsPolicyIds);
 }
-#endif
 
-#if 0
 std::pair<std::string, ndk::ScopedAStatus> StaIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -875,7 +873,7 @@ ndk::ScopedAStatus StaIface::filsHlpFlushRequestInternal()
 	wpas_flush_fils_hlp_req(wpa_s);
 	return ndk::ScopedAStatus::ok();
 #else /* CONFIG_FILS */
-	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN, "");
+	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #endif /* CONFIG_FILS */
 }
 
@@ -910,7 +908,7 @@ ndk::ScopedAStatus StaIface::filsHlpAddRequestInternal(
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #endif /* CONFIG_FILS */
 }
-#endif
+
 std::pair<std::shared_ptr<ISupplicantStaNetwork>, ndk::ScopedAStatus>
 StaIface::addNetworkInternal()
 {
@@ -1027,7 +1025,7 @@ ndk::ScopedAStatus StaIface::setPowerSaveInternal(bool enable)
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaIface::initiateTdlsDiscoverInternal(
 	const std::vector<uint8_t> &mac_address)
 {
@@ -1158,7 +1156,7 @@ ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>
 StaIface::getMacAddressInternal()
 {
@@ -1275,7 +1273,7 @@ ndk::ScopedAStatus StaIface::setCountryCodeInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaIface::startWpsRegistrarInternal(
 	const std::vector<uint8_t> &bssid, const std::string &pin)
 {
@@ -1387,13 +1385,13 @@ ndk::ScopedAStatus StaIface::setWpsConfigMethodsInternal(WpsConfigMethods config
 	return iface_config_utils::setWpsConfigMethods(
 		retrieveIfacePtr(), static_cast<uint16_t>(config_methods));
 }
-#endif
+
 ndk::ScopedAStatus StaIface::setExternalSimInternal(bool useExternalSim)
 {
 	return iface_config_utils::setExternalSim(
 		retrieveIfacePtr(), useExternalSim);
 }
-#if 0
+
 std::pair<uint32_t, ndk::ScopedAStatus> StaIface::addExtRadioWorkInternal(
 	const std::string &name, uint32_t freq_in_mhz, uint32_t timeout_in_sec)
 {
@@ -1448,14 +1446,14 @@ ndk::ScopedAStatus StaIface::removeExtRadioWorkInternal(uint32_t id)
 	}
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 }
-#endif
+
 ndk::ScopedAStatus StaIface::enableAutoReconnectInternal(bool enable)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	wpa_s->auto_reconnect_disabled = enable ? 0 : 1;
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 std::pair<uint32_t, ndk::ScopedAStatus>
 StaIface::addDppPeerUriInternal(const std::string& uri)
 {
@@ -1824,7 +1822,7 @@ ndk::ScopedAStatus StaIface::generateSelfDppConfigurationInternal(const std::str
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 #endif
 }
-#endif
+
 std::pair<ConnectionCapabilities, ndk::ScopedAStatus>
 StaIface::getConnectionCapabilitiesInternal()
 {
@@ -1919,7 +1917,7 @@ StaIface::getWpaDriverCapabilitiesInternal()
 	return {static_cast<WpaDriverCapabilitiesMask>(mask),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 ndk::ScopedAStatus StaIface::setMboCellularDataStatusInternal(bool available)
 {
 #ifdef CONFIG_MBO
@@ -1949,7 +1947,7 @@ ndk::ScopedAStatus StaIface::setMboCellularDataStatusInternal(bool available)
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #endif
 }
-#endif
+
 std::pair<KeyMgmtMask, ndk::ScopedAStatus>
 StaIface::getKeyMgmtCapabilitiesInternal()
 {
@@ -1965,7 +1963,7 @@ StaIface::getKeyMgmtCapabilitiesInternal()
 	return {convertWpaKeyMgmtCapabilitiesToAidl(wpa_s, &capa),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 ndk::ScopedAStatus StaIface::setQosPolicyFeatureEnabledInternal(bool enable)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
@@ -2024,7 +2022,7 @@ ndk::ScopedAStatus StaIface::removeAllQosPoliciesInternal()
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoInternal()
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
@@ -2110,7 +2108,7 @@ StaIface::getSignalPollResultsInternal()
 
 	return {results, ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 				      struct type4_params *param)
 {
@@ -2433,7 +2431,7 @@ StaIface::removeQosPolicyForScsInternal(const std::vector<uint8_t>& scsPolicyIds
 	return {std::vector<QosPolicyScsRequestStatus>(reports),
 		ndk::ScopedAStatus::ok()};
 }
-#endif
+
 /**
  * Retrieve the underlying |wpa_supplicant| struct
  * pointer for this iface.
