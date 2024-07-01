@@ -1288,6 +1288,32 @@ ifdef CONFIG_NO_TKIP
 CFLAGS += -DCONFIG_NO_TKIP
 endif
 
+ifdef CONFIG_SOMEIP_SUPPORT
+CFLAGS += -DCONFIG_SOMEIP_SUPPORT -DCONFIG_CTRL_IFACE_AIDL -DCONFIG_AIDL -Wno-ignored-attributes
+CFLAGS += -DWPA_QRPC_LOG -DENABLE_LOG
+CFLAGS += -I aidl
+CFLAGS += -I aidl/include
+CFLAGS += -I qrpc_server/include
+#Aidl
+OBJS += aidl/aidl.o
+OBJS += aidl/aidl_helper.o
+OBJS += aidl/hostapd.o
+#Someip service
+OBJS += qrpc_server/src/aidl_sock.o
+OBJS += qrpc_server/src/hostapd_someip_server.o
+OBJS += qrpc_server/src/hostapd_event_callback.o
+OBJS += qrpc_server/src/hostapd_message_handler.o
+OBJS += qrpc_server/src/HostapdReq.o
+OBJS += qrpc_server/src/HostapdCallback.o
+LIBS += -lstdc++
+LIBS += -lbase -lvsomeip3
+LIBS += -lwpa_supplicant_8_lib
+LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util
+LIBS_c += -lqti_log_util
+LIBS += -lqti-wifi-hostapd-message
+CXXFLAGS += ${CFLAGS}
+endif
+
 $(DESTDIR)$(BINDIR)/%: %
 	install -D $(<) $(@)
 
