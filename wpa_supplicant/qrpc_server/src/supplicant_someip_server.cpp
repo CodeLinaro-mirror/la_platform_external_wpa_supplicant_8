@@ -55,7 +55,7 @@ bool SupplicantSomeIPServerStart()
 
     ALOGI("Supplicant someip service loop starting...");
     wpas_someip_service_thread =
-        std::make_shared<std::thread>(&SomeipServer::start, wpas_someip_server);
+        std::make_shared<std::thread>(&SomeipServer::start, wpas_someip_server, false);
 
     return true;
 }
