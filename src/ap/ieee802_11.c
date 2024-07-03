@@ -1413,6 +1413,13 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 				}
 
 				// Convert STA to MLD STA
+				struct sta_info *tmp_sta = ap_get_sta(hapd, mld_addr);
+				if (tmp_sta) {
+					wpa_printf(MSG_INFO, "Same sta entry found."
+					    " There might be something went wrong."
+					    " Remove the old entry anyway.");
+					ap_free_sta(hapd, tmp_sta);
+				}
 				ap_sta_hash_del(hapd, sta);
 				os_memcpy(sta->link_addr,
 					  sta->addr, ETH_ALEN);
