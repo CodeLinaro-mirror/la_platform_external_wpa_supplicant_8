@@ -245,6 +245,8 @@ HostapdStatus HostapdVendor::registerCallbackInternal_1_3(
 					if(ret.isDeadObject()){
 						wpa_printf(MSG_ERROR,"%s,Unable to process the request due to Dead Object", __func__);
 						callback = vendor_hostapd_callbacks_.erase(callback);
+					} else {
+						++callback;
 					}
 				} else {
 					++callback;
