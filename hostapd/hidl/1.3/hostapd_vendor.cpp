@@ -238,8 +238,17 @@ HostapdStatus HostapdVendor::registerCallbackInternal_1_3(
 			}
 			const std::string ifname(iface_hapd->conf->iface);
 			const std::string event_str(msg);
-			for (const auto& callback : vendor_hostapd_callbacks_) {
-				 callback->onCtrlEvent(ifname, event_str);
+			for (auto callback = vendor_hostapd_callbacks_.begin(); callback != vendor_hostapd_callbacks_.end();) {
+				auto ret = (*callback)->onCtrlEvent(ifname, event_str);
+				if (!ret.isOk()){
+					wpa_printf(MSG_ERROR, "%s: onCtrlEvent failed with error: %s.", __func__, ret.description().c_str());
+					if(ret.isDeadObject()){
+						wpa_printf(MSG_ERROR,"%s,Unable to process the request due to Dead Object", __func__);
+						callback = vendor_hostapd_callbacks_.erase(callback);
+					}
+				} else {
+					++callback;
+				}
 			}
 		};
 	}
