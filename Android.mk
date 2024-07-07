@@ -1,3 +1,4 @@
+ifeq ($(filter $(TARGET_BOARD_PLATFORM), qssi qssi_64),)
 S_LOCAL_PATH := $(call my-dir)
 
 ifneq ($(filter VER_0_8_X VER_2_1_DEVEL,$(WPA_SUPPLICANT_VERSION)),)
@@ -13,3 +14,4 @@ include $(S_LOCAL_PATH)/hs20/client/Android.mk
 endif #End of Check for platform version
 endif #End of Check for target build variant
 endif
+endif #End of Check for qssi target

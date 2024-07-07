@@ -501,6 +501,7 @@
 #define WLAN_EID_EXT_EHT_CAPABILITIES 108
 #define WLAN_EID_EXT_TID_TO_LINK_MAPPING 109
 #define WLAN_EID_EXT_MULTI_LINK_TRAFFIC_INDICATION 110
+#define WLAN_EID_EXT_QOS_CHARACTERISTICS 113
 #define WLAN_EID_EXT_AKM_SUITE_SELECTOR 114
 
 /* Extended Capabilities field */
@@ -1394,6 +1395,8 @@ struct ieee80211_ampe_ie {
 #define QM_IE_OUI_TYPE 0x22
 #define WFA_CAPA_IE_VENDOR_TYPE 0x506f9a23
 #define WFA_CAPA_OUI_TYPE 0x23
+
+#define ADAPTIVE_11R_IE_VENDOR_TYPE 0x0040962c
 
 #define MULTI_AP_SUB_ELEM_TYPE 0x06
 #define MULTI_AP_TEAR_DOWN BIT(4)
@@ -2482,6 +2485,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_TBTT_INFO_COUNT(x)                      (((x) & 0xf) << 4)
 #define RNR_TBTT_INFO_COUNT_MAX                     16
 #define RNR_TBTT_INFO_LEN                           13
+#define RNR_TBTT_INFO_MLD_LEN                       16
 #define RNR_NEIGHBOR_AP_OFFSET_UNKNOWN              255
 /* Figure 9-632a - BSS Parameters subfield format */
 #define RNR_BSS_PARAM_OCT_RECOMMENDED               BIT(0)
@@ -2641,6 +2645,7 @@ struct ieee80211_eht_capabilities {
  * STA Control field definitions of Per-STA Profile subelement in Basic
  * Multi-Link element as described in Figure 9-1002n: STA Control field format.
  */
+#define BASIC_MLE_STA_CTRL_LEN				2
 #define BASIC_MLE_STA_CTRL_LINK_ID_MASK			0x000F
 #define BASIC_MLE_STA_CTRL_COMPLETE_PROFILE		0x0010
 #define BASIC_MLE_STA_CTRL_PRES_STA_MAC			0x0020
@@ -2693,6 +2698,16 @@ struct eht_ml_basic_common_info {
 #define EHT_ML_MLD_CAPA_TID_TO_LINK_MAP_NEG_SUPP_MSK  0x0060
 #define EHT_ML_MLD_CAPA_FREQ_SEP_FOR_STR_MASK         0x0f80
 #define EHT_ML_MLD_CAPA_AAR_SUPP                      0x1000
+
+#define EHT_PER_STA_CTRL_LINK_ID_MSK                  0x000f
+#define EHT_PER_STA_CTRL_COMPLETE_PROFILE_MSK         0x0010
+#define EHT_PER_STA_CTRL_MAC_ADDR_PRESENT_MSK         0x0020
+#define EHT_PER_STA_CTRL_BEACON_INTERVAL_PRESENT_MSK  0x0040
+#define EHT_PER_STA_CTRL_TSF_OFFSET_PRESENT_MSK       0x0080
+#define EHT_PER_STA_CTRL_DTIM_INFO_PRESENT_MSK        0x0100
+#define EHT_PER_STA_CTRL_NSTR_LINK_PAIR_PRESENT_MSK   0x0200
+#define EHT_PER_STA_CTRL_NSTR_BM_SIZE_MSK             0x0400
+#define EHT_PER_STA_CTRL_BSS_PARAM_CNT_PRESENT_MSK    0x0800
 
 /* IEEE P802.11be/D2.0, 9.4.2.312.2.4 - Per-STA Profile subelement format */
 struct ieee80211_eht_per_sta_profile {
@@ -2791,6 +2806,39 @@ enum scs_request_type {
 	SCS_REQ_CHANGE = 2,
 };
 
+/*
+ * IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+ * Table 9-404s (Direction subfield encoding)
+ */
+enum scs_direction {
+	SCS_DIRECTION_UP = 0,
+	SCS_DIRECTION_DOWN = 1,
+	SCS_DIRECTION_DIRECT = 2,
+};
+
+/*
+ * IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+ * Figure 9-1001av (Control Info field format)
+ */
+#define EHT_QOS_CONTROL_INFO_DIRECTION_OFFSET		0
+#define EHT_QOS_CONTROL_INFO_TID_OFFSET			2
+#define EHT_QOS_CONTROL_INFO_USER_PRIORITY_OFFSET	6
+#define EHT_QOS_CONTROL_INFO_PRESENCE_MASK_OFFSET	9
+#define EHT_QOS_CONTROL_INFO_LINK_ID_OFFSET		25
+
+/*
+ * IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+ * Presence Bitmap Of Additional Parameters
+ */
+#define SCS_QOS_BIT_MAX_MSDU_SIZE			((u16) BIT(0))
+#define SCS_QOS_BIT_SERVICE_START_TIME			((u16) BIT(1))
+#define SCS_QOS_BIT_SERVICE_START_TIME_LINKID		((u16) BIT(2))
+#define SCS_QOS_BIT_MEAN_DATA_RATE			((u16) BIT(3))
+#define SCS_QOS_BIT_DELAYED_BOUNDED_BURST_SIZE		((u16) BIT(4))
+#define SCS_QOS_BIT_MSDU_LIFETIME			((u16) BIT(5))
+#define SCS_QOS_BIT_MSDU_DELIVERY_INFO			((u16) BIT(6))
+#define SCS_QOS_BIT_MEDIUM_TIME				((u16) BIT(7))
+
 /* Optional subelement IDs for MSCS Descriptor element */
 enum mscs_description_subelem {
 	MCSC_SUBELEM_STATUS = 1,
@@ -2880,6 +2928,7 @@ enum dscp_policy_request_type {
 /* Wi-Fi Alliance Capabilities element - Capabilities field */
 #define WFA_CAPA_QM_DSCP_POLICY BIT(0)
 #define WFA_CAPA_QM_UNSOLIC_DSCP BIT(1)
+#define WFA_CAPA_QM_NON_EHT_SCS_TRAFFIC_DESC BIT(2)
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 #define WPA_KEY_MGMT_CROSS_AKM_ROAM (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK)
