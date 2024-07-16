@@ -5,6 +5,11 @@
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
  */
+ /*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "utils/includes.h"
 #ifndef CONFIG_NATIVE_WINDOWS
@@ -34,6 +39,11 @@
 #ifdef CONFIG_CTRL_IFACE_AIDL
 #include "aidl.h"
 #endif /* CONFIG_CTRL_IFACE_AIDL */
+
+#ifdef CONFIG_SOMEIP_SUPPORT
+#include "hostapd_someip_server.h"
+#endif /* CONFIG_SOMEIP_SUPPORT */
+
 
 struct hapd_global {
 	void **drv_priv;
@@ -783,7 +793,7 @@ int main(int argc, char *argv[])
 #ifndef CONFIG_CTRL_IFACE_AIDL
 	if (optind == argc && interfaces.global_iface_path == NULL &&
 	    num_bss_configs == 0)
-		usage();
+	    usage();
 #endif
 
 	wpa_msg_register_ifname_cb(hostapd_msg_ifname_cb);
@@ -905,6 +915,8 @@ int main(int argc, char *argv[])
 			goto out;
 	}
 
+
+
 	hostapd_global_ctrl_iface_init(&interfaces);
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file)) {
@@ -914,7 +926,17 @@ int main(int argc, char *argv[])
 
 	ret = 0;
 
- out:
+
+#ifdef CONFIG_SOMEIP_SUPPORT
+	HostapdSomeIPServerStop();
+#endif
+
+  out:
+
+#ifdef CONFIG_SOMEIP_SUPPORT
+	HostapdSomeIPServerDeinit();
+#endif
+
 #ifdef CONFIG_CTRL_IFACE_AIDL
 	hostapd_aidl_deinit(&interfaces);
 #endif /* CONFIG_CTRL_IFACE_AIDL */
