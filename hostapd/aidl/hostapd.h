@@ -6,6 +6,11 @@
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
  */
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #pragma once
 
@@ -15,6 +20,8 @@
 #include <android-base/macros.h>
 
 #include <aidl/android/hardware/wifi/hostapd/BnHostapd.h>
+#include "HostapdCallback.h"
+
 
 extern "C"
 {
@@ -41,7 +48,7 @@ class Hostapd : public BnHostapd
 {
 public:
 	Hostapd(hapd_interfaces* interfaces);
-	~Hostapd() override = default;
+	~Hostapd()   = default;
 
 	// Aidl methods exposed.
 	::ndk::ScopedAStatus addAccessPoint(
@@ -49,7 +56,7 @@ public:
 	::ndk::ScopedAStatus removeAccessPoint(const std::string& iface_name) override;
 	::ndk::ScopedAStatus terminate() override;
 	::ndk::ScopedAStatus registerCallback(
-	    const std::shared_ptr<IHostapdCallback>& callback) override;
+	    const std::shared_ptr<HostapdCallback>& callback) ;
 	::ndk::ScopedAStatus forceClientDisconnect(
 	    const std::string& iface_name,
 	    const std::vector<uint8_t>& client_address,
@@ -71,7 +78,7 @@ private:
 	    const NetworkParams& nw_params);
 	::ndk::ScopedAStatus removeAccessPointInternal(const std::string& iface_name);
 	::ndk::ScopedAStatus registerCallbackInternal(
-	    const std::shared_ptr<IHostapdCallback>& callback);
+	    const std::shared_ptr<HostapdCallback>& callback);
 	::ndk::ScopedAStatus forceClientDisconnectInternal(
 	    const std::string& iface_name,
 	    const std::vector<uint8_t>& client_address,
@@ -81,9 +88,7 @@ private:
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.
-	std::vector<std::shared_ptr<IHostapdCallback>> callbacks_;
-	// Death notifier.
-	AIBinder_DeathRecipient* death_notifier_;
+	std::vector<std::shared_ptr<HostapdCallback>> callbacks_;
 	// Bridge and its managed interfaces.
 	std::map<std::string, std::vector<std::string>> br_interfaces_;
 	DISALLOW_COPY_AND_ASSIGN(Hostapd);

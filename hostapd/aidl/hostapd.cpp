@@ -6,12 +6,22 @@
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
  */
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+ 
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <functional>
 #include <net/if.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+
 #include <linux/if_bridge.h>
 
 #include <android-base/file.h>
@@ -841,7 +851,7 @@ namespace hostapd {
 Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 	: interfaces_(interfaces)
 {
-	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
+	//death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
 }
 
 ::ndk::ScopedAStatus Hostapd::addAccessPoint(
@@ -861,12 +871,12 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 	// Clear the callback to avoid IPCThreadState shutdown during the
 	// callback event.
 	callbacks_.clear();
-	eloop_terminate();
+	//eloop_terminate();
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus Hostapd::registerCallback(
-	const std::shared_ptr<IHostapdCallback>& callback)
+	const std::shared_ptr<HostapdCallback>& callback)
 {
 	return registerCallbackInternal(callback);
 }
@@ -1118,17 +1128,8 @@ std::vector<uint8_t>  generateRandomOweSsid()
 }
 
 ::ndk::ScopedAStatus Hostapd::registerCallbackInternal(
-	const std::shared_ptr<IHostapdCallback>& callback)
+	const std::shared_ptr<HostapdCallback>& callback)
 {
-	binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
-			death_notifier_, this /* cookie */);
-	if (status != STATUS_OK) {
-		wpa_printf(
-			MSG_ERROR,
-			"Error registering for death notification for "
-			"hostapd callback object");
-		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
-	}
 	callbacks_.push_back(callback);
 	return ndk::ScopedAStatus::ok();
 }
