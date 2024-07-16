@@ -669,6 +669,7 @@ struct active_scs_elem {
 	struct dl_list list;
 	u8 scs_id;
 	enum scs_response_status status;
+	struct scs_desc_elem desc_elem;
 };
 
 struct dscp_policy_data {
@@ -1667,6 +1668,8 @@ struct wpa_supplicant {
 	u64 first_beacon_tsf;
 	unsigned int beacons_checked;
 	unsigned int next_beacon_check;
+
+	bool scs_reconfigure;
 };
 
 
@@ -2052,6 +2055,7 @@ void wpas_handle_robust_av_recv_action(struct wpa_supplicant *wpa_s,
 void wpas_handle_assoc_resp_mscs(struct wpa_supplicant *wpa_s, const u8 *bssid,
 				 const u8 *ies, size_t ies_len);
 int wpas_send_scs_req(struct wpa_supplicant *wpa_s);
+int wpas_scs_reconfigure(struct wpa_supplicant *wpa_s);
 void free_up_tclas_elem(struct scs_desc_elem *elem);
 void free_up_scs_desc(struct scs_robust_av_data *data);
 void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
