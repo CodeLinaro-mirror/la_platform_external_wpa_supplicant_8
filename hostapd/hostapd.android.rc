@@ -5,6 +5,10 @@
 # This software may be distributed under the terms of the BSD license.
 # See README for more details.
 #
+# Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+# Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+#
 
 on post-fs-data
     mkdir /data/vendor/wifi 0770 wifi wifi
@@ -17,6 +21,6 @@ service hostapd /vendor/bin/hw/hostapd -dd -g /data/vendor/wifi/hostapd/global
     class main
     capabilities NET_ADMIN NET_RAW
     user wifi
-    group wifi net_raw net_admin
+    group wifi net_raw net_admin system
     disabled
     oneshot
