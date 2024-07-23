@@ -1413,6 +1413,13 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 				}
 
 				// Convert STA to MLD STA
+				struct sta_info *tmp_sta = ap_get_sta(hapd, mld_addr);
+				if (tmp_sta) {
+					wpa_printf(MSG_INFO, "Same sta entry found."
+					    " There might be something went wrong."
+					    " Remove the old entry anyway.");
+					ap_free_sta(hapd, tmp_sta);
+				}
 				ap_sta_hash_del(hapd, sta);
 				os_memcpy(sta->link_addr,
 					  sta->addr, ETH_ALEN);
@@ -6360,7 +6367,7 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 	     !hapd->cs_freq_params.eht_enabled))
 		return eid;
 
-	/* bandwidth: 0: 40, 1: 80, 2: 160, 3: 80+80 */
+	/* bandwidth: 0: 40, 1: 80, 2: 160, 3: 80+80, 4: 320 */
 	switch (hapd->cs_freq_params.bandwidth) {
 	case 40:
 		bw = 0;
@@ -6374,6 +6381,9 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
 		break;
 	case 160:
 		bw = 2;
+		break;
+	case 320:
+		bw = 4;
 		break;
 	default:
 		/* not valid VHT bandwidth or not in CSA */

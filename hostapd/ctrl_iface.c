@@ -2423,6 +2423,26 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 {
 	u32 start_freq;
 
+	if (is_6ghz_freq(params->freq)) {
+		const int bw_idx[] = { 20, 40, 80, 160, 320 };
+		int idx, bw;
+
+		/* The 6 GHz band requires HE to be enabled. */
+		params->he_enabled = 1;
+
+		if (params->center_freq1) {
+			if (params->freq == 5935)
+				idx = (params->center_freq1 - 5925) / 5;
+			else
+				idx = (params->center_freq1 - 5950) / 5;
+
+			bw = center_idx_to_bw_6ghz(idx);
+			if (bw < 0 || bw > (int) ARRAY_SIZE(bw_idx) ||
+			    bw_idx[bw] != params->bandwidth)
+				return -1;
+		}
+	}
+
 	switch (params->bandwidth) {
 	case 0:
 		/* bandwidth not specified: use 20 MHz by default */
@@ -2510,6 +2530,36 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 			break;
 		default:
 			return -1;
+		}
+		break;
+	case 320:
+		if (!params->center_freq1 || params->center_freq2 ||
+		    !params->sec_channel_offset)
+			return -1;
+
+		switch (params->sec_channel_offset) {
+		case 1:
+			if (params->freq + 150 != params->center_freq1 &&
+			    params->freq + 110 != params->center_freq1 &&
+			    params->freq + 70 != params->center_freq1 &&
+			    params->freq + 30 != params->center_freq1 &&
+			    params->freq - 10 != params->center_freq1 &&
+			    params->freq - 50 != params->center_freq1 &&
+			    params->freq - 90 != params->center_freq1 &&
+			    params->freq - 130 != params->center_freq1)
+				return -1;
+			break;
+		case -1:
+			if (params->freq + 130 != params->center_freq1 &&
+			    params->freq + 90 != params->center_freq1 &&
+			    params->freq + 50 != params->center_freq1 &&
+			    params->freq + 10 != params->center_freq1 &&
+			    params->freq - 30 != params->center_freq1 &&
+			    params->freq - 70 != params->center_freq1 &&
+			    params->freq - 110 != params->center_freq1 &&
+			    params->freq - 150 != params->center_freq1)
+				return -1;
+			break;
 		}
 		break;
 	default:
