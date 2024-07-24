@@ -2188,7 +2188,10 @@ bool StaNetworkMsgHandlerSetEapCACert(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
+    std::string local_path = "/data/vendor/wifi/wpa/cacert.pem";
+
     ALOGI("Processing StaNetwork Req <SetEapCACert>: (%s) for network -> %d of iface --> %s", path.c_str(), networkId, ifName.c_str());
+    ALOGI("Overwrite CACert with local path: (%s)", local_path.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
@@ -2197,7 +2200,7 @@ bool StaNetworkMsgHandlerSetEapCACert(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    ndk::ScopedAStatus status = stanetwork_instance->setEapCACert(path);
+    ndk::ScopedAStatus status = stanetwork_instance->setEapCACert(local_path);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
@@ -2228,7 +2231,10 @@ bool StaNetworkMsgHandlerSetEapCAPath(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
+    std::string local_path = "/data/vendor/wifi/wpa";
+
     ALOGI("Processing StaNetwork Req <SetEapCAPath>: (%s) for network -> %d of iface --> %s", path.c_str(), networkId, ifName.c_str());
+    ALOGI("Overwrite CAPath with local path: (%s)", local_path.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
@@ -2237,7 +2243,7 @@ bool StaNetworkMsgHandlerSetEapCAPath(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    ndk::ScopedAStatus status = stanetwork_instance->setEapCAPath(path);
+    ndk::ScopedAStatus status = stanetwork_instance->setEapCAPath(local_path);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
