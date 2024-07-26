@@ -255,6 +255,8 @@ L_CFLAGS += -DCONFIG_OCV
 OBJS += src/common/ocv.c
 endif
 
+NEED_AES_UNWRAP=y
+
 ifdef CONFIG_IEEE80211R
 L_CFLAGS += -DCONFIG_IEEE80211R -DCONFIG_IEEE80211R_AP
 OBJS += src/ap/wpa_auth_ft.c
@@ -601,6 +603,12 @@ L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN_USD
+OBJS += src/common/nan_de.c
+OBJS += src/ap/nan_usd_ap.c
+L_CFLAGS += -DCONFIG_NAN_USD
+endif
+
 ifdef CONFIG_PASN
 L_CFLAGS += -DCONFIG_PASN
 L_CFLAGS += -DCONFIG_PTKSA_CACHE
@@ -658,6 +666,11 @@ endif
 
 ifdef CHAP
 OBJS += src/eap_common/chap.c
+endif
+
+ifdef CONFIG_RADIUS_TLS
+TLS_FUNCS=y
+L_CFLAGS += -DCONFIG_RADIUS_TLS
 endif
 
 ifdef TLS_FUNCS
