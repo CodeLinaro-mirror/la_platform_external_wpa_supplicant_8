@@ -57,7 +57,7 @@ static int bssid_in_array(u8 *array, size_t array_len, const u8 *bssid)
 		return 0;
 
 	for (i = 0; i < array_len; i++) {
-		if (ether_addr_equal(array + i * ETH_ALEN, bssid))
+		if (os_memcmp(array + i * ETH_ALEN, bssid, ETH_ALEN) == 0)
 			return 1;
 	}
 
@@ -70,7 +70,7 @@ static void bgscan_learn_add_neighbor(struct bgscan_learn_bss *bss,
 {
 	u8 *n;
 
-	if (ether_addr_equal(bss->bssid, bssid))
+	if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
 		return;
 	if (bssid_in_array(bss->neigh, bss->num_neigh, bssid))
 		return;
@@ -91,7 +91,7 @@ static struct bgscan_learn_bss * bgscan_learn_get_bss(
 	struct bgscan_learn_bss *bss;
 
 	dl_list_for_each(bss, &data->bss, struct bgscan_learn_bss, list) {
-		if (ether_addr_equal(bss->bssid, bssid))
+		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
 			return bss;
 	}
 	return NULL;

@@ -142,7 +142,11 @@ OBJS += src/utils/ip_addr.c
 OBJS += src/utils/crc32.c
 OBJS += src/common/ptksa_cache.c
 OBJS += src/rsn_supp/pmksa_cache.c
+OBJS += wmm_ac.c
+OBJS += op_classes.c
+OBJS += rrm.c
 OBJS += twt.c
+OBJS += robust_av.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
 OBJS_p += src/utils/wpa_debug.c
@@ -323,12 +327,6 @@ L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
-ifdef CONFIG_NAN_USD
-OBJS += src/common/nan_de.c
-OBJS += nan_usd.c
-L_CFLAGS += -DCONFIG_NAN_USD
-endif
-
 ifeq ($(CONFIG_OWE),y)
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
@@ -354,10 +352,6 @@ endif
 endif
 
 ifdef CONFIG_MBO
-CONFIG_WNM=y
-endif
-
-ifdef CONFIG_BGSCAN_SIMPLE
 CONFIG_WNM=y
 endif
 
@@ -472,28 +466,6 @@ endif
 
 ifdef CONFIG_NO_TKIP
 L_CFLAGS += -DCONFIG_NO_TKIP
-endif
-
-ifdef CONFIG_NO_RRM
-L_CFLAGS += -DCONFIG_NO_RRM
-else
-OBJS += rrm.c
-ifdef CONFIG_AP
-OBJS += src/ap/rrm.c
-endif
-OBJS += op_classes.c
-endif
-
-ifdef CONFIG_NO_WMM_AC
-L_CFLAGS += -DCONFIG_NO_WMM_AC
-else
-OBJS += wmm_ac.c
-endif
-
-ifdef CONFIG_NO_ROBUST_AV
-L_CFLAGS += -DCONFIG_NO_ROBUST_AV
-else
-OBJS += robust_av.c
 endif
 
 
@@ -984,6 +956,7 @@ OBJS += src/ap/beacon.c
 OBJS += src/ap/bss_load.c
 OBJS += src/ap/eap_user_db.c
 OBJS += src/ap/neighbor_db.c
+OBJS += src/ap/rrm.c
 OBJS += src/ap/ieee802_11_ht.c
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
@@ -1044,9 +1017,6 @@ OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
 endif
-ifdef CONFIG_NAN_USD
-OBJS += src/ap/nan_usd_ap.c
-endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y
 endif
@@ -1065,7 +1035,6 @@ endif
 
 ifdef CONFIG_TESTING_OPTIONS
 L_CFLAGS += -DCONFIG_TESTING_OPTIONS
-NEED_AES_WRAP=y
 endif
 
 ifdef NEED_RSN_AUTHENTICATOR

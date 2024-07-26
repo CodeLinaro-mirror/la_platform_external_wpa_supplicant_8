@@ -84,7 +84,7 @@ static int hostapd_acl_cache_get(struct hostapd_data *hapd, const u8 *addr,
 	os_get_reltime(&now);
 
 	for (entry = hapd->acl_cache; entry; entry = entry->next) {
-		if (!ether_addr_equal(entry->addr, addr))
+		if (os_memcmp(entry->addr, addr, ETH_ALEN) != 0)
 			continue;
 
 		if (os_reltime_expired(&now, &entry->timestamp,
@@ -281,7 +281,7 @@ int hostapd_allowed_address(struct hostapd_data *hapd, const u8 *addr,
 
 		query = hapd->acl_queries;
 		while (query) {
-			if (ether_addr_equal(query->addr, addr)) {
+			if (os_memcmp(query->addr, addr, ETH_ALEN) == 0) {
 				/* pending query in RADIUS retransmit queue;
 				 * do not generate a new one */
 				return HOSTAPD_ACL_PENDING;

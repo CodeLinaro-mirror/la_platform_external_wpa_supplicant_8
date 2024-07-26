@@ -177,15 +177,9 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 			continue;
 		}
 
-		if (!hconf->mld_ap) {
+		if (!hconf->mld_ap || hconf->mld_id != conf->mld_id) {
 			wpa_printf(MSG_DEBUG,
-				   "MLD: Skip non-MLD");
-			continue;
-		}
-
-		if (!hostapd_is_ml_partner(hapd, h_hapd)) {
-			wpa_printf(MSG_DEBUG,
-				   "MLD: Skip non matching MLD vif name");
+				   "MLD: Skip non matching mld_id");
 			continue;
 		}
 
@@ -197,7 +191,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		}
 
 		hapd->drv_priv = h_hapd->drv_priv;
-		hapd->interface_added = h_hapd->interface_added;
 
 		/*
 		 * All interfaces participating in the AP MLD would have
@@ -207,15 +200,20 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		 * is not configured, and otherwise it would be the
 		 * configured BSSID.
 		 */
+		os_memcpy(hapd->mld_addr, h_hapd->mld_addr, ETH_ALEN);
 		if (is_zero_ether_addr(b)) {
-			os_memcpy(hapd->own_addr, h_hapd->mld->mld_addr,
-				  ETH_ALEN);
+			os_memcpy(hapd->own_addr, h_hapd->mld_addr, ETH_ALEN);
 			random_mac_addr_keep_oui(hapd->own_addr);
 		} else {
 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
 		}
 
-		hostapd_mld_add_link(hapd);
+		/*
+		 * Mark the interface as a secondary interface, as this
+		 * is needed for the de-initialization flow
+		 */
+		hapd->mld_first_bss = h_hapd;
+		hapd->mld_link_id = hapd->mld_first_bss->mld_next_link_id++;
 
 		goto setup_mld;
 	}
@@ -251,12 +249,8 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 	 * Use the configured MLD MAC address as the interface hardware address
 	 * if this AP is a part of an AP MLD.
 	 */
-	if (hapd->conf->mld_ap) {
-		if (!is_zero_ether_addr(hapd->conf->mld_addr))
-			params.bssid = hapd->conf->mld_addr;
-		else
-			params.bssid = NULL;
-	}
+	if (!is_zero_ether_addr(hapd->conf->mld_addr) && hapd->conf->mld_ap)
+		params.bssid = hapd->conf->mld_addr;
 #endif /* CONFIG_IEEE80211BE */
 
 	params.ifname = hapd->conf->iface;
@@ -292,14 +286,13 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 	 * configured, and otherwise it would be the configured BSSID.
 	 */
 	if (hapd->conf->mld_ap) {
-		os_memcpy(hapd->mld->mld_addr, hapd->own_addr, ETH_ALEN);
-
+		os_memcpy(hapd->mld_addr, hapd->own_addr, ETH_ALEN);
+		hapd->mld_next_link_id = 0;
+		hapd->mld_link_id = hapd->mld_next_link_id++;
 		if (!b)
 			random_mac_addr_keep_oui(hapd->own_addr);
 		else
 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
-
-		hostapd_mld_add_link(hapd);
 	}
 
 setup_mld:
@@ -311,7 +304,6 @@ setup_mld:
 
 		iface->drv_flags = capa.flags;
 		iface->drv_flags2 = capa.flags2;
-		iface->drv_rrm_flags = capa.rrm_flags;
 		iface->probe_resp_offloads = capa.probe_resp_offloads;
 		/*
 		 * Use default extended capa values from per-radio information
@@ -348,13 +340,10 @@ setup_mld:
 			return -1;
 		}
 
-		/* Initialize the BSS parameter change to 1 */
-		hapd->eht_mld_bss_param_change = 1;
-
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Set link_id=%u, mld_addr=" MACSTR
 			   ", own_addr=" MACSTR,
-			   hapd->mld_link_id, MAC2STR(hapd->mld->mld_addr),
+			   hapd->mld_link_id, MAC2STR(hapd->mld_addr),
 			   MAC2STR(hapd->own_addr));
 
 		hostapd_drv_link_add(hapd, hapd->mld_link_id,
@@ -762,29 +751,6 @@ static void hostapd_periodic(void *eloop_ctx, void *timeout_ctx)
 }
 
 
-static void hostapd_global_cleanup_mld(struct hapd_interfaces *interfaces)
-{
-#ifdef CONFIG_IEEE80211BE
-	size_t i;
-
-	if (!interfaces || !interfaces->mld)
-		return;
-
-	for (i = 0; i < interfaces->mld_count; i++) {
-		if (!interfaces->mld[i])
-			continue;
-
-		os_free(interfaces->mld[i]);
-		interfaces->mld[i] = NULL;
-	}
-
-	os_free(interfaces->mld);
-	interfaces->mld = NULL;
-	interfaces->mld_count = 0;
-#endif /* CONFIG_IEEE80211BE */
-}
-
-
 int main(int argc, char *argv[])
 {
 	struct hapd_interfaces interfaces;
@@ -1074,8 +1040,6 @@ int main(int argc, char *argv[])
 	os_free(interfaces.iface);
 	interfaces.iface = NULL;
 	interfaces.count = 0;
-
-	hostapd_global_cleanup_mld(&interfaces);
 
 #ifdef CONFIG_DPP
 	dpp_global_deinit(interfaces.dpp);

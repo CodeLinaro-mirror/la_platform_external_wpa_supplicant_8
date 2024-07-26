@@ -244,9 +244,6 @@ struct wpa_auth_config {
 	unsigned int skip_send_eapol:1;
 	unsigned int enable_eapol_large_timeout:1;
 	bool delay_eapol_tx;
-	struct wpabuf *eapol_m1_elements;
-	struct wpabuf *eapol_m3_elements;
-	bool eapol_m3_no_encrypt;
 #endif /* CONFIG_TESTING_OPTIONS */
 	unsigned int oci_freq_override_eapol_m3;
 	unsigned int oci_freq_override_eapol_g1;
@@ -282,11 +279,6 @@ struct wpa_auth_config {
 	bool force_kdk_derivation;
 
 	bool radius_psk;
-
-	/* Pointer to Multi-BSSID transmitted BSS authenticator instance.
-	 * Set only in nontransmitted BSSs, i.e., is NULL for transmitted BSS
-	 * and in BSSs that are not part of a Multi-BSSID set. */
-	struct wpa_authenticator *tx_bss_auth;
 };
 
 typedef enum {
@@ -487,6 +479,9 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
 int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+			int session_timeout, int akmp);
+int wpa_auth_pmksa_add3(struct wpa_authenticator *wpa_auth, const u8 *addr,
+			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
 			int session_timeout, int akmp, const u8 *dpp_pkhash);
 void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
 			   const u8 *sta_addr);
@@ -512,7 +507,7 @@ wpa_auth_pmksa_get_fils_cache_id(struct wpa_authenticator *wpa_auth,
 void wpa_auth_pmksa_set_to_sm(struct rsn_pmksa_cache_entry *pmksa,
 			      struct wpa_state_machine *sm,
 			      struct wpa_authenticator *wpa_auth,
-			      u8 *pmkid, u8 *pmk, size_t *pmk_len);
+			      u8 *pmkid, u8 *pmk);
 int wpa_auth_sta_set_vlan(struct wpa_state_machine *sm, int vlan_id);
 void wpa_auth_eapol_key_tx_status(struct wpa_authenticator *wpa_auth,
 				  struct wpa_state_machine *sm, int ack);

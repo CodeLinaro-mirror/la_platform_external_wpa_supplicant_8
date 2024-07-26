@@ -418,7 +418,7 @@ static int wpa_get_beacon_ie(struct wpa_supplicant *wpa_s)
 	const u8 *ie;
 
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if (!ether_addr_equal(bss->bssid, wpa_s->bssid))
+		if (os_memcmp(bss->bssid, wpa_s->bssid, ETH_ALEN) != 0)
 			continue;
 		if (ssid == NULL ||
 		    ((bss->ssid_len == ssid->ssid_len &&

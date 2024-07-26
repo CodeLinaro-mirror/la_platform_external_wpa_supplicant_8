@@ -30,12 +30,6 @@ struct mb_ies_info {
 	u8 nof_ies;
 };
 
-struct multi_ap_params {
-	u8 capability;
-	u8 profile;
-	u16 vlanid;
-};
-
 /* Parsed Information Elements */
 struct ieee802_11_elems {
 	const u8 *ssid;
@@ -241,7 +235,6 @@ int ieee80211_chaninfo_to_channel(unsigned int freq, enum chan_width chanwidth,
 int ieee80211_is_dfs(int freq, const struct hostapd_hw_modes *modes,
 		     u16 num_modes);
 int is_dfs_global_op_class(u8 op_class);
-bool is_80plus_op_class(u8 op_class);
 enum phy_type ieee80211_get_phy_type(int freq, int ht, int vht);
 
 int supp_rates_11b_only(struct ieee802_11_elems *elems);
@@ -260,7 +253,7 @@ struct oper_class_map {
 	u8 max_chan;
 	u8 inc;
 	enum { BW20, BW40PLUS, BW40MINUS, BW40, BW80, BW2160, BW160, BW80P80,
-	       BW320, BW4320, BW6480, BW8640} bw;
+	       BW4320, BW6480, BW8640} bw;
 	enum { P2P_SUPP, NO_P2P_SUPP } p2p;
 };
 
@@ -268,15 +261,13 @@ extern const struct oper_class_map global_op_class[];
 extern size_t global_op_class_size;
 
 const u8 * get_ie(const u8 *ies, size_t len, u8 eid);
+const u8 * get_ie_nth(const u8 *ies, size_t len, u8 eid, int nth);
 const u8 * get_ie_ext(const u8 *ies, size_t len, u8 ext);
 const u8 * get_vendor_ie(const u8 *ies, size_t len, u32 vendor_type);
 
 size_t mbo_add_ie(u8 *buf, size_t len, const u8 *attr, size_t attr_len);
 
-u16 check_multi_ap_ie(const u8 *multi_ap_ie, size_t multi_ap_len,
-		      struct multi_ap_params *multi_ap);
-size_t add_multi_ap_ie(u8 *buf, size_t len,
-		       const struct multi_ap_params *multi_ap);
+size_t add_multi_ap_ie(u8 *buf, size_t len, u8 value);
 
 struct country_op_class {
 	u8 country_op_class;
@@ -306,7 +297,6 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
 bool ieee802_11_rsnx_capab(const u8 *rsnxe, unsigned int capab);
 int op_class_to_bandwidth(u8 op_class);
 enum oper_chan_width op_class_to_ch_width(u8 op_class);
-int chwidth_freq2_to_ch_width(int chwidth, int freq2);
 
 /* element iteration helpers */
 #define for_each_element(_elem, _data, _datalen)			\
@@ -364,7 +354,11 @@ void hostapd_encode_edmg_chan(int edmg_enable, u8 edmg_channel,
 int ieee802_edmg_is_allowed(struct ieee80211_edmg_config allowed,
 			    struct ieee80211_edmg_config requested);
 
-struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem);
+struct wpabuf * ieee802_11_defrag_data(const u8 *data, size_t len,
+				       bool ext_elem);
+struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
+				  u8 eid, u8 eid_ext);
+struct wpabuf * ieee802_11_defrag_mle(struct ieee802_11_elems *elems, u8 type);
 const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type);
 const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len);
 

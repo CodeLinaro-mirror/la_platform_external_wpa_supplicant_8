@@ -265,35 +265,9 @@ int hostapd_set_ap_wps_ie(struct hostapd_data *hapd)
 }
 
 
-bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
-			     struct sta_info *sta)
-{
-#ifdef CONFIG_IEEE80211BE
-	if (ap_sta_is_mld(hapd, sta) &&
-	    sta->mld_assoc_link_id != hapd->mld_link_id)
-		return true;
-#endif /* CONFIG_IEEE80211BE */
-
-	return false;
-}
-
-
 int hostapd_set_authorized(struct hostapd_data *hapd,
 			   struct sta_info *sta, int authorized)
 {
-	/*
-	 * The WPA_STA_AUTHORIZED flag is relevant only for the MLD station and
-	 * not to the link stations (as the authorization is done between the
-	 * MLD peers). Thus, do not propagate the change to the driver for the
-	 * link stations.
-	 */
-	if (hostapd_sta_is_link_sta(hapd, sta)) {
-		wpa_printf(MSG_DEBUG,
-			   "%s: Do not update link station flags (" MACSTR ")",
-			   __func__, MAC2STR(sta->addr));
-		return 0;
-	}
-
 	if (authorized) {
 		return hostapd_sta_set_flags(hapd, sta->addr,
 					     hostapd_sta_flags_to_drv(
@@ -311,24 +285,11 @@ int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int set_flags, total_flags, flags_and, flags_or;
 	total_flags = hostapd_sta_flags_to_drv(sta->flags);
-	set_flags = WPA_STA_SHORT_PREAMBLE | WPA_STA_WMM | WPA_STA_MFP |
-		WPA_STA_AUTHORIZED;
-
-	/*
-	 * All the station flags other than WPA_STA_SHORT_PREAMBLE are relevant
-	 * only for the MLD station and not to the link stations (as these flags
-	 * are related to the MLD state and not the link state). As for the
-	 * WPA_STA_SHORT_PREAMBLE, since the station is an EHT station, it must
-	 * support short preamble. Thus, do not propagate the change to the
-	 * driver for the link stations.
-	 */
-	if (hostapd_sta_is_link_sta(hapd, sta)) {
-		wpa_printf(MSG_DEBUG,
-			   "%s: Do not update link station flags (" MACSTR ")",
-			   __func__, MAC2STR(sta->addr));
-		return 0;
-	}
-
+	set_flags = WPA_STA_SHORT_PREAMBLE | WPA_STA_WMM | WPA_STA_MFP;
+	if (((!hapd->conf->ieee802_1x && !hapd->conf->wpa) ||
+	     sta->auth_alg == WLAN_AUTH_FT) &&
+	    sta->flags & WLAN_STA_AUTHORIZED)
+		set_flags |= WPA_STA_AUTHORIZED;
 	flags_or = total_flags & set_flags;
 	flags_and = total_flags | ~set_flags;
 	return hostapd_sta_set_flags(hapd, sta->addr, total_flags,
@@ -572,33 +533,12 @@ int hostapd_if_add(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 }
 
 
-#ifdef CONFIG_IEEE80211BE
-int hostapd_if_link_remove(struct hostapd_data *hapd,
-			   enum wpa_driver_if_type type,
-			   const char *ifname, u8 link_id)
-{
-	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->link_remove)
-		return -1;
-
-	return hapd->driver->link_remove(hapd->drv_priv, type, ifname,
-					 hapd->mld_link_id);
-}
-#endif /* CONFIG_IEEE80211BE */
-
-
 int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 		      const char *ifname)
 {
 	if (hapd->driver == NULL || hapd->drv_priv == NULL ||
 	    hapd->driver->if_remove == NULL)
 		return -1;
-
-#ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap)
-		return hostapd_if_link_remove(hapd, type, ifname,
-					      hapd->mld_link_id);
-#endif /* CONFIG_IEEE80211BE */
-
 	return hapd->driver->if_remove(hapd->drv_priv, type, ifname);
 }
 
@@ -650,7 +590,7 @@ int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
 				    &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
 				    cmode ?
 				    &cmode->eht_capab[IEEE80211_MODE_AP] :
-				    NULL, hostapd_get_punct_bitmap(hapd)))
+				    NULL))
 		return -1;
 
 	if (hapd->driver == NULL)
@@ -855,21 +795,15 @@ int hostapd_drv_sta_deauth(struct hostapd_data *hapd,
 			   const u8 *addr, int reason)
 {
 	int link_id = -1;
-	const u8 *own_addr = hapd->own_addr;
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap) {
-		struct sta_info *sta = ap_get_sta(hapd, addr);
-
+	if (hapd->conf->mld_ap)
 		link_id = hapd->mld_link_id;
-		if (ap_sta_is_mld(hapd, sta))
-			own_addr = hapd->mld->mld_addr;
-	}
 #endif /* CONFIG_IEEE80211BE */
 
 	if (!hapd->driver || !hapd->driver->sta_deauth || !hapd->drv_priv)
 		return 0;
-	return hapd->driver->sta_deauth(hapd->drv_priv, own_addr, addr,
+	return hapd->driver->sta_deauth(hapd->drv_priv, hapd->own_addr, addr,
 					reason, link_id);
 }
 
@@ -877,20 +811,9 @@ int hostapd_drv_sta_deauth(struct hostapd_data *hapd,
 int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,
 			     const u8 *addr, int reason)
 {
-	const u8 *own_addr = hapd->own_addr;
-
-#ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap) {
-		struct sta_info *sta = ap_get_sta(hapd, addr);
-
-		if (ap_sta_is_mld(hapd, sta))
-			own_addr = hapd->mld->mld_addr;
-	}
-#endif /* CONFIG_IEEE80211BE */
-
 	if (!hapd->driver || !hapd->driver->sta_disassoc || !hapd->drv_priv)
 		return 0;
-	return hapd->driver->sta_disassoc(hapd->drv_priv, own_addr, addr,
+	return hapd->driver->sta_disassoc(hapd->drv_priv, hapd->own_addr, addr,
 					  reason);
 }
 
@@ -905,22 +828,22 @@ int hostapd_drv_wnm_oper(struct hostapd_data *hapd, enum wnm_oper oper,
 }
 
 
-static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
-				unsigned int wait, const u8 *dst,
-				const u8 *data, size_t len, bool addr3_ap)
+int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+			    unsigned int wait, const u8 *dst, const u8 *data,
+			    size_t len)
 {
-	const u8 *own_addr = hapd->own_addr;
 	const u8 *bssid;
 	const u8 wildcard_bssid[ETH_ALEN] = {
 		0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 	};
-	struct sta_info *sta;
 
 	if (!hapd->driver || !hapd->driver->send_action || !hapd->drv_priv)
 		return 0;
 	bssid = hapd->own_addr;
-	if (!addr3_ap && !is_multicast_ether_addr(dst) &&
+	if (!is_multicast_ether_addr(dst) &&
 	    len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
+		struct sta_info *sta;
+
 		/*
 		 * Public Action frames to a STA that is not a member of the BSS
 		 * shall use wildcard BSSID value.
@@ -928,7 +851,7 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 		sta = ap_get_sta(hapd, dst);
 		if (!sta || !(sta->flags & WLAN_STA_ASSOC))
 			bssid = wildcard_bssid;
-	} else if (!addr3_ap && is_broadcast_ether_addr(dst) &&
+	} else if (is_broadcast_ether_addr(dst) &&
 		   len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
 		/*
 		 * The only current use case of Public Action frames with
@@ -937,27 +860,9 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 		 * so have to use the wildcard BSSID value.
 		 */
 		bssid = wildcard_bssid;
-#ifdef CONFIG_IEEE80211BE
-	} else if (hapd->conf->mld_ap) {
-		sta = ap_get_sta(hapd, dst);
-
-		if (ap_sta_is_mld(hapd, sta)) {
-			own_addr = hapd->mld->mld_addr;
-			bssid = own_addr;
-		}
-#endif /* CONFIG_IEEE80211BE */
 	}
-
 	return hapd->driver->send_action(hapd->drv_priv, freq, wait, dst,
-					 own_addr, bssid, data, len, 0);
-}
-
-
-int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
-			    unsigned int wait, const u8 *dst, const u8 *data,
-			    size_t len)
-{
-	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, false);
+					 hapd->own_addr, bssid, data, len, 0);
 }
 
 
@@ -966,7 +871,11 @@ int hostapd_drv_send_action_addr3_ap(struct hostapd_data *hapd,
 				     unsigned int wait, const u8 *dst,
 				     const u8 *data, size_t len)
 {
-	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, true);
+	if (hapd->driver == NULL || hapd->driver->send_action == NULL)
+		return 0;
+	return hapd->driver->send_action(hapd->drv_priv, freq, wait, dst,
+					 hapd->own_addr, hapd->own_addr, data,
+					 len, 0);
 }
 
 
@@ -1000,8 +909,7 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
 				    center_segment1,
 				    cmode->vht_capab,
 				    &cmode->he_capab[IEEE80211_MODE_AP],
-				    &cmode->eht_capab[IEEE80211_MODE_AP],
-				    hostapd_get_punct_bitmap(hapd))) {
+				    &cmode->eht_capab[IEEE80211_MODE_AP])) {
 		wpa_printf(MSG_ERROR, "Can't set freq params");
 		return -1;
 	}
@@ -1023,8 +931,7 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
 int hostapd_drv_set_qos_map(struct hostapd_data *hapd,
 			    const u8 *qos_map_set, u8 qos_map_set_len)
 {
-	if (!hapd->driver || !hapd->driver->set_qos_map || !hapd->drv_priv ||
-	    !(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_QOS_MAPPING))
+	if (!hapd->driver || !hapd->driver->set_qos_map || !hapd->drv_priv)
 		return 0;
 	return hapd->driver->set_qos_map(hapd->drv_priv, qos_map_set,
 					 qos_map_set_len);
@@ -1120,12 +1027,6 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 
 	os_memset(&params, 0, sizeof(params));
 	params.hw_mode = hapd->iface->conf->hw_mode;
-	params.link_id = -1;
-#ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && hapd->iconf->ieee80211be &&
-	    !hapd->conf->disable_11be)
-		params.link_id = hapd->mld_link_id;
-#endif /* CONFIG_IEEE80211BE */
 
 	/*
 	 * If no chanlist config parameter is provided, include all enabled

@@ -43,7 +43,6 @@
 
 #define HOSTAPD_CHAN_VHT_80MHZ_SUBCHANNEL 0x00000800
 #define HOSTAPD_CHAN_VHT_160MHZ_SUBCHANNEL 0x00001000
-#define HOSTAPD_CHAN_EHT_320MHZ_SUBCHANNEL 0x00002000
 
 #define HOSTAPD_CHAN_INDOOR_ONLY 0x00010000
 #define HOSTAPD_CHAN_GO_CONCURRENT 0x00020000
@@ -246,11 +245,6 @@ struct hostapd_hw_modes {
 	 * mode - Hardware mode
 	 */
 	enum hostapd_hw_mode mode;
-
-	/**
-	 * is_6ghz - Whether the mode information is for the 6 GHz band
-	 */
-	bool is_6ghz;
 
 	/**
 	 * num_channels - Number of entries in the channels array
@@ -701,14 +695,6 @@ struct wpa_driver_scan_params {
 	 */
 	unsigned int min_probe_req_content:1;
 
-	/**
-	 * link_id - Specify the link that is requesting the scan on an MLD
-	 *
-	 * This is set when operating as an AP MLD and doing an OBSS scan.
-	 * -1 indicates that no particular link ID is set.
-	 */
-	s8 link_id;
-
 	/*
 	 * NOTE: Whenever adding new parameters here, please make sure
 	 * wpa_scan_clone_params() and wpa_scan_free_params() get updated with
@@ -963,8 +949,6 @@ struct wpa_driver_mld_params {
 		const u8 *bssid;
 		const u8 *ies;
 		size_t ies_len;
-		int error;
-		bool disabled;
 	} mld_links[MAX_NUM_MLD_LINKS];
 };
 
@@ -2735,7 +2719,6 @@ struct beacon_data {
  * @counter_offset_beacon: Offset to the count field in beacon's tail
  * @counter_offset_presp: Offset to the count field in probe resp.
  * @punct_bitmap - Preamble puncturing bitmap
- * @link_id: Link ID to determine the link for MLD; -1 for non-MLD
  */
 struct csa_settings {
 	u8 cs_count;
@@ -2749,7 +2732,6 @@ struct csa_settings {
 	u16 counter_offset_presp[2];
 
 	u16 punct_bitmap;
-	int link_id;
 };
 
 /**
@@ -2841,9 +2823,6 @@ struct drv_acs_params {
 
 	/* Indicates whether EHT is enabled */
 	bool eht_enabled;
-
-	/* Indicates the link if MLO case; -1 otherwise */
-	int link_id;
 };
 
 struct wpa_bss_trans_info {
@@ -4583,14 +4562,13 @@ struct wpa_driver_ops {
 	/**
 	 * stop_ap - Removes beacon from AP
 	 * @priv: Private driver interface data
-	 * @link_id: Link ID of the specified link; -1 for non-MLD
 	 * Returns: 0 on success, -1 on failure (or if not supported)
 	 *
 	 * This optional function can be used to disable AP mode related
 	 * configuration. Unlike deinit_ap, it does not change to station
 	 * mode.
 	 */
-	int (*stop_ap)(void *priv, int link_id);
+	int (*stop_ap)(void *priv);
 
 	/**
 	 * get_survey - Retrieve survey data
@@ -5170,44 +5148,9 @@ struct wpa_driver_ops {
 	 * @priv: Private driver interface data
 	 * @link_id: The link ID
 	 * @addr: The MAC address to use for the link
-	 * @bss_ctx: BSS context for %WPA_IF_AP_BSS interfaces
 	 * Returns: 0 on success, negative value on failure
 	 */
-	int (*link_add)(void *priv, u8 link_id, const u8 *addr, void *bss_ctx);
-
-	/**
-	 * link_remove - Remove a link from the AP MLD interface
-	 * @priv: Private driver interface data
-	 * @type: Interface type
-	 * @ifname: Interface name of the virtual interface from where the link
-	 *	is to be removed.
-	 * @link_id: Valid link ID to remove
-	 * Returns: 0 on success, -1 on failure
-	 */
-	int (*link_remove)(void *priv, enum wpa_driver_if_type type,
-			   const char *ifname, u8 link_id);
-
-	/**
-	 * is_drv_shared - Check whether the driver interface is shared
-	 * @priv: Private driver interface data from init()
-	 * @bss_ctx: BSS context for %WPA_IF_AP_BSS interfaces
-	 *
-	 * Checks whether the driver interface is being used by other partner
-	 * BSS(s) or not. This is used to decide whether the driver interface
-	 * needs to be deinitilized when one interface is getting deinitialized.
-	 *
-	 * Returns: true if it is being used or else false.
-	 */
-	bool (*is_drv_shared)(void *priv, void *bss_ctx);
-
-	/**
-	 * link_sta_remove - Remove a link STA from an MLD STA
-	 * @priv: Private driver interface data
-	 * @link_id: The link ID which the link STA is using
-	 * @addr: The MLD MAC address of the MLD STA
-	 * Returns: 0 on success, negative value on failure
-	 */
-	int (*link_sta_remove)(void *priv, u8 link_id, const u8 *addr);
+	int (*link_add)(void *priv, u8 link_id, const u8 *addr);
 
 #ifdef CONFIG_TESTING_OPTIONS
 	int (*register_frame)(void *priv, u16 type,
@@ -6417,8 +6360,6 @@ union wpa_event_data {
 	 *	(if available).
 	 * @scan_start_tsf_bssid: The BSSID according to which %scan_start_tsf
 	 *	is set.
-	 * @scan_cookie: Unique identification representing the corresponding
-	 *      scan request. 0 if no unique identification is available.
 	 */
 	struct scan_info {
 		int aborted;
@@ -6430,7 +6371,6 @@ union wpa_event_data {
 		int nl_scan_event;
 		u64 scan_start_tsf;
 		u8 scan_start_tsf_bssid[ETH_ALEN];
-		u64 scan_cookie;
 	} scan_info;
 
 	/**
@@ -6610,7 +6550,6 @@ union wpa_event_data {
 	/**
 	 * struct dfs_event - Data for radar detected events
 	 * @freq: Frequency of the channel in MHz
-	 * @link_id: If >= 0, Link ID of the MLO link
 	 */
 	struct dfs_event {
 		int freq;
@@ -6619,7 +6558,6 @@ union wpa_event_data {
 		enum chan_width chan_width;
 		int cf1;
 		int cf2;
-		int link_id;
 	} dfs_event;
 
 	/**
@@ -6638,22 +6576,11 @@ union wpa_event_data {
 	 * @initiator: Initiator of the regulatory change
 	 * @type: Regulatory change type
 	 * @alpha2: Country code (or "" if not available)
-	 * @beacon_hint_before: Data for frequency attributes before beacon hint
-	 *	event if initiator == REGDOM_BEACON_HINT
-	 * @beacon_hint_after: Data for frequency attributes after beacon hint
-	 *	event if initiator == REGDOM_BEACON_HINT
 	 */
 	struct channel_list_changed {
 		enum reg_change_initiator initiator;
 		enum reg_type type;
 		char alpha2[3];
-		struct frequency_attrs {
-			unsigned int freq;
-			unsigned int max_tx_power;
-			bool disabled;
-			bool no_ir;
-			bool radar;
-		} beacon_hint_before, beacon_hint_after;
 	} channel_list_changed;
 
 	/**
@@ -6696,9 +6623,7 @@ union wpa_event_data {
 	 * @ch_width: Selected Channel width by driver. Driver may choose to
 	 *	change hostapd configured ACS channel width due driver internal
 	 *	channel restrictions.
-	 * @hw_mode: Selected band (used with hw_mode=any)
-	 * @puncture_bitmap: Indicate the puncturing channels
-	 * @link_id: Indicate the link id if operating as AP MLD; -1 otherwise
+	 * hw_mode: Selected band (used with hw_mode=any)
 	 */
 	struct acs_selected_channels {
 		unsigned int pri_freq;
@@ -6709,7 +6634,6 @@ union wpa_event_data {
 		u16 ch_width;
 		enum hostapd_hw_mode hw_mode;
 		u16 puncture_bitmap;
-		int link_id;
 	} acs_selected_channels;
 
 	/**

@@ -487,14 +487,14 @@ pmksa_cache_auth_get(struct rsn_pmksa_cache *pmksa,
 		for (entry = pmksa->pmkid[PMKID_HASH(pmkid)]; entry;
 		     entry = entry->hnext) {
 			if ((spa == NULL ||
-			     ether_addr_equal(entry->spa, spa)) &&
+			     os_memcmp(entry->spa, spa, ETH_ALEN) == 0) &&
 			    os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0)
 				return entry;
 		}
 	} else {
 		for (entry = pmksa->pmksa; entry; entry = entry->next) {
 			if (spa == NULL ||
-			    ether_addr_equal(entry->spa, spa))
+			    os_memcmp(entry->spa, spa, ETH_ALEN) == 0)
 				return entry;
 		}
 	}
@@ -521,7 +521,7 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get_okc(
 	u8 new_pmkid[PMKID_LEN];
 
 	for (entry = pmksa->pmksa; entry; entry = entry->next) {
-		if (!ether_addr_equal(entry->spa, spa))
+		if (os_memcmp(entry->spa, spa, ETH_ALEN) != 0)
 			continue;
 		if (wpa_key_mgmt_sae(entry->akmp) ||
 		    wpa_key_mgmt_fils(entry->akmp)) {
@@ -575,7 +575,7 @@ static int das_attr_match(struct rsn_pmksa_cache_entry *entry,
 	int match = 0;
 
 	if (attr->sta_addr) {
-		if (!ether_addr_equal(attr->sta_addr, entry->spa))
+		if (os_memcmp(attr->sta_addr, entry->spa, ETH_ALEN) != 0)
 			return 0;
 		match++;
 	}
@@ -717,7 +717,7 @@ int pmksa_cache_auth_list_mesh(struct rsn_pmksa_cache *pmksa, const u8 *addr,
 	 * <BSSID> <PMKID> <PMK> <expiration in seconds>
 	 */
 	for (entry = pmksa->pmksa; entry; entry = entry->next) {
-		if (addr && !ether_addr_equal(entry->spa, addr))
+		if (addr && os_memcmp(entry->spa, addr, ETH_ALEN) != 0)
 			continue;
 
 		ret = os_snprintf(pos, end - pos, MACSTR " ",
