@@ -816,12 +816,12 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
 	int rem = 0, i;
 	struct nlattr *tb1[NL80211_ATTR_MAX + 1], *attr;
 
-	if (!tb || drv->num_iface_ext_capa == NL80211_IFTYPE_MAX)
+	if (!tb || drv->num_iface_capa == NL80211_IFTYPE_MAX)
 		return;
 
 	nla_for_each_nested(attr, tb, rem) {
 		unsigned int len;
-		struct drv_nl80211_ext_capa *capa;
+		struct drv_nl80211_iface_capa *capa;
 
 		nla_parse(tb1, NL80211_ATTR_MAX, nla_data(attr),
 			  nla_len(attr), NULL);
@@ -831,7 +831,7 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
 		    !tb1[NL80211_ATTR_EXT_CAPA_MASK])
 			continue;
 
-		capa = &drv->iface_ext_capa[drv->num_iface_ext_capa];
+		capa = &drv->iface_capa[drv->num_iface_capa];
 		capa->iftype = nla_get_u32(tb1[NL80211_ATTR_IFTYPE]);
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Driver-advertised extended capabilities for interface type %s",
@@ -857,8 +857,16 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
 		wpa_hexdump(MSG_DEBUG, "nl80211: Extended capabilities mask",
 			    capa->ext_capa_mask, capa->ext_capa_len);
 
-		drv->num_iface_ext_capa++;
-		if (drv->num_iface_ext_capa == NL80211_IFTYPE_MAX)
+		if (tb1[NL80211_ATTR_EML_CAPABILITY] &&
+		    tb1[NL80211_ATTR_MLD_CAPA_AND_OPS]) {
+			capa->eml_capa =
+				nla_get_u16(tb1[NL80211_ATTR_EML_CAPABILITY]);
+			capa->mld_capa_and_ops =
+				nla_get_u16(tb1[NL80211_ATTR_MLD_CAPA_AND_OPS]);
+		}
+
+		drv->num_iface_capa++;
+		if (drv->num_iface_capa == NL80211_IFTYPE_MAX)
 			break;
 	}
 
@@ -867,13 +875,13 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
 err:
 	/* Cleanup allocated memory on error */
 	for (i = 0; i < NL80211_IFTYPE_MAX; i++) {
-		os_free(drv->iface_ext_capa[i].ext_capa);
-		drv->iface_ext_capa[i].ext_capa = NULL;
-		os_free(drv->iface_ext_capa[i].ext_capa_mask);
-		drv->iface_ext_capa[i].ext_capa_mask = NULL;
-		drv->iface_ext_capa[i].ext_capa_len = 0;
+		os_free(drv->iface_capa[i].ext_capa);
+		drv->iface_capa[i].ext_capa = NULL;
+		os_free(drv->iface_capa[i].ext_capa_mask);
+		drv->iface_capa[i].ext_capa_mask = NULL;
+		drv->iface_capa[i].ext_capa_len = 0;
 	}
-	drv->num_iface_ext_capa = 0;
+	drv->num_iface_capa = 0;
 }
 
 
@@ -1417,6 +1425,10 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_AP_ALLOWED_FREQ_LIST,
 			  &info))
 		drv->qca_ap_allowed_freqs = 1;
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_ADAPTIVE_11R, &info)) {
+		wpa_printf(MSG_INFO, "Driver support of Enabled Adaptive 11r");
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS_ADAPTIVE_11R;
+	}
 	os_free(info.flags);
 }
 
@@ -2377,6 +2389,57 @@ static void nl80211_reg_rule_vht(struct nlattr *tb[],
 }
 
 
+static void nl80211_set_6ghz_mode(struct hostapd_hw_modes *mode, int start,
+				  int end, int max_bw)
+{
+	int c;
+
+	for (c = 0; c < mode->num_channels; c++) {
+		struct hostapd_channel_data *chan = &mode->channels[c];
+
+		if (chan->freq - 10 < start || chan->freq + 10 > end)
+			continue;
+
+		if (max_bw >= 80)
+			chan->flag |= HOSTAPD_CHAN_VHT_80MHZ_SUBCHANNEL;
+
+		if (max_bw >= 160)
+			chan->flag |= HOSTAPD_CHAN_VHT_160MHZ_SUBCHANNEL;
+
+		if (max_bw >= 320)
+			chan->flag |= HOSTAPD_CHAN_EHT_320MHZ_SUBCHANNEL;
+	}
+}
+
+
+static void nl80211_reg_rule_6ghz(struct nlattr *tb[],
+				 struct phy_info_arg *results)
+{
+	u32 start, end, max_bw;
+	u16 m;
+
+	if (!tb[NL80211_ATTR_FREQ_RANGE_START] ||
+	    !tb[NL80211_ATTR_FREQ_RANGE_END] ||
+	    !tb[NL80211_ATTR_FREQ_RANGE_MAX_BW])
+		return;
+
+	start = nla_get_u32(tb[NL80211_ATTR_FREQ_RANGE_START]) / 1000;
+	end = nla_get_u32(tb[NL80211_ATTR_FREQ_RANGE_END]) / 1000;
+	max_bw = nla_get_u32(tb[NL80211_ATTR_FREQ_RANGE_MAX_BW]) / 1000;
+
+	if (max_bw < 80)
+		return;
+
+	for (m = 0; m < *results->num_modes; m++) {
+		if (results->modes[m].num_channels == 0 ||
+		    !is_6ghz_freq(results->modes[m].channels[0].freq))
+			continue;
+
+		nl80211_set_6ghz_mode(&results->modes[m], start, end, max_bw);
+	}
+}
+
+
 static void nl80211_set_dfs_domain(enum nl80211_dfs_regions region,
 				   u8 *dfs_domain)
 {
@@ -2493,6 +2556,13 @@ static int nl80211_get_reg(struct nl_msg *msg, void *arg)
 		nla_parse(tb_rule, NL80211_FREQUENCY_ATTR_MAX,
 			  nla_data(nl_rule), nla_len(nl_rule), reg_policy);
 		nl80211_reg_rule_vht(tb_rule, results);
+	}
+
+	nla_for_each_nested(nl_rule, tb_msg[NL80211_ATTR_REG_RULES], rem_rule)
+	{
+		nla_parse(tb_rule, NL80211_FREQUENCY_ATTR_MAX,
+			  nla_data(nl_rule), nla_len(nl_rule), reg_policy);
+		nl80211_reg_rule_6ghz(tb_rule, results);
 	}
 
 	return NL_SKIP;

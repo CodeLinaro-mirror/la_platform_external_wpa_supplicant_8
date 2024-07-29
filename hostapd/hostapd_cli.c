@@ -1214,6 +1214,13 @@ static int hostapd_cli_cmd_enable(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+static int hostapd_cli_cmd_enable_mld(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "ENABLE_MLD");
+}
+
+
 static int hostapd_cli_cmd_reload(struct wpa_ctrl *ctrl, int argc,
 				      char *argv[])
 {
@@ -1232,6 +1239,13 @@ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
 				      char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "DISABLE");
+}
+
+
+static int hostapd_cli_cmd_disable_mld(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "DISABLE_MLD");
 }
 
 
@@ -1272,6 +1286,29 @@ static int hostapd_cli_cmd_driver_event(struct wpa_ctrl *ctrl, int argc, char *a
 	return wpa_ctrl_command(ctrl, buf);
 }
 #endif /* CONFIG_TESTING_OPTIONS */
+
+static int hostapd_cli_cmd_stop_ap(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "STOP_AP");
+}
+
+
+static int hostapd_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	char buf[4096];
+	int res;
+
+	if (argc < 1) {
+		printf("Invalid DRIVER command - at least 1 argument "
+		       "required.\n");
+		return -1;
+	}
+	if (write_cmd(buf, sizeof(buf), "DRIVER", argc, argv) < 0)
+		return -1;
+	return wpa_ctrl_command(ctrl, buf);
+}
+
 
 static int hostapd_cli_cmd_vendor(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
@@ -1601,14 +1638,6 @@ static int hostapd_cli_cmd_reload_wpa_psk(struct wpa_ctrl *ctrl, int argc,
 }
 
 
-#ifdef ANDROID
-static int hostapd_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
-{
-	return hostapd_cli_cmd(ctrl, "DRIVER", 1, argc, argv);
-}
-#endif /* ANDROID */
-
-
 struct hostapd_cli_cmd {
 	const char *cmd;
 	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
@@ -1724,16 +1753,25 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "<driver event sub command> [<hex formatted data>]\n"
 	  "  = fake driver event data" },
 #endif /* CONFIG_TESTING_OPTIONS */
+	{ "driver", hostapd_cli_cmd_driver, NULL,
+	  "<driver sub command> [<hex formatted data>]\n"
+	  "  = send driver command data" },
 	{ "enable", hostapd_cli_cmd_enable, NULL,
 	  "= enable hostapd on current interface" },
+	{ "enable_mld", hostapd_cli_cmd_enable_mld, NULL,
+	  "= enable hostapd on current MLD" },
 	{ "reload", hostapd_cli_cmd_reload, NULL,
 	  "= reload configuration for current interface" },
 	{ "reload_bss", hostapd_cli_cmd_reload_bss, NULL,
 	  "= reload configuration for current BSS" },
 	{ "disable", hostapd_cli_cmd_disable, NULL,
 	  "= disable hostapd on current interface" },
+	{ "disable_mld", hostapd_cli_cmd_disable_mld, NULL,
+	  "= disable hostapd on current MLD" },
 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
 	  "= update Beacon frame contents\n"},
+	{ "stop_ap", hostapd_cli_cmd_stop_ap, NULL,
+	  "= stop AP\n"},
 	{ "erp_flush", hostapd_cli_cmd_erp_flush, NULL,
 	  "= drop all ERP keys"},
 	{ "log_level", hostapd_cli_cmd_log_level, NULL,
@@ -1813,10 +1851,6 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	  "<addr> [req_mode=] <measurement request hexdump>  = send a Beacon report request to a station" },
 	{ "reload_wpa_psk", hostapd_cli_cmd_reload_wpa_psk, NULL,
 	  "= reload wpa_psk_file only" },
-#ifdef ANDROID
-	{ "driver", hostapd_cli_cmd_driver, NULL,
-	  "<driver sub command> [<hex formatted data>] = send driver command data" },
-#endif /* ANDROID */
 	{ NULL, NULL, NULL, NULL }
 };
 
