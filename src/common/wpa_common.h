@@ -9,6 +9,8 @@
 #ifndef WPA_COMMON_H
 #define WPA_COMMON_H
 
+#include "common/defs.h"
+
 /* IEEE 802.11i */
 #define PMKID_LEN 16
 #define PMK_LEN 32
@@ -688,6 +690,12 @@ struct wpa_eapol_ie_parse {
 	size_t wmm_len;
 	const u8 *rsn_selection;
 	size_t rsn_selection_len;
+	const u8 *rsne_override;
+	size_t rsne_override_len;
+	const u8 *rsne_override_2;
+	size_t rsne_override_2_len;
+	const u8 *rsnxe_override;
+	size_t rsnxe_override_len;
 #define MAX_NUM_MLO_LINKS 15
 	u16 valid_mlo_gtks; /* bitmap of valid link GTK KDEs */
 	const u8 *mlo_gtk[MAX_NUM_MLO_LINKS];
