@@ -75,6 +75,12 @@ ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
 L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
 endif
 
+# TODO(b/246871098): we plan to have all Broadcom projects to follow open
+# source way after the multiple AKMs is fully supported by driver and verified.
+ifeq ($(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM), enabled)
+L_CFLAGS += -DWIFI_BRCM_OPEN_SOURCE_MULTI_AKM
+endif
+
 # Use Android specific directory for control interface sockets
 L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"
 L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"
