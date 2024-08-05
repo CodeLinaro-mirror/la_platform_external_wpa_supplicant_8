@@ -85,6 +85,7 @@ L_CFLAGS += -DCONFIG_WPA_CLI_HISTORY_DIR=\"/data/vendor/wifi/wpa\"
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
+L_CFLAGS += -DARCH_ARM_32
 endif
 
 # C++ flags for aidl interface
@@ -246,7 +247,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-ifdef CONFIG_SUITEB192
+ifeq ($(CONFIG_SUITEB192),y)
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -261,7 +262,7 @@ L_CFLAGS += -DCONFIG_IEEE80211R
 OBJS += src/rsn_supp/wpa_ft.c
 endif
 
-ifdef CONFIG_MESH
+ifeq ($(CONFIG_MESH),y)
 NEED_80211_COMMON=y
 NEED_AES_SIV=y
 CONFIG_SAE=y
@@ -272,7 +273,7 @@ OBJS += mesh_mpm.c
 OBJS += mesh_rsn.c
 endif
 
-ifdef CONFIG_SAE
+ifeq ($(CONFIG_SAE),y)
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
@@ -289,7 +290,7 @@ NEED_DH_GROUPS_ALL=y
 endif
 endif
 
-ifdef CONFIG_DPP
+ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
 OBJS += src/common/dpp_auth.c
@@ -318,7 +319,7 @@ L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
-ifdef CONFIG_OWE
+ifeq ($(CONFIG_OWE),y)
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -678,12 +679,17 @@ CONFIG_EAP_SIM_COMMON=y
 NEED_AES_CBC=y
 endif
 
+ifndef DISABLE_EAP_PROXY
+ifneq ($(wildcard vendor/qcom/proprietary/mdm-helper/libmdmdetect),)
+CONFIG_EAP_PROXY_MDM_DETECT := true
+endif
 ifdef CONFIG_EAP_PROXY
 L_CFLAGS += -DCONFIG_EAP_PROXY
 OBJS += src/eap_peer/eap_proxy_$(CONFIG_EAP_PROXY).c
 include $(LOCAL_PATH)/eap_proxy_$(CONFIG_EAP_PROXY).mk
 CONFIG_IEEE8021X_EAPOL=y
-endif
+endif # CONFIG_EAP_PROXY
+endif # DISABLE_EAP_PROXY
 
 ifdef CONFIG_EAP_AKA_PRIME
 # EAP-AKA'
@@ -999,7 +1005,7 @@ L_CFLAGS += -DEAP_SERVER_WSC
 OBJS += src/ap/wps_hostapd.c
 OBJS += src/eap_server/eap_server_wsc.c
 endif
-ifdef CONFIG_DPP
+ifeq ($(CONFIG_DPP),y)
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
@@ -1562,6 +1568,11 @@ L_CFLAGS += -DCONFIG_USE_VENDOR_AIDL
 endif
 endif
 
+ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
+SUPPLICANT_VENDOR_AIDL=y
+L_CFLAGS += -DCONFIG_SUPPLICANT_VENDOR_AIDL
+endif
+
 ifdef CONFIG_READLINE
 OBJS_c += src/utils/edit_readline.c
 LIBS_c += -lncurses -lreadline
@@ -1839,7 +1850,7 @@ ifeq ($(CONFIG_TLS), openssl)
 PASNOBJS += src/crypto/crypto_openssl.c
 ifdef TLS_FUNCS
 PASNOBJS += src/crypto/tls_openssl.c
-#PASNOBJS += -lssl -lcrypto
+PASNOBJS += src/crypto/tls_openssl_ocsp.c
 NEED_TLS_PRF_SHA256=y
 endif
 endif
@@ -1933,6 +1944,7 @@ LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 ifdef CONFIG_EAP_PROXY
 LOCAL_STATIC_LIBRARIES += $(LIB_STATIC_EAP_PROXY)
 LOCAL_SHARED_LIBRARIES += $(LIB_SHARED_EAP_PROXY)
+LOCAL_HEADER_LIBRARIES += $(LIB_HEADER_EAP_PROXY)
 endif
 ifeq ($(CONFIG_TLS), openssl)
 LOCAL_SHARED_LIBRARIES += libcrypto libssl
@@ -1970,6 +1982,9 @@ LOCAL_SHARED_LIBRARIES += libutils libbase
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libwpa_aidl
 LOCAL_VINTF_FRAGMENTS := aidl/android.hardware.wifi.supplicant.xml
+ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
+LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant-V2-ndk
+endif
 ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
 LOCAL_INIT_RC=aidl/android.hardware.wifi.supplicant-service.rc
 endif
@@ -2037,6 +2052,14 @@ LOCAL_SRC_FILES := \
     aidl/sta_iface.cpp \
     aidl/sta_network.cpp \
     aidl/supplicant.cpp
+ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
+LOCAL_SRC_FILES += \
+    vendor_aidl/aidl_vendor.cpp \
+    vendor_aidl/aidl_vendor_manager.cpp \
+    vendor_aidl/vendorsta_iface.cpp \
+    vendor_aidl/supplicantvendor.cpp
+endif
+
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.supplicant-V2-ndk \
     android.system.keystore2-V1-ndk \
@@ -2062,13 +2085,20 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
 include $(BUILD_STATIC_LIBRARY)
 endif # WPA_SUPPLICANT_USE_AIDL == y
 
-#include $(CLEAR_VARS)
-#LOCAL_MODULE = libpasn
-#LOCAL_CFLAGS = $(L_CFLAGS)
-#LOCAL_SRC_FILES = $(PASNOBJS)
-#LOCAL_C_INCLUDES = $(INCLUDES)
-#LOCAL_SHARED_LIBRARIES := libc libcutils liblog
-#ifeq ($(CONFIG_TLS), openssl)
-#LOCAL_SHARED_LIBRARIES := libcrypto libssl
-#endif
-#include $(BUILD_SHARED_LIBRARY)
+ifeq ($(CONFIG_PASN), y)
+include $(CLEAR_VARS)
+LOCAL_MODULE = libpasn
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
+LOCAL_VENDOR_MODULE := true
+LOCAL_CFLAGS = $(L_CFLAGS)
+LOCAL_SRC_FILES = $(PASNOBJS)
+LOCAL_C_INCLUDES = $(INCLUDES)
+LOCAL_SHARED_LIBRARIES := libc libcutils liblog
+ifeq ($(CONFIG_TLS), openssl)
+LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
+LOCAL_SHARED_LIBRARIES += libkeystore-engine-wifi-hidl
+endif
+include $(BUILD_SHARED_LIBRARY)
+endif # CONFIG_PASN == y

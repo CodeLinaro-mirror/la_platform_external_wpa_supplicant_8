@@ -14,6 +14,7 @@
 #include "common/hw_features_common.h"
 #include "common/wpa_ctrl.h"
 #include "hostapd.h"
+#include "beacon.h"
 #include "ap_drv_ops.h"
 #include "drivers/driver.h"
 #include "dfs.h"
@@ -362,8 +363,9 @@ static int dfs_get_start_chan_idx(struct hostapd_iface *iface, int *seg1_start)
 	if (iface->conf->ieee80211n && iface->conf->secondary_channel == -1)
 		channel_no -= 4;
 
-	/* VHT/HE */
-	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax) {
+	/* VHT/HE/EHT */
+	if (iface->conf->ieee80211ac || iface->conf->ieee80211ax ||
+	    iface->conf->ieee80211be) {
 		switch (hostapd_get_oper_chwidth(iface->conf)) {
 		case CONF_OPER_CHWIDTH_USE_HT:
 			break;
@@ -381,9 +383,13 @@ static int dfs_get_start_chan_idx(struct hostapd_iface *iface, int *seg1_start)
 			chan_seg1 = hostapd_get_oper_centr_freq_seg1_idx(
 				iface->conf) - 6;
 			break;
+		case CONF_OPER_CHWIDTH_320MHZ:
+			channel_no = hostapd_get_oper_centr_freq_seg0_idx(
+				iface->conf) - 30;
+			break;
 		default:
 			wpa_printf(MSG_INFO,
-				   "DFS only VHT20/40/80/160/80+80 is supported now");
+				   "DFS only EHT20/40/80/160/80+80/320 is supported now");
 			channel_no = -1;
 			break;
 		}
@@ -978,6 +984,12 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
 	os_memset(&csa_settings, 0, sizeof(csa_settings));
 	csa_settings.cs_count = 5;
 	csa_settings.block_tx = 1;
+#ifdef CONFIG_IEEE80211BE
+	if (iface->bss[0]->conf->mld_ap)
+		csa_settings.link_id = iface->bss[0]->mld_link_id;
+	else
+#endif /* CONFIG_IEEE80211BE */
+		csa_settings.link_id = -1;
 #ifdef CONFIG_MESH
 	if (iface->mconf)
 		ieee80211_mode = IEEE80211_MODE_MESH;
@@ -1129,14 +1141,18 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
 			     int cf1, int cf2)
 {
 	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_CAC_COMPLETED
-		"success=%d freq=%d ht_enabled=%d chan_offset=%d chan_width=%d cf1=%d cf2=%d",
-		success, freq, ht_enabled, chan_offset, chan_width, cf1, cf2);
+		"success=%d freq=%d ht_enabled=%d chan_offset=%d chan_width=%d cf1=%d cf2=%d radar_detected=%d",
+		success, freq, ht_enabled, chan_offset, chan_width, cf1, cf2, iface->radar_detected);
 
 	if (success) {
 		/* Complete iface/ap configuration */
 		if (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
-			/* Complete AP configuration for the first bring up. */
-			if (iface->state != HAPD_IFACE_ENABLED)
+			/* Complete AP configuration for the first bring up. If radar was
+			 * detected in this channel, interface setup will be handled in
+			 * 1. hostapd_event_ch_switch if switch to a non-DFS channel
+			 * 2. next CAC complete event if switch to another DFS channel.
+			*/
+			if (iface->state != HAPD_IFACE_ENABLED && !iface->radar_detected)
 				hostapd_setup_interface_complete(iface, 0);
 			else
 				iface->cac_started = 0;
@@ -1181,6 +1197,7 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
 		hostpad_dfs_update_background_chain(iface);
 	}
 
+	iface->radar_detected = 0;
 	return 0;
 }
 
@@ -1424,6 +1441,8 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
 		"freq=%d ht_enabled=%d chan_offset=%d chan_width=%d cf1=%d cf2=%d",
 		freq, ht_enabled, chan_offset, chan_width, cf1, cf2);
 
+	iface->radar_detected = 1;
+
 	/* Proceed only if DFS is not offloaded to the driver */
 	if (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)
 		return 0;
@@ -1517,9 +1536,17 @@ int hostapd_dfs_start_cac(struct hostapd_iface *iface, int freq,
 		iface->radar_background.cac_started = 1;
 	} else {
 		/* This is called when the driver indicates that an offloaded
-		 * DFS has started CAC. */
+		 * DFS has started CAC. radar_detected might be set for previous
+		 * DFS channel. Clear it for this new CAC process. */
 		hostapd_set_state(iface, HAPD_IFACE_DFS);
 		iface->cac_started = 1;
+
+		/* Clear radar_detected in case it is for previous frequency.
+		 * Also remove diabled link's information in RNR IE. */
+		iface->radar_detected = 0;
+		if (iface->interfaces && iface->interfaces->count > 1) {
+			ieee802_11_set_beacons(iface);
+		}
 	}
 	/* TODO: How to check CAC time for ETSI weather channels? */
 	iface->dfs_cac_ms = 60000;

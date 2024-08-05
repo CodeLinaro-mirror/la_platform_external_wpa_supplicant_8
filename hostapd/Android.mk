@@ -60,6 +60,7 @@ L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/vendor/wifi/hostapd\"
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
+L_CFLAGS += -DARCH_ARM_32
 endif
 
 INCLUDES = $(LOCAL_PATH)
@@ -1155,7 +1156,7 @@ ifdef CONFIG_USE_VENDOR_AIDL
 HOSTAPD_USE_VENDOR_AIDL=y
 L_CFLAGS += -DCONFIG_USE_VENDOR_AIDL
 endif
-L_CPPFLAGS = -Wall -Werror
+L_CPPFLAGS = -Wall -Werror  -Wno-unused-variable
 endif
 endif
 
@@ -1207,6 +1208,13 @@ LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libhostapd_aidl
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
+ifeq ($(HOSTAPD_USE_AIDL), y)
+ifeq ($(ENABLE_SOMEIP), true)
+LOCAL_CFLAGS += -DCONFIG_HOSTAPD_RPC
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libqti_hostapd_rpc_impl
+endif
+endif
 LOCAL_SRC_FILES := $(OBJS)
 LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_INIT_RC := hostapd.android.rc
@@ -1264,6 +1272,11 @@ LOCAL_SHARED_LIBRARIES := \
 ifeq ($(HOSTAPD_USE_VENDOR_AIDL), y)
 LOCAL_SRC_FILES += aidl/hostapd_vendor.cpp
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.hostapd-V1-ndk
+endif
+ifeq ($(ENABLE_SOMEIP), true)
+LOCAL_CFLAGS += -DCONFIG_HOSTAPD_RPC
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libqti_hostapd_rpc_impl
 endif
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/aidl

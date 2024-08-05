@@ -4,6 +4,12 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef WPA_SUPPLICANT_I_H
@@ -53,6 +59,7 @@ struct ctrl_iface_priv;
 struct ctrl_iface_global_priv;
 struct wpas_dbus_priv;
 struct wpas_aidl_priv;
+struct wpas_vendor_aidl_priv;
 
 /**
  * struct wpa_interface - Parameters for wpa_supplicant_add_iface()
@@ -260,6 +267,15 @@ struct wpa_params {
 	 */
 	int match_iface_count;
 #endif /* CONFIG_MATCH_IFACE */
+
+#ifdef CONFIG_AIDL
+	/**
+	 * aidl_service_name - Service name to use when registering
+	 * with AIDL. For supporting multiple instances of
+	 * wpa_supplicant over AIDL
+	 */
+	char *aidl_service_name;
+#endif /* CONFIG_AIDL */
 };
 
 struct p2p_srv_bonjour {
@@ -286,6 +302,7 @@ struct wpa_global {
 	struct ctrl_iface_global_priv *ctrl_iface;
 	struct wpas_dbus_priv *dbus;
 	struct wpas_aidl_priv *aidl;
+	struct wpas_vendor_aidl_priv *vendor_aidl;
 	void **drv_priv;
 	size_t drv_count;
 	struct os_time suspend_time;
@@ -598,6 +615,40 @@ struct tclas_element {
 };
 
 
+struct qos_characteristics {
+	bool available;
+
+	/* Control Info Direction */
+	u8 direction;
+	/* Presence Bitmap Of Additional Parameters */
+	u16 mask;
+	/* Minimum Service Interval */
+	u32 min_si;
+	/* Maximum Service Interval */
+	u32 max_si;
+	/* Minimum Data Rate */
+	u32 min_data_rate;
+	/* Delay Bound */
+	u32 delay_bound;
+	/* Maximum MSDU Size */
+	u16 max_msdu_size;
+	/* Service Start Time */
+	u32 service_start_time;
+	/* Service Start Time LinkID */
+	u8 service_start_time_link_id;
+	/* Mean Data Rate */
+	u32 mean_data_rate;
+	/* Delayed Bounded Burst Size */
+	u32 burst_size;
+	/* MSDU Lifetime */
+	u16 msdu_lifetime;
+	/* MSDU Delivery Info */
+	u8 msdu_delivery_info;
+	/* Medium Time */
+	u16 medium_time;
+};
+
+
 struct scs_desc_elem {
 	u8 scs_id;
 	enum scs_request_type request_type;
@@ -606,6 +657,7 @@ struct scs_desc_elem {
 	struct tclas_element *tclas_elems;
 	unsigned int num_tclas_elem;
 	u8 tclas_processing;
+	struct qos_characteristics qos_char_elem;
 };
 
 
@@ -947,6 +999,7 @@ struct wpa_supplicant {
 	unsigned int connection_channel_bandwidth:5;
 	unsigned int disable_mbo_oce:1;
 	unsigned int connection_11b_only:1;
+	unsigned int ap_t2lm_negotiation_support:1;
 
 	struct os_reltime last_mac_addr_change;
 	enum wpas_mac_addr_style last_mac_addr_style;
@@ -1956,5 +2009,8 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			    struct pasn_auth *pasn_auth);
 void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status);
+
+bool wpa_is_non_eht_scs_traffic_desc_supported(struct wpa_bss *bss);
+bool wpas_ap_link_address(struct wpa_supplicant *wpa_s, const u8 *addr);
 
 #endif /* WPA_SUPPLICANT_I_H */
