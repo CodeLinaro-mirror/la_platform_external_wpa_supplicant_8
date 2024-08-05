@@ -47,7 +47,7 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 		    size_t eht_capab_len,
 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
-		    int set);
+		    int set, const u8 *link_addr, bool mld_link_sta);
 int hostapd_set_privacy(struct hostapd_data *hapd, int enabled);
 int hostapd_set_generic_elem(struct hostapd_data *hapd, const u8 *elem,
 			     size_t elem_len);
@@ -155,6 +155,7 @@ int hostapd_drv_set_qos_map(struct hostapd_data *hapd, const u8 *qos_map_set,
 			    u8 qos_map_set_len);
 
 void hostapd_get_ext_capa(struct hostapd_iface *iface);
+void hostapd_get_mld_capa(struct hostapd_iface *iface);
 
 void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 				      struct hostapd_hw_modes *mode,
@@ -172,12 +173,13 @@ static inline int hostapd_drv_set_countermeasures(struct hostapd_data *hapd,
 
 static inline int hostapd_drv_set_sta_vlan(const char *ifname,
 					   struct hostapd_data *hapd,
-					   const u8 *addr, int vlan_id)
+					   const u8 *addr, int vlan_id,
+					   int link_id)
 {
 	if (hapd->driver == NULL || hapd->driver->set_sta_vlan == NULL)
 		return 0;
 	return hapd->driver->set_sta_vlan(hapd->drv_priv, addr, ifname,
-					  vlan_id);
+					  vlan_id, link_id);
 }
 
 static inline int hostapd_drv_get_inact_sec(struct hostapd_data *hapd,
@@ -199,13 +201,13 @@ static inline int hostapd_drv_sta_remove(struct hostapd_data *hapd,
 static inline int hostapd_drv_hapd_send_eapol(struct hostapd_data *hapd,
 					      const u8 *addr, const u8 *data,
 					      size_t data_len, int encrypt,
-					      u32 flags)
+					      u32 flags, int link_id)
 {
 	if (hapd->driver == NULL || hapd->driver->hapd_send_eapol == NULL)
 		return 0;
 	return hapd->driver->hapd_send_eapol(hapd->drv_priv, addr, data,
 					     data_len, encrypt,
-					     hapd->own_addr, flags);
+					     hapd->own_addr, flags, link_id);
 }
 
 static inline int hostapd_drv_read_sta_data(
@@ -386,9 +388,14 @@ static inline int hostapd_drv_vendor_cmd(struct hostapd_data *hapd,
 
 static inline int hostapd_drv_stop_ap(struct hostapd_data *hapd)
 {
+	int link_id = -1;
 	if (!hapd->driver || !hapd->driver->stop_ap || !hapd->drv_priv)
 		return 0;
-	return hapd->driver->stop_ap(hapd->drv_priv);
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap)
+		link_id = hapd->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
+	return hapd->driver->stop_ap(hapd->drv_priv, link_id);
 }
 
 static inline int hostapd_drv_channel_info(struct hostapd_data *hapd,
@@ -449,5 +456,17 @@ hostapd_drv_register_frame(struct hostapd_data *hapd, u16 type,
 					    match_len, multicast);
 }
 #endif /* CONFIG_TESTING_OPTIONS */
+
+#ifdef CONFIG_IEEE80211BE
+static inline int hostapd_drv_link_add(struct hostapd_data *hapd,
+				       u8 link_id, const u8 *addr)
+{
+	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->link_add)
+		return -1;
+
+	return hapd->driver->link_add(hapd->drv_priv, link_id, addr);
+
+}
+#endif /* CONFIG_IEEE80211BE */
 
 #endif /* AP_DRV_OPS */

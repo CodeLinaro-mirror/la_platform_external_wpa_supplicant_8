@@ -184,6 +184,8 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_MODIFY_LINK_STA)
 	C2S(NL80211_CMD_REMOVE_LINK_STA)
 	C2S(NL80211_CMD_SET_HW_TIMESTAMP)
+	C2S(NL80211_CMD_LINKS_REMOVED)
+	C2S(NL80211_CMD_SET_TID_TO_LINK_MAPPING)
 	C2S(__NL80211_CMD_AFTER_LAST)
 	}
 #undef C2S
@@ -1265,15 +1267,29 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 	if (cf2)
 		data.ch_switch.cf2 = nla_get_u32(cf2);
 
-	if (finished)
-		bss->flink->freq = data.ch_switch.freq;
+	if (link)
+		data.ch_switch.link_id = nla_get_u8(link);
+	else
+		data.ch_switch.link_id = -1;
 
-	if (link) {
-		u8 link_id = nla_get_u8(link);
+	if (finished) {
+		if (data.ch_switch.link_id != NL80211_DRV_LINK_ID_NA) {
+			struct i802_link *mld_link = nl80211_get_link(bss, data.ch_switch.link_id);
+			mld_link->freq = data.ch_switch.freq;
+			if (bw)
+				mld_link->bandwidth = channel_width_to_int(data.ch_switch.ch_width);
+		} else {
+			bss->flink->freq = data.ch_switch.freq;
+			if (bw)
+				bss->flink->bandwidth = channel_width_to_int(data.ch_switch.ch_width);
+		}
+	}
+
+	if (link && is_sta_interface(drv->nlmode)) {
+		int link_id = data.ch_switch.link_id;
 
 		if (link_id < MAX_NUM_MLD_LINKS &&
 		    drv->sta_mlo_info.valid_links & BIT(link_id)) {
-			data.ch_switch.link_id = link_id;
 			drv->sta_mlo_info.links[link_id].freq =
 				data.ch_switch.freq;
 			wpa_supplicant_event(
@@ -1423,6 +1439,8 @@ static void mlme_event_mgmt_tx_status(struct wpa_driver_nl80211_data *drv,
 	event.tx_status.data = frame;
 	event.tx_status.data_len = len;
 	event.tx_status.ack = ack != NULL;
+	event.tx_status.link_id = cookie_val == drv->send_frame_cookie ?
+		drv->send_frame_link_id : NL80211_DRV_LINK_ID_NA;
 	wpa_supplicant_event(drv->ctx, EVENT_TX_STATUS, &event);
 }
 
@@ -1610,6 +1628,21 @@ static void mlme_event_unprot_beacon(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static struct i802_link *
+nl80211_get_mld_link_by_freq(struct i802_bss *bss, unsigned int freq)
+{
+	unsigned int i;
+
+	for (i = 0; i < bss->n_links; i++) {
+		if ((unsigned int) bss->links[i].freq == freq &&
+		    bss->links[i].link_id != -1)
+			return &bss->links[i];
+	}
+
+	return NULL;
+}
+
+
 static void mlme_event(struct i802_bss *bss,
 		       enum nl80211_commands cmd, struct nlattr *frame,
 		       struct nlattr *addr, struct nlattr *timed_out,
@@ -1622,7 +1655,8 @@ static void mlme_event(struct i802_bss *bss,
 	u16 stype = 0, auth_type = 0;
 	const u8 *data;
 	size_t len;
-	int link_id;
+	int link_id = -1;
+	struct i802_link *mld_link = NULL;
 
 	if (timed_out && addr) {
 		mlme_timeout_event(drv, cmd, addr);
@@ -1636,10 +1670,15 @@ static void mlme_event(struct i802_bss *bss,
 		return;
 	}
 
+	/* Determine the MLD link either by an explicitly provided link id or
+	 * finding a match based on the frequency. */
 	if (link)
-		link_id = nla_get_u8(link);
-	else
-		link_id = -1;
+		mld_link = nl80211_get_link(bss, nla_get_u8(link));
+	else if (freq)
+		mld_link = nl80211_get_mld_link_by_freq(bss, nla_get_u32(freq));
+
+	if (mld_link)
+		link_id = mld_link->link_id;
 
 	data = nla_data(frame);
 	len = nla_len(frame);
@@ -1682,7 +1721,9 @@ static void mlme_event(struct i802_bss *bss,
 		   os_memcmp(bss->addr, data + 4 + ETH_ALEN, ETH_ALEN) != 0 &&
 		   (is_zero_ether_addr(drv->first_bss->prev_addr) ||
 		    os_memcmp(bss->prev_addr, data + 4 + ETH_ALEN,
-			      ETH_ALEN) != 0)) {
+			      ETH_ALEN) != 0) &&
+		   (!mld_link ||
+		    os_memcmp(mld_link->addr, data + 4, ETH_ALEN) != 0)) {
 		wpa_printf(MSG_MSGDUMP, "nl80211: %s: Ignore MLME frame event "
 			   "for foreign address", bss->ifname);
 		return;
@@ -1879,6 +1920,8 @@ static void mlme_event_dh_event(struct wpa_driver_nl80211_data *drv,
 				struct nlattr *tb[])
 {
 	union wpa_event_data data;
+	u8 *addr, *link_addr = NULL;
+	int assoc_link_id = -1;
 
 	if (!is_ap_interface(drv->nlmode))
 		return;
@@ -1886,9 +1929,37 @@ static void mlme_event_dh_event(struct wpa_driver_nl80211_data *drv,
 		return;
 
 	os_memset(&data, 0, sizeof(data));
-	data.update_dh.peer = nla_data(tb[NL80211_ATTR_MAC]);
+	addr = nla_data(tb[NL80211_ATTR_MAC]);
+
+	if (bss->links[0].link_id == NL80211_DRV_LINK_ID_NA &&
+	    (tb[NL80211_ATTR_MLO_LINK_ID] ||
+	     tb[NL80211_ATTR_MLD_ADDR])) {
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Link info not expected for DH event for non-MLD AP");
+		return;
+	}
+
+	if (tb[NL80211_ATTR_MLO_LINK_ID]) {
+		assoc_link_id = nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: STA assoc link ID %d in UPDATE_OWE_INFO event",
+			   assoc_link_id);
+
+		if (assoc_link_id != NL80211_DRV_LINK_ID_NA &&
+		    tb[NL80211_ATTR_MLD_ADDR]) {
+			link_addr = addr;
+			addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: STA assoc link addr " MACSTR,
+				   MAC2STR(link_addr));
+		}
+	}
+
+	data.update_dh.peer = addr;
 	data.update_dh.ie = nla_data(tb[NL80211_ATTR_IE]);
 	data.update_dh.ie_len = nla_len(tb[NL80211_ATTR_IE]);
+	data.update_dh.assoc_link_id = assoc_link_id;
+	data.update_dh.link_addr = link_addr;
 
 	wpa_printf(MSG_DEBUG, "nl80211: DH event - peer " MACSTR,
 		   MAC2STR(data.update_dh.peer));
@@ -2109,23 +2180,60 @@ static void nl80211_new_station_event(struct wpa_driver_nl80211_data *drv,
 				      struct i802_bss *bss,
 				      struct nlattr **tb)
 {
-	u8 *addr;
+	u8 *peer_addr;
 	union wpa_event_data data;
 
 	if (tb[NL80211_ATTR_MAC] == NULL)
 		return;
-	addr = nla_data(tb[NL80211_ATTR_MAC]);
-	wpa_printf(MSG_DEBUG, "nl80211: New station " MACSTR, MAC2STR(addr));
+	peer_addr = nla_data(tb[NL80211_ATTR_MAC]);
+	wpa_printf(MSG_DEBUG, "nl80211: New station " MACSTR,
+		   MAC2STR(peer_addr));
 
 	if (is_ap_interface(drv->nlmode) && drv->device_ap_sme) {
-		u8 *ies = NULL;
-		size_t ies_len = 0;
-		if (tb[NL80211_ATTR_IE]) {
-			ies = nla_data(tb[NL80211_ATTR_IE]);
-			ies_len = nla_len(tb[NL80211_ATTR_IE]);
+		u8 *link_addr = NULL;
+		int assoc_link_id = -1;
+		u8 *req_ies = NULL, *resp_ies = NULL;
+		size_t req_ies_len = 0, resp_ies_len = 0;
+
+		if (bss->links[0].link_id == NL80211_DRV_LINK_ID_NA &&
+		    (tb[NL80211_ATTR_MLO_LINK_ID] ||
+		     tb[NL80211_ATTR_MLD_ADDR])) {
+			wpa_printf(MSG_ERROR,
+				   "nl80211: MLO info not expected for new station event for non-MLD AP");
+			return;
 		}
-		wpa_hexdump(MSG_DEBUG, "nl80211: Assoc Req IEs", ies, ies_len);
-		drv_event_assoc(bss->ctx, addr, ies, ies_len, 0);
+
+		if (tb[NL80211_ATTR_MLO_LINK_ID]) {
+			assoc_link_id =
+				nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
+			wpa_printf(MSG_DEBUG, "nl80211: STA assoc link ID %d",
+				   assoc_link_id);
+			if (tb[NL80211_ATTR_MLD_ADDR]) {
+				peer_addr = nla_data(tb[NL80211_ATTR_MLD_ADDR]);
+				link_addr = nla_data(tb[NL80211_ATTR_MAC]);
+				wpa_printf(MSG_DEBUG,
+					   "nl80211: STA MLD address " MACSTR,
+					   MAC2STR(peer_addr));
+			}
+		}
+
+		if (tb[NL80211_ATTR_IE]) {
+			req_ies = nla_data(tb[NL80211_ATTR_IE]);
+			req_ies_len = nla_len(tb[NL80211_ATTR_IE]);
+			wpa_hexdump(MSG_DEBUG, "nl80211: Assoc Req IEs",
+				    req_ies, req_ies_len);
+		}
+
+		if (tb[NL80211_ATTR_RESP_IE]) {
+			resp_ies = nla_data(tb[NL80211_ATTR_RESP_IE]);
+			resp_ies_len = nla_len(tb[NL80211_ATTR_RESP_IE]);
+			wpa_hexdump(MSG_DEBUG, "nl80211: Assoc Resp IEs",
+				    resp_ies, resp_ies_len);
+		}
+
+		drv_event_assoc(bss->ctx, peer_addr, req_ies, req_ies_len,
+				resp_ies, resp_ies_len, link_addr,
+				assoc_link_id, 0);
 		return;
 	}
 
@@ -2133,7 +2241,7 @@ static void nl80211_new_station_event(struct wpa_driver_nl80211_data *drv,
 		return;
 
 	os_memset(&data, 0, sizeof(data));
-	os_memcpy(data.ibss_rsn_start.peer, addr, ETH_ALEN);
+	os_memcpy(data.ibss_rsn_start.peer, peer_addr, ETH_ALEN);
 	wpa_supplicant_event(bss->ctx, EVENT_IBSS_RSN_START, &data);
 }
 
@@ -2355,13 +2463,24 @@ static void nl80211_radar_event(struct wpa_driver_nl80211_data *drv,
 {
 	union wpa_event_data data;
 	enum nl80211_radar_event event_type;
+	struct i802_link *mld_link = NULL;
 
 	if (!tb[NL80211_ATTR_WIPHY_FREQ] || !tb[NL80211_ATTR_RADAR_EVENT])
 		return;
 
 	os_memset(&data, 0, sizeof(data));
+	data.dfs_event.link_id = -1;
 	data.dfs_event.freq = nla_get_u32(tb[NL80211_ATTR_WIPHY_FREQ]);
 	event_type = nla_get_u32(tb[NL80211_ATTR_RADAR_EVENT]);
+
+	if (tb[NL80211_ATTR_MLO_LINK_ID])
+		data.dfs_event.link_id = nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
+	if (data.dfs_event.freq && data.dfs_event.link_id == NL80211_DRV_LINK_ID_NA) {
+		mld_link = nl80211_get_mld_link_by_freq(drv->first_bss,
+				data.dfs_event.freq);
+		if (mld_link)
+			data.dfs_event.link_id = mld_link->link_id;
+	}
 
 	/* Check HT params */
 	if (tb[NL80211_ATTR_WIPHY_CHANNEL_TYPE]) {
@@ -2393,10 +2512,11 @@ static void nl80211_radar_event(struct wpa_driver_nl80211_data *drv,
 	if (tb[NL80211_ATTR_CENTER_FREQ2])
 		data.dfs_event.cf2 = nla_get_u32(tb[NL80211_ATTR_CENTER_FREQ2]);
 
-	wpa_printf(MSG_DEBUG, "nl80211: DFS event on freq %d MHz, ht: %d, offset: %d, width: %d, cf1: %dMHz, cf2: %dMHz",
+	wpa_printf(MSG_DEBUG, "nl80211: DFS event on freq %d MHz, ht: %d, "
+			"offset: %d, width: %d, cf1: %dMHz, cf2: %dMHz, link_id=%d",
 		   data.dfs_event.freq, data.dfs_event.ht_enabled,
 		   data.dfs_event.chan_offset, data.dfs_event.chan_width,
-		   data.dfs_event.cf1, data.dfs_event.cf2);
+		   data.dfs_event.cf1, data.dfs_event.cf2, data.dfs_event.link_id);
 
 	switch (event_type) {
 	case NL80211_RADAR_DETECTED:
@@ -2625,15 +2745,26 @@ static void qca_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_CHWIDTH])
 		event.acs_selected_channels.ch_width =
 			nla_get_u16(tb[QCA_WLAN_VENDOR_ATTR_ACS_CHWIDTH]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_PUNCTURE_BITMAP])
+		event.acs_selected_channels.puncture_bitmap =
+			nla_get_u16(tb[QCA_WLAN_VENDOR_ATTR_ACS_PUNCTURE_BITMAP]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID])
+		event.acs_selected_channels.link_id =
+			nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID]);
+	else
+		event.acs_selected_channels.link_id = -1;
+
 	wpa_printf(MSG_INFO,
-		   "nl80211: ACS Results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d EDMGCH: %d",
+		   "nl80211: ACS Results: PFreq: %d SFreq: %d BW: %d VHT0: %d VHT1: %d HW_MODE: %d EDMGCH: %d PUNCBITMAP: 0x%x, LinkId: %d",
 		   event.acs_selected_channels.pri_freq,
 		   event.acs_selected_channels.sec_freq,
 		   event.acs_selected_channels.ch_width,
 		   event.acs_selected_channels.vht_seg0_center_ch,
 		   event.acs_selected_channels.vht_seg1_center_ch,
 		   event.acs_selected_channels.hw_mode,
-		   event.acs_selected_channels.edmg_channel);
+		   event.acs_selected_channels.edmg_channel,
+		   event.acs_selected_channels.puncture_bitmap,
+		   event.acs_selected_channels.link_id);
 
 	/* Ignore ACS channel list check for backwards compatibility */
 
@@ -2712,6 +2843,7 @@ static void qca_nl80211_dfs_offload_radar_event(
 {
 	union wpa_event_data data;
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+	struct i802_link *mld_link = NULL;
 
 	wpa_printf(MSG_DEBUG,
 		   "nl80211: DFS offload radar vendor event received");
@@ -2728,9 +2860,18 @@ static void qca_nl80211_dfs_offload_radar_event(
 
 	os_memset(&data, 0, sizeof(data));
 	data.dfs_event.freq = nla_get_u32(tb[NL80211_ATTR_WIPHY_FREQ]);
+	data.dfs_event.link_id = -1;
+	if (tb[NL80211_ATTR_MLO_LINK_ID])
+		data.dfs_event.link_id = nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
+	if (data.dfs_event.freq && data.dfs_event.link_id == NL80211_DRV_LINK_ID_NA) {
+		mld_link = nl80211_get_mld_link_by_freq(drv->first_bss,
+				data.dfs_event.freq);
+		if (mld_link)
+			data.dfs_event.link_id = mld_link->link_id;
+	}
 
-	wpa_printf(MSG_DEBUG, "nl80211: DFS event on freq %d MHz",
-		   data.dfs_event.freq);
+	wpa_printf(MSG_DEBUG, "nl80211: DFS event on freq %d MHz, link=%d",
+		   data.dfs_event.freq, data.dfs_event.link_id);
 
 	/* Check HT params */
 	if (tb[NL80211_ATTR_WIPHY_CHANNEL_TYPE]) {
@@ -2838,6 +2979,7 @@ static void send_vendor_scan_event(struct wpa_driver_nl80211_data *drv,
 	info = &event.scan_info;
 	info->aborted = aborted;
 	info->external_scan = external_scan;
+	info->scan_cookie = nla_get_u64(tb[QCA_WLAN_VENDOR_ATTR_SCAN_COOKIE]);
 
 	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_SSIDS]) {
 		nla_for_each_nested(nl,
@@ -2949,6 +3091,53 @@ static void qca_nl80211_p2p_lo_stop_event(struct wpa_driver_nl80211_data *drv,
 	wpa_supplicant_event(drv->ctx, EVENT_P2P_LO_STOP, &event);
 }
 
+static void qca_nl80211_hang_event(struct wpa_driver_nl80211_data *drv,
+				u8 *data, size_t len)
+{
+	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_HANG_MAX + 1];
+	int reason_code = 0;
+	int data_len = 0;
+	u8 *vendata = NULL;
+	int32_t i = 0, j = 0;
+
+	wpa_printf(MSG_INFO,"Received qca_nl80211_hang_event");
+
+	if (nla_parse(tb, QCA_WLAN_VENDOR_ATTR_HANG_MAX,
+		(struct nlattr *) data, len, NULL) ||
+		!tb[QCA_WLAN_VENDOR_ATTR_HANG_REASON] ||
+		!tb[QCA_WLAN_VENDOR_ATTR_HANG_REASON_DATA])
+		return;
+
+	reason_code = nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_HANG_REASON]);
+	data_len =  nla_len(tb[QCA_WLAN_VENDOR_ATTR_HANG_REASON_DATA]);
+	vendata = (u8 *)nla_data(tb[QCA_WLAN_VENDOR_ATTR_HANG_REASON_DATA]);
+	wpa_printf(MSG_INFO, "nl80211: sent QCA Hang event data length = %d", data_len);
+
+	if (data_len > 392) {
+		data_len = 392;
+		wpa_printf(MSG_INFO, "nl80211: QCA Hang event data length truncated to = %d", data_len);
+	}
+	size_t hex_len = 2 * data_len + 1;
+	char *hex = os_malloc(hex_len);
+	size_t hex1_len = 2 * data_len + 1 + 12 + 16;
+	char *hex1 = os_malloc(hex1_len);
+
+	if((hex == NULL)||(hex1 == NULL))
+		return;
+
+	os_memset(hex, 0, hex_len);
+	os_memset(hex1, 0, hex1_len);
+
+	wpa_snprintf_hex(hex, hex_len, vendata, data_len);
+
+	wpa_printf(MSG_ERROR, "nl80211: hex length is = %d ",(int) strlen(hex));;
+	snprintf(hex1, hex1_len, "HANGED %d 0 0 0 0 0 0 0 0 %s", reason_code, hex);
+
+	wpa_printf(MSG_ERROR, "nl80211: hex1 data = %s ", hex1);
+
+	os_free(hex);
+	os_free(hex1);
+}
 
 #ifdef CONFIG_PASN
 
@@ -3090,6 +3279,9 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 #endif /* CONFIG_PASN */
 	case QCA_NL80211_VENDOR_SUBCMD_THERMAL_EVENT:
 		qca_nl80211_thermal_event(drv, data, len);
+	case QCA_NL80211_VENDOR_SUBCMD_HANG:
+		qca_nl80211_hang_event(drv, data, len);
+		break;
 	case QCA_NL80211_VENDOR_SUBCMD_TID_TO_LINK_MAP:
 		qca_nl80211_tid_to_link_map_event(drv, data, len);
 		break;
@@ -3598,6 +3790,10 @@ nl80211_control_port_frame_tx_status(struct wpa_driver_nl80211_data *drv,
 	event.eapol_tx_status.data = frame + ETH_HLEN;
 	event.eapol_tx_status.data_len = len - ETH_HLEN;
 	event.eapol_tx_status.ack = ack != NULL;
+	event.eapol_tx_status.link_id =
+		nla_get_u64(cookie) == drv->eapol_tx_cookie ?
+		drv->eapol_tx_link_id : NL80211_DRV_LINK_ID_NA;
+
 	wpa_supplicant_event(drv->ctx, EVENT_EAPOL_TX_STATUS, &event);
 }
 

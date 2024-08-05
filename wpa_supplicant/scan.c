@@ -1114,6 +1114,10 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 		params.ssids[0].ssid = wpa_s->go_params->ssid;
 		params.ssids[0].ssid_len = wpa_s->go_params->ssid_len;
 		params.num_ssids = 1;
+		params.bssid = wpa_s->go_params->peer_interface_addr;
+		wpa_printf(MSG_DEBUG, "P2P: Use specific BSSID " MACSTR
+			   " (peer interface address) for scan",
+			   MAC2STR(params.bssid));
 		goto ssid_list_set;
 	}
 
@@ -1124,6 +1128,12 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 			params.ssids[0].ssid_len =
 				wpa_s->current_ssid->ssid_len;
 			params.num_ssids = 1;
+			if (wpa_s->current_ssid->bssid_set) {
+				params.bssid = wpa_s->current_ssid->bssid;
+				wpa_printf(MSG_DEBUG, "P2P: Use specific BSSID "
+					   MACSTR " for scan",
+					   MAC2STR(params.bssid));
+			}
 		} else {
 			wpa_printf(MSG_DEBUG, "P2P: No specific SSID known for scan during invitation");
 		}
@@ -3014,6 +3024,7 @@ wpa_scan_clone_params(const struct wpa_driver_scan_params *src)
 	params->duration = src->duration;
 	params->duration_mandatory = src->duration_mandatory;
 	params->oce_scan = src->oce_scan;
+	params->link_id = src->link_id;
 
 	if (src->sched_scan_plans_num > 0) {
 		params->sched_scan_plans =

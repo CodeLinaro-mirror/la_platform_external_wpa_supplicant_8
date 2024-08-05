@@ -2091,10 +2091,10 @@ static int wpa_supplicant_validate_ie(struct wpa_sm *sm,
 		return -1;
 	}
 
-	if ((ie->wpa_ie && sm->ap_wpa_ie &&
+	if ((ie->wpa_ie && sm->ap_wpa_ie && !sm->adaptive11r_key_mgmt &&
 	     (ie->wpa_ie_len != sm->ap_wpa_ie_len ||
 	      os_memcmp(ie->wpa_ie, sm->ap_wpa_ie, ie->wpa_ie_len) != 0)) ||
-	    (ie->rsn_ie && sm->ap_rsn_ie &&
+	    (ie->rsn_ie && sm->ap_rsn_ie && !sm->adaptive11r_key_mgmt &&
 	     wpa_compare_rsn_ie(wpa_key_mgmt_ft(sm->key_mgmt),
 				sm->ap_rsn_ie, sm->ap_rsn_ie_len,
 				ie->rsn_ie, ie->rsn_ie_len))) {
@@ -2745,8 +2745,8 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 #endif /* CONFIG_OCV */
 
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Sending EAPOL-Key 2/2");
-	return wpa_eapol_key_send(sm, &sm->ptk, ver, sm->bssid, ETH_P_EAPOL,
-				  rbuf, rlen, key_mic);
+	return wpa_eapol_key_send(sm, &sm->ptk, ver, wpa_sm_get_auth_addr(sm),
+				  ETH_P_EAPOL, rbuf, rlen, key_mic);
 }
 
 
@@ -4074,6 +4074,8 @@ static void wpa_sm_clear_ptk(struct wpa_sm *sm)
 	os_memset(&sm->gtk_wnm_sleep, 0, sizeof(sm->gtk_wnm_sleep));
 	os_memset(&sm->igtk, 0, sizeof(sm->igtk));
 	os_memset(&sm->igtk_wnm_sleep, 0, sizeof(sm->igtk_wnm_sleep));
+	os_memset(&sm->bigtk, 0, sizeof(sm->bigtk));
+	os_memset(&sm->bigtk_wnm_sleep, 0, sizeof(sm->bigtk_wnm_sleep));
 	sm->tk_set = false;
 	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
 		os_memset(&sm->mlo.links[i].gtk, 0,
@@ -4084,6 +4086,10 @@ static void wpa_sm_clear_ptk(struct wpa_sm *sm)
 			  sizeof(sm->mlo.links[i].igtk));
 		os_memset(&sm->mlo.links[i].igtk_wnm_sleep, 0,
 			  sizeof(sm->mlo.links[i].igtk_wnm_sleep));
+		os_memset(&sm->mlo.links[i].bigtk, 0,
+			  sizeof(sm->mlo.links[i].bigtk));
+		os_memset(&sm->mlo.links[i].bigtk_wnm_sleep, 0,
+			  sizeof(sm->mlo.links[i].bigtk_wnm_sleep));
 	}
 }
 
@@ -4563,6 +4569,8 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
 #endif /* CONFIG_DPP2 */
 	case WPA_PARAM_WMM_ENABLED:
 		sm->wmm_enabled = value;
+	case WPA_PARAM_ADAPT_FT_KEY_MGMT:
+		sm->adaptive11r_key_mgmt = value;
 		break;
 	default:
 		break;
@@ -6537,4 +6545,12 @@ void wpa_sm_set_cur_pmksa(struct wpa_sm *sm,
 {
 	if (sm)
 		sm->cur_pmksa = entry;
+}
+
+
+void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
+				     bool driver_bss_selection)
+{
+	if (sm)
+		sm->driver_bss_selection = driver_bss_selection;
 }

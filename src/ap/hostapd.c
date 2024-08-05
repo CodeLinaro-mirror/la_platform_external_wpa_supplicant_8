@@ -393,6 +393,25 @@ static int hostapd_broadcast_wep_set(struct hostapd_data *hapd)
 #endif /* CONFIG_WEP */
 
 
+static void hostapd_clear_drv_priv(struct hostapd_data *hapd)
+{
+	unsigned int i;
+
+	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+		struct hostapd_iface *iface = hapd->iface->interfaces->iface[i];
+
+		if (hapd->iface == iface)
+			continue;
+
+		if (iface->bss && iface->bss[0] &&
+		    iface->bss[0]->mld_first_bss == hapd)
+			iface->bss[0]->drv_priv = NULL;
+	}
+
+	hapd->drv_priv = NULL;
+}
+
+
 void hostapd_free_hapd_data(struct hostapd_data *hapd)
 {
 	os_free(hapd->probereq_cb);
@@ -420,9 +439,11 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 	vlan_deinit(hapd);
 	hostapd_acl_deinit(hapd);
 #ifndef CONFIG_NO_RADIUS
-	radius_client_deinit(hapd->radius);
+	if (!hapd->mld_first_bss) {
+		radius_client_deinit(hapd->radius);
+		radius_das_deinit(hapd->radius_das);
+	}
 	hapd->radius = NULL;
-	radius_das_deinit(hapd->radius_das);
 	hapd->radius_das = NULL;
 #endif /* CONFIG_NO_RADIUS */
 
@@ -449,7 +470,7 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 			 * driver wrapper may have removed its internal instance
 			 * and hapd->drv_priv is not valid anymore.
 			 */
-			hapd->drv_priv = NULL;
+			hostapd_clear_drv_priv(hapd);
 		}
 	}
 
@@ -1196,6 +1217,10 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 	u8 if_addr[ETH_ALEN];
 	int flush_old_stations = 1;
 
+	if (hapd->mld_first_bss)
+		wpa_printf(MSG_DEBUG,
+			   "MLD: %s: Setting non-first BSS", __func__);
+
 	wpa_printf(MSG_DEBUG, "%s(hapd=%p (%s), first=%d)",
 		   __func__, hapd, conf->iface, first);
 
@@ -1354,34 +1379,43 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 	}
 #endif /* CONFIG_SQLITE */
 
-	hapd->radius = radius_client_init(hapd, conf->radius);
-	if (hapd->radius == NULL) {
-		wpa_printf(MSG_ERROR, "RADIUS client initialization failed.");
-		return -1;
-	}
-
-	if (conf->radius_das_port) {
-		struct radius_das_conf das_conf;
-		os_memset(&das_conf, 0, sizeof(das_conf));
-		das_conf.port = conf->radius_das_port;
-		das_conf.shared_secret = conf->radius_das_shared_secret;
-		das_conf.shared_secret_len =
-			conf->radius_das_shared_secret_len;
-		das_conf.client_addr = &conf->radius_das_client_addr;
-		das_conf.time_window = conf->radius_das_time_window;
-		das_conf.require_event_timestamp =
-			conf->radius_das_require_event_timestamp;
-		das_conf.require_message_authenticator =
-			conf->radius_das_require_message_authenticator;
-		das_conf.ctx = hapd;
-		das_conf.disconnect = hostapd_das_disconnect;
-		das_conf.coa = hostapd_das_coa;
-		hapd->radius_das = radius_das_init(&das_conf);
-		if (hapd->radius_das == NULL) {
-			wpa_printf(MSG_ERROR, "RADIUS DAS initialization "
-				   "failed.");
+	if (!hapd->mld_first_bss) {
+		hapd->radius = radius_client_init(hapd, conf->radius);
+		if (!hapd->radius) {
+			wpa_printf(MSG_ERROR,
+				   "RADIUS client initialization failed.");
 			return -1;
 		}
+
+		if (conf->radius_das_port) {
+			struct radius_das_conf das_conf;
+
+			os_memset(&das_conf, 0, sizeof(das_conf));
+			das_conf.port = conf->radius_das_port;
+			das_conf.shared_secret = conf->radius_das_shared_secret;
+			das_conf.shared_secret_len =
+				conf->radius_das_shared_secret_len;
+			das_conf.client_addr = &conf->radius_das_client_addr;
+			das_conf.time_window = conf->radius_das_time_window;
+			das_conf.require_event_timestamp =
+				conf->radius_das_require_event_timestamp;
+			das_conf.require_message_authenticator =
+				conf->radius_das_require_message_authenticator;
+			das_conf.ctx = hapd;
+			das_conf.disconnect = hostapd_das_disconnect;
+			das_conf.coa = hostapd_das_coa;
+			hapd->radius_das = radius_das_init(&das_conf);
+			if (!hapd->radius_das) {
+				wpa_printf(MSG_ERROR,
+					   "RADIUS DAS initialization failed.");
+				return -1;
+			}
+		}
+	} else {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Using RADIUS client of the first BSS");
+		hapd->radius = hapd->mld_first_bss->radius;
+		hapd->radius_das = hapd->mld_first_bss->radius_das;
 	}
 #endif /* CONFIG_NO_RADIUS */
 
@@ -2317,6 +2351,9 @@ dfs_offload:
 	for (j = 0; j < iface->num_bss; j++)
 		hostapd_neighbor_set_own_report(iface->bss[j]);
 
+	if (iface->interfaces && iface->interfaces->count > 1)
+		ieee802_11_set_beacons(iface);
+
 	return 0;
 
 fail:
@@ -2800,8 +2837,9 @@ void hostapd_interface_deinit_free(struct hostapd_iface *iface)
 	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
 		   __func__, driver, drv_priv);
 	if (driver && driver->hapd_deinit && drv_priv) {
-		driver->hapd_deinit(drv_priv);
-		iface->bss[0]->drv_priv = NULL;
+		if (!iface->bss[0]->mld_first_bss)
+			driver->hapd_deinit(drv_priv);
+		hostapd_clear_drv_priv(iface->bss[0]);
 	}
 	hostapd_interface_free(iface);
 }
@@ -2816,13 +2854,14 @@ static void hostapd_deinit_driver(const struct wpa_driver_ops *driver,
 	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
 		   __func__, driver, drv_priv);
 	if (driver && driver->hapd_deinit && drv_priv) {
-		driver->hapd_deinit(drv_priv);
+		if (!hapd_iface->bss[0]->mld_first_bss)
+			driver->hapd_deinit(drv_priv);
 		for (j = 0; j < hapd_iface->num_bss; j++) {
 			wpa_printf(MSG_DEBUG, "%s:bss[%d]->drv_priv=%p",
 				   __func__, (int) j,
 				   hapd_iface->bss[j]->drv_priv);
 			if (hapd_iface->bss[j]->drv_priv == drv_priv) {
-				hapd_iface->bss[j]->drv_priv = NULL;
+				hostapd_clear_drv_priv(hapd_iface->bss[j]);
 				hapd_iface->extended_capa = NULL;
 				hapd_iface->extended_capa_mask = NULL;
 				hapd_iface->extended_capa_len = 0;
@@ -2926,6 +2965,29 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
 			   hapd_iface->conf->bss[0]->iface);
 		return -1;
 	}
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd_iface->bss[0]->conf->mld_ap &&
+	    !hapd_iface->bss[0]->mld_first_bss) {
+		/* Do not allow mld_first_bss disabling before other bsses */
+		for (j = 0; j < hapd_iface->interfaces->count; ++j) {
+			struct hostapd_iface *h_iface =
+					hapd_iface->interfaces->iface[j];
+			struct hostapd_data *h_hapd = h_iface->bss[0];
+			struct hostapd_bss_config *h_conf = h_hapd->conf;
+			if (!h_conf->mld_ap ||
+			    h_conf->mld_id != hapd_iface->bss[0]->conf->mld_id ||
+			    h_iface == hapd_iface) {
+				continue;
+			}
+			if (h_iface->state != HAPD_IFACE_DISABLED) {
+				wpa_printf(MSG_ERROR,
+				    "Do not allow disable mld_first_bss first");
+				return -1;
+			}
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	wpa_msg(hapd_iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
 	driver = hapd_iface->bss[0]->driver;
@@ -3163,8 +3225,14 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 		conf_file = ptr + 7;
 
 	for (i = 0; i < interfaces->count; i++) {
+		bool mld_ap = false;
+
+#ifdef CONFIG_IEEE80211BE
+		mld_ap = interfaces->iface[i]->conf->bss[0]->mld_ap;
+#endif /* CONFIG_IEEE80211BE */
+
 		if (!os_strcmp(interfaces->iface[i]->conf->bss[0]->iface,
-			       buf)) {
+			       buf) && !mld_ap) {
 			wpa_printf(MSG_INFO, "Cannot add interface - it "
 				   "already exists");
 			return -1;
@@ -3339,6 +3407,11 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 		return;
 	}
 
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
+	    sta->mld_assoc_link_id != hapd->mld_link_id)
+		return;
+#endif /* CONFIG_IEEE80211BE */
 	ap_sta_clear_disconnect_timeouts(hapd, sta);
 	sta->post_csa_sa_query = 0;
 
@@ -3736,6 +3809,11 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	settings->counter_offset_presp[0] = hapd->cs_c_off_proberesp;
 	settings->counter_offset_beacon[1] = hapd->cs_c_off_ecsa_beacon;
 	settings->counter_offset_presp[1] = hapd->cs_c_off_ecsa_proberesp;
+	settings->link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap)
+		settings->link_id = hapd->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
 
 	return 0;
 }
@@ -4063,3 +4141,26 @@ void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx)
 	}
 }
 #endif /* CONFIG_OCV */
+
+
+#ifdef CONFIG_IEEE80211BE
+struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+					       u8 link_id)
+{
+	unsigned int i;
+
+	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+		struct hostapd_iface *h = hapd->iface->interfaces->iface[i];
+		struct hostapd_data *h_hapd = h->bss[0];
+		struct hostapd_bss_config *hconf = h_hapd->conf;
+
+		if (!hconf->mld_ap || hconf->mld_id != hapd->conf->mld_id)
+			continue;
+
+		if (h_hapd->mld_link_id == link_id)
+			return h_hapd;
+	}
+
+	return NULL;
+}
+#endif /* CONFIG_IEEE80211BE */
