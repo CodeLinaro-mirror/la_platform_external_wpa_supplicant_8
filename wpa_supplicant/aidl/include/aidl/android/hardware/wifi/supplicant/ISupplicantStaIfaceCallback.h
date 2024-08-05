@@ -63,8 +63,8 @@ public:
     MULTI_LINK_RECONFIG_AP_REMOVAL = 1,
   };
 
-  static bool setDefaultImpl(const std::shared_ptr<ISupplicantStaIfaceCallback>& impl);
-  static const std::shared_ptr<ISupplicantStaIfaceCallback>& getDefaultImpl();
+//  static bool setDefaultImpl(const std::shared_ptr<ISupplicantStaIfaceCallback>& impl);
+//  static const std::shared_ptr<ISupplicantStaIfaceCallback>& getDefaultImpl();
   virtual ::ndk::ScopedAStatus onAnqpQueryDone(const std::vector<uint8_t>& in_bssid, const ::aidl::android::hardware::wifi::supplicant::AnqpData& in_data, const ::aidl::android::hardware::wifi::supplicant::Hs20AnqpData& in_hs20Data) = 0;
   virtual ::ndk::ScopedAStatus onAssociationRejected(const ::aidl::android::hardware::wifi::supplicant::AssociationRejectionData& in_assocRejectData) = 0;
   virtual ::ndk::ScopedAStatus onAuthenticationTimeout(const std::vector<uint8_t>& in_bssid) = 0;
@@ -101,8 +101,8 @@ public:
   virtual ::ndk::ScopedAStatus onSupplicantStateChanged(const ::aidl::android::hardware::wifi::supplicant::SupplicantStateChangeData& in_stateChangeData) = 0;
   virtual ::ndk::ScopedAStatus onQosPolicyResponseForScs(const std::vector<::aidl::android::hardware::wifi::supplicant::QosPolicyScsResponseStatus>& in_qosPolicyScsResponseStatus) = 0;
   virtual ::ndk::ScopedAStatus onPmkSaCacheAdded(const ::aidl::android::hardware::wifi::supplicant::PmkSaCacheData& in_pmkSaData) = 0;
-private:
-  static std::shared_ptr<ISupplicantStaIfaceCallback> default_impl;
+//private:
+//  static std::shared_ptr<ISupplicantStaIfaceCallback> default_impl;
 };
 }  // namespace supplicant
 }  // namespace wifi

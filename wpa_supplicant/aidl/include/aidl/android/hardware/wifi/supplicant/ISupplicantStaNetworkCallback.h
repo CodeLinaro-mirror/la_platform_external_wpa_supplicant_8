@@ -29,16 +29,16 @@ namespace wifi {
 namespace supplicant {
 class ISupplicantStaNetworkCallback : public ::ndk::ICInterface {
 public:
-  static bool setDefaultImpl(const std::shared_ptr<ISupplicantStaNetworkCallback>& impl);
-  static const std::shared_ptr<ISupplicantStaNetworkCallback>& getDefaultImpl();
+//  static bool setDefaultImpl(const std::shared_ptr<ISupplicantStaNetworkCallback>& impl);
+//  static const std::shared_ptr<ISupplicantStaNetworkCallback>& getDefaultImpl();
   virtual ::ndk::ScopedAStatus onNetworkEapIdentityRequest() = 0;
   virtual ::ndk::ScopedAStatus onNetworkEapSimGsmAuthRequest(const ::aidl::android::hardware::wifi::supplicant::NetworkRequestEapSimGsmAuthParams& in_params) = 0;
   virtual ::ndk::ScopedAStatus onNetworkEapSimUmtsAuthRequest(const ::aidl::android::hardware::wifi::supplicant::NetworkRequestEapSimUmtsAuthParams& in_params) = 0;
   virtual ::ndk::ScopedAStatus onTransitionDisable(::aidl::android::hardware::wifi::supplicant::TransitionDisableIndication in_ind) = 0;
   virtual ::ndk::ScopedAStatus onServerCertificateAvailable(int32_t in_depth, const std::vector<uint8_t>& in_subject, const std::vector<uint8_t>& in_certHash, const std::vector<uint8_t>& in_certBlob) = 0;
   virtual ::ndk::ScopedAStatus onPermanentIdReqDenied() = 0;
-private:
-  static std::shared_ptr<ISupplicantStaNetworkCallback> default_impl;
+//private:
+//  static std::shared_ptr<ISupplicantStaNetworkCallback> default_impl;
 };
 }  // namespace supplicant
 }  // namespace wifi

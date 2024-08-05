@@ -22,12 +22,12 @@ namespace wifi {
 namespace supplicant {
 class ISupplicantCallback : public ::ndk::ICInterface {
 public:
-  static bool setDefaultImpl(const std::shared_ptr<ISupplicantCallback>& impl);
-  static const std::shared_ptr<ISupplicantCallback>& getDefaultImpl();
+//  static bool setDefaultImpl(const std::shared_ptr<ISupplicantCallback>& impl);
+//  static const std::shared_ptr<ISupplicantCallback>& getDefaultImpl();
   virtual ::ndk::ScopedAStatus onInterfaceCreated(const std::string& in_ifaceName) = 0;
   virtual ::ndk::ScopedAStatus onInterfaceRemoved(const std::string& in_ifaceName) = 0;
-private:
-  static std::shared_ptr<ISupplicantCallback> default_impl;
+//private:
+//  static std::shared_ptr<ISupplicantCallback> default_impl;
 };
 }  // namespace supplicant
 }  // namespace wifi
