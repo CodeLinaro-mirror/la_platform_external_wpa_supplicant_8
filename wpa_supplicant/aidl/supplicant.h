@@ -71,22 +71,18 @@ public:
 	::ndk::ScopedAStatus getStaInterface(
 		const std::string& in_name,
 		std::shared_ptr<ISupplicantStaIface>* _aidl_return) override;
+#endif
 	::ndk::ScopedAStatus listInterfaces(
 		std::vector<IfaceInfo>* _aidl_return) override;
-#endif
 	::ndk::ScopedAStatus registerCallback(
 		const std::shared_ptr<SupplicantCallback>& in_callback);
-#if 0
 	::ndk::ScopedAStatus registerNonStandardCertCallback(
-		const std::shared_ptr<INonStandardCertCallback>& in_callback) override;
-#endif
+		const std::shared_ptr<INonStandardCertCallback>& in_callback);
 	::ndk::ScopedAStatus setDebugParams(
 		DebugLevel in_level, bool in_showTimestamp, bool in_showKeys) override;
-#if 0
 	::ndk::ScopedAStatus getDebugLevel(DebugLevel* _aidl_return) override;
 	::ndk::ScopedAStatus isDebugShowTimestampEnabled(bool* _aidl_return) override;
 	::ndk::ScopedAStatus isDebugShowKeysEnabled(bool* _aidl_return) override;
-#endif
 	::ndk::ScopedAStatus setConcurrencyPriority(IfaceType in_type) override;
 	::ndk::ScopedAStatus terminate() override;
 
@@ -106,15 +102,11 @@ private:
 		getStaInterfaceInternal(const std::string& name);
 
 	ndk::ScopedAStatus removeInterfaceInternal(const IfaceInfo& iface_info);
-#if 0
 	std::pair<std::vector<IfaceInfo>, ndk::ScopedAStatus> listInterfacesInternal();
-#endif
 	ndk::ScopedAStatus registerCallbackInternal(
 		const std::shared_ptr<SupplicantCallback>& callback);
-#if 0
 	ndk::ScopedAStatus registerNonStandardCertCallbackInternal(
 		const std::shared_ptr<INonStandardCertCallback>& callback);
-#endif
 	ndk::ScopedAStatus setDebugParamsInternal(
 		DebugLevel level, bool show_timestamp, bool show_keys);
 	ndk::ScopedAStatus setConcurrencyPriorityInternal(IfaceType type);

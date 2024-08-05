@@ -231,7 +231,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::getStaInterfaceInternal, _aidl_return, in_name);
 }
-
+#endif
 ::ndk::ScopedAStatus Supplicant::listInterfaces(
 	std::vector<IfaceInfo>* _aidl_return)
 {
@@ -239,7 +239,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::listInterfacesInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus Supplicant::registerCallback(
 	const std::shared_ptr<SupplicantCallback>& in_callback)
 {
@@ -247,7 +247,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::registerCallbackInternal, in_callback);
 }
-#if 0
+
 ::ndk::ScopedAStatus Supplicant::registerNonStandardCertCallback(
 	const std::shared_ptr<INonStandardCertCallback>& in_callback)
 {
@@ -255,7 +255,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::registerNonStandardCertCallbackInternal, in_callback);
 }
-#endif
+
 ::ndk::ScopedAStatus Supplicant::setDebugParams(
 	DebugLevel in_level, bool in_showTimestamp,
 	bool in_showKeys)
@@ -273,7 +273,7 @@ bool Supplicant::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&Supplicant::setConcurrencyPriorityInternal, in_type);
 }
-#if 0
+
 ::ndk::ScopedAStatus Supplicant::getDebugLevel(DebugLevel* _aidl_return)
 {
 	*_aidl_return = static_cast<DebugLevel>(wpa_debug_level);
@@ -291,7 +291,7 @@ bool Supplicant::isValid()
 	*_aidl_return = ((wpa_debug_show_keys != 0) ? true : false);
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 ::ndk::ScopedAStatus Supplicant::terminate()
 {
 	wpa_printf(MSG_INFO, "Terminating...(not really)");
@@ -540,7 +540,7 @@ Supplicant::getStaInterfaceInternal(const std::string& name)
 	}
 	return {iface, ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 std::pair<std::vector<IfaceInfo>, ndk::ScopedAStatus>
 Supplicant::listInterfacesInternal()
 {
@@ -557,7 +557,7 @@ Supplicant::listInterfacesInternal()
 	}
 	return {std::move(ifaces), ndk::ScopedAStatus::ok()};
 }
-#endif
+
 ndk::ScopedAStatus Supplicant::registerCallbackInternal(
 	const std::shared_ptr<SupplicantCallback>& callback)
 {
@@ -568,7 +568,7 @@ ndk::ScopedAStatus Supplicant::registerCallbackInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus Supplicant::registerNonStandardCertCallbackInternal(
 	const std::shared_ptr<INonStandardCertCallback>& callback)
 {
@@ -579,7 +579,7 @@ ndk::ScopedAStatus Supplicant::registerNonStandardCertCallbackInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 ndk::ScopedAStatus Supplicant::setDebugParamsInternal(
 	DebugLevel level, bool show_timestamp, bool show_keys)
 {

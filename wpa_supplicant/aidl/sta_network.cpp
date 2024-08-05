@@ -145,7 +145,7 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getIdInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::getInterfaceName(
 	std::string* _aidl_return)
 {
@@ -161,7 +161,7 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getTypeInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::registerCallback(
 	const std::shared_ptr<SupplicantStaNetworkCallback>& in_callback)
 {
@@ -185,14 +185,14 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setBssidInternal, in_bssid);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::setDppKeys(const DppConnectionKeys& in_keys)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setDppKeysInternal, in_keys);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::setScanSsid(bool in_enable)
 {
 	return validateAndCall(
@@ -279,7 +279,7 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setRequirePmfInternal, in_enable);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::setEapMethod(
 	EapMethod in_method)
 {
@@ -416,7 +416,7 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setProactiveKeyCachingInternal, in_enable);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::setIdStr(
 	const std::string& in_idStr)
 {
@@ -424,7 +424,7 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setIdStrInternal, in_idStr);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::setUpdateIdentifier(
 	int32_t in_id)
 {
@@ -447,7 +447,7 @@ bool StaNetwork::isValid()
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setEdmgInternal, in_enable);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::getSsid(
 	std::vector<uint8_t>* _aidl_return)
 {
@@ -535,7 +535,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getSaePasswordInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::getSaePasswordId(
 	std::string* _aidl_return)
 {
@@ -543,7 +543,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getSaePasswordIdInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::getWepKey(
 	int32_t in_keyIdx,
 	std::vector<uint8_t>* _aidl_return)
@@ -568,7 +568,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getRequirePmfInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::getEapMethod(
 	EapMethod* _aidl_return)
 {
@@ -680,7 +680,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getEapDomainSuffixMatchInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::getIdStr(
 	std::string* _aidl_return)
 {
@@ -688,7 +688,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getIdStrInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::getWpsNfcConfigurationToken(
 	std::vector<uint8_t>* _aidl_return)
 {
@@ -712,7 +712,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getEdmgInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::enable(bool in_noConnect)
 {
 	return validateAndCall(
@@ -733,7 +733,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::selectInternal);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::sendNetworkEapSimGsmAuthResponse(
 	const std::vector<NetworkResponseEapSimGsmAuthParams>& in_params)
 {
@@ -784,7 +784,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		&StaNetwork::sendNetworkEapIdentityResponseInternal,
 		in_identity, in_encryptedIdentity);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::setGroupMgmtCipher(
 	GroupMgmtCipherMask in_groupMgmtCipherMask)
 {
@@ -801,7 +801,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getGroupMgmtCipherInternal, _aidl_return);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::enableTlsSuiteBEapPhase1Param(
 	bool in_enable)
 {
@@ -816,7 +816,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::enableSuiteBEapOpenSslCiphersInternal);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::setSaePassword(
 	const std::string& in_saePassword)
 {
@@ -824,7 +824,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setSaePasswordInternal, in_saePassword);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::setSaePasswordId(
 	const std::string& in_saePasswordId)
 {
@@ -848,7 +848,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::getOcspInternal, _aidl_return);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::setPmkCache(
 	const std::vector<uint8_t>& in_serializedEntry)
 {
@@ -856,7 +856,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setPmkCacheInternal, in_serializedEntry);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::setEapErp(
 	bool in_enable)
 {
@@ -864,7 +864,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setEapErpInternal, in_enable);
 }
-#endif
+
 ::ndk::ScopedAStatus StaNetwork::setSaeH2eMode(
 	SaeH2eMode in_mode)
 {
@@ -872,7 +872,7 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setSaeH2eModeInternal, in_mode);
 }
-#if 0
+
 ::ndk::ScopedAStatus StaNetwork::enableSaePkOnlyMode(
 	bool in_enable)
 {
@@ -896,12 +896,12 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
 		&StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal, in_tlsVersion);
 }
-#endif
+
 std::pair<uint32_t, ndk::ScopedAStatus> StaNetwork::getIdInternal()
 {
 	return {network_id_, ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 std::pair<std::string, ndk::ScopedAStatus> StaNetwork::getInterfaceNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -911,7 +911,7 @@ std::pair<IfaceType, ndk::ScopedAStatus> StaNetwork::getTypeInternal()
 {
 	return {IfaceType::STA, ndk::ScopedAStatus::ok()};
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::registerCallbackInternal(
 	const std::shared_ptr<SupplicantStaNetworkCallback> &callback)
 {
@@ -969,7 +969,7 @@ ndk::ScopedAStatus StaNetwork::setBssidInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setDppKeysInternal(const DppConnectionKeys& keys)
 {
 #ifdef CONFIG_DPP
@@ -1002,7 +1002,7 @@ ndk::ScopedAStatus StaNetwork::setDppKeysInternal(const DppConnectionKeys& keys)
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 #endif
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::setScanSsidInternal(bool enable)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1024,7 +1024,7 @@ ndk::ScopedAStatus StaNetwork::setAuthAlgInternal(
 	resetInternalStateAfterParamsUpdate();
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setEdmgInternal(bool enable)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1032,7 +1032,7 @@ ndk::ScopedAStatus StaNetwork::setEdmgInternal(bool enable)
 	resetInternalStateAfterParamsUpdate();
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::setPskPassphraseInternal(const std::string &rawPsk)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1139,7 +1139,7 @@ ndk::ScopedAStatus StaNetwork::setRequirePmfInternal(bool enable)
 	resetInternalStateAfterParamsUpdate();
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setEapMethodInternal(
 	EapMethod method)
 {
@@ -1413,7 +1413,7 @@ ndk::ScopedAStatus StaNetwork::setProactiveKeyCachingInternal(bool enable)
 	resetInternalStateAfterParamsUpdate();
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::setIdStrInternal(const std::string &id_str)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1423,7 +1423,7 @@ ndk::ScopedAStatus StaNetwork::setIdStrInternal(const std::string &id_str)
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setUpdateIdentifierInternal(uint32_t id)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1462,7 +1462,7 @@ ndk::ScopedAStatus StaNetwork::setWapiPskInternal(const std::vector<uint8_t> &ps
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 #endif
 }
-#endif
+
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> StaNetwork::getSsidInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1551,7 +1551,7 @@ std::pair<std::string, ndk::ScopedAStatus> StaNetwork::getSaePasswordInternal()
 	return {misc_utils::charBufToString(wpa_ssid->sae_password),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 std::pair<std::string, ndk::ScopedAStatus> StaNetwork::getSaePasswordIdInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1561,7 +1561,7 @@ std::pair<std::string, ndk::ScopedAStatus> StaNetwork::getSaePasswordIdInternal(
 	return {misc_utils::charBufToString(wpa_ssid->sae_password_id),
 		ndk::ScopedAStatus::ok()};
 }
-#endif
+
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> StaNetwork::getWepKeyInternal(
 	uint32_t key_idx)
 {
@@ -1591,7 +1591,7 @@ std::pair<bool, ndk::ScopedAStatus> StaNetwork::getRequirePmfInternal()
 	return {(wpa_ssid->ieee80211w == MGMT_FRAME_PROTECTION_REQUIRED),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 std::pair<EapMethod, ndk::ScopedAStatus>
 StaNetwork::getEapMethodInternal()
 {
@@ -1788,7 +1788,7 @@ StaNetwork::getEapDomainSuffixMatchInternal()
 	return {misc_utils::charBufToString(wpa_ssid->eap.cert.domain_suffix_match),
 		ndk::ScopedAStatus::ok()};
 }
-#endif
+
 std::pair<std::string, ndk::ScopedAStatus> StaNetwork::getIdStrInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1798,7 +1798,7 @@ std::pair<std::string, ndk::ScopedAStatus> StaNetwork::getIdStrInternal()
 	return {misc_utils::charBufToString(wpa_ssid->id_str),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 std::pair<bool, ndk::ScopedAStatus> StaNetwork::getEdmgInternal()
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1840,7 +1840,7 @@ std::pair<std::vector<uint8_t>, ndk::ScopedAStatus> StaNetwork::getWapiPskIntern
 		createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 #endif
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::enableInternal(bool no_connect)
 {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -1881,7 +1881,7 @@ ndk::ScopedAStatus StaNetwork::selectInternal()
 	wpa_supplicant_select_network(wpa_s, wpa_ssid);
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::sendNetworkEapSimGsmAuthResponseInternal(
 	const std::vector<NetworkResponseEapSimGsmAuthParams>
 	&vec_params)
@@ -2068,7 +2068,7 @@ ndk::ScopedAStatus StaNetwork::enableSuiteBEapOpenSslCiphersInternal()
 	setTlsFlagsFor192BitMode(false /*rsaMode */);
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::setSaePasswordInternal(
 	const std::string &sae_password)
 {
@@ -2091,7 +2091,7 @@ ndk::ScopedAStatus StaNetwork::setSaePasswordInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setSaePasswordIdInternal(
 	const std::string &sae_password_id)
 {
@@ -2114,7 +2114,7 @@ ndk::ScopedAStatus StaNetwork::setSaePasswordIdInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::setGroupMgmtCipherInternal(
 		GroupMgmtCipherMask mask)
 {
@@ -2139,7 +2139,7 @@ StaNetwork::getGroupMgmtCipherInternal()
 	return {static_cast<GroupMgmtCipherMask>(group_mgmt_cipher_mask),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setOcspInternal(OcspType ocspType) {
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
 	if (ocspType < OcspType::NONE || ocspType > OcspType::REQUIRE_ALL_CERTS_STATUS) {
@@ -2158,7 +2158,7 @@ std::pair<OcspType, ndk::ScopedAStatus> StaNetwork::getOcspInternal()
 	return {static_cast<OcspType>(wpa_ssid->eap.cert.ocsp),
 		ndk::ScopedAStatus::ok()};
 }
-#endif
+
 ndk::ScopedAStatus StaNetwork::setPmkCacheInternal(const std::vector<uint8_t>& serializedEntry) {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
@@ -2303,7 +2303,7 @@ StaNetwork::getPairwiseCipherInternal()
 	return {static_cast<PairwiseCipherMask>(pairwise_cipher_mask),
 		ndk::ScopedAStatus::ok()};
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::setRoamingConsortiumSelectionInternal(
 	const std::vector<uint8_t> &selectedRcoi)
 {
@@ -2323,7 +2323,7 @@ ndk::ScopedAStatus StaNetwork::setRoamingConsortiumSelectionInternal(
 	resetInternalStateAfterParamsUpdate();
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 /**
  * Retrieve the underlying |wpa_ssid| struct pointer for
  * this network.
@@ -2644,7 +2644,7 @@ ndk::ScopedAStatus StaNetwork::setSaeH2eModeInternal(
 	resetInternalStateAfterParamsUpdate();
 	return ndk::ScopedAStatus::ok();
 }
-#if 0
+
 ndk::ScopedAStatus StaNetwork::enableSaePkOnlyModeInternal(bool enable)
 {
 #ifdef CONFIG_SAE_PK
@@ -2695,7 +2695,7 @@ ndk::ScopedAStatus StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal(TlsVer
 	generateTlsParams();
 	return ndk::ScopedAStatus::ok();
 }
-#endif
+
 /**
  * WPA3-Enterprise 192-bit mode workaround to force the connection to EAP-TLSv1.2 due to
  * interoperability issues in TLSv1.3 which disables the SSL_SIGN_RSA_PKCS1_SHA384
