@@ -20,9 +20,15 @@
 using qti::hal::rpc::SomeipContext;
 using qti::hal::rpc::SomeipCallback;
 using qti::hal::rpc::SomeipServer;
+using qti::hal::rpc::SomeipMessage;
 
 std::shared_ptr<std::thread> hostapd_someip_service_thread;
 std::shared_ptr<SomeipServer> hostapd_someip_server;
+
+void hostapd_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
+{
+    hostapd_notify_aidl_socket();
+}
 
 bool HostapdSomeIPServerInit()
 {
@@ -38,7 +44,7 @@ bool HostapdSomeIPServerInit()
     if (!hostapd_someip_server) {
         return false;
     }
-    hostapd_someip_server->initMessageSchedule(hostapd_notify_aidl_socket);
+    hostapd_someip_server->initMessageSchedule(hostapd_msg_scheduler);
     return hostapd_someip_server->init();
 }
 
@@ -81,25 +87,25 @@ void someip_process_queued_msg()
     hostapd_someip_server->handleMessageQueue();
 }
 
-bool someip_send_request(uint16_t message_type, std::vector<uint8_t> &data)
+bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data)
 {
     if (!hostapd_someip_server)
         return false;
-    return hostapd_someip_server->sendRequest(message_type, data);
+    return hostapd_someip_server->sendRequest(method_id, data);
 }
 
-bool someip_send_response(uint16_t message_type, std::vector<uint8_t> &data)
+bool someip_send_response(uint16_t method_id, std::vector<uint8_t> &data)
 {
     if (!hostapd_someip_server)
         return false;
-    return hostapd_someip_server->sendResponse(message_type, data);
+    return hostapd_someip_server->sendResponse(method_id, data);
 }
 
-bool someip_send_event(uint16_t message_type, std::vector<uint8_t> &data)
+bool someip_send_event(uint16_t method_id, std::vector<uint8_t> &data)
 {
     if (!hostapd_someip_server)
         return false;
-    return hostapd_someip_server->sendEvent(message_type, data);
+    return hostapd_someip_server->sendEvent(method_id, data);
 }
 
 bool someip_send_message(std::shared_ptr<SomeipMessage> message)
