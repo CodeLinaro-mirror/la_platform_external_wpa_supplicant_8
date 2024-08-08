@@ -954,6 +954,18 @@ enum qca_radiotap_vendor_ids {
  *
  *	Uses the attributes defined in
  *	enum qca_wlan_vendor_attr_tdls_disc_rsp_ext.
+ * @QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT: This is an extension to
+ *	%NL80211_CMD_CONNECT command. Userspace can use this to indicate
+ *	additional information to be considered for the subsequent
+ *	(re)association request attempts with %NL80211_CMD_CONNECT. The
+ *	additional information sent with this command is applicable for the
+ *	entire duration of the connection established with %NL80211_CMD_CONNECT,
+ *	including the roams triggered by the driver internally due to other
+ *	vendor interfaces, driver internal logic, and BTM requests from the
+ *	connected AP.
+ *
+ *	The attributes used with this command are defined in
+ *	enum qca_wlan_vendor_attr_connect_ext.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1169,6 +1181,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_TID_TO_LINK_MAP = 229,
 	QCA_NL80211_VENDOR_SUBCMD_LINK_RECONFIG = 230,
 	QCA_NL80211_VENDOR_SUBCMD_TDLS_DISC_RSP_EXT = 231,
+	QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT = 250,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -15610,6 +15623,40 @@ enum qca_wlan_vendor_attr_tdls_disc_rsp_ext {
 	QCA_WLAN_VENDOR_ATTR_TDLS_DISC_RSP_EXT_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_TDLS_DISC_RSP_EXT_MAX =
 	QCA_WLAN_VENDOR_ATTR_TDLS_DISC_RSP_EXT_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_connect_ext_features - Feature flags for
+ * %QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES
+ *
+ * @QCA_CONNECT_EXT_FEATURE_RSNO: Flag attribute. This indicates supplicant
+ * support for RSN overriding. The driver shall enable RSN overriding in the
+ * (re)association attempts only if this flag is indicated. This functionality
+ * is available only when the driver indicates support for
+ * @QCA_WLAN_VENDOR_FEATURE_RSN_OVERRIDE_STA.
+ *
+ * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits.
+ */
+enum qca_wlan_connect_ext_features {
+	QCA_CONNECT_EXT_FEATURE_RSNO	= 0,
+	NUM_QCA_CONNECT_EXT_FEATURES /* keep last */
+};
+
+/* enum qca_wlan_vendor_attr_connect_ext: Attributes used by vendor command
+ * %QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES: Feature flags contained in a byte
+ * array. The feature flags are identified by their bit index (see &enum
+ * qca_wlan_connect_ext_features) with the first byte being the least
+ * significant one and the last one being the most significant one.
+ */
+enum qca_wlan_vendor_attr_connect_ext {
+	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES = 1,
+
+	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_MAX =
+	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_AFTER_LAST - 1,
 };
 
 #endif /* QCA_VENDOR_H */
