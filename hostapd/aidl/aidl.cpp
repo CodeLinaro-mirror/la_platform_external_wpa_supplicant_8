@@ -84,6 +84,14 @@ int hostapd_aidl_init(struct hapd_interfaces *interfaces)
 	if (!service)
 		goto err;
 	hostapd_init(service);
+	
+#ifdef CONFIG_USE_VENDOR_AIDL
+		service_vendor = std::make_shared<HostapdVendor>(interfaces);
+		if (!service_vendor)
+			goto err;
+		hostapd_vendor_init(service_vendor);
+#endif
+
 #ifdef CONFIG_SOMEIP_SUPPORT
 	if (!HostapdSomeIPServerInit()){
 		wpa_printf(MSG_ERROR, "Failed to initialize hostapd someip server");		
@@ -93,13 +101,6 @@ int hostapd_aidl_init(struct hapd_interfaces *interfaces)
 		wpa_printf(MSG_ERROR, "Failed to start hostapd someip server");	 
 		goto err;
 	}
-#endif
-
-	
-#ifdef CONFIG_USE_VENDOR_AIDL
-	service_vendor = std::make_shared<HostapdVendor>(interfaces);
-	if (!service_vendor)
-		goto err;
 #endif
 	return 0;
 err:

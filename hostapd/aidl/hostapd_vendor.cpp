@@ -16,15 +16,12 @@
 #include <string>
 #include <vector>
 #include <net/if.h>
+#include <functional>
 #include <sys/socket.h>
 #include <linux/if_bridge.h>
-
-#include <android-base/file.h>
-#include <android-base/stringprintf.h>
-#include <android-base/unique_fd.h>
-
-#include "hostapd.h"
+//#include "hostapd.h"
 #include "hostapd_vendor.h"
+#include "HostapdVendorCallback.h"
 #include "aidl_return_util.h"
 #include <aidl/android/hardware/wifi/hostapd/ApInfo.h>
 #include <aidl/android/hardware/wifi/hostapd/BandMask.h>
@@ -41,7 +38,7 @@ extern "C"
 {
 #include "common/wpa_ctrl.h"
 #include "drivers/linux_ioctl.h"
-#include "ctrl_iface.h"
+#include "../ctrl_iface.h"
 }
 
 // The AIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -90,7 +87,6 @@ using android::hardware::wifi::hostapd::HostapdStatusCode;
 HostapdVendor::HostapdVendor(struct hapd_interfaces* interfaces)
 	: interfaces_(interfaces)
 {
-	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
 }
 
 bool HostapdVendor::isValid()
@@ -99,7 +95,7 @@ bool HostapdVendor::isValid()
 }
 
 ::ndk::ScopedAStatus HostapdVendor::registerHostapdVendorCallback(
-	const std::shared_ptr<IHostapdVendorCallback>& callback)
+	const std::shared_ptr<HostapdVendorCallback>& callback)
 {
 	return registerHostapdVendorCallbackInternal(callback);
 }
@@ -121,17 +117,8 @@ bool HostapdVendor::isValid()
 }
 
 ::ndk::ScopedAStatus HostapdVendor::registerHostapdVendorCallbackInternal(
-	const std::shared_ptr<IHostapdVendorCallback>& callback)
+	const std::shared_ptr<HostapdVendorCallback>& callback)
 {
-	binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
-			death_notifier_, this /* cookie */);
-	if (status != STATUS_OK) {
-		wpa_printf(
-			MSG_ERROR,
-			"Error registering for death notification for "
-			"hostapd callback object");
-		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
-	}
 	// no iface_name provided, treat it as global callback
 	// Hook the hapd callback if not registered.
 	int i, j;
@@ -144,20 +131,8 @@ bool HostapdVendor::isValid()
 			}
 			const std::string ifname(iface_hapd->conf->iface);
 			const std::string event_str(msg);
-			for (auto callback = callbacks_.begin(); callback != callbacks_.end();) {
-				auto ret = (*callback)->onCtrlEvent(ifname, event_str);
-				if (!ret.isOk()) {
-					AIBinder* binder = (*callback)->asBinder().get();
-					wpa_printf(MSG_ERROR, "%s: onCtrlEvent failed with error.", __func__);
-					if (!AIBinder_isAlive(binder)) {
-						wpa_printf(MSG_ERROR, "%s: Unable to process the request due to binder died", __func__);
-						callback = callbacks_.erase(callback);
-					} else {
-						++callback;
-					}
-				} else {
-					++callback;
-				}
+			for (const auto& callback : callbacks_) {
+				callback->onCtrlEvent(ifname, event_str);
 			}
 		};
 	}

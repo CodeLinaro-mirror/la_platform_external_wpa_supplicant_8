@@ -22,6 +22,7 @@
 #include <aidl/vendor/qti/hardware/wifi/hostapd/BnHostapdVendor.h>
 #include <aidl/vendor/qti/hardware/wifi/hostapd/IHostapdVendor.h>
 #include <aidl/vendor/qti/hardware/wifi/hostapd/IHostapdVendorCallback.h>
+#include "HostapdVendorCallback.h"
 
 extern "C"
 {
@@ -49,29 +50,27 @@ class HostapdVendor : public BnHostapdVendor
 {
 public:
 	HostapdVendor(hapd_interfaces* interfaces);
-	~HostapdVendor() override = default;
+	~HostapdVendor() = default;
 	bool isValid();
 
 	// Aidl methods exposed.
 	::ndk::ScopedAStatus listVendorInterfaces(
 		std::vector<std::string>* _aidl_return) override;
 	::ndk::ScopedAStatus registerHostapdVendorCallback(
-	        const std::shared_ptr<IHostapdVendorCallback>& callback) override;
+	        const std::shared_ptr<HostapdVendorCallback>& callback);
 	::ndk::ScopedAStatus doDriverCmd(
 		const std::string& iface, const std::string& cmd, std::string* _aidl_return) override;
 private:
 	// Corresponding worker functions for the AIDL methods.
 	::ndk::ScopedAStatus registerHostapdVendorCallbackInternal(
-		const std::shared_ptr<IHostapdVendorCallback>& callback);
+		const std::shared_ptr<HostapdVendorCallback>& callback);
 	std::pair<std::vector<std::string>, ndk::ScopedAStatus> listVendorInterfacesInternal();
 	std::pair<std::string, ndk::ScopedAStatus> doDriverCmdInternal(const std::string& iface, const std::string& cmd);
 
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;
 	// Callbacks registered.
-	std::vector<std::shared_ptr<IHostapdVendorCallback>> callbacks_;
-	// Death notifier.
-	AIBinder_DeathRecipient* death_notifier_;
+	std::vector<std::shared_ptr<HostapdVendorCallback>> callbacks_;
 	DISALLOW_COPY_AND_ASSIGN(HostapdVendor);
 };
 }  // namespace hostapd

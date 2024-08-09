@@ -3403,6 +3403,22 @@ static int hostapd_ctrl_iface_driver_cmd(struct hostapd_data *hapd, char *cmd,
 	}
 	return ret;
 }
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+static int hostapd_ctrl_iface_driver_cmd(struct hostapd_data *hapd, char *cmd,
+					 char *buf, size_t buflen)
+{
+	int ret;
+
+	ret = hostapd_drv_driver_cmd(hapd, cmd, buf, buflen);
+	if (ret == 0) {
+		ret = os_snprintf(buf, buflen, "%s\n", "OK");
+		if (os_snprintf_error(buflen, ret))
+			ret = -1;
+	}
+	return ret;
+}
+#endif
 #endif /* ANDROID */
 
 
@@ -3692,6 +3708,12 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "DRIVER ", 7) == 0) {
 		reply_len = hostapd_ctrl_iface_driver_cmd(hapd, buf + 7, reply,
 							  reply_size);
+#else
+#ifdef CONFIG_SOMEIP_SUPPORT
+	} else if (os_strncmp(buf, "DRIVER ", 7) == 0) {
+		reply_len = hostapd_ctrl_iface_driver_cmd(hapd, buf + 7, reply,
+							  reply_size);
+#endif
 #endif /* ANDROID */
 	} else if (os_strncmp(buf, "VENDOR ", 7) == 0) {
 		reply_len = hostapd_ctrl_iface_vendor(hapd, buf + 7, reply,
@@ -3963,11 +3985,6 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strcmp(buf, "PTKSA_CACHE_LIST") == 0) {
 		reply_len = ptksa_cache_list(hapd->ptksa, reply, reply_size);
 #endif /* CONFIG_PASN */
-#ifdef ANDROID
-	} else if (os_strncmp(buf, "DRIVER ", 7) == 0) {
-		reply_len = hostapd_ctrl_iface_driver_cmd(hapd, buf + 7, reply,
-							  reply_size);
-#endif /* ANDROID */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
 		reply_len = 16;
