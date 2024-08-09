@@ -9,8 +9,11 @@
 #include <rpc/util/someip_util.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/hostapd/hostapd_message_def.h>
+#include <rpc/message/hostapd_vendor/hostapd_vendor_message_def.h>
+
 #include "hostapd_message_handler.h"
 #include "HostapdReq.h"
+#include "HostapdVendorReq.h"
 
 
 typedef std::function< bool (uint8_t* data, size_t length, std::vector<uint8_t>& outData) > MessageHandler;
@@ -21,6 +24,9 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {HOSTAPD_REMOVE_ACCESS_POINT_REQ,&HostapdMsgHandlerRemoveAccessPoint},
     {HOSTAPD_SET_DEBUG_PARAMS_REQ, &HostapdMsgHandlerSetDebugParams},
     {HOSTAPD_TERMINATE_REQ, &HostapdMsgHandlerTerminate},
+    /* IHostapdVendor */
+    {HOSTAPD_VENDOR_LIST_VENDOR_INTERFACES_REQ, &HostapdVendorMsgHandlerListVendorInterfaces},
+    {HOSTAPD_VENDOR_DO_DRIVER_CMD_REQ, &HostapdVendorMsgHandlerDoDriverCmd},
 };
 
 static inline MessageHandler HostapdGetMessageHandler(uint16_t methodId)

@@ -1291,6 +1291,9 @@ endif
 ifdef CONFIG_SOMEIP_SUPPORT
 CFLAGS += -DCONFIG_SOMEIP_SUPPORT -DCONFIG_CTRL_IFACE_AIDL -DCONFIG_AIDL -Wno-ignored-attributes
 CFLAGS += -DWPA_QRPC_LOG -DENABLE_LOG
+ifdef CONFIG_USE_VENDOR_AIDL
+CFLAGS += -DCONFIG_USE_VENDOR_AIDL
+endif
 CFLAGS += -I aidl
 CFLAGS += -I aidl/include
 CFLAGS += -I qrpc_server/include
@@ -1298,6 +1301,9 @@ CFLAGS += -I qrpc_server/include
 OBJS += aidl/aidl.o
 OBJS += aidl/aidl_helper.o
 OBJS += aidl/hostapd.o
+ifdef CONFIG_USE_VENDOR_AIDL
+OBJS += aidl/hostapd_vendor.o
+endif
 #Someip service
 OBJS += qrpc_server/src/aidl_sock.o
 OBJS += qrpc_server/src/hostapd_someip_server.o
@@ -1305,12 +1311,19 @@ OBJS += qrpc_server/src/hostapd_event_callback.o
 OBJS += qrpc_server/src/hostapd_message_handler.o
 OBJS += qrpc_server/src/HostapdReq.o
 OBJS += qrpc_server/src/HostapdCallback.o
+ifdef CONFIG_USE_VENDOR_AIDL
+OBJS += qrpc_server/src/HostapdVendorReq.o
+OBJS += qrpc_server/src/HostapdVendorCallback.o
+endif
 LIBS += -lstdc++
 LIBS += -lbase -lvsomeip3
 LIBS += -lwpa_supplicant_8_lib
 LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util
 LIBS_c += -lqti_log_util
 LIBS += -lqti-wifi-hostapd-message
+ifdef CONFIG_USE_VENDOR_AIDL
+LIBS += -lqti-hostapd-vendor-message
+endif
 CXXFLAGS += ${CFLAGS}
 endif
 

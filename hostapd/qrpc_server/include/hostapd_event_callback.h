@@ -9,6 +9,7 @@
 #include <rpc/util/common_util.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/hostapd/hostapd_message_def.h>
+#include <rpc/message/hostapd_vendor/hostapd_vendor_message_def.h>
 #include <aidl/android/hardware/wifi/hostapd/ScopedAStatus.h>
 
 extern std::vector<uint16_t> HostapdEvent;

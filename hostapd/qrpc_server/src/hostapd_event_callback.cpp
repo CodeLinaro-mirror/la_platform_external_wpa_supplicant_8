@@ -11,6 +11,10 @@ std::vector<uint16_t> HostapdEvent{
     HOSTAPD_ON_AP_INSTANCE_INFO_CHANGED_IND,
     HOSTAPD_ON_CONNECTED_CLIENTS_CHANGED_IND,
     HOSTAPD_ON_FAILURE_IND,
+    /* IHostapdVendorCallback */
+    HOSTAPD_VENDOR_ON_CTRL_EVENT_IND,
+    HOSTAPD_VENDOR_ON_AP_INSTANCE_INFO_CHANGED_IND,
+    HOSTAPD_VENDOR_ON_FAILURE_IND,
 };
 
 ndk::ScopedAStatus HostapdSendEvent(uint16_t eventId, std::vector<uint8_t>& data)
