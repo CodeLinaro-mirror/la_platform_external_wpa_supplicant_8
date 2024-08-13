@@ -224,6 +224,7 @@ struct wpa_sm {
 #endif /* CONFIG_DPP2 */
 	struct wpa_sm_mlo mlo;
 
+	bool rsn_override_support;
 	enum wpa_rsn_override rsn_override;
 };
 
@@ -528,5 +529,6 @@ int wpa_derive_ptk_ft(struct wpa_sm *sm, const unsigned char *src_addr,
 
 void wpa_tdls_assoc(struct wpa_sm *sm);
 void wpa_tdls_disassoc(struct wpa_sm *sm);
+bool wpa_sm_rsn_overriding_supported(struct wpa_sm *sm);
 
 #endif /* WPA_I_H */
