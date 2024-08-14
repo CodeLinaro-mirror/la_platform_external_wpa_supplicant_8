@@ -48,6 +48,7 @@
 #define DEFAULT_EXTENDED_KEY_ID 0
 #define DEFAULT_BTM_OFFLOAD 0
 #define DEFAULT_SCAN_RES_VALID_FOR_CONNECT 5
+#define DEFAULT_MLD_CONNECT_BAND_PREF MLD_CONNECT_BAND_PREF_AUTO
 
 #include "config_ssid.h"
 #include "wps/wps.h"
@@ -182,14 +183,24 @@ struct wpa_cred {
 	char *milenage;
 
 	/**
-	 * imsi_privacy_key - IMSI privacy key (PEM encoded X.509v3 certificate)
+	 * imsi_privacy_cert - IMSI privacy certificate
 	 *
 	 * This field is used with EAP-SIM/AKA/AKA' to encrypt the permanent
-	 * identity (IMSI) to improve privacy. The X.509v3 certificate needs to
-	 * include a 2048-bit RSA public key and this is from the operator who
-	 * authenticates the SIM/USIM.
+	 * identity (IMSI) to improve privacy. The referenced PEM-encoded
+	 * X.509v3 certificate needs to include a 2048-bit RSA public key and
+	 * this is from the operator who authenticates the SIM/USIM.
 	 */
-	char *imsi_privacy_key;
+	char *imsi_privacy_cert;
+
+	/**
+	 * imsi_privacy_attr - IMSI privacy attribute
+	 *
+	 * This field is used to help the EAP-SIM/AKA/AKA' server to identify
+	 * the used certificate (and as such, the matching private key). This
+	 * is set to an attribute in name=value format if the operator needs
+	 * this information.
+	 */
+	char *imsi_privacy_attr;
 
 	/**
 	 * engine - Use an engine for private key operations
@@ -250,36 +261,50 @@ struct wpa_cred {
 	size_t num_domain;
 
 	/**
-	 * roaming_consortium - Roaming Consortium OI
+	 * home_ois - Home OIs
 	 *
-	 * If roaming_consortium_len is non-zero, this field contains the
-	 * Roaming Consortium OI that can be used to determine which access
-	 * points support authentication with this credential. This is an
-	 * alternative to the use of the realm parameter. When using Roaming
-	 * Consortium to match the network, the EAP parameters need to be
-	 * pre-configured with the credential since the NAI Realm information
-	 * may not be available or fetched.
+	 * If num_home_ois is non-zero, this field contains the set of Home OIs
+	 * that can be use to determine which access points support
+	 * authentication with this credential. These are an alternative to the
+	 * use of the realm parameter. When using Home OIs to match the network,
+	 * the EAP parameters need to be pre-configured with the credentials
+	 * since the NAI Realm information may not be available or fetched.
+	 * A successful authentication with the access point is possible as soon
+	 * as at least one Home OI from the list matches an OI in the Roaming
+	 * Consortium list advertised by the access point.
+	 * (Hotspot 2.0 PerProviderSubscription/<X+>/HomeSP/HomeOIList/<X+>/HomeOI)
 	 */
-	u8 roaming_consortium[15];
+	u8 home_ois[MAX_ROAMING_CONS][MAX_ROAMING_CONS_OI_LEN];
 
 	/**
-	 * roaming_consortium_len - Length of roaming_consortium
+	 * home_ois_len - Length of home_ois[i]
 	 */
-	size_t roaming_consortium_len;
+	size_t home_ois_len[MAX_ROAMING_CONS];
 
 	/**
-	 * required_roaming_consortium - Required Roaming Consortium OI
+	 * num_home_ois - Number of entries in home_ois
+	 */
+	unsigned int num_home_ois;
+
+	/**
+	 * required_home_ois - Required Home OI(s)
 	 *
-	 * If required_roaming_consortium_len is non-zero, this field contains
-	 * the Roaming Consortium OI that is required to be advertised by the AP
-	 * for the credential to be considered matching.
+	 * If required_home_ois_len is non-zero, this field contains the set of
+	 * Home OI(s) that are required to be advertised by the AP for the
+	 * credential to be considered matching.
+	 * (Hotspot 2.0 PerProviderSubscription/<X+>/HomeSP/HomeOIList/<X+>/HomeOIRequired)
 	 */
-	u8 required_roaming_consortium[15];
+	u8 required_home_ois[MAX_ROAMING_CONS][MAX_ROAMING_CONS_OI_LEN];
 
 	/**
-	 * required_roaming_consortium_len - Length of required_roaming_consortium
+	 * required_home_ois_len - Length of required_home_ois
 	 */
-	size_t required_roaming_consortium_len;
+	size_t required_home_ois_len[MAX_ROAMING_CONS];
+
+	/**
+	 * num_required_home_ois - Number of entries in required_home_ois
+	 */
+	unsigned int num_required_home_ois;
 
 	/**
 	 * roaming_consortiums - Roaming Consortium OI(s) memberships
@@ -415,7 +440,8 @@ struct wpa_cred {
 #define CFG_CHANGED_WOWLAN_TRIGGERS BIT(18)
 #define CFG_CHANGED_DISABLE_BTM BIT(19)
 #define CFG_CHANGED_BGSCAN BIT(20)
-#define CFG_CHANGED_DISABLE_BTM_NOTIFY BIT(21)
+#define CFG_CHANGED_FT_PREPEND_PMKID BIT(21)
+#define CFG_CHANGED_DISABLE_BTM_NOTIFY BIT(22)
 
 /**
  * struct wpa_config - wpa_supplicant configuration data
@@ -593,6 +619,7 @@ struct wpa_config {
 	 */
 	int fast_reauth;
 
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	/**
 	 * opensc_engine_path - Path to the OpenSSL engine for opensc
 	 *
@@ -600,7 +627,9 @@ struct wpa_config {
 	 * engine (engine_opensc.so); if %NULL, this engine is not loaded.
 	 */
 	char *opensc_engine_path;
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
 
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	/**
 	 * pkcs11_engine_path - Path to the OpenSSL engine for PKCS#11
 	 *
@@ -608,7 +637,9 @@ struct wpa_config {
 	 * engine (engine_pkcs11.so); if %NULL, this engine is not loaded.
 	 */
 	char *pkcs11_engine_path;
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
 
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	/**
 	 * pkcs11_module_path - Path to the OpenSSL OpenSC/PKCS#11 module
 	 *
@@ -617,6 +648,7 @@ struct wpa_config {
 	 * module is not loaded.
 	 */
 	char *pkcs11_module_path;
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 
 	/**
 	 * openssl_ciphers - OpenSSL cipher string
@@ -682,6 +714,14 @@ struct wpa_config {
 	 * shall take to set up (unit: seconds).
 	 */
 	unsigned int dot11RSNAConfigSATimeout;
+
+	/**
+	 * ft_prepend_pmkid - Whether to prepend PMKR1Name with PMKIDs
+	 *
+	 * This control whether PMKR1Name is prepended to the PMKID list
+	 * insread of replacing the full list when constructing RSNE for
+	 * EAPOL-Key msg 2/4 for FT cases. */
+	bool ft_prepend_pmkid;
 
 	/**
 	 * update_config - Is wpa_supplicant allowed to update configuration
@@ -1231,6 +1271,25 @@ struct wpa_config {
 	enum mfp_options pmf;
 
 	/**
+	 * sae_check_mfp - Whether to limit SAE based on PMF capabilities
+	 *
+	 * With this check SAE key_mgmt will not be selected if PMF is
+	 * not enabled.
+	 * Scenarios where enabling this check will limit SAE:
+	 *  1) ieee8011w=0 is set for the network.
+	 *  2) The AP does not have PMF enabled.
+	 *  3) ieee8011w for the network is the default(3), pmf=1 is enabled
+	 *     globally and the device does not support the BIP cipher.
+	 *
+	 * Useful to allow the BIP cipher check that occurs for ieee80211w=3
+	 * and pmf=1 to also avoid using SAE key_mgmt.
+	 * Useful when hardware does not support BIP to still to allow
+	 * connecting to sae_require_mfp=1 WPA2+WPA3-Personal transition mode
+	 *access points by automatically selecting PSK instead of SAE.
+	 */
+	int sae_check_mfp;
+
+	/**
 	 * sae_groups - Preference list of enabled groups for SAE
 	 *
 	 * By default (if this parameter is not set), the mandatory group 19
@@ -1366,7 +1425,7 @@ struct wpa_config {
 	 * the per-network mac_addr parameter. Global mac_addr=1 can be used to
 	 * change this default behavior.
 	 */
-	int mac_addr;
+	enum wpas_mac_addr_style mac_addr;
 
 	/**
 	 * rand_addr_lifetime - Lifetime of random MAC address in seconds
@@ -1380,7 +1439,7 @@ struct wpa_config {
 	 * 1 = use random MAC address
 	 * 2 = like 1, but maintain OUI (with local admin bit set)
 	 */
-	int preassoc_mac_addr;
+	enum wpas_mac_addr_style preassoc_mac_addr;
 
 	/**
 	 * key_mgmt_offload - Use key management offload
@@ -1531,14 +1590,15 @@ struct wpa_config {
 	 *  - Set BIT(1) to enable OCE in STA-CFON mode
 	 */
 	unsigned int oce;
-#endif /* CONFIG_MBO */
+
 	/**
 	 * btm_offload - Set where to perform roaming logic
 	 *  - Set to 0 to handle fully roaming logic in supplicant
 	 *  - Set to 1 to skip roaming logic in supplicant for firmware roaming
 	 *    just parse BTM frame and notify framework
 	 */
-	int btm_offload;
+        int btm_offload;
+#endif /* CONFIG_MBO */
 
 	/**
 	 * gas_address3 - GAS Address3 field behavior
@@ -1589,7 +1649,7 @@ struct wpa_config {
 	 * 1 = use random MAC address
 	 * 2 = like 1, but maintain OUI (with local admin bit set)
 	 */
-	int gas_rand_mac_addr;
+	enum wpas_mac_addr_style gas_rand_mac_addr;
 
 	/**
 	 * dpp_config_processing - How to process DPP configuration
@@ -1615,6 +1675,25 @@ struct wpa_config {
 	 * dpp_mud_url - MUD URL for Enrollee's DPP Configuration Request
 	 */
 	char *dpp_mud_url;
+
+	/**
+	 * dpp_extra_conf_req_name - JSON node name of additional data for
+	 * Enrollee's DPP Configuration Request
+	 */
+	char *dpp_extra_conf_req_name;
+
+	/**
+	 * dpp_extra_conf_req_value - JSON node data of additional data for
+	 * Enrollee's DPP Configuration Request
+	 */
+	char *dpp_extra_conf_req_value;
+
+	/* dpp_connector_privacy_default - Default valur for Connector privacy
+	 *
+	 * This value is used as the default for the dpp_connector_privacy
+	 * network parameter for all new networks provisioned using DPP.
+	 */
+	int dpp_connector_privacy_default;
 
 	/**
 	 * coloc_intf_reporting - Colocated interference reporting
@@ -1677,14 +1756,6 @@ struct wpa_config {
 	int p2p_interface_random_mac_addr;
 
 	/**
-	 * bss_no_flush_when_down - Whether to flush BSS entries when the interface is disabled
-	 *
-	 * 0 = Flush BSS entries when the interface becomes disabled (Default)
-	 * 1 = Do not flush BSS entries when the interface becomes disabled
-	 */
-	int bss_no_flush_when_down;
-
-	/**
 	 * disable_btm - Disable BSS transition management in STA
 	 * - Set to 0 to enable BSS transition management
 	 * - Set to 1 to disable BSS transition management
@@ -1726,6 +1797,20 @@ struct wpa_config {
 
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN*/
+
+#ifdef CONFIG_TESTING_OPTIONS
+	enum {
+		MLD_CONNECT_BAND_PREF_AUTO = 0,
+		MLD_CONNECT_BAND_PREF_2GHZ = 1,
+		MLD_CONNECT_BAND_PREF_5GHZ = 2,
+		MLD_CONNECT_BAND_PREF_6GHZ = 3,
+		MLD_CONNECT_BAND_PREF_MAX = 4,
+	}  mld_connect_band_pref;
+
+	u8 mld_connect_bssid_pref[ETH_ALEN];
+
+	int mld_force_single_link;
+#endif /* CONFIG_TESTING_OPTIONS */
 };
 
 
@@ -1795,6 +1880,7 @@ const char * wpa_config_get_global_field_name(unsigned int i, int *no_var);
  * @name: Name of the configuration (e.g., path and file name for the
  * configuration file)
  * @cfgp: Pointer to previously allocated configuration data or %NULL if none
+ * @ro: Whether to mark networks from this configuration as read-only
  * Returns: Pointer to allocated configuration data or %NULL on failure
  *
  * This function reads configuration data, parses its contents, and allocates
@@ -1803,7 +1889,8 @@ const char * wpa_config_get_global_field_name(unsigned int i, int *no_var);
  *
  * Each configuration backend needs to implement this function.
  */
-struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp);
+struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
+				    bool ro);
 
 /**
  * wpa_config_write - Write or update configuration data

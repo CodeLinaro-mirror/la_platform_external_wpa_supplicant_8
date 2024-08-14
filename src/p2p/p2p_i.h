@@ -400,6 +400,7 @@ struct p2p_data {
 	unsigned int pending_listen_freq;
 	unsigned int pending_listen_sec;
 	unsigned int pending_listen_usec;
+	bool pending_listen_wait_drv;
 
 	u8 dev_capab;
 
@@ -692,7 +693,6 @@ struct p2p_group_info {
 
 /* p2p_utils.c */
 int p2p_random(char *buf, size_t len);
-int p2p_channel_to_freq(int op_class, int channel);
 int p2p_freq_to_channel(unsigned int freq, u8 *op_class, u8 *channel);
 void p2p_channels_intersect(const struct p2p_channels *a,
 			    const struct p2p_channels *b,
@@ -910,6 +910,9 @@ void p2p_pref_channel_filter(const struct p2p_channels *a,
 			     const struct weighted_pcl *freq_list,
 			     unsigned int num_channels,
 			     struct p2p_channels *res, bool go);
+
+void p2p_sd_query_cb(struct p2p_data *p2p, int success);
+
 void p2p_dbg(struct p2p_data *p2p, const char *fmt, ...)
 PRINTF_FORMAT(2, 3);
 void p2p_info(struct p2p_data *p2p, const char *fmt, ...)

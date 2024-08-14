@@ -80,9 +80,15 @@ union tls_event_data {
 };
 
 struct tls_config {
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	const char *opensc_engine_path;
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	const char *pkcs11_engine_path;
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	const char *pkcs11_module_path;
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	int fips_mode;
 	int cert_in_cb;
 	const char *openssl_ciphers;
@@ -353,7 +359,9 @@ int __must_check tls_global_set_verify(void *tls_ctx, int check_crl,
  * tls_connection_set_verify - Set certificate verification options
  * @tls_ctx: TLS context data from tls_init()
  * @conn: Connection context data from tls_connection_init()
- * @verify_peer: 1 = verify peer certificate
+ * @verify_peer: 0 = do not verify peer certificate, 1 = verify peer
+ *	certificate (require it to be provided), 2 = verify peer certificate if
+ *	provided
  * @flags: Connection flags (TLS_CONN_*)
  * @session_ctx: Session caching context or %NULL to use default
  * @session_ctx_len: Length of @session_ctx in bytes.

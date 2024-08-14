@@ -318,7 +318,7 @@ int main(int argc, char *argv[])
 	}
 
 	os_memset(&wpa_s, 0, sizeof(wpa_s));
-	wpa_s.conf = wpa_config_read(argv[1], NULL);
+	wpa_s.conf = wpa_config_read(argv[1], NULL, false);
 	if (wpa_s.conf == NULL) {
 		printf("Failed to parse configuration file '%s'.\n", argv[1]);
 		return -1;
@@ -357,7 +357,7 @@ int main(int argc, char *argv[])
 		ret = -2;
 	else {
 		ret = pmksa_cache_set_current(wpa_s.wpa, NULL, bssid, NULL, 0,
-					      NULL, 0) ? 0 : -3;
+					      NULL, 0, false) ? 0 : -3;
 	}
 
 	test_eapol_clean(&wpa_s);

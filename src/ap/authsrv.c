@@ -106,6 +106,22 @@ static int hostapd_setup_radius_srv(struct hostapd_data *hapd)
 {
 	struct radius_server_conf srv;
 	struct hostapd_bss_config *conf = hapd->conf;
+
+#ifdef CONFIG_IEEE80211BE
+	if (!hostapd_mld_is_first_bss(hapd)) {
+		struct hostapd_data *first;
+
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Using RADIUS server of the first BSS");
+
+		first = hostapd_mld_get_first_bss(hapd);
+		if (!first)
+			return -1;
+		hapd->radius_srv = first->radius_srv;
+		return 0;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 	os_memset(&srv, 0, sizeof(srv));
 	srv.client_file = conf->radius_server_clients;
 	srv.auth_port = conf->radius_server_auth_port;
@@ -211,9 +227,12 @@ static struct eap_config * authsrv_eap_config(struct hostapd_data *hapd)
 	cfg->eap_teap_pac_no_inner = hapd->conf->eap_teap_pac_no_inner;
 	cfg->eap_teap_separate_result = hapd->conf->eap_teap_separate_result;
 	cfg->eap_teap_id = hapd->conf->eap_teap_id;
+	cfg->eap_teap_method_sequence = hapd->conf->eap_teap_method_sequence;
 	cfg->eap_sim_aka_result_ind = hapd->conf->eap_sim_aka_result_ind;
 	cfg->eap_sim_id = hapd->conf->eap_sim_id;
 	cfg->imsi_privacy_key = hapd->imsi_privacy_key;
+	cfg->eap_sim_aka_fast_reauth_limit =
+		hapd->conf->eap_sim_aka_fast_reauth_limit;
 	cfg->tnc = hapd->conf->tnc;
 	cfg->wps = hapd->wps;
 	cfg->fragment_size = hapd->conf->fragment_size;
@@ -237,6 +256,26 @@ static struct eap_config * authsrv_eap_config(struct hostapd_data *hapd)
 
 int authsrv_init(struct hostapd_data *hapd)
 {
+#ifdef CONFIG_IEEE80211BE
+	if (!hostapd_mld_is_first_bss(hapd)) {
+		struct hostapd_data *first;
+
+		wpa_printf(MSG_DEBUG, "MLD: Using auth_serv of the first BSS");
+
+		first = hostapd_mld_get_first_bss(hapd);
+		if (!first)
+			return -1;
+#ifdef EAP_TLS_FUNCS
+		hapd->ssl_ctx = first->ssl_ctx;
+#endif /* EAP_TLS_FUNCS */
+		hapd->eap_cfg = first->eap_cfg;
+#ifdef EAP_SIM_DB
+		hapd->eap_sim_db_priv = first->eap_sim_db_priv;
+#endif /* EAP_SIM_DB */
+		return 0;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 #ifdef EAP_TLS_FUNCS
 	if (hapd->conf->eap_server &&
 	    (hapd->conf->ca_cert || hapd->conf->server_cert ||
@@ -351,6 +390,23 @@ int authsrv_init(struct hostapd_data *hapd)
 
 void authsrv_deinit(struct hostapd_data *hapd)
 {
+#ifdef CONFIG_IEEE80211BE
+	if (!hostapd_mld_is_first_bss(hapd)) {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Deinit auth_serv of a non-first BSS");
+
+		hapd->radius_srv = NULL;
+		hapd->eap_cfg = NULL;
+#ifdef EAP_SIM_DB
+		hapd->eap_sim_db_priv = NULL;
+#endif /* EAP_SIM_DB */
+#ifdef EAP_TLS_FUNCS
+		hapd->ssl_ctx = NULL;
+#endif /* EAP_TLS_FUNCS */
+		return;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 #ifdef RADIUS_SERVER
 	radius_server_deinit(hapd->radius_srv);
 	hapd->radius_srv = NULL;

@@ -11,6 +11,8 @@
 #ifdef CONFIG_CTRL_IFACE
 
 #ifdef CONFIG_CTRL_IFACE_UNIX
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -23,9 +25,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cutils/sockets.h>
-#include <grp.h>
-#include <pwd.h>
-#include <sys/types.h>
+#include "private/android_filesystem_config.h"
 #endif /* ANDROID */
 
 #ifdef CONFIG_CTRL_IFACE_UDP_IPV6
@@ -100,12 +100,6 @@ struct wpa_ctrl * wpa_ctrl_open2(const char *ctrl_path,
 	size_t res;
 	int tries = 0;
 	int flags;
-#ifdef ANDROID
-	struct group *grp_wifi;
-	gid_t gid_wifi;
-	struct passwd *pwd_system;
-	uid_t uid_system;
-#endif
 
 	if (ctrl_path == NULL)
 		return NULL;
@@ -141,6 +135,19 @@ try_again:
 		return NULL;
 	}
 	tries++;
+#ifdef ANDROID
+	/* Set client socket file permissions so that bind() creates the client
+	 * socket with these permissions and there is no need to try to change
+	 * them with chmod() after bind() which would have potential issues with
+	 * race conditions. These permissions are needed to make sure the server
+	 * side (wpa_supplicant or hostapd) can reply to the control interface
+	 * messages.
+	 *
+	 * The lchown() calls below after bind() are also part of the needed
+	 * operations to allow the response to go through. Those are using the
+	 * no-deference-symlinks version to avoid races. */
+	fchmod(ctrl->s, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+#endif /* ANDROID */
 	if (bind(ctrl->s, (struct sockaddr *) &ctrl->local,
 		    sizeof(ctrl->local)) < 0) {
 		if (errno == EADDRINUSE && tries < 2) {
@@ -158,26 +165,10 @@ try_again:
 		return NULL;
 	}
 
-	/*
-	 * Set client socket file permissions to make sure the server
-	 * side (wpa_supplicant or hostapd) can reply to the control
-	 * interface messages.
-	 */
-	chmod(ctrl->local.sun_path, S_IRWXU | S_IRWXG | S_IRWXO);
 #ifdef ANDROID
 	/* Set group even if we do not have privileges to change owner */
-	grp_wifi = getgrnam("wifi");
-	gid_wifi = grp_wifi ? grp_wifi->gr_gid : 0;
-	pwd_system = getpwnam("system");
-	uid_system = pwd_system ? pwd_system->pw_uid : 0;
-	if (!gid_wifi || !uid_system) {
-		close(ctrl->s);
-		unlink(ctrl->local.sun_path);
-		os_free(ctrl);
-		return NULL;
-	}
-	chown(ctrl->local.sun_path, -1, gid_wifi);
-	chown(ctrl->local.sun_path, uid_system, gid_wifi);
+	lchown(ctrl->local.sun_path, -1, AID_WIFI);
+	lchown(ctrl->local.sun_path, AID_SYSTEM, AID_WIFI);
 
 	if (os_strncmp(ctrl_path, "@android:", 9) == 0) {
 		if (socket_local_client_connect(
