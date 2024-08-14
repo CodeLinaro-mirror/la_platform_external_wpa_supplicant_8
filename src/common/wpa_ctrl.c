@@ -164,6 +164,14 @@ try_again:
 		os_free(ctrl);
 		return NULL;
 	}
+#ifndef ANDROID
+	/*
+	 * Set client socket file permissions to make sure the server
+	 * side (wpa_supplicant or hostapd) can reply to the control
+	 * interface messages.
+	 */
+	chmod(ctrl->local.sun_path, S_IRWXU | S_IRWXG | S_IRWXO);
+#endif /* ANDROID */
 
 #ifdef ANDROID
 	/* Set group even if we do not have privileges to change owner */
