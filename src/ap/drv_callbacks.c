@@ -2337,7 +2337,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		break;
 	case EVENT_SCAN_RESULTS:
 #ifdef CONFIG_DRIVER_NL80211_QCA
-		hapd = switch_link_per_cookie(hapd, data->scan_info.scan_cookie);
+		if (data)
+			hapd = switch_link_per_cookie(hapd, data->scan_info.scan_cookie);
 #endif
 		if (hapd->iface->scan_cb)
 			hapd->iface->scan_cb(hapd->iface);
