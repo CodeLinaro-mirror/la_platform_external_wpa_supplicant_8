@@ -4202,7 +4202,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	if (params.mgmt_frame_protection != NO_MGMT_FRAME_PROTECTION && bss) {
 		const u8 *rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
 		struct wpa_ie_data ie;
-		if (rsn && wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie) == 0 &&
+		if (!wpas_driver_bss_selection(wpa_s) && rsn &&
+		    wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie) == 0 &&
 		    ie.capabilities &
 		    (WPA_CAPABILITY_MFPC | WPA_CAPABILITY_MFPR)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "WPA: Selected AP supports "
@@ -7760,10 +7761,28 @@ int wpa_supplicant_run(struct wpa_global *global)
 {
 	struct wpa_supplicant *wpa_s;
 
-	if (global->params.daemonize &&
-	    (wpa_supplicant_daemon(global->params.pid_file) ||
-	     eloop_sock_requeue()))
-		return -1;
+	/* When the wpa_supplicant gets daemonized, the eap_proxy thread that
+	 * was created under wpa_supplicant before it daemonize will also get
+	 * terminated. This results in blocking the wpa_supplicant deinit flow
+	 * while waiting for eap_proxy thread.
+	 * Hence ensure to restart the eap_proxy thread whenever the
+	 * wpa_supplicant is daemonized.
+	 */
+	if (global->params.daemonize) {
+#ifdef CONFIG_EAP_PROXY
+		wpa_sm_set_eapol(global->ifaces->wpa, NULL);
+		eapol_sm_deinit(global->ifaces->eapol);
+		global->ifaces->eapol = NULL;
+#endif /* CONFIG_EAP_PROXY */
+		if (wpa_supplicant_daemon(global->params.pid_file) ||
+		    eloop_sock_requeue())
+			return -1;
+#ifdef CONFIG_EAP_PROXY
+		if (wpa_supplicant_init_eapol(global->ifaces) < 0)
+			return -1;
+		wpa_sm_set_eapol(global->ifaces->wpa, global->ifaces->eapol);
+#endif /* CONFIG_EAP_PROXY */
+	}
 
 #ifdef CONFIG_MATCH_IFACE
 	if (wpa_supplicant_match_existing(global))
