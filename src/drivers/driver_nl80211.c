@@ -6329,13 +6329,13 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 			mgmt[0] = RSN_AUTH_KEY_MGMT_SAE;
 			break;
 		case WPA_KEY_MGMT_SAE_EXT_KEY:
-			mgmt = RSN_AUTH_KEY_MGMT_SAE_EXT_KEY;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_SAE_EXT_KEY;
 			break;
 		case WPA_KEY_MGMT_FT_SAE:
 			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_SAE;
 			break;
 		case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY;
 			break;
 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B:
 			mgmt[0] = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B;
