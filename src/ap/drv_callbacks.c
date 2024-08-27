@@ -1838,7 +1838,7 @@ static void hostapd_event_wds_sta_interface_status(struct hostapd_data *hapd,
 #ifdef CONFIG_OWE
 static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
 				      const u8 *peer, const u8 *ie,
-				      size_t ie_len, const u8 *link_addr)
+				      size_t ie_len)
 {
 	u16 status;
 	struct sta_info *sta;
@@ -1880,7 +1880,7 @@ static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
 		 */
 		sta->timeout_next = STA_NULLFUNC;
 	} else {
-		sta = ap_sta_add(hapd, peer, link_addr);
+		sta = ap_sta_add(hapd, peer, NULL);
 		if (!sta) {
 			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 			goto err;
@@ -2016,8 +2016,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			return;
 		hostapd_notif_update_dh_ie(hapd, data->update_dh.peer,
 					   data->update_dh.ie,
-					   data->update_dh.ie_len,
-					   data->update_dh.link_addr);
+					   data->update_dh.ie_len);
 		break;
 #endif /* CONFIG_OWE */
 	case EVENT_DISASSOC:
