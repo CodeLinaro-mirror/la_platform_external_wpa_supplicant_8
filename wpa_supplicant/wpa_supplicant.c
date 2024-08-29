@@ -8,6 +8,10 @@
  * This file implements functions for registering and unregistering
  * %wpa_supplicant interfaces. In addition, this file contains number of
  * functions for managing network connections.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "includes.h"
@@ -8242,12 +8246,12 @@ struct wpa_global * wpa_supplicant_init(struct wpa_params *params)
 		wpa_supplicant_deinit(global);
 		return NULL;
 	}
-
+#ifndef CONFIG_AIDL_FUZZING
 	if (wpas_notify_supplicant_initialized(global)) {
 		wpa_supplicant_deinit(global);
 		return NULL;
 	}
-
+#endif
 	for (i = 0; wpa_drivers[i]; i++)
 		global->drv_count++;
 	if (global->drv_count == 0) {
