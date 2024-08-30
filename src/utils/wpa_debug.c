@@ -36,6 +36,12 @@ int wpa_debug_syslog = 0;
 static FILE *out_file = NULL;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
 
+#ifdef WPA_QRPC_LOG
+static const u32 qlog_mask_map[] = {
+	DEBUG_VERBOS, DEBUG_VERBOS, DEBUG_DEBUG,
+	DEBUG_INFO, DEBUG_WARN, DEBUG_ERROR
+};
+#endif
 
 #ifdef CONFIG_ANDROID_LOG
 
@@ -214,7 +220,7 @@ void wpa_printf(int level, const char *fmt, ...)
 	if (level >= wpa_debug_level) {
 #ifdef WPA_QRPC_LOG
 		va_start(ap, fmt);
-		IFDBG(DebugOutVa(DEBUG_WPA, (char*)fmt, ap));
+		WPA_VA_LOG(qlog_mask_map[level], fmt, ap);
 		va_end(ap);
 #else
 #ifdef CONFIG_ANDROID_LOG
@@ -307,7 +313,7 @@ static void _wpa_hexdump(int level, const char *title, const u8 *buf,
 		start = strlen(buff);
 		snprintf((char*)&buff[start], sizeof(buff)-start, " [REMOVED]");
 	}
-	WPA_LOG("%s", buff);
+	WPA_LOG(qlog_mask_map[level], "%s", buff);
 #else
 #ifdef CONFIG_ANDROID_LOG
 	{
@@ -454,12 +460,12 @@ static void _wpa_hexdump_ascii(int level, const char *title, const void *buf,
 		return;
 #ifdef WPA_QRPC_LOG
 	if (!show) {
-		WPA_LOG("%s - hexdump_ascii(len=%lu): [REMOVED]",
+		WPA_LOG(qlog_mask_map[level], "%s - hexdump_ascii(len=%lu): [REMOVED]",
 			   title, (unsigned long) len);
 		return;
 	}
 	if (buf == NULL) {
-		WPA_LOG("%s - hexdump_ascii(len=%lu): [NULL]",
+		WPA_LOG(qlog_mask_map[level], "%s - hexdump_ascii(len=%lu): [NULL]",
 			   title, (unsigned long) len);
 		return;
 	}
@@ -521,7 +527,7 @@ static void _wpa_hexdump_ascii(int level, const char *title, const void *buf,
 		len -= llen;
 	}
 buff_full:
-	WPA_LOG("%s", buff);
+	WPA_LOG(qlog_mask_map[level], "%s", buff);
 #else
 #ifdef CONFIG_ANDROID_LOG
 	_wpa_hexdump(level, title, buf, len, show, 0);
