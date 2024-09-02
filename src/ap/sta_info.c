@@ -128,7 +128,7 @@ void ap_sta_hash_add(struct hostapd_data *hapd, struct sta_info *sta)
 }
 
 
-void ap_sta_hash_del(struct hostapd_data *hapd, struct sta_info *sta)
+static void ap_sta_hash_del(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	struct sta_info *s;
 
