@@ -44,6 +44,8 @@
 #include "aes_wrap.h"
 #include "crypto.h"
 
+struct crypto_ec *ge;
+
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 /* Compatibility wrappers for older versions. */
 
@@ -2306,12 +2308,12 @@ static const char * crypto_ec_group_2_name(int group)
 }
 #endif /* OpenSSL version >= 3.0 */
 
-extern struct crypto_ec *ge;
 
 struct crypto_ec * crypto_ec_init(int group)
 {
 	struct crypto_ec *e;
 	int nid;
+	wpa_printf(MSG_DEBUG, "crypto_ec_init group %d", group);
 
 	nid = crypto_ec_group_2_nid(group);
 	if (nid < 0)

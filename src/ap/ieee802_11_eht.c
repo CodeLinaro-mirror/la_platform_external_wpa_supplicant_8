@@ -13,7 +13,7 @@
 #include "sta_info.h"
 #include "ieee802_11.h"
 
-struct crypto_ec *ge;
+extern struct crypto_ec *ge;
 
 static u16 ieee80211_eht_ppet_size(u16 ppe_thres_hdr, const u8 *phy_cap_info)
 {
