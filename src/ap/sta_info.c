@@ -187,6 +187,28 @@ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta)
 
 #endif /* CONFIG_PASN */
 
+#ifdef CONFIG_IEEE80211BE
+static void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
+					       struct sta_info *psta)
+{
+	struct sta_info *lsta;
+	struct hostapd_data *lhapd;
+
+	if (!ap_sta_is_mld(hapd, psta))
+		return;
+
+	for_each_mld_link(lhapd, hapd) {
+		if (lhapd == hapd)
+			continue;
+
+		lsta = ap_get_sta(lhapd, psta->addr);
+		if (lsta)
+			lsta->wpa_sm = NULL;
+	}
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
 void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int set_beacon = 0;
@@ -304,8 +326,16 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 #ifdef CONFIG_IEEE80211BE
 	if (!hapd->conf->mld_ap || !sta->mld_info.mld_sta ||
-	    hapd->mld_link_id == sta->mld_assoc_link_id)
+	    hapd->mld_link_id == sta->mld_assoc_link_id) {
 		wpa_auth_sta_deinit(sta->wpa_sm);
+		/* Remove references from partner links. */
+		clear_wpa_sm_for_each_partner_link(hapd, sta);
+	}
+
+	/* Release group references in case non-association link STA is removed
+	 * before association link STA */
+	if (hostapd_sta_is_link_sta(hapd, sta))
+		wpa_release_link_auth_ref(sta->wpa_sm, hapd->mld_link_id);
 #else
 	wpa_auth_sta_deinit(sta->wpa_sm);
 #endif /* CONFIG_IEEE80211BE */
@@ -846,12 +876,42 @@ static void ap_sta_disassoc_cb_timeout(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static void ap_sta_disconnect_common(struct hostapd_data *hapd,
+				     struct sta_info *sta, unsigned int timeout)
+{
+	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+
+	ap_sta_set_authorized(hapd, sta, 0);
+	hostapd_set_sta_flags(hapd, sta);
+
+	wpa_printf(MSG_DEBUG,
+		   "reschedule ap_handle_timer timeout (%u sec) for " MACSTR,
+		   MAC2STR(sta->addr), timeout);
+
+	eloop_cancel_timeout(ap_handle_timer, hapd, sta);
+	eloop_register_timeout(timeout, 0, ap_handle_timer, hapd, sta);
+	accounting_sta_stop(hapd, sta);
+	ieee802_1x_free_station(hapd, sta);
+#ifdef CONFIG_IEEE80211BE
+	if (!hapd->conf->mld_ap ||
+	    hapd->mld_link_id == sta->mld_assoc_link_id) {
+		wpa_auth_sta_deinit(sta->wpa_sm);
+		clear_wpa_sm_for_each_partner_link(hapd, sta);
+	}
+#else
+	wpa_auth_sta_deinit(sta->wpa_sm);
+#endif /* CONFIG_IEEE80211BE */
+
+	sta->wpa_sm = NULL;
+}
+
+
 void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
 			 u16 reason)
 {
 	wpa_printf(MSG_DEBUG, "%s: disassociate STA " MACSTR,
 		   hapd->conf->iface, MAC2STR(sta->addr));
-	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+
 	if (hapd->iface->current_mode &&
 	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
 		/* Skip deauthentication in DMG/IEEE 802.11ad */
@@ -862,27 +922,8 @@ void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
 		sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
 		sta->timeout_next = STA_DEAUTH;
 	}
-	ap_sta_set_authorized(hapd, sta, 0);
-	hostapd_set_sta_flags(hapd, sta);
-	wpa_printf(MSG_DEBUG, "%s: reschedule ap_handle_timer timeout "
-		   "for " MACSTR " (%d seconds - "
-		   "AP_MAX_INACTIVITY_AFTER_DISASSOC)",
-		   __func__, MAC2STR(sta->addr),
-		   AP_MAX_INACTIVITY_AFTER_DISASSOC);
-	eloop_cancel_timeout(ap_handle_timer, hapd, sta);
-	eloop_register_timeout(AP_MAX_INACTIVITY_AFTER_DISASSOC, 0,
-			       ap_handle_timer, hapd, sta);
-	accounting_sta_stop(hapd, sta);
-	ieee802_1x_free_station(hapd, sta);
-#ifdef CONFIG_IEEE80211BE
-	if (!hapd->conf->mld_ap ||
-	    hapd->mld_link_id == sta->mld_assoc_link_id)
-		wpa_auth_sta_deinit(sta->wpa_sm);
-#else
-	wpa_auth_sta_deinit(sta->wpa_sm);
-#endif /* CONFIG_IEEE80211BE */
 
-	sta->wpa_sm = NULL;
+	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DISASSOC);
 
 	sta->disassoc_reason = reason;
 	sta->flags |= WLAN_STA_PENDING_DISASSOC_CB;
@@ -918,21 +959,11 @@ void ap_sta_deauthenticate(struct hostapd_data *hapd, struct sta_info *sta,
 
 	wpa_printf(MSG_DEBUG, "%s: deauthenticate STA " MACSTR,
 		   hapd->conf->iface, MAC2STR(sta->addr));
-	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+
 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
-	ap_sta_set_authorized(hapd, sta, 0);
-	hostapd_set_sta_flags(hapd, sta);
+
 	sta->timeout_next = STA_REMOVE;
-	wpa_printf(MSG_DEBUG, "%s: reschedule ap_handle_timer timeout "
-		   "for " MACSTR " (%d seconds - "
-		   "AP_MAX_INACTIVITY_AFTER_DEAUTH)",
-		   __func__, MAC2STR(sta->addr),
-		   AP_MAX_INACTIVITY_AFTER_DEAUTH);
-	eloop_cancel_timeout(ap_handle_timer, hapd, sta);
-	eloop_register_timeout(AP_MAX_INACTIVITY_AFTER_DEAUTH, 0,
-			       ap_handle_timer, hapd, sta);
-	accounting_sta_stop(hapd, sta);
-	ieee802_1x_free_station(hapd, sta);
+	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH);
 
 	sta->deauth_reason = reason;
 	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
