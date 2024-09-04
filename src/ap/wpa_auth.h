@@ -285,6 +285,12 @@ struct wpa_auth_config {
 	 * Set only in nontransmitted BSSs, i.e., is NULL for transmitted BSS
 	 * and in BSSs that are not part of a Multi-BSSID set. */
 	struct wpa_authenticator *tx_bss_auth;
+
+#ifdef CONFIG_IEEE80211BE
+	const u8 *mld_addr;
+	int link_id;
+	struct wpa_authenticator *first_link_auth;
+#endif /* CONFIG_IEEE80211BE */
 };
 
 typedef enum {
@@ -296,16 +302,6 @@ typedef enum {
 	WPA_EAPOL_portControl_Auto, WPA_EAPOL_keyRun, WPA_EAPOL_keyAvailable,
 	WPA_EAPOL_keyDone, WPA_EAPOL_inc_EapolFramesTx
 } wpa_eapol_variable;
-
-struct wpa_auth_ml_rsn_info {
-	unsigned int n_mld_links;
-
-	struct wpa_auth_ml_link_rsn_info {
-		unsigned int link_id;
-		const u8 *rsn_ies;
-		size_t rsn_ies_len;
-	} links[MAX_NUM_MLD_LINKS];
-};
 
 struct wpa_auth_ml_key_info {
 	unsigned int n_mld_links;
@@ -400,8 +396,8 @@ struct wpa_auth_callbacks {
 			       size_t ltf_keyseed_len);
 #endif /* CONFIG_PASN */
 #ifdef CONFIG_IEEE80211BE
-	int (*get_ml_rsn_info)(void *ctx, struct wpa_auth_ml_rsn_info *info);
-	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info);
+	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info,
+			       bool rekey);
 #endif /* CONFIG_IEEE80211BE */
 	int (*get_drv_flags)(void *ctx, u64 *drv_flags, u64 *drv_flags2);
 };
@@ -429,7 +425,8 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		    const u8 *wpa_ie, size_t wpa_ie_len,
 		    const u8 *rsnxe, size_t rsnxe_len,
 		    const u8 *mdie, size_t mdie_len,
-		    const u8 *owe_dh, size_t owe_dh_len);
+		    const u8 *owe_dh, size_t owe_dh_len,
+		    struct wpa_state_machine *assoc_sm);
 int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
 		      struct wpa_state_machine *sm,
 		      const u8 *osen_ie, size_t osen_ie_len);
@@ -639,12 +636,20 @@ void wpa_auth_set_ocv_override_freq(struct wpa_authenticator *wpa_auth,
 
 void wpa_auth_sta_radius_psk_resp(struct wpa_state_machine *sm, bool success);
 
-void wpa_auth_set_ml_info(struct wpa_state_machine *sm, const u8 *mld_addr,
+void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
 			  u8 mld_assoc_link_id, struct mld_info *info);
-void wpa_auth_ml_get_rsn_info(struct wpa_authenticator *a,
-			      struct wpa_auth_ml_link_rsn_info *info);
 void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 			      struct wpa_auth_ml_link_key_info *info,
-			      bool mgmt_frame_prot, bool beacon_prot);
+			      bool mgmt_frame_prot, bool beacon_prot,
+			      bool rekey);
+
+void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
+			       int release_link_id);
+
+#define for_each_sm_auth(sm, link_id) \
+	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++)	\
+		if (sm->mld_links[link_id].valid &&			\
+		    sm->mld_links[link_id].wpa_auth &&			\
+		    sm->wpa_auth != sm->mld_links[link_id].wpa_auth)
 
 #endif /* WPA_AUTH_H */

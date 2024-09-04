@@ -1894,7 +1894,7 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 				  elems.rsn_ie - 2, elems.rsn_ie_len + 2,
 				  elems.rsnxe ? elems.rsnxe - 2 : NULL,
 				  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
-				  elems.mdie, elems.mdie_len, NULL, 0);
+				  elems.mdie, elems.mdie_len, NULL, 0, NULL);
 	resp = wpa_res_to_status_code(res);
 	if (resp != WLAN_STATUS_SUCCESS)
 		goto fail;
@@ -3783,14 +3783,14 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 	}
 #ifdef CONFIG_IEEE80211BE
 	if (ap_sta_is_mld(hapd, sta))
-		wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld->mld_addr,
+		wpa_auth_set_ml_info(sta->wpa_sm,
 				     sta->mld_assoc_link_id, &sta->mld_info);
 #endif /* CONFIG_IEEE80211BE */
 	rsn_ie -= 2;
 	rsn_ie_len += 2;
 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 				  hapd->iface->freq, rsn_ie, rsn_ie_len,
-				  NULL, 0, NULL, 0, owe_dh, owe_dh_len);
+				  NULL, 0, NULL, 0, owe_dh, owe_dh_len, NULL);
 	status = wpa_res_to_status_code(res);
 	if (status != WLAN_STATUS_SUCCESS)
 		goto end;
@@ -3879,6 +3879,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;
 	const u8 *p2p_dev_addr = NULL;
+	struct hostapd_data *assoc_hapd;
+	struct sta_info *assoc_sta = NULL;
 
 	resp = check_ssid(hapd, sta, elems->ssid, elems->ssid_len);
 	if (resp != WLAN_STATUS_SUCCESS)
@@ -4044,14 +4046,18 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 
 	if (hapd->conf->wpa && wpa_ie) {
 		enum wpa_validate_result res;
+#ifdef CONFIG_IEEE80211BE
+		struct mld_info *info = &sta->mld_info;
+		bool init = !sta->wpa_sm;
+#endif /* CONFIG_IEEE80211BE */
 
 		wpa_ie -= 2;
 		wpa_ie_len += 2;
 
 		if (!sta->wpa_sm) {
-#ifdef CONFIG_IEEE80211BE
-			struct mld_info *info = &sta->mld_info;
-#endif /* CONFIG_IEEE80211BE */
+			if (!link)
+				assoc_sta = hostapd_ml_get_assoc_sta(
+					hapd, sta, &assoc_hapd);
 
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
 							sta->addr,
@@ -4062,18 +4068,18 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					   "Failed to initialize RSN state machine");
 				return WLAN_STATUS_UNSPECIFIED_FAILURE;
 			}
+		}
 
 #ifdef CONFIG_IEEE80211BE
-			if (ap_sta_is_mld(hapd, sta)) {
-				wpa_printf(MSG_DEBUG,
-					   "MLD: Set ML info in RSN Authenticator");
-				wpa_auth_set_ml_info(sta->wpa_sm,
-						     hapd->mld->mld_addr,
-						     sta->mld_assoc_link_id,
-						     info);
-			}
-#endif /* CONFIG_IEEE80211BE */
+		if (ap_sta_is_mld(hapd, sta)) {
+			wpa_printf(MSG_DEBUG,
+				   "MLD: %s ML info in RSN Authenticator",
+				   init ? "Set" : "Reset");
+			wpa_auth_set_ml_info(sta->wpa_sm,
+					     sta->mld_assoc_link_id,
+					     info);
 		}
+#endif /* CONFIG_IEEE80211BE */
 
 		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
@@ -4084,7 +4090,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					  elems->rsnxe ? elems->rsnxe_len + 2 :
 					  0,
 					  elems->mdie, elems->mdie_len,
-					  elems->owe_dh, elems->owe_dh_len);
+					  elems->owe_dh, elems->owe_dh_len,
+					  assoc_sta ? assoc_sta->wpa_sm : NULL);
 		resp = wpa_res_to_status_code(res);
 		if (resp != WLAN_STATUS_SUCCESS)
 			return resp;
@@ -4475,6 +4482,8 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
 	}
 
 	sta->flags |= origin_sta->flags | WLAN_STA_ASSOC_REQ_OK;
+	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
+
 	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, reassoc, true);
 	if (status != WLAN_STATUS_SUCCESS) {
 		wpa_printf(MSG_DEBUG, "MLD: link: Element check failed");
@@ -4482,7 +4491,6 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
 	}
 
 	ap_sta_set_mld(sta, true);
-	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
 
 	os_memcpy(&sta->mld_info, &origin_sta->mld_info, sizeof(sta->mld_info));
 	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
@@ -4509,9 +4517,11 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
 			ieee802_11_update_beacons(hapd->iface);
 	}
 
-	/* RSN Authenticator should always be the one on the original station */
+	/* Maintain state machine reference on all link STAs, this is needed
+	 * during group rekey handling.
+	 */
 	wpa_auth_sta_deinit(sta->wpa_sm);
-	sta->wpa_sm = NULL;
+	sta->wpa_sm = origin_sta->wpa_sm;
 
 	/*
 	 * Do not initialize the EAPOL state machine.
@@ -4521,13 +4531,6 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
 
 	wpa_printf(MSG_DEBUG, "MLD: link=%u, association OK (aid=%u)",
 		   hapd->mld_link_id, sta->aid);
-
-	/*
-	 * Get RSNE and RSNXE for the current BSS as they are required by the
-	 * Authenticator.
-	 */
-	link->rsne = hostapd_wpa_ie(hapd, WLAN_EID_RSN);
-	link->rsnxe = hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
 
 	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC_REQ_OK;
 
@@ -4575,40 +4578,31 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 				  bool offload)
 {
 #ifdef CONFIG_IEEE80211BE
-	unsigned int i, j;
+	unsigned int i;
 
 	if (!hostapd_is_mld_ap(hapd))
 		return 0;
 
-	/*
-	 * This is not really needed, but make the interaction with the RSN
-	 * Authenticator more consistent
-	 */
-	sta->mld_info.links[hapd->mld_link_id].rsne =
-		hostapd_wpa_ie(hapd, WLAN_EID_RSN);
-	sta->mld_info.links[hapd->mld_link_id].rsnxe =
-		hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
-
 	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
-		struct hostapd_iface *iface = NULL;
+		struct hostapd_data *bss = NULL;
 		struct mld_link_info *link = &sta->mld_info.links[i];
+		bool link_bss_found = false;
 
 		if (!link->valid)
 			continue;
 
-		for (j = 0; j < hapd->iface->interfaces->count; j++) {
-			iface = hapd->iface->interfaces->iface[j];
-
-			if (hapd->iface == iface)
+		for_each_mld_link(bss, hapd) {
+			if (bss == hapd)
 				continue;
 
-			if (hostapd_is_ml_partner(hapd, iface->bss[0]) &&
-			    i == iface->bss[0]->mld_link_id)
-				break;
+			if (bss->mld_link_id != i)
+				continue;
+
+			link_bss_found = true;
+			break;
 		}
 
-		if (!iface || j == hapd->iface->interfaces->count ||
-		    TEST_FAIL()) {
+		if (!link_bss_found || TEST_FAIL()) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: No link match for link_id=%u", i);
 
@@ -4621,7 +4615,7 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 			if (!offload)
 				ieee80211_ml_build_assoc_resp(hapd, link);
 		} else {
-			if (ieee80211_ml_process_link(iface->bss[0], sta, link,
+			if (ieee80211_ml_process_link(bss, sta, link,
 						      ies, ies_len, reassoc,
 						      offload))
 				return -1;
@@ -5794,7 +5788,7 @@ static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
 #ifdef CONFIG_IEEE80211BE
 	struct hostapd_data *assoc_hapd, *tmp_hapd;
 	struct sta_info *assoc_sta;
-	unsigned int i, link_id;
+	struct sta_info *tmp_sta;
 
 	if (!hostapd_is_mld_ap(hapd))
 		return false;
@@ -5807,45 +5801,25 @@ static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
 	if (!assoc_sta)
 		return false;
 
-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		for (i = 0; i < assoc_hapd->iface->interfaces->count; i++) {
-			struct sta_info *tmp_sta;
+	for_each_mld_link(tmp_hapd, assoc_hapd) {
+		if (tmp_hapd == assoc_hapd)
+			continue;
 
-			if (!assoc_sta->mld_info.links[link_id].valid)
+		if (!assoc_sta->mld_info.links[tmp_hapd->mld_link_id].valid)
+			continue;
+
+		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+		     tmp_sta = tmp_sta->next) {
+			if (tmp_sta->mld_assoc_link_id !=
+			    assoc_sta->mld_assoc_link_id ||
+			    tmp_sta->aid != assoc_sta->aid)
 				continue;
 
-			tmp_hapd =
-				assoc_hapd->iface->interfaces->iface[i]->bss[0];
-
-			if (!hostapd_is_ml_partner(assoc_hapd, tmp_hapd))
-				continue;
-
-			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
-			     tmp_sta = tmp_sta->next) {
-				/*
-				 * Remove the station on which the association
-				 * was done only after all other link stations
-				 * are removed. Since there is only a single
-				 * station per struct hostapd_hapd with the
-				 * same association link simply break out from
-				 * the loop.
-				 */
-				if (tmp_sta == assoc_sta)
-					break;
-
-				if (tmp_sta->mld_assoc_link_id !=
-				    assoc_sta->mld_assoc_link_id ||
-				    tmp_sta->aid != assoc_sta->aid)
-					continue;
-
-				if (!disassoc)
-					hostapd_deauth_sta(tmp_hapd, tmp_sta,
-							   mgmt);
-				else
-					hostapd_disassoc_sta(tmp_hapd, tmp_sta,
-							     mgmt);
-				break;
-			}
+			if (!disassoc)
+				hostapd_deauth_sta(tmp_hapd, tmp_sta, mgmt);
+			else
+				hostapd_disassoc_sta(tmp_hapd, tmp_sta, mgmt);
+			break;
 		}
 	}
 
@@ -6468,38 +6442,33 @@ static void hostapd_ml_handle_assoc_cb(struct hostapd_data *hapd,
 				       struct sta_info *sta, bool ok)
 {
 #ifdef CONFIG_IEEE80211BE
-	unsigned int i, link_id;
+	struct hostapd_data *tmp_hapd;
 
 	if (!hostapd_is_mld_ap(hapd))
 		return;
 
-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		struct mld_link_info *link = &sta->mld_info.links[link_id];
+	for_each_mld_link(tmp_hapd, hapd) {
+		struct mld_link_info *link;
+		struct sta_info *tmp_sta;
 
+		if (tmp_hapd == hapd)
+			continue;
+
+		link = &sta->mld_info.links[tmp_hapd->mld_link_id];
 		if (!link->valid)
 			continue;
 
-		for (i = 0; i < hapd->iface->interfaces->count; i++) {
-			struct sta_info *tmp_sta;
-			struct hostapd_data *tmp_hapd =
-				hapd->iface->interfaces->iface[i]->bss[0];
-
-			if (!hostapd_is_ml_partner(tmp_hapd, hapd))
+		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+		     tmp_sta = tmp_sta->next) {
+			if (tmp_sta == sta ||
+			    tmp_sta->mld_assoc_link_id !=
+			    sta->mld_assoc_link_id ||
+			    tmp_sta->aid != sta->aid)
 				continue;
 
-			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
-			     tmp_sta = tmp_sta->next) {
-				if (tmp_sta == sta ||
-				    tmp_sta->mld_assoc_link_id !=
-				    sta->mld_assoc_link_id ||
-				    tmp_sta->aid != sta->aid)
-					continue;
-
-				ieee80211_ml_link_sta_assoc_cb(tmp_hapd,
-							       tmp_sta, link,
-							       ok);
-				break;
-			}
+			ieee80211_ml_link_sta_assoc_cb(tmp_hapd, tmp_sta, link,
+						       ok);
+			break;
 		}
 	}
 #endif /* CONFIG_IEEE80211BE */
