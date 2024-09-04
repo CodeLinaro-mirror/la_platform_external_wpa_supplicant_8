@@ -517,7 +517,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		if (ap_sta_is_mld(hapd, sta)) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Set ML info in RSN Authenticator");
-			wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld->mld_addr,
+			wpa_auth_set_ml_info(sta->wpa_sm,
 					     sta->mld_assoc_link_id,
 					     &sta->mld_info);
 		}
@@ -528,7 +528,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
 					  elems.mdie, elems.mdie_len,
-					  elems.owe_dh, elems.owe_dh_len);
+					  elems.owe_dh, elems.owe_dh_len, NULL);
 		reason = WLAN_REASON_INVALID_IE;
 		status = WLAN_STATUS_INVALID_IE;
 		switch (res) {

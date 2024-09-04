@@ -200,6 +200,28 @@ static void __ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+static void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
+					       struct sta_info *psta)
+{
+	struct sta_info *lsta;
+	struct hostapd_data *lhapd;
+
+	if (!ap_sta_is_mld(hapd, psta))
+		return;
+
+	for_each_mld_link(lhapd, hapd) {
+		if (lhapd == hapd)
+			continue;
+
+		lsta = ap_get_sta(lhapd, psta->addr);
+		if (lsta)
+			lsta->wpa_sm = NULL;
+	}
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
 void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int set_beacon = 0;
@@ -317,9 +339,17 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 #ifdef CONFIG_IEEE80211BE
 	if (!ap_sta_is_mld(hapd, sta) ||
-	    hapd->mld_link_id == sta->mld_assoc_link_id)
+	    hapd->mld_link_id == sta->mld_assoc_link_id) {
 		wpa_auth_sta_deinit(sta->wpa_sm);
-#else
+		/* Remove references from partner links. */
+		clear_wpa_sm_for_each_partner_link(hapd, sta);
+	}
+
+	/* Release group references in case non-association link STA is removed
+	 * before association link STA */
+	if (hostapd_sta_is_link_sta(hapd, sta))
+		wpa_release_link_auth_ref(sta->wpa_sm, hapd->mld_link_id);
+#else /* CONFIG_IEEE80211BE */
 	wpa_auth_sta_deinit(sta->wpa_sm);
 #endif /* CONFIG_IEEE80211BE */
 
@@ -903,9 +933,11 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
 	ieee802_1x_free_station(hapd, sta);
 #ifdef CONFIG_IEEE80211BE
 	if (!hapd->conf->mld_ap ||
-	    hapd->mld_link_id == sta->mld_assoc_link_id)
+	    hapd->mld_link_id == sta->mld_assoc_link_id) {
 		wpa_auth_sta_deinit(sta->wpa_sm);
-#else
+		clear_wpa_sm_for_each_partner_link(hapd, sta);
+	}
+#else /* CONFIG_IEEE80211BE */
 	wpa_auth_sta_deinit(sta->wpa_sm);
 #endif /* CONFIG_IEEE80211BE */
 
@@ -1762,10 +1794,8 @@ static void ap_sta_remove_link_sta(struct hostapd_data *hapd,
 				   struct sta_info *sta)
 {
 	struct hostapd_data *tmp_hapd;
-	unsigned int i, j;
 
-	for_each_mld_link(tmp_hapd, i, j, hapd->iface->interfaces,
-			  hostapd_get_mld_id(hapd)) {
+	for_each_mld_link(tmp_hapd, hapd) {
 		struct sta_info *tmp_sta;
 
 		if (hapd == tmp_hapd)
