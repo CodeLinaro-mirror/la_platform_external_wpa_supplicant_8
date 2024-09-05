@@ -206,7 +206,7 @@ public:
 		struct wpa_supplicant *wpa_s, uint32_t id);
 
 	int getSupplicantInstance(std::shared_ptr<Supplicant> *supplicant_object);
-	int getStaIfaceNameByInstanceId(int32_t id, std::string *name);
+	int getStaIfaceNameByInstanceId(uint16_t id, std::string *name);
 
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
@@ -304,7 +304,7 @@ private:
 	// |ifname|.
 	std::map<const std::string, std::shared_ptr<StaIface>>
 		sta_iface_object_map_;
-	std::map<const int32_t, std::string>
+	std::map<const uint16_t, std::string>
 		sta_iface_someip_map_;
 	// Map of all the P2P network specific aidl objects controlled by
 	// wpa_supplicant. This map is keyed in by the corresponding
@@ -351,7 +351,7 @@ private:
 		std::vector<std::shared_ptr<SupplicantVendorStaIfaceCallback>>>
 		vendor_sta_iface_callbacks_map_;
 #endif
-	int32_t total_iface_ids_;
+	uint16_t total_iface_ids_;
 };
 
 // The aidl interface uses some values which are the same as internal ones to

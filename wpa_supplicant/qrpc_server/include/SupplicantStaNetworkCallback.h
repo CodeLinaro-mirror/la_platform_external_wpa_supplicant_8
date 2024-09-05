@@ -14,14 +14,14 @@ namespace wifi {
 namespace supplicant {
 class SupplicantStaNetworkCallback : public ISupplicantStaNetworkCallback {
 public:
-	SupplicantStaNetworkCallback(int32_t iface_instance_id, int32_t network_instance_id)
+	SupplicantStaNetworkCallback(uint16_t iface_instance_id, uint16_t network_instance_id)
 	: iface_instance_id_(iface_instance_id),
 	  network_instance_id_(network_instance_id)
 	{}
 	~SupplicantStaNetworkCallback() {}
 
-	int32_t getIfaceInstanceId();
-	int32_t getNetworkInstanceId();
+	uint16_t getIfaceInstanceId();
+	uint16_t getNetworkInstanceId();
 
 	::ndk::ScopedAStatus onNetworkEapIdentityRequest() override;
 	::ndk::ScopedAStatus onNetworkEapSimGsmAuthRequest(const ::aidl::android::hardware::wifi::supplicant::NetworkRequestEapSimGsmAuthParams& in_params) override;
@@ -31,8 +31,8 @@ public:
 	::ndk::ScopedAStatus onPermanentIdReqDenied() override;
 
 private:
-	const int32_t iface_instance_id_;
-	const int32_t network_instance_id_;
+	const uint16_t iface_instance_id_;
+	const uint16_t network_instance_id_;
 };
 }  // namespace supplicant
 }  // namespace wifi

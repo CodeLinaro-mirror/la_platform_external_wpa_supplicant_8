@@ -312,7 +312,7 @@ namespace supplicant {
 using aidl_return_util::validateAndCall;
 using misc_utils::createStatus;
 
-StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[], int32_t id)
+StaIface::StaIface(struct wpa_global *wpa_global, const char ifname[], uint16_t id)
 	: wpa_global_(wpa_global), ifname_(ifname), is_valid_(true), ifId_(id)
 {}
 
@@ -323,7 +323,7 @@ bool StaIface::isValid()
 	return (is_valid_ && (retrieveIfacePtr() != nullptr));
 }
 
-int32_t StaIface::getIfaceInstanceId()
+uint16_t StaIface::getIfaceInstanceId()
 {
 	return ifId_;
 }

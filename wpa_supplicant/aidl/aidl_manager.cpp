@@ -627,7 +627,7 @@ int AidlManager::registerNetwork(
 			std::vector<std::shared_ptr<SupplicantStaNetworkCallback>>();
 
 		std::shared_ptr<StaIface> StaIface_instance = sta_iface_object_map_.find(wpa_s->ifname)->second;
-		int32_t ifId = StaIface_instance->getIfaceInstanceId();
+		uint16_t ifId = StaIface_instance->getIfaceInstanceId();
 		std::shared_ptr<SupplicantStaNetworkCallback> StaNetworkCb =
 					std::make_shared<SupplicantStaNetworkCallback>(ifId, ssid->id);
 		std::shared_ptr<StaNetwork> StaNetwork_instance = sta_network_object_map_.find(network_key)->second;
@@ -2316,7 +2316,7 @@ int AidlManager::getSupplicantVendorInstance(std::shared_ptr<SupplicantVendor> *
 /**
  * Get Sta Iface Name
  */
-int AidlManager::getStaIfaceNameByInstanceId(int32_t id, std::string *name)
+int AidlManager::getStaIfaceNameByInstanceId(uint16_t id, std::string *name)
 {
 	auto iface_object_iter = sta_iface_someip_map_.find(id);
 	if (iface_object_iter == sta_iface_someip_map_.end())

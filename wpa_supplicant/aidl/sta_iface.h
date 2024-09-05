@@ -56,7 +56,7 @@ namespace supplicant {
 class StaIface : public BnSupplicantStaIface
 {
 public:
-	StaIface(struct wpa_global* wpa_global, const char ifname[], int32_t id);
+	StaIface(struct wpa_global* wpa_global, const char ifname[], uint16_t id);
 	~StaIface() = default;
 	// AIDL does not provide a built-in mechanism to let the server
 	// invalidate a AIDL interface object after creation. If any client
@@ -73,7 +73,7 @@ public:
 	void invalidate();
 	bool isValid();
 
-	int32_t getIfaceInstanceId();
+	uint16_t getIfaceInstanceId();
 
 	// Aidl methods exposed.
 	::ndk::ScopedAStatus getName(std::string* _aidl_return) override;
@@ -300,7 +300,7 @@ private:
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
 	// Unique id for someip instance
-	const int32_t ifId_;
+	const uint16_t ifId_;
 	bool is_valid_;
 
 	DISALLOW_COPY_AND_ASSIGN(StaIface);

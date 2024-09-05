@@ -8,15 +8,19 @@
 
 #include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_message_def.h>
+#ifdef CONFIG_USE_VENDOR_AIDL
 #include <rpc/message/wpa_supplicant_vendor/supplicant_vendor_message_def.h>
+#endif
 
 #include "supplicant_message_handler.h"
 
 #include "SupplicantReq.h"
 #include "SupplicantStaIfaceReq.h"
 #include "SupplicantStaNetworkReq.h"
+#ifdef CONFIG_USE_VENDOR_AIDL
 #include "SupplicantVendorReq.h"
 #include "SupplicantVendorStaIfaceReq.h"
+#endif
 
 typedef std::function< bool (uint8_t* data, size_t length, std::vector<uint8_t>& outData) > MessageHandler;
 static std::map<uint16_t, MessageHandler> msgHandlerMap = {
@@ -35,7 +39,10 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {SUPPLICANT_SET_DEBUG_PARAMS_REQ, &SupplicantMsgHandlerSetDebugParams},
     {SUPPLICANT_TERMINATE_REQ, &SupplicantMsgHandlerTerminate},
 //    {SUPPLICANT_REGISTER_NON_STANDARD_CERT_CALLBACK_REQ},
-
+#ifdef CONFIG_USE_VENDOR_AIDL
+    /* ISupplicantVendor */
+    {SUPPLICANT_VENDOR_LIST_VENDOR_INTERFACES_REQ, &SupplicantVendorMsgHandlerListVendorInterfaces},
+#endif
     /* ISupplicantStaIface */
     {SUPPLICANT_STA_IFACE_ADD_DPP_PEER_URI_REQ, &StaIfaceMsgHandlerAddDppPeerUri},
     {SUPPLICANT_STA_IFACE_ADD_EXT_RADIO_WORK_REQ, &StaIfaceMsgHandlerAddExtRadioWork},
@@ -101,7 +108,10 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {SUPPLICANT_STA_IFACE_GET_SIGNAL_POLL_RESULTS_REQ, &StaIfaceMsgHandlerGetSignalPollResults},
     {SUPPLICANT_STA_IFACE_ADD_QOS_POLICY_REQUEST_FOR_SCS_REQ, &StaIfaceMsgHandlerAddQosPolicyRequestForScs},
     {SUPPLICANT_STA_IFACE_REMOVE_QOS_POLICY_FOR_SCS_REQ, &StaIfaceMsgHandlerRemoveQosPolicyForScs},
-
+#ifdef CONFIG_USE_VENDOR_AIDL
+    /* ISupplicantVendorStaIface */
+    {SUPPLICANT_VENDOR_STA_IFACE_DO_DRIVER_CMD_REQ, &VendorStaIfaceMsgHandlerDoDriverCmd},
+#endif
     /* ISupplicantStaNetwork */
     {SUPPLICANT_STA_NETWORK_DISABLE_REQ, &StaNetworkMsgHandlerDisable},
     {SUPPLICANT_STA_NETWORK_ENABLE_REQ, &StaNetworkMsgHandlerEnable},
@@ -197,14 +207,7 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {SUPPLICANT_STA_NETWORK_SET_WEP_TX_KEY_IDX_REQ, &StaNetworkMsgHandlerSetWepTxKeyIdx},
     {SUPPLICANT_STA_NETWORK_SET_ROAMING_CONSORTIUM_SELECTION_REQ, &StaNetworkMsgHandlerSetRoamingConsortiumSelection},
     {SUPPLICANT_STA_NETWORK_SET_MINIMUM_TLS_VERSION_EAP_PHASE1_PARAM_REQ, &StaNetworkMsgHandlerSetMinimumTlsVersionEapPhase1Param},
-    {SUPPLICANT_STA_NETWORK_SET_STRICT_CONSERVATIVE_PEER_MODE_REQ, &StaNetworkMsgHandlerSetStrictConservativePeerMode},
-
-    /* ISupplicantVendor */
-    {SUPPLICANT_VENDOR_LIST_VENDOR_INTERFACES_REQ, &SupplicantVendorMsgHandlerListVendorInterfaces},
-
-    /* ISupplicantVendorStaIface */
-    {SUPPLICANT_VENDOR_STA_IFACE_DO_DRIVER_CMD_REQ, &VendorStaIfaceMsgHandlerDoDriverCmd}
-
+    {SUPPLICANT_STA_NETWORK_SET_STRICT_CONSERVATIVE_PEER_MODE_REQ, &StaNetworkMsgHandlerSetStrictConservativePeerMode}
 };
 
 static inline MessageHandler SupplicantGetMessageHandler(uint16_t methodId)

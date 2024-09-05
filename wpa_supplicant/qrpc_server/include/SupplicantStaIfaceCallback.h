@@ -14,10 +14,10 @@ namespace wifi {
 namespace supplicant {
 class SupplicantStaIfaceCallback : public ISupplicantStaIfaceCallback {
 public:
-	SupplicantStaIfaceCallback(int32_t iface_instance_id) : iface_instance_id_(iface_instance_id) {}
+	SupplicantStaIfaceCallback(uint16_t iface_instance_id) : iface_instance_id_(iface_instance_id) {}
 	~SupplicantStaIfaceCallback() {}
 
-	int32_t getIfaceInstanceId();
+	uint16_t getIfaceInstanceId();
 
 	::ndk::ScopedAStatus onAnqpQueryDone(const std::vector<uint8_t>& in_bssid, const ::aidl::android::hardware::wifi::supplicant::AnqpData& in_data, const ::aidl::android::hardware::wifi::supplicant::Hs20AnqpData& in_hs20Data) override;
 	::ndk::ScopedAStatus onAssociationRejected(const ::aidl::android::hardware::wifi::supplicant::AssociationRejectionData& in_assocRejectData) override;
@@ -57,7 +57,7 @@ public:
 	::ndk::ScopedAStatus onPmkSaCacheAdded(const ::aidl::android::hardware::wifi::supplicant::PmkSaCacheData& in_pmkSaData) override;
 
 private:
-	const int32_t iface_instance_id_;
+	const uint16_t iface_instance_id_;
 };
 }  // namespace supplicant
 }  // namespace wifi

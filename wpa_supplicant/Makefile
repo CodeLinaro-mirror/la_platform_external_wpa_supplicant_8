@@ -1960,6 +1960,7 @@ OBJS += qrpc_server/src/aidl_sock.o
 OBJS += qrpc_server/src/supplicant_someip_server.o
 OBJS += qrpc_server/src/supplicant_event_callback.o
 OBJS += qrpc_server/src/supplicant_message_handler.o
+OBJS += qrpc_server/src/supplicant_someip_common.o
 OBJS += qrpc_server/src/SupplicantReq.o
 OBJS += qrpc_server/src/SupplicantCallback.o
 ifdef CONFIG_USE_NONSTD_CALLBACK

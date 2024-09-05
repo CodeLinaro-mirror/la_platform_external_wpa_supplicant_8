@@ -8,6 +8,7 @@
 
 #include "SupplicantReq.h"
 
+#include "supplicant_someip_common.h"
 #include "aidl_manager.h"
 #include "supplicant.h"
 #include "sta_iface.h"
@@ -33,7 +34,7 @@ static inline bool SupplicantSerializeStatus(const ndk::ScopedAStatus& status, s
 bool SupplicantMsgHandlerAddStaInterface(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     std::string ifName;
-    if (!SupplicantParseAddStaInterfaceReq(data, length, ifName)) {
+    if (!SupplicantParseAddStaInterfaceReq(data + SUPPLICANT_PAYLOAD_MIN_SIZE, length - SUPPLICANT_PAYLOAD_MIN_SIZE, ifName)) {
         ALOGE("[Fail] Parsing Supplicant Req <AddStaInterface>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
@@ -53,7 +54,7 @@ bool SupplicantMsgHandlerAddStaInterface(uint8_t* data, size_t length, std::vect
     ndk::ScopedAStatus status = supplicant_instance->addStaInterface(ifName, &staIface);
     SUPPLICANT_PRINT_CFM_STATUS(__func__, status);
 
-    int32_t instanceId;
+    uint16_t instanceId;
     if (status.isOk() && staIface != nullptr)
         instanceId = std::dynamic_pointer_cast<StaIface>(staIface)->getIfaceInstanceId();
     ALOGI("Sending <AddStaInterface> resp: (%d)", instanceId);
@@ -158,7 +159,7 @@ bool SupplicantMsgHandlerListInterfaces(uint8_t* data, size_t length, std::vecto
 bool SupplicantMsgHandlerRemoveInterface(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     IfaceInfo ifaceInfo;
-    if (!SupplicantParseRemoveInterfaceReq(data, length, ifaceInfo)) {
+    if (!SupplicantParseRemoveInterfaceReq(data + SUPPLICANT_PAYLOAD_MIN_SIZE, length - SUPPLICANT_PAYLOAD_MIN_SIZE, ifaceInfo)) {
         ALOGE("[Fail] Parsing Supplicant Req <RemoveInterface>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
@@ -183,7 +184,7 @@ bool SupplicantMsgHandlerRemoveInterface(uint8_t* data, size_t length, std::vect
 bool SupplicantMsgHandlerSetConcurrencyPriority(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     IfaceType ifaceType;
-    if (!SupplicantParseSetConcurrencyPriorityReq(data, length, ifaceType)) {
+    if (!SupplicantParseSetConcurrencyPriorityReq(data + SUPPLICANT_PAYLOAD_MIN_SIZE, length - SUPPLICANT_PAYLOAD_MIN_SIZE, ifaceType)) {
         ALOGE("[Fail] Parsing Supplicant Req <SetConcurrencyPriority>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);
@@ -207,7 +208,7 @@ bool SupplicantMsgHandlerSetConcurrencyPriority(uint8_t* data, size_t length, st
 bool SupplicantMsgHandlerSetDebugParams(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
 {
     SetDebugParamsReqParam buff;
-    if (!SupplicantParseSetDebugParamsReq(data, length, buff)) {
+    if (!SupplicantParseSetDebugParamsReq(data + SUPPLICANT_PAYLOAD_MIN_SIZE, length - SUPPLICANT_PAYLOAD_MIN_SIZE, buff)) {
         ALOGE("[Fail] Parsing Supplicant Req <SetDebugParams>");
         ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_ARGS_INVALID);
         return SupplicantSerializeStatus(status, outData);

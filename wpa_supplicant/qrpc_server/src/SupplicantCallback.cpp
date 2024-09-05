@@ -23,6 +23,8 @@ namespace supplicant {
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
 
+    SupplicantAddInstanceId(data);
+
     return SupplicantSendEvent(SUPPLICANT_ON_INTERFACE_CREATED_IND, data);
 }
 
@@ -35,6 +37,8 @@ namespace supplicant {
         ALOGE("[Fail] Serializing Supplicant Event <onInterfaceRemoved>");
         return ndk::ScopedAStatus::fail(SupplicantStatusCode::FAILURE_ARGS_INVALID);
     }
+
+    SupplicantAddInstanceId(data);
 
     return SupplicantSendEvent(SUPPLICANT_ON_INTERFACE_REMOVED_IND, data);
 }
