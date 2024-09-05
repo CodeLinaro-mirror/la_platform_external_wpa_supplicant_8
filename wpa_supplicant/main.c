@@ -28,6 +28,8 @@
 #include "supplicant_someip_server.h"
 #endif
 
+#define APP_NAME "wpa_supplicant"
+
 static void usage(void)
 {
 	int i;
@@ -201,6 +203,11 @@ int main(int argc, char *argv[])
 
 	if (os_program_init())
 		return -1;
+	
+#ifdef CONFIG_SOMEIP_SUPPORT
+			property_init();
+			InitLogExt(APP_NAME, 10);
+#endif
 
 	os_memset(&params, 0, sizeof(params));
 	params.wpa_debug_level = MSG_INFO;
@@ -447,6 +454,11 @@ out:
 
 	crypto_unload();
 	os_program_deinit();
+	
+#ifdef CONFIG_SOMEIP_SUPPORT
+	DeinitLog();
+	property_exit();
+#endif
 
 	return exitcode;
 }

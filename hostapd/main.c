@@ -44,6 +44,7 @@
 #include "hostapd_someip_server.h"
 #endif /* CONFIG_SOMEIP_SUPPORT */
 
+#define APP_NAME "hostapd"
 
 struct hapd_global {
 	void **drv_priv;
@@ -786,6 +787,11 @@ int main(int argc, char *argv[])
 	if (os_program_init())
 		return -1;
 
+#ifdef CONFIG_SOMEIP_SUPPORT
+		property_init();
+		InitLogExt(APP_NAME, 10);
+#endif
+
 	os_memset(&interfaces, 0, sizeof(interfaces));
 	interfaces.reload_config = hostapd_reload_config;
 	interfaces.config_read_cb = hostapd_config_read;
@@ -1088,6 +1094,11 @@ int main(int argc, char *argv[])
 
 	crypto_unload();
 	os_program_deinit();
+
+#ifdef CONFIG_SOMEIP_SUPPORT
+	DeinitLog();
+	property_exit();
+#endif
 
 	return ret;
 }
