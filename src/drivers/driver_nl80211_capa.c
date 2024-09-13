@@ -1072,6 +1072,10 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 		capa->max_csa_counters =
 			nla_get_u8(tb[NL80211_ATTR_MAX_CSA_COUNTERS]);
 
+	if (tb[NL80211_ATTR_MAX_NUM_AKMS_CONNECT])
+		capa->max_num_akms_connect =
+			nla_get_u8(tb[NL80211_ATTR_MAX_NUM_AKMS_CONNECT]);
+
 	if (tb[NL80211_ATTR_WIPHY_SELF_MANAGED_REG])
 		capa->flags |= WPA_DRIVER_FLAGS_SELF_MANAGED_REGULATORY;
 
