@@ -6,6 +6,7 @@
 #include <rpc/util/common_util.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/wpa_supplicant/supplicant_sta_network_msg.h>
+#include <rpc/util/properties.h>
 
 #include <iostream>
 #include <sstream>
@@ -22,6 +23,12 @@ using namespace aidl::android::hardware::wifi::supplicant;
     do { \
         ALOGI("Supplicant Someip Service: <%s>, return status: (%s)", __func__, toString((status).code).c_str()); \
     } while (0)
+
+#define PROPERTY_CA_CERT               "persist.vendor.wifi.ca_cert"
+#define PROPERTY_CA_PATH               "persist.vendor.wifi.ca_path"
+#define PROPERTY_CLIENT_CERT           "persist.vendor.wifi.client_cert"
+#define PROPERTY_PRIVATE_KEY           "persist.vendor.wifi.private_key"
+#define PROPERTY_PRIVATE_KEY_PW        "persist.vendor.wifi.private_key_passwd"
 
 static inline void v2s(const vector<uint8_t>& v, string& s)
 {
@@ -2188,10 +2195,18 @@ bool StaNetworkMsgHandlerSetEapCACert(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    std::string local_path = "/data/vendor/wifi/wpa/cacert.pem";
-
     ALOGI("Processing StaNetwork Req <SetEapCACert>: (%s) for network -> %d of iface --> %s", path.c_str(), networkId, ifName.c_str());
-    ALOGI("Overwrite CACert with local path: (%s)", local_path.c_str());
+
+    char str[PROPERTY_VALUE_MAX];
+    if (!property_get(PROPERTY_CA_CERT, str, nullptr)){
+        ALOGE("[Fail] Property <%s> is not set", PROPERTY_CA_CERT);
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+        return StaNetworkSerializeStatus(status, outData);
+
+    }
+
+    std::string local_property(str);
+    ALOGI("Overwrite ca_cert with local property: (%s)", local_property.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
@@ -2200,7 +2215,7 @@ bool StaNetworkMsgHandlerSetEapCACert(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    ndk::ScopedAStatus status = stanetwork_instance->setEapCACert(local_path);
+    ndk::ScopedAStatus status = stanetwork_instance->setEapCACert(local_property);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
@@ -2231,10 +2246,18 @@ bool StaNetworkMsgHandlerSetEapCAPath(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    std::string local_path = "/data/vendor/wifi/wpa";
-
     ALOGI("Processing StaNetwork Req <SetEapCAPath>: (%s) for network -> %d of iface --> %s", path.c_str(), networkId, ifName.c_str());
-    ALOGI("Overwrite CAPath with local path: (%s)", local_path.c_str());
+
+    char str[PROPERTY_VALUE_MAX];
+    if (!property_get(PROPERTY_CA_PATH, str, nullptr)){
+        ALOGE("[Fail] Property <%s> is not set", PROPERTY_CA_PATH);
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+        return StaNetworkSerializeStatus(status, outData);
+
+    }
+
+    std::string local_property(str);
+    ALOGI("Overwrite ca_path with local property: (%s)", local_property.c_str());
 
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
@@ -2243,7 +2266,7 @@ bool StaNetworkMsgHandlerSetEapCAPath(uint8_t* data, size_t length, std::vector<
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    ndk::ScopedAStatus status = stanetwork_instance->setEapCAPath(local_path);
+    ndk::ScopedAStatus status = stanetwork_instance->setEapCAPath(local_property);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
@@ -2276,6 +2299,17 @@ bool StaNetworkMsgHandlerSetEapClientCert(uint8_t* data, size_t length, std::vec
 
     ALOGI("Processing StaNetwork Req <SetEapClientCert>: (%s) for network -> %d of iface --> %s", path.c_str(), networkId, ifName.c_str());
 
+    char str[PROPERTY_VALUE_MAX];
+    if (!property_get(PROPERTY_CLIENT_CERT, str, nullptr)){
+        ALOGE("[Fail] Property <%s> is not set", PROPERTY_CLIENT_CERT);
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+        return StaNetworkSerializeStatus(status, outData);
+
+    }
+
+    std::string local_property(str);
+    ALOGI("Overwrite client_certificate with local property: (%s)", local_property.c_str());
+
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
         ALOGE("[Fail] Network not found");
@@ -2283,7 +2317,7 @@ bool StaNetworkMsgHandlerSetEapClientCert(uint8_t* data, size_t length, std::vec
         return StaNetworkSerializeStatus(status, outData);
     }
 
-    ndk::ScopedAStatus status = stanetwork_instance->setEapClientCert(path);
+    ndk::ScopedAStatus status = stanetwork_instance->setEapClientCert(local_property);
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
@@ -2397,7 +2431,7 @@ bool StaNetworkMsgHandlerSetEapEngine(uint8_t* data, size_t length, std::vector<
     }
 
     ALOGI("Processing StaNetwork Req <SetEapEngine>: (%d) for network -> %d of iface --> %s", enable, networkId, ifName.c_str());
-
+#if 0
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
         ALOGE("[Fail] Network not found");
@@ -2409,6 +2443,11 @@ bool StaNetworkMsgHandlerSetEapEngine(uint8_t* data, size_t length, std::vector<
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
+#else
+    ALOGI("Ignored...");
+    ndk::ScopedAStatus status(SupplicantStatusCode::SUCCESS);
+    return StaNetworkSerializeStatus(status, outData);
+#endif
 }
 
 bool StaNetworkMsgHandlerSetEapEngineID(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
@@ -2437,7 +2476,7 @@ bool StaNetworkMsgHandlerSetEapEngineID(uint8_t* data, size_t length, std::vecto
     }
 
     ALOGI("Processing StaNetwork Req <SetEapEngineID>: (%s) for network -> %d of iface --> %s", id.c_str(), networkId, ifName.c_str());
-
+#if 0
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
         ALOGE("[Fail] Network not found");
@@ -2449,6 +2488,11 @@ bool StaNetworkMsgHandlerSetEapEngineID(uint8_t* data, size_t length, std::vecto
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
+#else
+    ALOGI("Ignored...");
+    ndk::ScopedAStatus status(SupplicantStatusCode::SUCCESS);
+    return StaNetworkSerializeStatus(status, outData);
+#endif
 }
 
 bool StaNetworkMsgHandlerSetEapErp(uint8_t* data, size_t length, std::vector<uint8_t>& outData)
@@ -2681,7 +2725,7 @@ bool StaNetworkMsgHandlerSetEapPrivateKeyId(uint8_t* data, size_t length, std::v
     }
 
     ALOGI("Processing StaNetwork Req <SetEapPrivateKeyId>: (%s) for network -> %d of iface --> %s", id.c_str(), networkId, ifName.c_str());
-
+#if 0
     std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
     if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
         ALOGE("[Fail] Network not found");
@@ -2693,6 +2737,45 @@ bool StaNetworkMsgHandlerSetEapPrivateKeyId(uint8_t* data, size_t length, std::v
     SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
 
     return StaNetworkSerializeStatus(status, outData);
+#else
+    ALOGI("Bypassing engine with local logic");
+
+    std::shared_ptr<ISupplicantStaNetwork> stanetwork_instance;
+    if(aidl_manager->getStaNetworkAidlObjectByIfnameAndNetworkId(ifName, networkId, &stanetwork_instance)) {
+        ALOGE("[Fail] Network not found");
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_NETWORK_INVALID);
+        return StaNetworkSerializeStatus(status, outData);
+    }
+
+    char privite_key[PROPERTY_VALUE_MAX];
+    if (!property_get(PROPERTY_PRIVATE_KEY, privite_key, nullptr)){
+        ALOGE("[Fail] Property <%s> is not set", PROPERTY_PRIVATE_KEY);
+        ndk::ScopedAStatus status(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+        return StaNetworkSerializeStatus(status, outData);
+
+    }
+
+    std::string privateKey(privite_key);
+    ALOGI("Setting private_key to : (%s)", privateKey.c_str());
+
+    ndk::ScopedAStatus status = std::dynamic_pointer_cast<StaNetwork>(stanetwork_instance)->setEapPrivateKey(privateKey);
+    SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
+    if(!status.isOk()){
+         return StaNetworkSerializeStatus(status, outData);
+    }
+
+    char privite_key_pw[PROPERTY_VALUE_MAX];
+    if (!property_get(PROPERTY_PRIVATE_KEY_PW, privite_key_pw, nullptr)){
+        ALOGI("No privite_key_pw found, assuming no password");
+    } else {
+        std::string privateKeyPw(privite_key_pw);
+        ALOGI("Setting privite_key_pw to : (%s)", privateKeyPw.c_str());
+        status = std::dynamic_pointer_cast<StaNetwork>(stanetwork_instance)->setEapPrivateKeyPassword(privateKeyPw);
+        SUPPLICANT_STANETWORK_PRINT_CFM_STATUS(__func__, status);
+    }
+
+    return StaNetworkSerializeStatus(status, outData);
+#endif
 }
 
 bool StaNetworkMsgHandlerSetEapSubjectMatch(uint8_t* data, size_t length, std::vector<uint8_t>& outData)

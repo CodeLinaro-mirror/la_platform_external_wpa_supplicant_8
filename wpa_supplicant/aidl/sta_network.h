@@ -185,6 +185,8 @@ public:
 		const std::vector<uint8_t>& in_selectedRcoi) override;
 	::ndk::ScopedAStatus setMinimumTlsVersionEapPhase1Param(
 		TlsVersion in_tlsVersion) override;
+	::ndk::ScopedAStatus setEapPrivateKey(const std::string& in_key);
+	::ndk::ScopedAStatus setEapPrivateKeyPassword(const std::string& in_keyPw);
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -317,6 +319,8 @@ private:
 	ndk::ScopedAStatus setRoamingConsortiumSelectionInternal(
 		const std::vector<uint8_t>& selectedRcoi);
 	ndk::ScopedAStatus setMinimumTlsVersionEapPhase1ParamInternal(TlsVersion tlsVersion);
+	ndk::ScopedAStatus setEapPrivateKeyInternal(const std::string& key);
+	ndk::ScopedAStatus setEapPrivateKeyPasswordInternal(const std::string& keyPw);
 
 	struct wpa_ssid* retrieveNetworkPtr();
 	struct wpa_supplicant* retrieveIfacePtr();
