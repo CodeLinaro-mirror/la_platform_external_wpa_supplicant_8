@@ -1180,7 +1180,7 @@ LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_VINTF_FRAGMENTS := android.hardware.wifi.hostapd.xml
+LOCAL_REQUIRED_MODULES += android.hardware.wifi.hostapd.xml
 ifdef CONFIG_DRIVER_CUSTOM
 LOCAL_STATIC_LIBRARIES := libCustomWifi
 endif
