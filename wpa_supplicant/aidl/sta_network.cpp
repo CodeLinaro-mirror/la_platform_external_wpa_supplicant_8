@@ -897,6 +897,22 @@ ndk::ScopedAStatus StaNetwork::getBssid(
 		&StaNetwork::setMinimumTlsVersionEapPhase1ParamInternal, in_tlsVersion);
 }
 
+::ndk::ScopedAStatus StaNetwork::setEapPrivateKey(
+	const std::string& in_key)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+		&StaNetwork::setEapPrivateKeyInternal, in_key);
+}
+
+::ndk::ScopedAStatus StaNetwork::setEapPrivateKeyPassword(
+	const std::string& in_keyPw)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_NETWORK_INVALID,
+		&StaNetwork::setEapPrivateKeyPasswordInternal, in_keyPw);
+}
+
 std::pair<uint32_t, ndk::ScopedAStatus> StaNetwork::getIdInternal()
 {
 	return {network_id_, ndk::ScopedAStatus::ok()};
@@ -2326,6 +2342,26 @@ ndk::ScopedAStatus StaNetwork::setRoamingConsortiumSelectionInternal(
 	}
 
 	resetInternalStateAfterParamsUpdate();
+	return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus StaNetwork::setEapPrivateKeyInternal(const std::string& key)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (setStringFieldAndResetState(
+		key.c_str(), &(wpa_ssid->eap.cert.private_key), "eap private_key")) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+	return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus StaNetwork::setEapPrivateKeyPasswordInternal(const std::string& keyPw)
+{
+	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	if (setStringFieldAndResetState(
+		keyPw.c_str(), &(wpa_ssid->eap.cert.private_key_passwd), "eap private_key_passwd")) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	return ndk::ScopedAStatus::ok();
 }
 
