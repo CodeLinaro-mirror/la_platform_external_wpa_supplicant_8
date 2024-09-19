@@ -24,11 +24,14 @@
 #include "driver_i.h"
 #include "p2p_supplicant.h"
 
-#ifdef CONFIG_SOMEIP_SUPPORT
+#if defined(CONFIG_SOMEIP_SUPPORT) || defined(WPA_QRPC_LOG)
 #include "supplicant_someip_server.h"
-#endif
+#include <rpc/util/properties.h>
+#include <rpc/util/log_common.h>
 
-#define APP_NAME "wpa_supplicant"
+#define APP_NAME  "wpa_supplicant"
+#define LOG_TAG   "QRPC"
+#endif
 
 static void usage(void)
 {
@@ -203,10 +206,11 @@ int main(int argc, char *argv[])
 
 	if (os_program_init())
 		return -1;
-	
-#ifdef CONFIG_SOMEIP_SUPPORT
-			property_init();
-			InitLogExt(APP_NAME, 10);
+
+#if defined(CONFIG_SOMEIP_SUPPORT) || defined(WPA_QRPC_LOG)
+	property_init();
+	InitLogExt(APP_NAME, 10);
+	setLogTag(LOG_TAG);
 #endif
 
 	os_memset(&params, 0, sizeof(params));
@@ -454,8 +458,8 @@ out:
 
 	crypto_unload();
 	os_program_deinit();
-	
-#ifdef CONFIG_SOMEIP_SUPPORT
+
+#if defined(CONFIG_SOMEIP_SUPPORT) || defined(WPA_QRPC_LOG)
 	DeinitLog();
 	property_exit();
 #endif
