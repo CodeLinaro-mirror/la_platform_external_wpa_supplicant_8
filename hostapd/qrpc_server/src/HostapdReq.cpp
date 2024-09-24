@@ -47,7 +47,8 @@ bool HostapdMsgHandlerAddAccessPoint(uint8_t* data, size_t length, std::vector<u
     }
     ndk::ScopedAStatus status = hostapd_object_->addAccessPoint(buffer.ifaceParams,buffer.nwParams);
     HOSTAPD_PRINT_CFM_STATUS(__func__, status);
-	ALOGI("Sending <AddAccessPoint> resp:");
+    ALOGI("Sending <AddAccessPoint> resp:");
+    HostapdSerializeStatus(status, outData);
     return HostapdSerializeAddAccessPointCfm(outData);
 }
 
@@ -68,6 +69,7 @@ bool HostapdMsgHandlerForceClientDisconnect(uint8_t* data, size_t length, std::v
     ndk::ScopedAStatus status = hostapd_object_->forceClientDisconnect(buffer.ifaceName,buffer.clientAddress,buffer.reasonCode);
     HOSTAPD_PRINT_CFM_STATUS(__func__, status);
     ALOGI("Sending <ForceClientDisconnect> resp:");
+    HostapdSerializeStatus(status, outData);
     return HostapdSerializeForceClientDisconnectCfm(outData);
 }
 
@@ -88,6 +90,7 @@ bool HostapdMsgHandlerRemoveAccessPoint(uint8_t* data, size_t length, std::vecto
     ndk::ScopedAStatus status = hostapd_object_->removeAccessPoint(buffer);
     HOSTAPD_PRINT_CFM_STATUS(__func__, status);
     ALOGI("Sending <RemoveAccessPoint> resp");
+    HostapdSerializeStatus(status, outData);
     return HostapdSerializeRemoveAccessPointCfm(outData);
 }
 
@@ -108,6 +111,7 @@ bool HostapdMsgHandlerSetDebugParams(uint8_t* data, size_t length, std::vector<u
     ndk::ScopedAStatus status = hostapd_object_->setDebugParams(buff);
     HOSTAPD_PRINT_CFM_STATUS(__func__, status);
     ALOGI("Sending <SetDebugParams> resp");
+    HostapdSerializeStatus(status, outData);
     return HostapdSerializeSetDebugParamsCfm(outData);
 }
 
@@ -123,5 +127,6 @@ bool HostapdMsgHandlerTerminate(uint8_t* data, size_t length, std::vector<uint8_
     ndk::ScopedAStatus status = hostapd_object_->terminate();
     HOSTAPD_PRINT_CFM_STATUS(__func__, status);
     ALOGI("Sending <Terminate> resp");
+    HostapdSerializeStatus(status, outData);
     return HostapdSerializeTerminateCfm(outData);
 }
