@@ -6425,6 +6425,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			WPA_EVENT_THERMAL_CHANGE "level=%d", data->thermal_info.level);
 		wpa_msg(wpa_s, MSG_INFO, "%s", event_msg);
 		wpas_notify_vendor_ctrl_event(wpa_s, event_msg);
+		break;
 	case EVENT_TID_LINK_MAP:
 		if (data)
 			wpas_tid_link_map(wpa_s, &data->t2l_map_info);
