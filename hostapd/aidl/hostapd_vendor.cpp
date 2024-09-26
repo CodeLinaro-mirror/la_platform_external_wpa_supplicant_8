@@ -152,6 +152,8 @@ bool HostapdVendor::isValid()
 					if (!AIBinder_isAlive(binder)) {
 						wpa_printf(MSG_ERROR, "%s: Unable to process the request due to binder died", __func__);
 						callback = callbacks_.erase(callback);
+					} else {
+						++callback;
 					}
 				} else {
 					++callback;

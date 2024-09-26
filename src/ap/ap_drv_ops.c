@@ -265,6 +265,19 @@ int hostapd_set_ap_wps_ie(struct hostapd_data *hapd)
 }
 
 
+bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
+			     struct sta_info *sta)
+{
+#ifdef CONFIG_IEEE80211BE
+	if (ap_sta_is_mld(hapd, sta) &&
+	    sta->mld_assoc_link_id != hapd->mld_link_id)
+		return true;
+#endif /* CONFIG_IEEE80211BE */
+
+	return false;
+}
+
+
 int hostapd_set_authorized(struct hostapd_data *hapd,
 			   struct sta_info *sta, int authorized)
 {
