@@ -2194,6 +2194,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 {
 	struct hostapd_data *hapd = ctx;
 	struct sta_info *sta;
+	char event_msg[1024] = {0};
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 
@@ -2497,6 +2498,15 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		hostapd_cleanup_cca_params(hapd);
 		break;
 #endif /* CONFIG_IEEE80211AX */
+	case EVENT_THERMAL_CHANGED:
+		os_snprintf(event_msg, sizeof(event_msg),
+			WPA_EVENT_THERMAL_CHANGE "level=%d", data->thermal_info.level);
+		wpa_msg(hapd->msg_ctx, MSG_INFO, "%s", event_msg);
+		if (hapd->ctrl_event_aidl_cb) {
+			hapd->ctrl_event_aidl_cb(
+				hapd->ctrl_event_aidl_cb_ctx, event_msg);
+		}
+		break;
 	default:
 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
 		break;
