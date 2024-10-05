@@ -255,13 +255,13 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 	if (pmkid) {
  		os_memcpy(entry->pmkid, pmkid, PMKID_LEN);
 	} else if (akmp == WPA_KEY_MGMT_IEEE8021X_SUITE_B_192) {
-		if (kck) {
+		if (kck && kck_len > 0) {
 			rsn_pmkid_suite_b_192(kck, kck_len, aa, spa, entry->pmkid);
 			os_memcpy(entry->kck, kck, kck_len);
 			entry->kck_len = kck_len;
 		}
 	} else if (wpa_key_mgmt_suite_b(akmp)) {
-		if (kck) {
+		if (kck && kck_len > 0) {
 			rsn_pmkid_suite_b(kck, kck_len, aa, spa, entry->pmkid);
 			os_memcpy(entry->kck, kck, kck_len);
 			entry->kck_len = kck_len;
@@ -302,8 +302,8 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 	pos = pmksa->pmksa;
 	prev = NULL;
 	while (pos) {
-		if (os_memcmp(entry->aa, pos->aa, ETH_ALEN) == 0 &&
-		    os_memcmp(entry->spa, pos->spa, ETH_ALEN) == 0) {
+		if (ether_addr_equal(entry->aa, pos->aa) &&
+		    ether_addr_equal(entry->spa, pos->spa)) {
 			if (pos->pmk_len == entry->pmk_len &&
 			    os_memcmp_const(pos->pmk, entry->pmk,
 					    entry->pmk_len) == 0 &&
@@ -489,8 +489,8 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 {
 	struct rsn_pmksa_cache_entry *entry = pmksa->pmksa;
 	while (entry) {
-		if ((aa == NULL || os_memcmp(entry->aa, aa, ETH_ALEN) == 0) &&
-		    (!spa || os_memcmp(entry->spa, spa, ETH_ALEN) == 0) &&
+		if ((aa == NULL || ether_addr_equal(entry->aa, aa)) &&
+		    (!spa || ether_addr_equal(entry->spa, spa)) &&
 		    (pmkid == NULL ||
 		     os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0) &&
 		    (!akmp || akmp == entry->akmp) &&
