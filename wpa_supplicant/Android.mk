@@ -18,7 +18,11 @@ ifeq ($(BOARD_WLAN_DEVICE), qcwcn)
   CONFIG_DRIVER_NL80211_QCA=y
 endif
 
-include $(LOCAL_PATH)/android.config
+ifneq ($(SUPPLICANT_CUSTOM_DEF_CONFIG_FILE_PATH),)
+  include $(SUPPLICANT_CUSTOM_DEF_CONFIG_FILE_PATH)
+else
+  include $(LOCAL_PATH)/android.config
+endif
 
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS

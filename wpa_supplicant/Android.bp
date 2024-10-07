@@ -130,7 +130,6 @@ cc_defaults {
         "-DCONFIG_NO_RADIUS",
         "-DCONFIG_NO_RADIUS",
         "-DCONFIG_NO_RANDOM_POOL",
-        "-DCONFIG_NO_ROAMING",
         "-DCONFIG_NO_VLAN",
         "-DCONFIG_OFFCHANNEL",
         "-DCONFIG_OWE",
@@ -200,6 +199,10 @@ cc_defaults {
             any @ driver: ["-D" + driver],
             // Flag is optional, so no default value provided.
             default: [],
+        }) +
+        select(soong_config_variable("wpa_supplicant", "roaming"), {
+            true: [],
+            default: ["-DCONFIG_NO_ROAMING"],
         }),
     // Similar to suppressing clang compiler warnings, here we
     // suppress clang-tidy warnings to reduce noises in Android build.log.
