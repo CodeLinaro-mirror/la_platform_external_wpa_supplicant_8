@@ -184,6 +184,7 @@ public:
 		const P2pAddGroupConfigurationParams& in_groupConfigurationParams) override;
 	::ndk::ScopedAStatus createGroupOwner(
 		const P2pCreateGroupOwnerInfo& in_groupOwnerInfo) override;
+	::ndk::ScopedAStatus getFeatureSet(int64_t* _aidl_return) override;
 
 
 private:
@@ -316,6 +317,7 @@ private:
 		const P2pAddGroupConfigurationParams& groupConfigurationParams);
 	ndk::ScopedAStatus createGroupOwnerInternal(
 		const P2pCreateGroupOwnerInfo& groupOwnerInfo);
+	std::pair<int64_t, ndk::ScopedAStatus> getFeatureSetInternal();
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(
