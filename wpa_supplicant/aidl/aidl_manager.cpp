@@ -1529,6 +1529,10 @@ void AidlManager::notifyP2pGroupStarted(
 			   params.p2pClientIpInfo.ipAddressMask,
 			   params.p2pClientIpInfo.ipAddressGo);
         }
+	if (isAidlServiceVersionAtLeast(4)) {
+		// TODO Fill the field when supplicant implementation is ready
+		params.keyMgmtMask = 0;
+	}
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,
@@ -1686,6 +1690,10 @@ void AidlManager::notifyApStaAuthorized(
 			os_memcpy(&aidl_ip, &ip[0], 4);
 		}
 		params.clientIpAddress = aidl_ip;
+		if (isAidlServiceVersionAtLeast(4)) {
+			// TODO Fill the field when supplicant implementation is ready
+			params.keyMgmtMask = 0;
+		}
 		callWithEachP2pIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(

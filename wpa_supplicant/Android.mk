@@ -18,7 +18,11 @@ ifeq ($(BOARD_WLAN_DEVICE), qcwcn)
   CONFIG_DRIVER_NL80211_QCA=y
 endif
 
-include $(LOCAL_PATH)/android.config
+ifneq ($(SUPPLICANT_CUSTOM_DEF_CONFIG_FILE_PATH),)
+  include $(SUPPLICANT_CUSTOM_DEF_CONFIG_FILE_PATH)
+else
+  include $(LOCAL_PATH)/android.config
+endif
 
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
@@ -2014,7 +2018,7 @@ LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_MODULE := wpa_supplicant
 
 ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V3-ndk
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V4-ndk
 LOCAL_SHARED_LIBRARIES += android.system.keystore2-V1-ndk
 LOCAL_SHARED_LIBRARIES += libutils libbase
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
@@ -2129,7 +2133,7 @@ LOCAL_SRC_FILES += \
 endif
 
 LOCAL_SHARED_LIBRARIES := \
-    android.hardware.wifi.supplicant-V3-ndk \
+    android.hardware.wifi.supplicant-V4-ndk \
     android.system.keystore2-V1-ndk \
     libbinder_ndk \
     libbase \
