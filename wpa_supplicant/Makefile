@@ -149,6 +149,8 @@ ifeq ($(CONFIG_OS), unix)
 OBJS += ../src/utils/os_unix_mem.o
 OBJS_p += ../src/utils/os_unix_mem.o
 OBJS_c += ../src/utils/os_unix_mem.o
+LIBCTRL += ../src/utils/os_unix_mem.o
+LIBCTRLSO += ../src/utils/os_unix_mem.c
 CFLAGS += -DOS_MEM_DEFINES
 endif
 
