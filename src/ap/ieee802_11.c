@@ -6331,18 +6331,6 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 	struct sta_info *sta;
 	bool success_status;
 
-	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
-		wpa_printf(MSG_INFO, "handle_auth_cb - too short payload (len=%lu)",
-			   (unsigned long) len);
-
-		/*
-		 * Initialize status_code here because we are not able to read
-		 * it from the short payload.
-		 */
-		status_code = WLAN_STATUS_UNSPECIFIED_FAILURE;
-		goto fail;
-	}
-	
 	sta = ap_get_sta(hapd, mgmt->da);
 	if (!sta) {
 		wpa_printf(MSG_DEBUG, "handle_auth_cb: STA " MACSTR
