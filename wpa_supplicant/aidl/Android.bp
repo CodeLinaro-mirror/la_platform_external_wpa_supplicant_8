@@ -83,3 +83,10 @@ libwpa_aidl_cflags_cc_defaults {
         },
     },
 }
+
+prebuilt_etc {
+    name: "android.hardware.wifi.supplicant.xml.prebuilt",
+    src: "android.hardware.wifi.supplicant.xml",
+    relative_install_path: "vintf",
+    installable: false,
+}

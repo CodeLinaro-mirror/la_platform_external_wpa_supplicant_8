@@ -355,3 +355,10 @@ filegroup {
         "src/utils/wpa_debug.c",
     ],
 }
+
+prebuilt_etc {
+    name: "android.hardware.wifi.hostapd.xml.prebuilt",
+    src: "android.hardware.wifi.hostapd.xml",
+    relative_install_path: "vintf",
+    installable: false,
+}
