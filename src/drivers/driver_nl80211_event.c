@@ -3279,6 +3279,7 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 #endif /* CONFIG_PASN */
 	case QCA_NL80211_VENDOR_SUBCMD_THERMAL_EVENT:
 		qca_nl80211_thermal_event(drv, data, len);
+		break;
 	case QCA_NL80211_VENDOR_SUBCMD_HANG:
 		qca_nl80211_hang_event(drv, data, len);
 		break;

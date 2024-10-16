@@ -6429,6 +6429,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifdef CONFIG_USE_VENDOR_AIDL
 		wpas_notify_vendor_ctrl_event(wpa_s, event_msg);
 #endif
+		break;
 	case EVENT_TID_LINK_MAP:
 		if (data)
 			wpas_tid_link_map(wpa_s, &data->t2l_map_info);
