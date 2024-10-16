@@ -1098,12 +1098,11 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 {
 	int channelParamsSize = iface_params.channelParams.size();
 	if (channelParamsSize == 1) {
-		// Single AP
+		// Single Bridge AP interface(ap_br_wlan2 = vlan + wlan2)
 		wpa_printf(MSG_INFO, "AddSingleAccessPoint, iface=%s, enable80211BE=%s",
 			iface_params.name.c_str(),
 			iface_params.hwModeParams.enable80211BE ? "true" : "false");
-		return addSingleAccessPoint(iface_params, iface_params.channelParams[0],
-		    nw_params, "", "", iface_params.hwModeParams.enable80211BE);
+		return addConcurrentAccessPoints(iface_params, nw_params);
 	} else if (channelParamsSize == 2 && !iface_params.hwModeParams.enable80211BE) {
 		// Concurrent APs
 		wpa_printf(MSG_INFO, "AddDualAccessPoint, iface=%s",

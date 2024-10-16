@@ -5,6 +5,7 @@
 
 #include <thread>
 #include <rpc/util/someip_common_def.h>
+#include <rpc/util/properties.h>
 #include <rpc/message/hostapd/hostapd_message_def.h>
 #include <rpc/util/log_common.h>
 #include <rpc/util/someip_server.h>
@@ -13,9 +14,10 @@
 #include "hostapd_event_callback.h"
 #include "aidl_sock.h"
 
-#define HOSTAPD_INSTANCE_ID      0x4440
-#define HOSTAPD_EVENTGROUP_ID    0xDDD0
-#define HOSTAPD_SERVICE_NAME     "hostapd_someip_service"
+#define HOSTAPD_INSTANCE_ID_CHM      ((uint16_t) 0x4440)
+#define HOSTAPD_INSTANCE_ID_CEM      ((uint16_t) 0x4441)
+#define HOSTAPD_EVENTGROUP_ID        ((uint16_t) 0xDDD0)
+#define HOSTAPD_SERVICE_NAME         "hostapd_someip_service"
 
 using qti::hal::rpc::SomeipContext;
 using qti::hal::rpc::SomeipCallback;
@@ -32,8 +34,16 @@ void hostapd_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
 
 bool HostapdSomeIPServerInit()
 {
+    uint16_t hostapd_instance_id;
+    char someip_config_file[PROPERTY_VALUE_MAX];
+    property_get("persist.vendor.someip.config_file", someip_config_file, "/etc/someip/vsomeip_server.json");
+    if(strstr(someip_config_file, "cem")){
+        hostapd_instance_id = HOSTAPD_INSTANCE_ID_CEM;
+    }else{
+        hostapd_instance_id = HOSTAPD_INSTANCE_ID_CHM;
+    }
     /*Initialize Context*/
-    SomeipContext context(WIFI_HOSTAPD_SERVICE_ID, HOSTAPD_INSTANCE_ID,
+    SomeipContext context(WIFI_HOSTAPD_SERVICE_ID, hostapd_instance_id,
         HOSTAPD_EVENTGROUP_ID, HostapdEvent);
     SomeipCallback cb(nullptr,
                       nullptr,
