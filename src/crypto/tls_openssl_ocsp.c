@@ -216,13 +216,7 @@ ASN1_SEQUENCE(BasicOCSPResponse) = {
 
 IMPLEMENT_ASN1_FUNCTIONS(BasicOCSPResponse);
 
-#define sk_SingleResponse_num(sk) \
-sk_num(CHECKED_CAST(_STACK *, STACK_OF(SingleResponse) *, sk))
-
-#define sk_SingleResponse_value(sk, i) \
-	((SingleResponse *)						\
-	 sk_value(CHECKED_CAST(_STACK *, STACK_OF(SingleResponse) *, sk), (i)))
-
+DEFINE_STACK_OF(SingleResponse)
 
 static char * mem_bio_to_str(BIO *out)
 {
@@ -546,7 +540,7 @@ enum ocsp_result check_ocsp_resp(SSL_CTX *ssl_ctx, SSL *ssl, X509 *cert,
 		return OCSP_INVALID;
 	}
 
-	basic_data = ASN1_STRING_get0_data(bytes->response);
+	basic_data = ASN1_STRING_data(bytes->response);
 	basic_len = ASN1_STRING_length(bytes->response);
 	wpa_hexdump(MSG_DEBUG, "OpenSSL: BasicOCSPResponse",
 		    basic_data, basic_len);

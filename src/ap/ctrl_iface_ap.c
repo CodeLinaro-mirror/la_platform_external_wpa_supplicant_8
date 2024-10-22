@@ -99,7 +99,7 @@ static int hostapd_get_sta_info(struct hostapd_data *hapd,
 	len += ret;
 
 	ret = os_snprintf(buf + len, buflen - len, "rx_rate_info=%lu",
-			  data.current_rx_rate);
+			  data.current_rx_rate / 100);
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;
@@ -131,7 +131,7 @@ static int hostapd_get_sta_info(struct hostapd_data *hapd,
 		len += ret;
 
 	ret = os_snprintf(buf + len, buflen - len, "tx_rate_info=%lu",
-			  data.current_tx_rate);
+			  data.current_tx_rate / 100);
 	if (os_snprintf_error(buflen - len, ret))
 		return len;
 	len += ret;
@@ -206,9 +206,29 @@ static const char * timeout_next_str(int val)
 		return "REMOVE";
 	case STA_DISASSOC_FROM_CLI:
 		return "DISASSOC_FROM_CLI";
+	default:
+		return "?";
 	}
+}
 
-	return "?";
+
+static const char * hw_mode_str(enum hostapd_hw_mode mode)
+{
+	switch (mode) {
+	case HOSTAPD_MODE_IEEE80211B:
+		return "b";
+	case HOSTAPD_MODE_IEEE80211G:
+		return "g";
+	case HOSTAPD_MODE_IEEE80211A:
+		return "a";
+	case HOSTAPD_MODE_IEEE80211AD:
+		return "ad";
+	case HOSTAPD_MODE_IEEE80211ANY:
+		return "any";
+	case NUM_HOSTAPD_MODES:
+		return "invalid";
+	}
+	return "unknown";
 }
 
 
@@ -218,6 +238,7 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 {
 	int len, res, ret, i;
 	const char *keyid;
+	const u8 *dpp_pkhash;
 
 	if (!sta)
 		return 0;
@@ -327,11 +348,15 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 
 	if (sta->supp_op_classes &&
 	    buflen - len > (unsigned) (17 + 2 * sta->supp_op_classes[0])) {
-		len += os_snprintf(buf + len, buflen - len, "supp_op_classes=");
+		res = os_snprintf(buf + len, buflen - len, "supp_op_classes=");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
 		len += wpa_snprintf_hex(buf + len, buflen - len,
 					sta->supp_op_classes + 1,
 					sta->supp_op_classes[0]);
-		len += os_snprintf(buf + len, buflen - len, "\n");
+		res = os_snprintf(buf + len, buflen - len, "\n");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
 	}
 
 	if (sta->power_capab) {
@@ -343,12 +368,50 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 			len += ret;
 	}
 
+#ifdef CONFIG_IEEE80211AX
+	if ((sta->flags & WLAN_STA_HE) && sta->he_capab) {
+		res = os_snprintf(buf + len, buflen - len, "he_capab=");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+		len += wpa_snprintf_hex(buf + len, buflen - len,
+					(const u8 *) sta->he_capab,
+					sta->he_capab_len);
+		res = os_snprintf(buf + len, buflen - len, "\n");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+	}
+#endif /* CONFIG_IEEE80211AX */
+
+#ifdef CONFIG_IEEE80211BE
+	if ((sta->flags & WLAN_STA_EHT) && sta->eht_capab) {
+		res = os_snprintf(buf + len, buflen - len, "eht_capab=");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+		len += wpa_snprintf_hex(buf + len, buflen - len,
+					(const u8 *) sta->eht_capab,
+					sta->eht_capab_len);
+		res = os_snprintf(buf + len, buflen - len, "\n");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 #ifdef CONFIG_IEEE80211AC
 	if ((sta->flags & WLAN_STA_VHT) && sta->vht_capabilities) {
 		res = os_snprintf(buf + len, buflen - len,
 				  "vht_caps_info=0x%08x\n",
 				  le_to_host32(sta->vht_capabilities->
 					       vht_capabilities_info));
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+
+		res = os_snprintf(buf + len, buflen - len, "vht_capab=");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+		len += wpa_snprintf_hex(buf + len, buflen - len,
+					(const u8 *) sta->vht_capabilities,
+					sizeof(*sta->vht_capabilities));
+		res = os_snprintf(buf + len, buflen - len, "\n");
 		if (!os_snprintf_error(buflen - len, res))
 			len += res;
 	}
@@ -365,11 +428,15 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 
 	if (sta->ext_capability &&
 	    buflen - len > (unsigned) (11 + 2 * sta->ext_capability[0])) {
-		len += os_snprintf(buf + len, buflen - len, "ext_capab=");
+		res = os_snprintf(buf + len, buflen - len, "ext_capab=");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
 		len += wpa_snprintf_hex(buf + len, buflen - len,
 					sta->ext_capability + 1,
 					sta->ext_capability[0]);
-		len += os_snprintf(buf + len, buflen - len, "\n");
+		res = os_snprintf(buf + len, buflen - len, "\n");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
 	}
 
 	if (sta->flags & WLAN_STA_WDS && sta->ifname_wds) {
@@ -385,6 +452,33 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 		if (!os_snprintf_error(buflen - len, ret))
 			len += ret;
 	}
+
+	dpp_pkhash = ap_sta_wpa_get_dpp_pkhash(hapd, sta);
+	if (dpp_pkhash) {
+		ret = os_snprintf(buf + len, buflen - len, "dpp_pkhash=");
+		if (!os_snprintf_error(buflen - len, ret))
+			len += ret;
+		len += wpa_snprintf_hex(buf + len, buflen - len, dpp_pkhash,
+					SHA256_MAC_LEN);
+		ret = os_snprintf(buf + len, buflen - len, "\n");
+		if (!os_snprintf_error(buflen - len, ret))
+			len += ret;
+	}
+
+#ifdef CONFIG_IEEE80211BE
+	if (sta->mld_info.mld_sta) {
+		for (i = 0; i < MAX_NUM_MLD_LINKS; ++i) {
+			if (!sta->mld_info.links[i].valid)
+				continue;
+			ret = os_snprintf(
+				buf + len, buflen - len,
+				"peer_addr[%d]=" MACSTR "\n",
+				i, MAC2STR(sta->mld_info.links[i].peer_addr));
+			if (!os_snprintf_error(buflen - len, ret))
+				len += ret;
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	return len;
 }
@@ -683,6 +777,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 {
 	struct hostapd_iface *iface = hapd->iface;
 	struct hostapd_hw_modes *mode = iface->current_mode;
+	struct hostapd_config *iconf = hapd->iconf;
 	int len = 0, ret, j;
 	size_t i;
 
@@ -717,6 +812,24 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		return len;
 	len += ret;
 
+	if (mode) {
+		ret = os_snprintf(buf + len, buflen - len, "hw_mode=%s\n",
+				  hw_mode_str(mode->mode));
+		if (os_snprintf_error(buflen - len, ret))
+			return len;
+		len += ret;
+	}
+
+	if (iconf->country[0] && iconf->country[1]) {
+		ret = os_snprintf(buf + len, buflen - len,
+				  "country_code=%c%c\ncountry3=0x%X\n",
+				  iconf->country[0], iconf->country[1],
+				  iconf->country[2]);
+		if (os_snprintf_error(buflen - len, ret))
+			return len;
+		len += ret;
+	}
+
 	if (!iface->cac_started || !iface->dfs_cac_ms) {
 		ret = os_snprintf(buf + len, buflen - len,
 				  "cac_time_seconds=%d\n"
@@ -748,7 +861,6 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  "ieee80211ac=%d\n"
 			  "ieee80211ax=%d\n"
 			  "ieee80211be=%d\n"
-			  "link_id=%d\n"
 			  "beacon_int=%u\n"
 			  "dtim_period=%d\n",
 			  iface->conf->channel,
@@ -763,7 +875,6 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  !hapd->conf->disable_11ax,
 			  iface->conf->ieee80211be &&
 			  !hapd->conf->disable_11be,
-			  hapd_link_id(hapd),
 			  iface->conf->beacon_int,
 			  hapd->conf->dtim_period);
 	if (os_snprintf_error(buflen - len, ret))
@@ -780,6 +891,53 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+		if (is_6ghz_op_class(iface->conf->op_class) &&
+		    hostapd_get_oper_chwidth(iface->conf) ==
+		    CONF_OPER_CHWIDTH_320MHZ) {
+			ret = os_snprintf(buf + len, buflen - len,
+					  "eht_bw320_offset=%d\n",
+					  iface->conf->eht_bw320_offset);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+		}
+
+		if (hapd->conf->mld_ap) {
+			struct hostapd_data *link_bss;
+
+			ret = os_snprintf(buf + len, buflen - len,
+					  "num_links=%d\n",
+					  hapd->mld->num_links);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+
+			/* Self BSS */
+			ret = os_snprintf(buf + len, buflen - len,
+					  "link_id=%d\n"
+					  "link_addr=" MACSTR "\n",
+					  hapd->mld_link_id,
+					  MAC2STR(hapd->own_addr));
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+
+			/* Partner BSSs */
+			for_each_mld_link(link_bss, hapd) {
+				if (link_bss == hapd)
+					continue;
+
+				ret = os_snprintf(buf + len, buflen - len,
+						  "partner_link[%d]=" MACSTR
+						  "\n",
+						  link_bss->mld_link_id,
+						  MAC2STR(link_bss->own_addr));
+				if (os_snprintf_error(buflen - len, ret))
+					return len;
+				len += ret;
+			}
+		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -795,6 +953,16 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+		if (!iconf->he_op.he_bss_color_disabled &&
+		    iconf->he_op.he_bss_color) {
+			ret = os_snprintf(buf + len, buflen - len,
+					  "he_bss_color=%d\n",
+					  iconf->he_op.he_bss_color);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+		}
 	}
 #endif /* CONFIG_IEEE80211AX */
 
@@ -888,6 +1056,21 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+#ifdef CONFIG_IEEE80211BE
+		if (bss->conf->mld_ap) {
+			ret = os_snprintf(buf + len, buflen - len,
+					  "mld_addr[%d]=" MACSTR "\n"
+					  "mld_id[%d]=%d\n"
+					  "mld_link_id[%d]=%d\n",
+					  (int) i, MAC2STR(bss->mld->mld_addr),
+					  (int) i, hostapd_get_mld_id(bss),
+					  (int) i, bss->mld_link_id);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+		}
+#endif /* CONFIG_IEEE80211BE */
 	}
 
 	if (hapd->conf->chan_util_avg_period) {
@@ -1019,7 +1202,7 @@ int hostapd_ctrl_iface_pmksa_add(struct hostapd_data *hapd, char *cmd)
 		return -1;
 
 	return wpa_auth_pmksa_add2(hapd->wpa_auth, spa, pmk, pmk_len,
-				   pmkid, expiration, akmp);
+				   pmkid, expiration, akmp, NULL);
 }
 
 
@@ -1240,6 +1423,8 @@ int hostapd_ctrl_iface_bss_tm_req(struct hostapd_data *hapd,
 		req_mode |= WNM_BSS_TM_REQ_ABRIDGED;
 	if (os_strstr(cmd, " disassoc_imminent=1"))
 		req_mode |= WNM_BSS_TM_REQ_DISASSOC_IMMINENT;
+	if (os_strstr(cmd, " link_removal_imminent=1"))
+		req_mode |= WNM_BSS_TM_REQ_LINK_REMOVAL_IMMINENT;
 
 #ifdef CONFIG_MBO
 	pos = os_strstr(cmd, "mbo=");

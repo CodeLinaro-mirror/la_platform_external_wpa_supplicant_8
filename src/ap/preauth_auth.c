@@ -58,7 +58,7 @@ static void rsn_preauth_receive(void *ctx, const u8 *src_addr,
 	ethhdr = (struct l2_ethhdr *) buf;
 	hdr = (struct ieee802_1x_hdr *) (ethhdr + 1);
 
-	if (os_memcmp(ethhdr->h_dest, hapd->own_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(ethhdr->h_dest, hapd->own_addr)) {
 		wpa_printf(MSG_DEBUG, "RSN: pre-auth for foreign address "
 			   MACSTR, MAC2STR(ethhdr->h_dest));
 		return;
@@ -71,7 +71,7 @@ static void rsn_preauth_receive(void *ctx, const u8 *src_addr,
 		return;
 	}
 	if (!sta && hdr->type == IEEE802_1X_TYPE_EAPOL_START) {
-		sta = ap_sta_add(hapd, ethhdr->h_source, NULL);
+		sta = ap_sta_add(hapd, ethhdr->h_source);
 		if (sta == NULL)
 			return;
 		sta->flags = WLAN_STA_PREAUTH;
@@ -90,7 +90,7 @@ static void rsn_preauth_receive(void *ctx, const u8 *src_addr,
 		return;
 	sta->preauth_iface = piface;
 	ieee802_1x_receive(hapd, ethhdr->h_source, (u8 *) (ethhdr + 1),
-			   len - sizeof(*ethhdr));
+			   len - sizeof(*ethhdr), FRAME_ENCRYPTION_UNKNOWN);
 }
 
 

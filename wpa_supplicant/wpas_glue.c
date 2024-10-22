@@ -316,19 +316,9 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		ieee802_1x_notify_create_actor(wpa_s, wpa_s->last_eapol_src);
 	}
 
-#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-	if (result != EAPOL_SUPP_RESULT_SUCCESS)                          
-#else                                                                     
-	if (result != EAPOL_SUPP_RESULT_SUCCESS ||                        
-		!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X))  
-#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
-		return;                                                   
-
-#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-	if (wpa_ft_is_ft_protocol(wpa_s->wpa)) {
+	if (result != EAPOL_SUPP_RESULT_SUCCESS ||
+	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X))
 		return;
-	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	if (!wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt))
 		return;
@@ -412,7 +402,7 @@ static int wpa_get_beacon_ie(struct wpa_supplicant *wpa_s)
 	const u8 *ie;
 
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if (os_memcmp(bss->bssid, wpa_s->bssid, ETH_ALEN) != 0)
+		if (!ether_addr_equal(bss->bssid, wpa_s->bssid))
 			continue;
 		if (ssid == NULL ||
 		    ((bss->ssid_len == ssid->ssid_len &&
@@ -459,7 +449,7 @@ static int wpa_supplicant_get_beacon_ie(void *ctx)
 
 	/* No WPA/RSN IE found in the cached scan results. Try to get updated
 	 * scan results from the driver. */
-	if (wpa_supplicant_update_scan_results(wpa_s) < 0)
+	if (wpa_supplicant_update_scan_results(wpa_s, wpa_s->bssid) < 0)
 		return -1;
 
 	return wpa_get_beacon_ie(wpa_s);
@@ -779,12 +769,12 @@ static int wpa_supplicant_send_tdls_mgmt(void *ctx, const u8 *dst,
 					 u8 action_code, u8 dialog_token,
 					 u16 status_code, u32 peer_capab,
 					 int initiator, const u8 *buf,
-					 size_t len)
+					 size_t len, int link_id)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	return wpa_drv_send_tdls_mgmt(wpa_s, dst, action_code, dialog_token,
 				      status_code, peer_capab, initiator, buf,
-				      len);
+				      len, link_id);
 }
 
 
@@ -805,7 +795,9 @@ static int wpa_supplicant_tdls_peer_addset(
 	const struct ieee80211_he_6ghz_band_cap *he_6ghz_he_capab,
 	u8 qosinfo, int wmm, const u8 *ext_capab, size_t ext_capab_len,
 	const u8 *supp_channels, size_t supp_channels_len,
-	const u8 *supp_oper_classes, size_t supp_oper_classes_len)
+	const u8 *supp_oper_classes, size_t supp_oper_classes_len,
+	const struct ieee80211_eht_capabilities *eht_capab,
+	size_t eht_capab_len, int mld_link_id)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	struct hostapd_sta_add_params params;
@@ -840,6 +832,9 @@ static int wpa_supplicant_tdls_peer_addset(
 	params.supp_channels_len = supp_channels_len;
 	params.supp_oper_classes = supp_oper_classes;
 	params.supp_oper_classes_len = supp_oper_classes_len;
+	params.eht_capab = eht_capab;
+	params.eht_capab_len = eht_capab_len;
+	params.mld_link_id = mld_link_id;
 
 	return wpa_drv_sta_add(wpa_s, &params);
 }
@@ -952,28 +947,9 @@ const char * wpa_supplicant_ctrl_req_to_string(enum wpa_ctrl_req_type field,
 void wpas_send_ctrl_req(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 			const char *field_name, const char *txt)
 {
-	char *buf;
-	size_t buflen;
-	int len;
-
-	buflen = 100 + os_strlen(txt) + ssid->ssid_len;
-	buf = os_malloc(buflen);
-	if (buf == NULL)
-		return;
-	len = os_snprintf(buf, buflen, "%s-%d:%s needed for SSID ",
-			  field_name, ssid->id, txt);
-	if (os_snprintf_error(buflen, len)) {
-		os_free(buf);
-		return;
-	}
-	if (ssid->ssid && buflen > len + ssid->ssid_len) {
-		os_memcpy(buf + len, ssid->ssid, ssid->ssid_len);
-		len += ssid->ssid_len;
-		buf[len] = '\0';
-	}
-	buf[buflen - 1] = '\0';
-	wpa_msg(wpa_s, MSG_INFO, WPA_CTRL_REQ "%s", buf);
-	os_free(buf);
+	wpa_msg(wpa_s, MSG_INFO, WPA_CTRL_REQ "%s-%d:%s needed for SSID %s",
+		field_name, ssid->id, txt,
+		wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
 }
 
 
@@ -1172,21 +1148,16 @@ static void wpa_supplicant_set_anon_id(void *ctx, const u8 *id, size_t len)
 	}
 }
 
-static void wpa_supplicant_eap_method_selected_cb(void *ctx,
-						const char* reason_string)
+
+static bool wpas_encryption_required(void *ctx)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
-	wpas_notify_eap_method_selected(wpa_s, reason_string);
+	return wpa_s->wpa &&
+		wpa_sm_has_ptk_installed(wpa_s->wpa) &&
+		wpa_sm_pmf_enabled(wpa_s->wpa);
 }
 
-static void wpa_supplicant_open_ssl_failure_cb(void *ctx,
-						const char* reason_string)
-{
-	struct wpa_supplicant *wpa_s = ctx;
-
-	wpas_notify_open_ssl_failure(wpa_s, reason_string);
-}
 #endif /* IEEE8021X_EAPOL */
 
 
@@ -1214,9 +1185,15 @@ int wpa_supplicant_init_eapol(struct wpa_supplicant *wpa_s)
 	ctx->get_config_blob = wpa_supplicant_get_config_blob;
 #endif /* CONFIG_NO_CONFIG_BLOBS */
 	ctx->aborted_cached = wpa_supplicant_aborted_cached;
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	ctx->opensc_engine_path = wpa_s->conf->opensc_engine_path;
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	ctx->pkcs11_engine_path = wpa_s->conf->pkcs11_engine_path;
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	ctx->pkcs11_module_path = wpa_s->conf->pkcs11_module_path;
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	ctx->openssl_ciphers = wpa_s->conf->openssl_ciphers;
 	ctx->wps = wpa_s->wps;
 	ctx->eap_param_needed = wpa_supplicant_eap_param_needed;
@@ -1233,8 +1210,7 @@ int wpa_supplicant_init_eapol(struct wpa_supplicant *wpa_s)
 	ctx->eap_error_cb = wpa_supplicant_eap_error_cb;
 	ctx->confirm_auth_cb = wpa_supplicant_eap_auth_start_cb;
 	ctx->set_anon_id = wpa_supplicant_set_anon_id;
-	ctx->eap_method_selected_cb = wpa_supplicant_eap_method_selected_cb;
-	ctx->open_ssl_failure_cb = wpa_supplicant_open_ssl_failure_cb;
+	ctx->encryption_required = wpas_encryption_required;
 	ctx->cb_ctx = wpa_s;
 	wpa_s->eapol = eapol_sm_init(ctx);
 	if (wpa_s->eapol == NULL) {
@@ -1317,9 +1293,8 @@ static void disable_wpa_wpa2(struct wpa_ssid *ssid)
 }
 
 
-static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
+void wpas_transition_disable(struct wpa_supplicant *wpa_s, u8 bitmap)
 {
-	struct wpa_supplicant *wpa_s = _wpa_s;
 	struct wpa_ssid *ssid;
 	int changed = 0;
 
@@ -1363,7 +1338,8 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 	    wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt) &&
 	    (ssid->key_mgmt & (WPA_KEY_MGMT_IEEE8021X |
 			       WPA_KEY_MGMT_FT_IEEE8021X |
-			       WPA_KEY_MGMT_IEEE8021X_SHA256)) &&
+			       WPA_KEY_MGMT_IEEE8021X_SHA256 |
+			       WPA_KEY_MGMT_IEEE8021X_SHA384)) &&
 	    (ssid->ieee80211w != MGMT_FRAME_PROTECTION_REQUIRED ||
 	     (ssid->group_cipher & WPA_CIPHER_TKIP))) {
 		disable_wpa_wpa2(ssid);
@@ -1378,19 +1354,6 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 		changed = 1;
 	}
 
-#ifdef CONFIG_DRIVER_NL80211_BRCM
-	/* driver call for transition disable */
-	{
-		struct wpa_driver_associate_params params;
-
-		os_memset(&params, 0, sizeof(params));
-		params.td_policy = bitmap;
-		wpa_drv_update_connect_params(wpa_s, &params, WPA_DRV_UPDATE_TD_POLICY);
-	}
-#endif /* CONFIG_DRIVER_NL80211_BRCM */
-
-	wpas_notify_transition_disable(wpa_s, ssid, bitmap);
-
 	if (!changed)
 		return;
 
@@ -1402,7 +1365,14 @@ static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
 }
 
 
-static void wpa_supplicant_store_ptk(void *ctx, u8 *addr, int cipher,
+static void wpa_supplicant_transition_disable(void *_wpa_s, u8 bitmap)
+{
+	struct wpa_supplicant *wpa_s = _wpa_s;
+	wpas_transition_disable(wpa_s, bitmap);
+}
+
+
+static void wpa_supplicant_store_ptk(void *ctx, const u8 *addr, int cipher,
 				     u32 life_time, const struct wpa_ptk *ptk)
 {
 	struct wpa_supplicant *wpa_s = ctx;

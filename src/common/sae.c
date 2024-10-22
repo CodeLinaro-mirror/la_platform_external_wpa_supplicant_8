@@ -458,7 +458,7 @@ static int sae_derive_pwe_ffc(struct sae_data *sae, const u8 *addr1,
 		       * mask */
 	u8 mask;
 	struct crypto_bignum *pwe;
-	size_t prime_len = sae->tmp->prime_len * 8;
+	size_t prime_len = sae->tmp->prime_len;
 	u8 *pwe_buf;
 
 	crypto_bignum_deinit(sae->tmp->pwe_ffc, 1);
@@ -603,9 +603,9 @@ static int sswu_curve_param(int group, int *z)
 	case 30:
 		*z = 7;
 		return 0;
+	default:
+		return -1;
 	}
-
-	return -1;
 }
 
 
@@ -1606,7 +1606,9 @@ static int sae_derive_keys(struct sae_data *sae, const u8 *k)
 	 * (commit-scalar + peer-commit-scalar) mod r part as a bit string by
 	 * zero padding it from left to the length of the order (in full
 	 * octets). */
-	crypto_bignum_to_bin(tmp, val, sizeof(val), sae->tmp->order_len);
+	if (crypto_bignum_to_bin(tmp, val, sizeof(val),
+				 sae->tmp->order_len) < 0)
+		goto fail;
 	wpa_hexdump(MSG_DEBUG, "SAE: PMKID", val, SAE_PMKID_LEN);
 
 #ifdef CONFIG_SAE_PK
@@ -1967,8 +1969,10 @@ static u16 sae_parse_commit_element_ecc(struct sae_data *sae, const u8 **pos,
 	crypto_ec_point_deinit(sae->tmp->peer_commit_element_ecc, 0);
 	sae->tmp->peer_commit_element_ecc =
 		crypto_ec_point_from_bin(sae->tmp->ec, *pos);
-	if (sae->tmp->peer_commit_element_ecc == NULL)
+	if (!sae->tmp->peer_commit_element_ecc) {
+		wpa_printf(MSG_DEBUG, "SAE: Peer element is not a valid point");
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+	}
 
 	if (!crypto_ec_point_is_on_curve(sae->tmp->ec,
 					 sae->tmp->peer_commit_element_ecc)) {

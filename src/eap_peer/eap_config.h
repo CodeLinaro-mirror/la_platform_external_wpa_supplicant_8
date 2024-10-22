@@ -318,14 +318,24 @@ struct eap_peer_config {
 	size_t imsi_identity_len;
 
 	/**
-	 * imsi_privacy_key - IMSI privacy key (PEM encoded X.509v3 certificate)
+	 * imsi_privacy_cert - IMSI privacy certificate
 	 *
 	 * This field is used with EAP-SIM/AKA/AKA' to encrypt the permanent
-	 * identity (IMSI) to improve privacy. The X.509v3 certificate needs to
-	 * include a 2048-bit RSA public key and this is from the operator who
-	 * authenticates the SIM/USIM.
+	 * identity (IMSI) to improve privacy. The referenced PEM-encoded
+	 * X.509v3 certificate needs to include a 2048-bit RSA public key and
+	 * this is from the operator who authenticates the SIM/USIM.
 	 */
-	char *imsi_privacy_key;
+	char *imsi_privacy_cert;
+
+	/**
+	 * imsi_privacy_attr - IMSI privacy attribute
+	 *
+	 * This field is used to help the EAP-SIM/AKA/AKA' server to identify
+	 * the used certificate (and as such, the matching private key). This
+	 * is set to an attribute in name=value format if the operator needs
+	 * this information.
+	 */
+	char *imsi_privacy_attr;
 
 	/**
 	 * machine_identity - EAP Identity for machine credential
@@ -460,6 +470,14 @@ struct eap_peer_config {
 	 * 0 = do not use cryptobinding (default)
 	 * 1 = use cryptobinding if server supports it
 	 * 2 = require cryptobinding
+	 *
+	 * phase2_auth option can be used to control Phase 2 (i.e., within TLS
+	 * tunnel) behavior for PEAP:
+	 * 0 = do not require Phase 2 authentication
+	 * 1 = require Phase 2 authentication when client certificate
+	 *  (private_key/client_cert) is no used and TLS session resumption was
+	 *  not used (default)
+	 * 2 = require Phase 2 authentication in all cases
 	 *
 	 * EAP-WSC (WPS) uses following options: pin=Device_Password and
 	 * uuid=Device_UUID
