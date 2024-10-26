@@ -6,6 +6,7 @@
 	</hal>
 	<hal format="aidl">
 		<name>vendor.qti.hardware.wifi.supplicant</name>
+		<version>2</version>
 		<fqname>ISupplicantVendor/default</fqname>
 	</hal>
 </manifest>

@@ -162,6 +162,7 @@ hostapd_cflags_cc_defaults {
         "-DCONFIG_ACS",
         "-DCONFIG_ANDROID_LOG",
         "-DCONFIG_CTRL_IFACE_AIDL",
+        "-DCONFIG_USE_VENDOR_AIDL",
         "-Wall",
         "-Werror",
         "-Wno-unused-parameter",
