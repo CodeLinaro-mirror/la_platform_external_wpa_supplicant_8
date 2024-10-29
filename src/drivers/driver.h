@@ -12,6 +12,11 @@
  * driver operations. After this, there are definitions for driver event
  * reporting with wpa_supplicant_event() and some convenience helper functions
  * that can be used to report events.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the
+ * following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef DRIVER_H
@@ -2753,6 +2758,17 @@ struct wpa_driver_ops {
 	 */
 	int (*update_ft_ies)(void *priv, const u8 *md, const u8 *ies,
 			     size_t ies_len);
+
+	/**
+	 * get_scan_results - Fetch the latest scan results
+	 * @priv: Private driver interface data
+	 * @bssid: Return results only for the specified BSSID, %NULL for all
+	 *
+	 * Returns: Allocated buffer of scan results (caller is responsible for
+	 * freeing the data structure) on success, NULL on failure
+	 */
+	 struct wpa_scan_results * (*get_scan_results)(void *priv,
+						      const u8 *bssid);
 
 	/**
 	 * get_scan_results2 - Fetch the latest scan results
