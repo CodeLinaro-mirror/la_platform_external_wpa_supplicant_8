@@ -6254,7 +6254,9 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
 
 #ifdef MAINLINE_SUPPLICANT
 static bool is_event_allowlisted(enum wpa_event_type event) {
-	return event == EVENT_RX_MGMT ||
+	return event == EVENT_SCAN_STARTED ||
+	       event == EVENT_SCAN_RESULTS ||
+	       event == EVENT_RX_MGMT ||
 	       event == EVENT_REMAIN_ON_CHANNEL ||
 	       event == EVENT_CANCEL_REMAIN_ON_CHANNEL ||
 	       event == EVENT_TX_WAIT_EXPIRE;
