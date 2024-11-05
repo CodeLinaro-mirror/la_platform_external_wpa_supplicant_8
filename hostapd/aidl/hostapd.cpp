@@ -35,6 +35,31 @@ extern "C"
 #include "drivers/linux_ioctl.h"
 }
 
+// don't use hostapd's wpa_printf for unit testing. It won't compile otherwise
+#ifdef ANDROID_HOSTAPD_UNITTEST
+#include <android-base/logging.h>
+constexpr size_t logbuf_size = 8192;
+static ::android::base::LogSeverity wpa_to_android_level(int level)
+{
+	if (level == MSG_ERROR)
+		return ::android::base::ERROR;
+	if (level == MSG_WARNING)
+		return ::android::base::WARNING;
+	if (level == MSG_INFO)
+		return ::android::base::INFO;
+	return ::android::base::DEBUG;
+}
+void wpa_printf(int level, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	char buffer[logbuf_size];
+	int res = snprintf(buffer, logbuf_size, fmt, ap);
+	if (res > 0 && res < logbuf_size) {
+		LOG(wpa_to_android_level(level)) << buffer;
+	}
+}
+#endif
+
 // The AIDL implementation for hostapd creates a hostapd.conf dynamically for
 // each interface. This file can then be used to hook onto the normal config
 // file parsing logic in hostapd code.  Helps us to avoid duplication of code
@@ -77,6 +102,12 @@ inline int32_t isAidlServiceVersionAtLeast(int32_t expected_version)
 inline int32_t isAidlClientVersionAtLeast(int32_t expected_version)
 {
 	return expected_version <= aidl_client_version;
+}
+
+inline int32_t areAidlServiceAndClientAtLeastVersion(int32_t expected_version)
+{
+	return isAidlServiceVersionAtLeast(expected_version)
+		&& isAidlClientVersionAtLeast(expected_version);
 }
 
 #define MAX_PORTS 1024
@@ -593,7 +624,7 @@ std::string CreateHostapdConfig(
 #ifdef CONFIG_IEEE80211BE
 	if (iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) {
 		eht_params_as_string = "ieee80211be=1\n";
-		if (isAidlServiceVersionAtLeast(2) && isAidlClientVersionAtLeast(2)) {
+		if (areAidlServiceAndClientAtLeastVersion(2)) {
 			std::string interface_mac_addr = getInterfaceMacAddress(
 					iface_params.usesMlo ? br_name : iface_params.name);
 			if (interface_mac_addr.empty()) {
