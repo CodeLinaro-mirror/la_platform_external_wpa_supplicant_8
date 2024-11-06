@@ -1130,14 +1130,14 @@ std::vector<uint8_t>  generateRandomOweSsid()
 }
 
 ::ndk::ScopedAStatus Hostapd::addMultiLinkIface(
-	const IfaceParams& iface_params, const NetworkParams& nw_params)
+	IfaceParams& iface_params, const NetworkParams& nw_params, std::string& br_name)
 {
 	int channelParamsListSize = iface_params.channelParams.size();
 
 	for (std::size_t i = 0; i < channelParamsListSize; i++) {
 		ctrlInterfaceCount++;
 		const auto conf_params = CreateHostapdConfig(iface_params,
-				iface_params.channelParams[i], nw_params, "", "",
+				iface_params.channelParams[i], nw_params, br_name, "",
 				iface_params.hwModeParams.enable80211BE);
 /*
 		if (i == 1) {
@@ -1180,11 +1180,25 @@ std::vector<uint8_t>  generateRandomOweSsid()
 ::ndk::ScopedAStatus Hostapd::addMultiLinkAccessPoints(
 	const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
+	// Get available interfaces in bridge
+	std::vector<std::string> managed_interfaces;
+	std::string br_name = StringPrintf(
+		"%s", iface_params.name.c_str());
+	if (!GetInterfacesInBridge(br_name, &managed_interfaces)) {
+		return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
+			"Get interfaces in bridge failed.");
+	}
+	if (managed_interfaces.size() == 0) {
+		return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
+		"Available interfaces is none");
+    }
+	IfaceParams iface_params_new = iface_params;
+	iface_params_new.name = managed_interfaces[0];
 
-	ndk::ScopedAStatus status = addMultiLinkIface(iface_params, nw_params);
+	ndk::ScopedAStatus status = addMultiLinkIface(iface_params_new, nw_params, br_name);
 	if (!status.isOk()) {
 		wpa_printf(MSG_ERROR, "Failed to addMultiLinkIface %s",
-			   iface_params.name.c_str());
+			   iface_params_new.name.c_str());
 		return status;
 	}
 
@@ -1198,7 +1212,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		for (j = 0; j < iface->num_bss; j++) {
 			struct hostapd_data *iface_hapd = iface->bss[j];
 			int res = 0;
-			res = memcmp(iface_hapd->conf->iface, iface_params.name.c_str(), iface_params.name.size());
+			res = memcmp(iface_hapd->conf->iface, iface_params_new.name.c_str(), iface_params_new.name.size());
 
 			if (res == 0) {
 				on_setup_complete_internal_callback =
@@ -1289,13 +1303,15 @@ std::vector<uint8_t>  generateRandomOweSsid()
 				if (hostapd_enable_iface(iface_hapd->iface) < 0) {
 					wpa_printf(
 					MSG_ERROR, "Enabling interface %s failed on %d",
-						iface_params.name.c_str(), i);
+						iface_params_new.name.c_str(), i);
 					return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 				}
 			}
 		}
 	}
 
+    // Save bridge interface info
+    br_interfaces_[br_name] = managed_interfaces;
 	return ndk::ScopedAStatus::ok();
 }
 

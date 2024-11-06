@@ -77,8 +77,9 @@ private:
 	    const IfaceParams& IfaceParams,
 	    const NetworkParams& nw_params);
 	::ndk::ScopedAStatus addMultiLinkIface(
-	    const IfaceParams& IfaceParams,
-	    const NetworkParams& nw_params);
+	    IfaceParams& IfaceParams,
+	    const NetworkParams& nw_params,
+	    std::string& br_name);
 	::ndk::ScopedAStatus addMultiLinkAccessPoints(
 	    const IfaceParams& IfaceParams,
 	    const NetworkParams& nw_params);
