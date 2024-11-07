@@ -853,6 +853,14 @@ ndk::ScopedAStatus P2pIface::addGroup(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&P2pIface::createGroupOwnerInternal, in_groupOwnerInfo);
 }
+
+::ndk::ScopedAStatus P2pIface::getFeatureSet(int64_t* _aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&P2pIface::getFeatureSetInternal, _aidl_return);
+}
+
 std::pair<std::string, ndk::ScopedAStatus> P2pIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -1061,7 +1069,8 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 	int new_pin = wpas_p2p_connect(
 		wpa_s, peer_address.data(), pin, wps_method, persistent, false,
 		join_existing_group, false, go_intent_signed, 0, 0, -1, false, ht40,
-		vht, CONF_OPER_CHWIDTH_USE_HT, he, edmg, nullptr, 0, is6GhzAllowed(wpa_s));
+		vht, CONF_OPER_CHWIDTH_USE_HT, he, edmg, nullptr, 0, is6GhzAllowed(wpa_s),
+		false, 0, NULL);
 	if (new_pin < 0) {
 		return {"", createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
@@ -1941,6 +1950,12 @@ ndk::ScopedAStatus P2pIface::createGroupOwnerInternal(
 {
 	return addGroupInternal(
 		groupOwnerInfo.persistent, groupOwnerInfo.persistentNetworkId);
+}
+
+std::pair<int64_t, ndk::ScopedAStatus> P2pIface::getFeatureSetInternal()
+{
+	// TODO Fill the field when supplicant implementation is ready
+	return {0, ndk::ScopedAStatus::ok()};
 }
 
 /**

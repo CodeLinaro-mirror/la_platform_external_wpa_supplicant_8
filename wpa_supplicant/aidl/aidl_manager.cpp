@@ -1581,6 +1581,10 @@ void AidlManager::notifyP2pGroupStarted(
 			   params.p2pClientIpInfo.ipAddressMask,
 			   params.p2pClientIpInfo.ipAddressGo);
         }
+	if (isAidlServiceVersionAtLeast(4)) {
+		// TODO Fill the field when supplicant implementation is ready
+		params.keyMgmtMask = 0;
+	}
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,
@@ -1738,6 +1742,10 @@ void AidlManager::notifyApStaAuthorized(
 			os_memcpy(&aidl_ip, &ip[0], 4);
 		}
 		params.clientIpAddress = aidl_ip;
+		if (isAidlServiceVersionAtLeast(4)) {
+			// TODO Fill the field when supplicant implementation is ready
+			params.keyMgmtMask = 0;
+		}
 		callWithEachP2pIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
@@ -2112,7 +2120,7 @@ uint32_t getBssTmDataAssocRetryDelayMs(struct wpa_supplicant *wpa_s)
 
 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT) {
 		// number of tbtts to milliseconds
-		duration_ms = wpa_s->wnm_dissoc_timer * beacon_int * 128 / 125;
+		duration_ms = wpa_s->wnm_disassoc_timer * beacon_int * 128 / 125;
 	}
 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED) {
 		//wnm_bss_termination_duration contains 12 bytes of BSS

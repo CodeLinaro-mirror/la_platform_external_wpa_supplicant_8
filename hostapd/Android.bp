@@ -44,7 +44,7 @@ cc_defaults {
     defaults: ["hostapd_cflags_defaults"],
     srcs: [":hostapd_srcs"],
     shared_libs: [
-        "android.hardware.wifi.hostapd-V2-ndk",
+        "android.hardware.wifi.hostapd-V3-ndk",
         "vendor.qti.hardware.wifi.hostapd-V1-ndk",
         "libbase",
         "libutils",
@@ -225,6 +225,7 @@ filegroup {
         "src/common/ieee802_11_common.c",
         "src/common/wpa_common.c",
         "src/common/hw_features_common.c",
+        "src/common/ptksa_cache.c",
         "src/eapol_auth/eapol_auth_sm.c",
         "src/eapol_auth/eapol_auth_dump.c",
         "src/ap/vlan_init.c",
@@ -316,6 +317,7 @@ filegroup {
         "src/ap/ap_list.c",
         "src/ap/comeback_token.c",
         "src/pasn/pasn_responder.c",
+        "src/pasn/pasn_common.c",
         "src/ap/ieee802_11.c",
         "src/ap/hw_features.c",
         "src/ap/dfs.c",
@@ -353,4 +355,11 @@ filegroup {
         "src/utils/os_unix.c",
         "src/utils/wpa_debug.c",
     ],
+}
+
+prebuilt_etc {
+    name: "android.hardware.wifi.hostapd.xml.prebuilt",
+    src: "android.hardware.wifi.hostapd.xml",
+    relative_install_path: "vintf",
+    installable: false,
 }

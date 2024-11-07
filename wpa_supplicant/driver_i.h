@@ -9,6 +9,7 @@
 #ifndef DRIVER_I_H
 #define DRIVER_I_H
 
+#include "common/nan_de.h"
 #include "drivers/driver.h"
 
 /* driver_ops */
@@ -128,7 +129,7 @@ static inline int wpa_drv_stop_sched_scan(struct wpa_supplicant *wpa_s)
 }
 
 struct wpa_scan_results *
-wpa_drv_get_scan_results2(struct wpa_supplicant *wpa_s);
+wpa_drv_get_scan_results(struct wpa_supplicant *wpa_s, const u8 *bssid);
 
 static inline int wpa_drv_get_bssid(struct wpa_supplicant *wpa_s, u8 *bssid)
 {
@@ -339,14 +340,6 @@ static inline int wpa_drv_update_ft_ies(struct wpa_supplicant *wpa_s,
 	if (wpa_s->driver->update_ft_ies)
 		return wpa_s->driver->update_ft_ies(wpa_s->drv_priv, md,
 						    ies, ies_len);
-	return -1;
-}
-
-static inline int wpa_drv_set_ap(struct wpa_supplicant *wpa_s,
-				 struct wpa_driver_ap_params *params)
-{
-	if (wpa_s->driver->set_ap)
-		return wpa_s->driver->set_ap(wpa_s->drv_priv, params);
 	return -1;
 }
 
@@ -1155,8 +1148,10 @@ static inline int wpa_drv_set_secure_ranging_ctx(struct wpa_supplicant *wpa_s,
 {
 	struct secure_ranging_params params;
 
+	/* Configure secure ranging context only to the drivers that support it.
+	 */
 	if (!wpa_s->driver->set_secure_ranging_ctx)
-		return -1;
+		return 0;
 
 	os_memset(&params, 0, sizeof(params));
 	params.action = action;
@@ -1179,6 +1174,77 @@ wpas_drv_get_sta_mlo_info(struct wpa_supplicant *wpa_s,
 		return 0;
 
 	return wpa_s->driver->get_sta_mlo_info(wpa_s->drv_priv, mlo_info);
+}
+
+static inline int
+wpas_drv_nan_flush(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->driver->nan_flush)
+		return 0;
+
+	return wpa_s->driver->nan_flush(wpa_s->drv_priv);
+}
+
+static inline int
+wpas_drv_nan_publish(struct wpa_supplicant *wpa_s, const u8 *addr,
+		     int publish_id, const char *service_name,
+		     const u8 *service_id,
+		     enum nan_service_protocol_type srv_proto_type,
+		     const struct wpabuf *ssi, const struct wpabuf *elems,
+		     struct nan_publish_params *params)
+{
+	if (!wpa_s->driver->nan_publish)
+		return 0;
+
+	return wpa_s->driver->nan_publish(wpa_s->drv_priv, addr, publish_id,
+					  service_name, service_id,
+					  srv_proto_type, ssi, elems, params);
+}
+
+static inline int
+wpas_drv_nan_cancel_publish(struct wpa_supplicant *wpa_s, int publish_id)
+{
+	if (!wpa_s->driver->nan_cancel_publish)
+		return 0;
+
+	return wpa_s->driver->nan_cancel_publish(wpa_s->drv_priv, publish_id);
+}
+
+static inline int
+wpas_drv_nan_update_publish(struct wpa_supplicant *wpa_s, int publish_id,
+			    const struct wpabuf *ssi)
+{
+	if (!wpa_s->driver->nan_update_publish)
+		return 0;
+
+	return wpa_s->driver->nan_update_publish(wpa_s->drv_priv, publish_id,
+						 ssi);
+}
+
+static inline int
+wpas_drv_nan_subscribe(struct wpa_supplicant *wpa_s, const u8 *addr,
+		       int subscribe_id, const char *service_name,
+		       const u8 *service_id,
+		       enum nan_service_protocol_type srv_proto_type,
+		       const struct wpabuf *ssi, const struct wpabuf *elems,
+		       struct nan_subscribe_params *params)
+{
+	if (!wpa_s->driver->nan_subscribe)
+		return 0;
+
+	return wpa_s->driver->nan_subscribe(wpa_s->drv_priv, addr, subscribe_id,
+					    service_name, service_id,
+					    srv_proto_type, ssi, elems, params);
+}
+
+static inline int
+wpas_drv_nan_cancel_subscribe(struct wpa_supplicant *wpa_s, int subscribe_id)
+{
+	if (!wpa_s->driver->nan_cancel_subscribe)
+		return 0;
+
+	return wpa_s->driver->nan_cancel_subscribe(wpa_s->drv_priv,
+						   subscribe_id);
 }
 
 #endif /* DRIVER_I_H */

@@ -36,7 +36,7 @@ cc_library_static {
     ],
     soc_specific: true,
     shared_libs: [
-        "android.hardware.wifi.supplicant-V3-ndk",
+        "android.hardware.wifi.supplicant-V4-ndk",
         "android.system.keystore2-V1-ndk",
         "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbinder_ndk",
@@ -83,4 +83,11 @@ libwpa_aidl_cflags_cc_defaults {
             cflags: ["-D%s"],
         },
     },
+}
+
+prebuilt_etc {
+    name: "android.hardware.wifi.supplicant.xml.prebuilt",
+    src: "android.hardware.wifi.supplicant.xml",
+    relative_install_path: "vintf",
+    installable: false,
 }

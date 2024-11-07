@@ -10,6 +10,7 @@
 
 #include "utils/common.h"
 #include "common/wpa_ctrl.h"
+#include "common/nan_de.h"
 #include "config.h"
 #include "wpa_supplicant_i.h"
 #include "wps_supplicant.h"
@@ -207,6 +208,16 @@ void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s)
 		return;
 
 	wpas_dbus_signal_prop_changed(wpa_s, WPAS_DBUS_PROP_ROAM_COMPLETE);
+}
+
+
+void wpas_notify_scan_in_progress_6ghz(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_signal_prop_changed(wpa_s,
+				      WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ);
 }
 
 
@@ -467,6 +478,8 @@ void wpas_notify_network_removed(struct wpa_supplicant *wpa_s,
 		wpa_s->ml_connect_probe_ssid = NULL;
 		wpa_s->ml_connect_probe_bss = NULL;
 	}
+	if (wpa_s->connect_without_scan == ssid)
+		wpa_s->connect_without_scan = NULL;
 #if defined(CONFIG_SME) && defined(CONFIG_SAE)
 	if (wpa_s->sme.ext_auth_wpa_ssid == ssid)
 		wpa_s->sme.ext_auth_wpa_ssid = NULL;
@@ -624,6 +637,15 @@ void wpas_notify_bss_seen(struct wpa_supplicant *wpa_s, unsigned int id)
 		return;
 
 	wpas_dbus_bss_signal_prop_changed(wpa_s, WPAS_DBUS_BSS_PROP_AGE, id);
+}
+
+
+void wpas_notify_bss_anqp_changed(struct wpa_supplicant *wpa_s, unsigned int id)
+{
+	if (wpa_s->p2p_mgmt)
+		return;
+
+	wpas_dbus_bss_signal_prop_changed(wpa_s, WPAS_DBUS_BSS_PROP_ANQP, id);
 }
 
 
@@ -935,7 +957,8 @@ void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
 				const u8 *p2p_dev_addr, const u8 *ip)
 {
 	if (authorized)
-		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr, ip);
+		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr,
+					      ip);
 	else
 		wpas_notify_ap_sta_deauthorized(wpa_s, mac_addr, p2p_dev_addr);
 }
@@ -1057,11 +1080,14 @@ void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
 				 const char *result,
 				 const struct wpa_bss_anqp *anqp)
 {
+	wpa_msg(wpa_s, MSG_INFO, ANQP_QUERY_DONE "addr=" MACSTR " result=%s",
+		MAC2STR(bssid), result);
 #ifdef CONFIG_INTERWORKING
 	if (!wpa_s || !bssid || !anqp)
 		return;
 
 	wpas_aidl_notify_anqp_query_done(wpa_s, bssid, result, anqp);
+	wpas_dbus_signal_anqp_query_done(wpa_s, bssid, result);
 #endif /* CONFIG_INTERWORKING */
 }
 
@@ -1103,15 +1129,6 @@ void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_HS20 */
 }
 
-void wpas_notify_hs20_rx_terms_and_conditions_acceptance(
-		struct wpa_supplicant *wpa_s, const char *url) {
-#ifdef CONFIG_HS20
-	if (!wpa_s || !url)
-		return;
-
-	wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(wpa_s, url);
-#endif /* CONFIG_HS20 */
-}
 
 #ifdef CONFIG_MESH
 
@@ -1368,6 +1385,7 @@ void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s)
 	wpas_dbus_signal_interworking_select_done(wpa_s);
 }
 
+
 #endif /* CONFIG_INTERWORKING */
 
 void wpas_notify_eap_method_selected(struct wpa_supplicant *wpa_s,
@@ -1447,3 +1465,117 @@ void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
 	wpas_aidl_notify_vendor_ctrl_event(wpa_s, msg);
 }
 #endif
+void wpas_notify_hs20_t_c_acceptance(struct wpa_supplicant *wpa_s,
+				     const char *url)
+{
+#ifdef CONFIG_HS20
+	if (!wpa_s || !url)
+		return;
+
+	wpa_msg(wpa_s, MSG_INFO, HS20_T_C_ACCEPTANCE "%s", url);
+	wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(wpa_s, url);
+	wpas_dbus_signal_hs20_t_c_acceptance(wpa_s, url);
+#endif /* CONFIG_HS20 */
+}
+
+#ifdef CONFIG_NAN_USD
+
+void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
+				      enum nan_service_protocol_type
+				      srv_proto_type,
+				      int subscribe_id, int peer_publish_id,
+				      const u8 *peer_addr,
+				      bool fsd, bool fsd_gas,
+				      const u8 *ssi, size_t ssi_len)
+{
+	char *ssi_hex;
+
+	ssi_hex = os_zalloc(2 * ssi_len + 1);
+	if (!ssi_hex)
+		return;
+	if (ssi)
+		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+	wpa_msg(wpa_s, MSG_INFO, NAN_DISCOVERY_RESULT
+		"subscribe_id=%d publish_id=%d address=" MACSTR
+		" fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s",
+		subscribe_id, peer_publish_id, MAC2STR(peer_addr),
+		fsd, fsd_gas, srv_proto_type, ssi_hex);
+	os_free(ssi_hex);
+}
+
+
+void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
+			     enum nan_service_protocol_type srv_proto_type,
+			     int publish_id, int peer_subscribe_id,
+			     const u8 *peer_addr,
+			     const u8 *ssi, size_t ssi_len)
+{
+	char *ssi_hex;
+
+	ssi_hex = os_zalloc(2 * ssi_len + 1);
+	if (!ssi_hex)
+		return;
+	if (ssi)
+		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+	wpa_msg(wpa_s, MSG_INFO, NAN_REPLIED
+		"publish_id=%d address=" MACSTR
+		" subscribe_id=%d srv_proto_type=%u ssi=%s",
+		publish_id, MAC2STR(peer_addr), peer_subscribe_id,
+		srv_proto_type, ssi_hex);
+	os_free(ssi_hex);
+}
+
+
+void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
+			     int peer_instance_id, const u8 *peer_addr,
+			     const u8 *ssi, size_t ssi_len)
+{
+	char *ssi_hex;
+
+	ssi_hex = os_zalloc(2 * ssi_len + 1);
+	if (!ssi_hex)
+		return;
+	if (ssi)
+		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+	wpa_msg(wpa_s, MSG_INFO, NAN_RECEIVE
+		"id=%d peer_instance_id=%d address=" MACSTR " ssi=%s",
+		id, peer_instance_id, MAC2STR(peer_addr), ssi_hex);
+	os_free(ssi_hex);
+}
+
+
+static const char * nan_reason_txt(enum nan_de_reason reason)
+{
+	switch (reason) {
+	case NAN_DE_REASON_TIMEOUT:
+		return "timeout";
+	case NAN_DE_REASON_USER_REQUEST:
+		return "user-request";
+	case NAN_DE_REASON_FAILURE:
+		return "failure";
+	}
+
+	return "unknown";
+}
+
+
+void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
+					int publish_id,
+					enum nan_de_reason reason)
+{
+	wpa_msg(wpa_s, MSG_INFO, NAN_PUBLISH_TERMINATED
+		"publish_id=%d reason=%s",
+		publish_id, nan_reason_txt(reason));
+}
+
+
+void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
+					  int subscribe_id,
+					  enum nan_de_reason reason)
+{
+	wpa_msg(wpa_s, MSG_INFO, NAN_SUBSCRIBE_TERMINATED
+		"subscribe_id=%d reason=%s",
+		subscribe_id, nan_reason_txt(reason));
+}
+
+#endif /* CONFIG_NAN_USD */
