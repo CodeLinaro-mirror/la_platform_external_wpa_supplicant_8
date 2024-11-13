@@ -1585,7 +1585,7 @@ const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
 {
 	const u8 *ie;
 
-	if (wpas_rsn_overriding(wpa_s)) {
+	if (wpas_rsn_overriding(wpa_s, ssid)) {
 		if (!ssid)
 			ssid = wpa_s->current_ssid;
 
@@ -1619,7 +1619,7 @@ const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
 {
 	const u8 *ie;
 
-	if (wpas_rsn_overriding(wpa_s)) {
+	if (wpas_rsn_overriding(wpa_s, ssid)) {
 		ie = wpa_bss_get_vendor_ie(bss, RSNXE_OVERRIDE_IE_VENDOR_TYPE);
 		if (ie) {
 			const u8 *tmp;
