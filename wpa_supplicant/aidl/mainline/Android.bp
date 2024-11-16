@@ -51,3 +51,17 @@ cc_library_static {
     ],
     min_sdk_version: "30",
 }
+
+prebuilt_etc {
+    name: "mainline_supplicant_rc",
+    src: "config/mainline_supplicant.rc",
+    filename: "mainline_supplicant.rc",
+    installable: false,
+}
+
+prebuilt_etc {
+    name: "mainline_supplicant_conf",
+    src: "config/mainline_supplicant.conf",
+    filename: "mainline_supplicant.conf",
+    installable: false,
+}
