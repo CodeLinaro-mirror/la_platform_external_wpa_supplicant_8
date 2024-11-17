@@ -70,7 +70,7 @@
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
 #endif /* CONFIG_MESH */
-#include "aidl/aidl.h"
+#include "aidl/vendor/aidl.h"
 
 const char *const wpa_supplicant_version =
 "wpa_supplicant v" VERSION_STR "\n"
