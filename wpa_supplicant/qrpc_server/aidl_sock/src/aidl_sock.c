@@ -29,80 +29,117 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#include "includes.h"
-#include <sys/un.h>
-#include <sys/stat.h>
-#include <grp.h>
-#include <stddef.h>
-#include <unistd.h>
+#include <errno.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
+#include <stddef.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <time.h>
+#include <unistd.h>
 
-#include "utils/common.h"
-#include "utils/eloop.h"
-#include "utils/list.h"
+#include <rpc/util/log_common.h>
 
 #include "aidl_sock.h"
-#include "aidl_i.h"
 
-#include "supplicant_someip_server.h"
+static const char *spath;
+static const char *cpath;
+static void (*sock_handler)(void);
 
-static const char* spath = "/data/vendor/wifi/wpa/aidl_server";
-static const char* cpath = "/data/vendor/wifi/wpa/aidl_client";
 int server_sockect_fd = -1;
 int client_sockect_fd = -1;
 
-void wpas_create_aidl_socket(int *fd)
+struct reltime {
+	long sec;
+	long usec;
+};
+
+int get_reltime(struct reltime *t)
 {
-	wpa_printf(MSG_DEBUG, "Creating aidl socket");
+	static clockid_t clock_id = CLOCK_REALTIME;
+	struct timespec ts;
+	int res;
+
+	while (1) {
+		res = clock_gettime(clock_id, &ts);
+		if (res == 0) {
+			t->sec = ts.tv_sec;
+			t->usec = ts.tv_nsec / 1000;
+			return 0;
+		}
+		switch (clock_id) {
+			case CLOCK_REALTIME:
+				return -1;
+		}
+	}
+}
+
+static inline void reltime_sub(struct reltime *a, struct reltime *b,
+				  struct reltime *res)
+{
+	res->sec = a->sec - b->sec;
+	res->usec = a->usec - b->usec;
+	if (res->usec < 0) {
+		res->sec--;
+		res->usec += 1000000;
+	}
+}
+
+static inline int reltime_expired(struct reltime *now,
+				     struct reltime *ts,
+				     long timeout_secs)
+{
+	struct reltime age;
+
+	reltime_sub(now, ts, &age);
+	return (age.sec > timeout_secs) ||
+	       (age.sec == timeout_secs && age.usec > 0);
+}
+
+void qti_create_aidl_socket(int *fd, const char *path)
+{
+	spath = path;
+	ALOGE("Creating aidl socket");
 
 	struct sockaddr_un addr;
 	int flags;
 
 	*fd = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (*fd < 0) {
-		wpa_printf(MSG_ERROR, "aidl socket: %s", strerror(errno));
+		ALOGE("Aidl socket: %s", strerror(errno));
 		goto fail;
 	}
 
-	os_memset(&addr, 0, sizeof(addr));
-
+	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	os_strlcpy(addr.sun_path, spath, sizeof(addr.sun_path));
+	strlcpy(addr.sun_path, spath, sizeof(addr.sun_path));
 	if (bind(*fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		wpa_printf(MSG_ERROR, "aidl sockect <bind> failed: %s", strerror(errno));
+		ALOGE("Aidl server sockect <bind> failed: %s", strerror(errno));
 		if (connect(*fd, (struct sockaddr *) &addr,
 			    sizeof(addr)) < 0) {
-			wpa_printf(MSG_INFO, "aidl sockect exists, but does not"
+			ALOGI("Aidl sockect exists, but does not"
 				   " allow connections - assuming it was left"
 				   "over from forced program termination");
 			if (unlink(spath) < 0) {
-				wpa_printf(MSG_ERROR,
-					   "Could not unlink existing aidl sockect '%s': %s",
+				ALOGE("Could not unlink existing aidl sockect '%s': %s",
 					   spath, strerror(errno));
 				goto fail;
 			}
-			if (bind(*fd, (struct sockaddr *) &addr,
-				 sizeof(addr)) < 0) {
-				wpa_printf(MSG_ERROR, "aidl socket <re-bind> failed: %s",
-					   strerror(errno));
+			if (bind(*fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+				ALOGE("Aidl socket <re-bind> failed: %s", strerror(errno));
 				goto fail;
 			}
-			wpa_printf(MSG_INFO, "Successfully replaced leftover "
-				   "aidl sockect '%s'", spath);
+			ALOGI("Successfully replaced leftover aidl sockect '%s'", spath);
 		} else {
-			wpa_printf(MSG_ERROR, "aidl sockect exists and seems to "
-				   "be in use - cannot override it");
-			wpa_printf(MSG_ERROR, "Delete '%s' manually if it is "
-				   "not used anymore", spath);
+			ALOGE("Aidl sockect exists and seems to be in use - cannot override it");
+			ALOGE("Delete '%s' manually if it is not used anymore", spath);
 			goto fail;
 		}
 	}
 
 	if (chmod(spath, S_IRWXU | S_IRWXG) < 0) {
-		wpa_printf(MSG_ERROR, "chmod[ctrl_interface=%s]: %s",
-			   spath, strerror(errno));
+		ALOGE("chmod[ctrl_interface=%s]: %s", spath, strerror(errno));
 		goto fail;
 	}
 
@@ -110,12 +147,11 @@ void wpas_create_aidl_socket(int *fd)
 	if (flags >= 0) {
 		flags |= O_NONBLOCK;
 		if (fcntl(*fd, F_SETFL, flags) < 0) {
-			wpa_printf(MSG_INFO, "fcntl(ctrl, O_NONBLOCK): %s",
-				   strerror(errno));
+			ALOGI("fcntl(ctrl, O_NONBLOCK): %s", strerror(errno));
 			/* Not fatal, continue on.*/
 		}
 	}
-	wpa_printf(MSG_DEBUG, "Aidl sockect created");
+	ALOGD("Aidl sockect created");
 	server_sockect_fd = *fd;
 	return;
 fail:
@@ -126,62 +162,59 @@ fail:
 	if (spath) {
 		unlink(spath);
 	}
-	wpa_printf(MSG_ERROR, "Cannot create aidl sockect");
+	ALOGE("Cannot create aidl sockect");
 }
 
-void wpas_destroy_aidl_socket()
+void qti_destroy_aidl_socket()
 {
 	unlink(spath);
 	if (server_sockect_fd > -1) {
 		close(server_sockect_fd);
 		server_sockect_fd = -1;
 	}
-	wpa_printf(MSG_DEBUG, "Aidl sockect destroyed");
+	ALOGD("Aidl sockect destroyed");
 }
 
-bool wpas_connect_aidl_socket()
+bool qti_connect_aidl_socket(const char *path, void (*handler)(void))
 {
-	wpa_printf(MSG_DEBUG, "Connecting to aidl socket");
+	cpath = path;
+	sock_handler = handler;
+	ALOGD("Connecting to aidl socket");
 
 	struct sockaddr_un saddr;
 	struct sockaddr_un caddr;
 
-	static int counter = 0;
-	int ret;
-	size_t res;
 	int tries = 0;
 	int flags;
 
 	client_sockect_fd = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (client_sockect_fd < 0) {
-		wpa_printf(MSG_ERROR, "aidl socket: %s", strerror(errno));
+		ALOGE("Aidl socket: %s", strerror(errno));
 		return false;
 	}
 
 	caddr.sun_family = AF_UNIX;
-	counter++;
 
 try_again:
-	os_strlcpy(caddr.sun_path, cpath, sizeof(caddr.sun_path));
+	strlcpy(caddr.sun_path, cpath, sizeof(caddr.sun_path));
 
 	tries++;
 	if (bind(client_sockect_fd, (struct sockaddr *) &caddr, sizeof(caddr)) < 0) {
 		if (errno == EADDRINUSE && tries < 2) {
-			wpa_printf(MSG_ERROR, "aidl sockect <bind> failed: %s, retrying", strerror(errno));
+			ALOGE("Aidl client sockect <bind> failed: %s, retrying", strerror(errno));
 			unlink(caddr.sun_path);
 			goto try_again;
 		}
 		close(client_sockect_fd);
-		wpa_printf(MSG_ERROR, "aidl sockect <re-bind> failed: %s", strerror(errno));
+		ALOGE("Aidl sockect <re-bind> failed: %s", strerror(errno));
 		return false;
 	}
 
 	saddr.sun_family = AF_UNIX;
-	os_strlcpy(saddr.sun_path, spath, sizeof(saddr.sun_path));
+	strlcpy(saddr.sun_path, spath, sizeof(saddr.sun_path));
 
-	if (connect(client_sockect_fd, (struct sockaddr *) &saddr,
-			sizeof(saddr)) < 0) {
-		wpa_printf(MSG_ERROR, "aidl sockect <connect> failed: %s", strerror(errno));
+	if (connect(client_sockect_fd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0) {
+		ALOGE("Aidl sockect <connect> failed: %s", strerror(errno));
 		close(client_sockect_fd);
 		unlink(caddr.sun_path);
 		return false;
@@ -195,32 +228,30 @@ try_again:
 	if (flags >= 0) {
 		flags |= O_NONBLOCK;
 		if (fcntl(client_sockect_fd, F_SETFL, flags) < 0) {
-			wpa_printf(MSG_INFO, "fcntl(ctrl, O_NONBLOCK): %s",
-				   strerror(errno));
+			ALOGI("fcntl(ctrl, O_NONBLOCK): %s", strerror(errno));
 			/* Not fatal, continue on.*/
 		}
 	}
-	wpa_printf(MSG_DEBUG, "Aidl socket connected");
+	ALOGD("Aidl socket connected");
 	return true;
 }
 
 
-void wpas_disconnect_aidl_socket()
+void qti_disconnect_aidl_socket()
 {
 	unlink(cpath);
 	if (client_sockect_fd >= 0){
 		close(client_sockect_fd);
 		client_sockect_fd = -1;
 	}
-	wpa_printf(MSG_DEBUG, "Aidl sockect disconnected");
+	ALOGD("Aidl sockect disconnected");
 }
 
-void wpas_notify_aidl_socket()
+void qti_notify_aidl_socket()
 {
-	wpa_printf(MSG_DEBUG, "Notifying aidl sockect");
+	ALOGD("Notifying aidl sockect");
 
-	struct os_reltime started_at;
-	int res;
+	struct reltime started_at;
 
 	char flag[] = {0x01};
 
@@ -229,7 +260,7 @@ void wpas_notify_aidl_socket()
 	started_at.usec = 0;
 retry_send:
 	if (send(client_sockect_fd, flag, 1, 0) < 0) {
-		wpa_printf(MSG_DEBUG, "Initial notify failed, %s", strerror(errno));
+		ALOGD("Initial notify failed, %s", strerror(errno));
 		if (errno == EAGAIN || errno == EBUSY || errno == EWOULDBLOCK)
 		{
 			/*
@@ -237,55 +268,50 @@ retry_send:
 			 * longer before giving up.
 			 */
 			if (started_at.sec == 0)
-				os_get_reltime(&started_at);
+				get_reltime(&started_at);
 			else {
-				struct os_reltime n;
-				os_get_reltime(&n);
+				struct reltime n;
+				get_reltime(&n);
 				/* Try for a few seconds. */
-				if (os_reltime_expired(&n, &started_at, 5))
+				if (reltime_expired(&n, &started_at, 5))
 					goto send_err;
 			}
-			os_sleep(1, 0);
-			wpa_printf(MSG_DEBUG, "Re-notifying...");
+			sleep(1);
+			ALOGD("Re-notifying...");
 			goto retry_send;
 		}
 	send_err:
-		wpa_printf(MSG_DEBUG, "Fail to notify, %s", strerror(errno));
+		ALOGD("Fail to notify, %s", strerror(errno));
 		return;
 	}
-	wpa_printf(MSG_DEBUG, "Aidl socket notified");
+	ALOGD("Aidl socket notified");
 }
 
-void wpas_aidl_sock_handler(int sock, void *eloop_ctx, void *sock_ctx)
+void qti_aidl_sock_handler(int sock, void *eloop_ctx, void *sock_ctx)
 {
-	struct wpa_global *global = eloop_ctx;
-	struct wpas_aidl_priv *priv = sock_ctx;
 	uint8_t *buf;
 	size_t res;
 	struct sockaddr_storage from;
 	socklen_t fromlen = sizeof(from);
 
-	buf = os_malloc(1);
+	buf = malloc(1);
 	if (!buf)
 		return;
-	res = recvfrom(sock, buf, 1, 0,
-			   (struct sockaddr *) &from, &fromlen);
+	res = recvfrom(sock, buf, 1, 0, (struct sockaddr *) &from, &fromlen);
 	if (res < 0) {
-		wpa_printf(MSG_ERROR, "recvfrom(ctrl_iface): %s",
-			   strerror(errno));
-		os_free(buf);
+		ALOGE("recvfrom(ctrl_iface): %s", strerror(errno));
+		free(buf);
 		return;
 	}
 	if ((size_t) res > 1) {
-		wpa_printf(MSG_ERROR, "Notification error: %ld", res);
-		os_free(buf);
+		ALOGE("Notification error: recv(%ld) too long", res);
+		free(buf);
 		return;
 	}
 
-	wpa_printf(MSG_DEBUG, "Message received");
+	ALOGD("Message received");
+	sock_handler();
 
-	someip_process_queued_msg();
-
-	os_memset(buf, 0, res);
-	os_free(buf);
+	memset(buf, 0, res);
+	free(buf);
 }
