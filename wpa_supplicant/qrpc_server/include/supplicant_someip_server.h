@@ -15,8 +15,6 @@ bool SupplicantSomeIPServerStart();
 void SupplicantSomeIPServerStop();
 void SupplicantSomeIPServerDeinit();
 
-void someip_process_queued_msg();
-
 #ifdef __cplusplus
 }
 #endif

@@ -9,7 +9,6 @@
 #include <rpc/util/someip_server.h>
 
 #include "supplicant_someip_server.h"
-
 #include "supplicant_message_handler.h"
 #include "supplicant_event_callback.h"
 #include "SupplicantNonStdCallback.h"
@@ -19,15 +18,17 @@
 #define SUPPLICANT_INSTANCE_ID                              ((uint16_t) 0x3330)
 #define SUPPLICANT_EVENTGROUP_ID                            ((uint16_t) 0xCCC0)
 
+using qti::hal::rpc::Someip;
+using qti::hal::rpc::SomeipServer;
 using qti::hal::rpc::SomeipContext;
 using qti::hal::rpc::SomeipCallback;
-using qti::hal::rpc::SomeipServer;
 using qti::hal::rpc::SomeipMessage;
-
-std::string SUPPLICANT_SERVICE_NAME = "supplicant_someip_service";
 
 std::shared_ptr<std::thread> wpas_someip_service_thread;
 std::shared_ptr<SomeipServer> wpas_someip_server;
+
+std::string SUPPLICANT_SERVICE_NAME = "supplicant_someip_service";
+std::string cpath = "/data/vendor/wifi/wpa/aidl_client";
 
 uint16_t reqId = 0xFFFF;
 uint32_t defaultTimeout = 500;
@@ -64,7 +65,7 @@ static std::shared_ptr<SomeipMessage> WaitforMsg(uint32_t timeout)
     return req;
 }
 
-void wpas_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
+static void wpas_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
 {
     if (msg->getMethodId() == reqId)
     {
@@ -73,16 +74,21 @@ void wpas_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
         condition_.notify_one();
     }
 
-    wpas_notify_aidl_socket();
+    qti_notify_aidl_socket();
 }
 
+static void someip_process_queued_msg()
+{
+    if (!wpas_someip_server)
+        return;
+    wpas_someip_server->handleMessageQueue();
+}
 
 bool SupplicantSomeIPServerInit()
 {
     /*Initialize Context*/
     SomeipContext context(WIFI_SUPPLICANT_SERVICE_ID, SUPPLICANT_INSTANCE_ID,
         SUPPLICANT_EVENTGROUP_ID, SupplicantEvent);
-
     SomeipCallback cb(nullptr,
                       nullptr,
                       SupplicantProcessSomeIPRequestMessage);
@@ -100,7 +106,7 @@ bool SupplicantSomeIPServerInit()
 
 bool SupplicantSomeIPServerStart()
 {
-    if(!wpas_connect_aidl_socket())
+    if(!qti_connect_aidl_socket(cpath.c_str(), someip_process_queued_msg))
         return false;
 
     ALOGI("Supplicant someip service loop starting...");
@@ -117,7 +123,7 @@ void SupplicantSomeIPServerStop()
     ALOGI("Supplicant someip service main loop stop...");
     wpas_someip_server->stop();
 
-    wpas_disconnect_aidl_socket();
+    qti_disconnect_aidl_socket();
 
     if(wpas_someip_service_thread)
     {
@@ -130,16 +136,10 @@ void SupplicantSomeIPServerDeinit()
 {
     if (!wpas_someip_server)
         return;
+
     ALOGI("Supplicant someip service deinit...");
     wpas_someip_server->deinit();
     wpas_someip_server = nullptr;
-}
-
-void someip_process_queued_msg()
-{
-    if (!wpas_someip_server)
-        return;
-    wpas_someip_server->handleMessageQueue();
 }
 
 bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data)

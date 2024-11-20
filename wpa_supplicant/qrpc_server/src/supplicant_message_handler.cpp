@@ -234,7 +234,7 @@ void SupplicantProcessSomeIPRequestMessage(const std::shared_ptr<SomeipMessage> 
     MessageHandler handler = SupplicantGetMessageHandler(methodId);
     if (!handler)
     {
-        ALOGE("Unspported SomeIP request method id 0x%04X", methodId);
+        ALOGE("Unsupported SomeIP request method id 0x%04X", methodId);
         return;
     }
 

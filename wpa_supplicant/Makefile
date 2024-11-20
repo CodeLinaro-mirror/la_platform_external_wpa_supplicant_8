@@ -1944,6 +1944,7 @@ endif
 CFLAGS += -I aidl
 CFLAGS += -I aidl/include
 CFLAGS += -I qrpc_server/include
+CFLAGS += -I qrpc_server/aidl_sock/include
 #Aidl
 OBJS += aidl/aidl.o
 OBJS += aidl/aidl_manager.o
@@ -1956,7 +1957,7 @@ OBJS += aidl/supplicant_vendor.o
 OBJS += aidl/vendorsta_iface.o
 endif
 #Someip service
-OBJS += qrpc_server/src/aidl_sock.o
+OBJS += qrpc_server/aidl_sock/src/aidl_sock.o
 OBJS += qrpc_server/src/supplicant_someip_server.o
 OBJS += qrpc_server/src/supplicant_event_callback.o
 OBJS += qrpc_server/src/supplicant_message_handler.o

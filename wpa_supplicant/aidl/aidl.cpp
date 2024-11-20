@@ -46,17 +46,12 @@ using aidl::android::hardware::wifi::supplicant::DppEventType;
 using aidl::android::hardware::wifi::supplicant::DppFailureCode;
 using aidl::android::hardware::wifi::supplicant::DppProgressCode;
 
+std::string spath = "/data/vendor/wifi/wpa/aidl_server";
+
 static void wpas_aidl_notify_dpp_failure(struct wpa_supplicant *wpa_s, DppFailureCode code);
 static void wpas_aidl_notify_dpp_progress(struct wpa_supplicant *wpa_s, DppProgressCode code);
 static void wpas_aidl_notify_dpp_success(struct wpa_supplicant *wpa_s, DppEventType code);
 
-#ifndef CONFIG_SOMEIP_SUPPORT
-void wpas_aidl_sock_handler(
-	int /* sock */, void * /* eloop_ctx */, void * /* sock_ctx */)
-{
-	ABinderProcess_handlePolledCommands();
-}
-
 struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 {
 	struct wpas_aidl_priv *priv;
@@ -67,97 +62,16 @@ struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 		return NULL;
 	priv->global = global;
 
-	wpa_printf(MSG_DEBUG, "Initing aidl control");
+	wpa_printf(MSG_INFO, "Initiating aidl control");
 
-	ABinderProcess_setupPolling(&priv->aidl_fd);
+	qti_create_aidl_socket(&priv->aidl_fd, spath.c_str());
 	if (priv->aidl_fd < 0)
 		goto err;
 
 	wpa_printf(MSG_INFO, "Processing aidl events on FD %d", priv->aidl_fd);
 	// Look for read events from the aidl socket in the eloop.
 	if (eloop_register_read_sock(
-		priv->aidl_fd, wpas_aidl_sock_handler, global, priv) < 0)
-		goto err;
-
-#ifdef CONFIG_SUPPLICANT_RPC
-	if (property_get_bool("persist.vendor.wlan.hal.rpc", false)) {
-		AidlRpcManager *rpc_manager = AidlRpcManager::getInstance();
-		if (!rpc_manager) {
-			wpa_printf(MSG_ERROR, "get rpc manager instance fail");
-			goto err;
-		}
-		if (rpc_manager->startRpcClient()) {
-			wpa_printf(MSG_ERROR, "start rpc client fail");
-			goto err;
-		}
-
-		// May not need to store this rpc manager reference in the
-		// priv data strucure because we've made it a singleton class.
-		priv->aidl_manager = (void *)rpc_manager;
-		return priv;
-	}
-#endif
-
-	aidl_manager = AidlManager::getInstance();
-	if (!aidl_manager)
-		goto err;
-	if (aidl_manager->registerAidlService(global)) {
-		goto err;
-	}
-#ifdef CONFIG_USE_VENDOR_AIDL
-	wpa_printf(MSG_INFO, "register vendor aidl service.");
-	if (aidl_manager->registerVendorAidlService(global)) {
-		goto err;
-	}
-#endif
-	// We may not need to store this aidl manager reference in the
-	// global data strucure because we've made it a singleton class.
-	priv->aidl_manager = (void *)aidl_manager;
-
-	return priv;
-err:
-	wpas_aidl_deinit(priv);
-	return NULL;
-}
-
-void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
-{
-	if (!priv)
-		return;
-
-	wpa_printf(MSG_DEBUG, "Deiniting aidl control");
-
-#ifdef CONFIG_SUPPLICANT_RPC
-	if (property_get_bool("persist.vendor.wlan.hal.rpc", false))
-		AidlRpcManager::destroyInstance();
-	else
-#endif
-	AidlManager::destroyInstance();
-
-	eloop_unregister_read_sock(priv->aidl_fd);
-	os_free(priv);
-}
-#else
-struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
-{
-	struct wpas_aidl_priv *priv;
-	AidlManager *aidl_manager;
-
-	priv = (wpas_aidl_priv *)os_zalloc(sizeof(*priv));
-	if (!priv)
-		return NULL;
-	priv->global = global;
-
-	wpa_printf(MSG_INFO, "Initing aidl control");
-
-	wpas_create_aidl_socket(&priv->aidl_fd);
-	if (priv->aidl_fd < 0)
-		goto err;
-
-	wpa_printf(MSG_INFO, "Processing aidl events on FD %d", priv->aidl_fd);
-	// Look for read events from the aidl socket in the eloop.
-	if (eloop_register_read_sock(
-		priv->aidl_fd, wpas_aidl_sock_handler, global, priv) < 0)
+		priv->aidl_fd, qti_aidl_sock_handler, global, priv) < 0)
 		goto err;
 
 	aidl_manager = AidlManager::getInstance();
@@ -192,10 +106,9 @@ void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
 
 	AidlManager::destroyInstance();
 	eloop_unregister_read_sock(priv->aidl_fd);
-	wpas_destroy_aidl_socket();
+	qti_destroy_aidl_socket();
 	os_free(priv);
 }
-#endif
 
 int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
