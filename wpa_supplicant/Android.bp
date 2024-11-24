@@ -1422,6 +1422,45 @@ cc_library_shared {
     ],
 }
 
+cc_fuzz {
+    name: "mainline_supplicant_service_fuzzer",
+    team: "trendy_team_fwk_wifi_hal",
+    srcs: [
+        "aidl/mainline/fuzzers/mainline_supplicant_service_fuzzer.cpp",
+    ],
+    defaults: [
+        "fuzzer_disable_leaks",
+        "service_fuzzer_defaults",
+        "wpa_supplicant_includes_default",
+        "wpa_supplicant_mainline_cflags_default",
+        "wpa_supplicant_srcs_default",
+    ],
+    shared_libs: [
+        "android.system.wifi.mainline_supplicant-ndk",
+        "libbase",
+        "libbinder_ndk",
+        "libc",
+        "libcrypto",
+        "libcutils_sockets",
+        "liblog",
+        "libnl",
+        "libssl",
+    ],
+    static_libs: [
+        "mainline_supplicant_aidl_bp",
+    ],
+    cflags: [
+        "-DSUPPLICANT_SERVICE_FUZZER",
+    ],
+    fuzz_config: {
+        triage_assignee: "android-wifi-team@google.com",
+    },
+    proto: {
+        type: "lite",
+        static: true,
+    },
+}
+
 //## Aidl service library ###
 //#######################
 cc_library_static {
