@@ -801,6 +801,10 @@ std::string CreateHostapdConfig(
 			"owe_transition_ifname=%s", owe_transition_ifname.c_str());
 	}
 
+	std::string ap_isolation_as_string = StringPrintf("ap_isolate=%s",
+			isAidlServiceVersionAtLeast(3) && nw_params.isClientIsolationEnabled ?
+			"1" : "0");
+
 	return StringPrintf(
 		"interface=%s\n"
 		"driver=nl80211\n"
@@ -827,6 +831,7 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"%s\n"
 		"%s\n"
+		"%s\n",
 #ifdef CONFIG_OCV
 		"ocv=%d\n"
 #endif
@@ -849,7 +854,8 @@ std::string CreateHostapdConfig(
 		owe_transition_ifname_as_string.c_str(),
 		enable_edmg_as_string.c_str(),
 		edmg_channel_as_string.c_str(),
-		vendor_elements_as_string.c_str()
+		vendor_elements_as_string.c_str(),
+                ap_isolation_as_string.c_str()
 #ifdef CONFIG_OCV
 #ifdef CONFIG_IEEE80211BE
 		/* TODO: Don't enable OCV for Wi-Fi 7 until further notice from WFA */
