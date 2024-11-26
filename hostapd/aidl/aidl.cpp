@@ -39,7 +39,7 @@ extern "C"
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/includes.h"
-#include "aidl_sock.h"
+#include "rpc/util/aidl_sock.h"
 }
 
 using aidl::android::hardware::wifi::hostapd::Hostapd;
@@ -57,16 +57,18 @@ static std::shared_ptr<HostapdVendor> service_vendor;
 #endif
 
 #ifdef CONFIG_CTRL_IFACE_AIDL
+std::string spath = "/data/vendor/wifi/hostapd/aidl_server";
+
 int hostapd_aidl_init(struct hapd_interfaces *interfaces)
 {
 	wpa_printf(MSG_INFO, "Initializing aidl control");
-	hostapd_create_aidl_socket(&aidl_fd);
+	qti_create_aidl_socket(&aidl_fd, spath.c_str());
 	if (aidl_fd < 0)
 		goto err;
 	wpa_printf(MSG_INFO, "Processing aidl events on FD %d", aidl_fd);
 	// Look for read events from the aidl socket in the eloop.
 	if (eloop_register_read_sock(
-		aidl_fd, hostapd_aidl_sock_handler, interfaces, NULL) < 0)
+		aidl_fd, qti_aidl_sock_handler, interfaces, NULL) < 0)
 		goto err;
 
 #ifdef CONFIG_HOSTAPD_RPC
@@ -122,7 +124,7 @@ void hostapd_aidl_deinit(struct hapd_interfaces *interfaces)
 #endif
 	// Before aidl deinit, make sure call terminate to clear callback_
 	eloop_unregister_read_sock(aidl_fd);
-	hostapd_destroy_aidl_socket();
+	qti_destroy_aidl_socket();
 	if (service) {
 		service->terminate();
 	}

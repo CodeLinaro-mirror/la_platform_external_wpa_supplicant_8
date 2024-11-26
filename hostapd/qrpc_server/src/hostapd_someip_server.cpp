@@ -9,15 +9,15 @@
 #include <rpc/message/hostapd/hostapd_message_def.h>
 #include <rpc/util/log_common.h>
 #include <rpc/util/someip_server.h>
+#include <rpc/util/aidl_sock.h>
+
 #include "hostapd_someip_server.h"
 #include "hostapd_message_handler.h"
 #include "hostapd_event_callback.h"
-#include "aidl_sock.h"
 
 #define HOSTAPD_INSTANCE_ID_CHM      ((uint16_t) 0x4440)
 #define HOSTAPD_INSTANCE_ID_CEM      ((uint16_t) 0x4441)
 #define HOSTAPD_EVENTGROUP_ID        ((uint16_t) 0xDDD0)
-#define HOSTAPD_SERVICE_NAME         "hostapd_someip_service"
 
 using qti::hal::rpc::SomeipContext;
 using qti::hal::rpc::SomeipCallback;
@@ -27,10 +27,21 @@ using qti::hal::rpc::SomeipMessage;
 std::shared_ptr<std::thread> hostapd_someip_service_thread;
 std::shared_ptr<SomeipServer> hostapd_someip_server;
 
-void hostapd_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
+#define HOSTAPD_SERVICE_NAME         "hostapd_someip_service"
+std::string cpath = "/data/vendor/wifi/hostapd/aidl_client";
+
+static void hostapd_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
 {
-    hostapd_notify_aidl_socket();
+    qti_notify_aidl_socket();
 }
+
+static void someip_process_queued_msg()
+{
+    if (!hostapd_someip_server)
+        return;
+    hostapd_someip_server->handleMessageQueue();
+}
+
 
 bool HostapdSomeIPServerInit()
 {
@@ -60,7 +71,7 @@ bool HostapdSomeIPServerInit()
 
 bool HostapdSomeIPServerStart()
 {
-    if(!hostapd_connect_aidl_socket())
+    if(!qti_connect_aidl_socket(cpath.c_str(), someip_process_queued_msg))
         return false;
     ALOGI("Hostapd someip service loop starting...");
     hostapd_someip_service_thread =
@@ -74,7 +85,7 @@ void HostapdSomeIPServerStop()
         return;
     ALOGI("Hostapd someip service main loop stop...");
     hostapd_someip_server->stop();
-    hostapd_disconnect_aidl_socket();
+    qti_disconnect_aidl_socket();
     if(hostapd_someip_service_thread) {
         if (hostapd_someip_service_thread->joinable())
             hostapd_someip_service_thread->join();
@@ -88,13 +99,6 @@ void HostapdSomeIPServerDeinit()
     ALOGI("Hostapd someip service deinit...");
     hostapd_someip_server->deinit();
     hostapd_someip_server = nullptr;
-}
-
-void someip_process_queued_msg()
-{
-    if (!hostapd_someip_server)
-        return;
-    hostapd_someip_server->handleMessageQueue();
 }
 
 bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data)

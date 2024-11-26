@@ -1305,7 +1305,6 @@ ifdef CONFIG_USE_VENDOR_AIDL
 OBJS += aidl/hostapd_vendor.o
 endif
 #Someip service
-OBJS += qrpc_server/src/aidl_sock.o
 OBJS += qrpc_server/src/hostapd_someip_server.o
 OBJS += qrpc_server/src/hostapd_event_callback.o
 OBJS += qrpc_server/src/hostapd_message_handler.o
@@ -1318,7 +1317,7 @@ endif
 LIBS += -lstdc++
 LIBS += -lbase -lvsomeip3
 LIBS += -lwpa_supplicant_8_lib
-LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util
+LIBS += -lqti_rpc_common_util -lqti_someip_util -lqti_log_util -lqti_aidl_sock
 LIBS_c += -lqti_log_util
 LIBS += -lqti-wifi-hostapd-message
 ifdef CONFIG_USE_VENDOR_AIDL

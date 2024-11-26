@@ -15,7 +15,6 @@ bool HostapdSomeIPServerInit();
 bool HostapdSomeIPServerStart();
 void HostapdSomeIPServerStop();
 void HostapdSomeIPServerDeinit();
-void someip_process_queued_msg();
 
 #ifdef __cplusplus
 }
