@@ -7,13 +7,12 @@
 
 #include <rpc/util/log_common.h>
 #include <rpc/util/someip_server.h>
+#include <rpc/util/aidl_sock.h>
 
 #include "supplicant_someip_server.h"
 #include "supplicant_message_handler.h"
 #include "supplicant_event_callback.h"
 #include "SupplicantNonStdCallback.h"
-
-#include "aidl_sock.h"
 
 #define SUPPLICANT_INSTANCE_ID                              ((uint16_t) 0x3330)
 #define SUPPLICANT_EVENTGROUP_ID                            ((uint16_t) 0xCCC0)
