@@ -567,7 +567,7 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 			wpa_s->ifname);
 		return 1;
 	}
-
+	total_iface_ids_--;
 	// Invoke the |onInterfaceRemoved| method on all registered callbacks.
 	callWithEachSupplicantCallback(std::bind(
 		&SupplicantCallback::onInterfaceRemoved, std::placeholders::_1,
