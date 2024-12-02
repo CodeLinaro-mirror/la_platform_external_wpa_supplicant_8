@@ -17,6 +17,7 @@
 #include "iface_config_utils.h"
 #include "misc_utils.h"
 #include "sta_iface.h"
+#include "aidl_qrpc_util.h"
 
 extern "C"
 {
@@ -131,6 +132,7 @@ ndk::ScopedAStatus doOneArgDriverCommand(
 
 void endExtRadioWork(struct wpa_radio_work *work)
 {
+	wpa_printf(MSG_INFO, "endExtRadioWork");
 	auto *ework = static_cast<struct wpa_external_work *>(work->ctx);
 	work->wpa_s->ext_work_in_progress = 0;
 	radio_work_done(work);
@@ -139,6 +141,7 @@ void endExtRadioWork(struct wpa_radio_work *work)
 
 void extRadioWorkTimeoutCb(void *eloop_ctx, void *timeout_ctx)
 {
+	wpa_printf(MSG_INFO, "extRadioWorkTimeoutCb");
 	auto *work = static_cast<struct wpa_radio_work *>(eloop_ctx);
 	auto *ework = static_cast<struct wpa_external_work *>(work->ctx);
 	wpa_dbg(
@@ -170,6 +173,7 @@ void extRadioWorkStartCb(struct wpa_radio_work *work, int deinit)
 	// need to handle this scenario.
 	WPA_ASSERT(!deinit);
 
+	wpa_printf(MSG_INFO, "extRadioWorkStartCb");
 	auto *ework = static_cast<struct wpa_external_work *>(work->ctx);
 	wpa_dbg(
 		work->wpa_s, MSG_DEBUG, "Starting external radio work %u (%s)",
@@ -303,6 +307,14 @@ inline std::array<uint8_t, ETH_ALEN> macAddrToArray(const uint8_t* mac_addr) {
 }
 
 }  // namespace
+
+void aidl_cancel_extRadioWorkTimeout(void *ctx)
+{
+	wpa_printf(MSG_INFO, "Canceling aidl extRadioWork timeout");
+	auto *work = static_cast<struct wpa_radio_work *>(ctx);
+	eloop_cancel_timeout(extRadioWorkTimeoutCb, work, NULL);
+	return;
+}
 
 namespace aidl {
 namespace android {
@@ -1414,6 +1426,7 @@ std::pair<uint32_t, ndk::ScopedAStatus> StaIface::addExtRadioWorkInternal(
 	if (radio_add_work(
 		wpa_s, freq_in_mhz, ework->type, 0, extRadioWorkStartCb,
 		ework)) {
+		wpa_printf(MSG_ERROR, "Failed to add ExtRadioWork");
 		os_free(ework);
 		return {UINT32_MAX, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
