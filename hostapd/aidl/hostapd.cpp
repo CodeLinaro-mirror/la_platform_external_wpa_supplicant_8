@@ -1048,6 +1048,12 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 	return setDebugParamsInternal(level);
 }
 
+::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIface(
+        const std::string& iface_name, const std::string& linkIdentity)
+{
+	return removeLinkFromMultipleLinkBridgedApIfaceInternal(iface_name, linkIdentity);
+}
+
 ::ndk::ScopedAStatus Hostapd::addAccessPointInternal(
 	const IfaceParams& iface_params,
 	const NetworkParams& nw_params)
@@ -1490,6 +1496,23 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 {
 	wpa_debug_level = static_cast<uint32_t>(level);
 	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIfaceInternal(
+const std::string& iface_name, const std::string& linkIdentity)
+{
+	if (!hostapd_get_iface(interfaces_, iface_name.c_str())) {
+		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
+		return createStatus(HostapdStatusCode::FAILURE_IFACE_UNKNOWN);
+	}
+	struct hostapd_data* iface_hapd =
+		hostapd_get_iface_by_link_id(interfaces_, (size_t) linkIdentity.c_str());
+	if (iface_hapd) {
+		if (0 == hostapd_link_remove(iface_hapd, 1)) {
+			return ndk::ScopedAStatus::ok();
+		}
+	}
+	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 }
 
 }  // namespace hostapd
