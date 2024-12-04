@@ -1047,7 +1047,7 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 	wpa_printf(MSG_INFO, "Terminating...");
 	// Clear the callback to avoid IPCThreadState shutdown during the
 	// callback event.
-	callbacks_.clear();
+	//callbacks_.clear();
 	//eloop_terminate();
 	return ndk::ScopedAStatus::ok();
 }
