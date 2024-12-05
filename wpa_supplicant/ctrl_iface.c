@@ -5,7 +5,11 @@
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
  */
-
+/* Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 #include "utils/includes.h"
 #ifdef CONFIG_TESTING_OPTIONS
 #include <netinet/ip.h>
@@ -58,6 +62,8 @@
 #include "mesh.h"
 #include "dpp_supplicant.h"
 #include "sme.h"
+
+#include "aidl_qrpc_util.h"
 
 #ifdef __NetBSD__
 #include <net/if_ether.h>
@@ -9128,9 +9134,11 @@ void wpas_ctrl_radio_work_flush(struct wpa_supplicant *wpa_s)
 			"Flushing%s external radio work %u (%s)",
 			work->started ? " started" : "", ework->id,
 			ework->type);
-		if (work->started)
+		if (work->started){
 			eloop_cancel_timeout(wpas_ctrl_radio_work_timeout,
 					     work, NULL);
+			aidl_cancel_extRadioWorkTimeout(work);
+		}
 		radio_work_done(work);
 		os_free(ework);
 	}
