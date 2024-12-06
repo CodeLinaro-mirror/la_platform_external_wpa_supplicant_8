@@ -1169,7 +1169,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	if (managed_interfaces.size() == 0) {
 		return createStatusWithMsg(HostapdStatusCode::FAILURE_UNKNOWN,
 		"Available interfaces is none");
-    }
+	}
 	IfaceParams iface_params_new = iface_params;
 	iface_params_new.name = managed_interfaces[0];
 
@@ -1289,7 +1289,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	}
 
     // Save bridge interface info
-    br_interfaces_[br_name] = managed_interfaces;
+	br_interfaces_[br_name] = managed_interfaces;
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -1468,25 +1468,17 @@ std::vector<uint8_t>  generateRandomOweSsid()
 
 ::ndk::ScopedAStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
 {
-	// interfaces to be removed
-	std::vector<std::string> interfaces;
 	bool is_error = false;
 
 	const auto it = br_interfaces_.find(iface_name);
 	if (it != br_interfaces_.end()) {
 		// In case bridge, remove managed interfaces
-		interfaces = it->second;
 		br_interfaces_.erase(iface_name);
-	} else {
-		// else remove current interface
-		interfaces.push_back(iface_name);
 	}
-
-	for (auto& iface : interfaces) {
-		std::vector<char> remove_iface_param_vec(
-		    iface.begin(), iface.end() + 1);
-		if (hostapd_remove_iface(interfaces_, remove_iface_param_vec.data()) <  0) {
-			wpa_printf(MSG_INFO, "Remove interface %s failed", iface.c_str());
+	int interface_count = interfaces_->count;
+	for (int i = 0; i < interface_count; i++) {
+		if (hostapd_remove_iface(interfaces_, interfaces_->iface[i]->conf->bss[0]->iface) <  0) {
+			wpa_printf(MSG_INFO, "Remove interface %s failed", interfaces_->iface[i]->conf->bss[0]->iface);
 			is_error = true;
 		}
 	}
