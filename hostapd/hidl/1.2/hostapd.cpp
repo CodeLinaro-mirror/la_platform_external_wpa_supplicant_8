@@ -754,8 +754,12 @@ HostapdStatus Hostapd::addSingleAccessPoint(
 			    // Invoke the failure callback on all registered
 			    // clients.
 			    for (const auto& callback : callbacks_) {
-				    callback->onFailure(
+				    auto r = callback->onFailure(
 					iface_hapd->conf->iface);
+				    if (!r.isOk()) {
+					wpa_printf(MSG_ERROR, "Error when calling onFailure, "
+						   "description=%s", r.description().c_str());
+				    }
 			    }
 		    }
 	    };
