@@ -52,6 +52,7 @@
 #define WPA_KEY_MGMT_PASN BIT(25)
 #define WPA_KEY_MGMT_SAE_EXT_KEY BIT(26)
 #define WPA_KEY_MGMT_FT_SAE_EXT_KEY BIT(27)
+#define WPA_KEY_MGMT_IEEE8021X_SHA384 BIT(28)
 
 
 #define WPA_KEY_MGMT_FT (WPA_KEY_MGMT_FT_PSK | \
@@ -75,7 +76,8 @@ static inline int wpa_key_mgmt_wpa_ieee8021x(int akm)
 			 WPA_KEY_MGMT_FILS_SHA256 |
 			 WPA_KEY_MGMT_FILS_SHA384 |
 			 WPA_KEY_MGMT_FT_FILS_SHA256 |
-			 WPA_KEY_MGMT_FT_FILS_SHA384));
+			 WPA_KEY_MGMT_FT_FILS_SHA384 |
+			 WPA_KEY_MGMT_IEEE8021X_SHA384));
 }
 
 static inline int wpa_key_mgmt_wpa_psk_no_sae(int akm)
@@ -137,7 +139,8 @@ static inline int wpa_key_mgmt_fils(int akm)
 
 static inline int wpa_key_mgmt_sha256(int akm)
 {
-	return !!(akm & (WPA_KEY_MGMT_PSK_SHA256 |
+	return !!(akm & (WPA_KEY_MGMT_FT_IEEE8021X |
+			 WPA_KEY_MGMT_PSK_SHA256 |
 			 WPA_KEY_MGMT_IEEE8021X_SHA256 |
 			 WPA_KEY_MGMT_SAE |
 			 WPA_KEY_MGMT_FT_SAE |
@@ -152,7 +155,8 @@ static inline int wpa_key_mgmt_sha384(int akm)
 	return !!(akm & (WPA_KEY_MGMT_IEEE8021X_SUITE_B_192 |
 			 WPA_KEY_MGMT_FT_IEEE8021X_SHA384 |
 			 WPA_KEY_MGMT_FILS_SHA384 |
-			 WPA_KEY_MGMT_FT_FILS_SHA384));
+			 WPA_KEY_MGMT_FT_FILS_SHA384 |
+			 WPA_KEY_MGMT_IEEE8021X_SHA384));
 }
 
 static inline int wpa_key_mgmt_suite_b(int akm)
@@ -510,6 +514,12 @@ enum ptk0_rekey_handling {
 	PTK0_REKEY_ALLOW_ALWAYS,
 	PTK0_REKEY_ALLOW_LOCAL_OK,
 	PTK0_REKEY_ALLOW_NEVER
+};
+
+enum frame_encryption {
+	FRAME_ENCRYPTION_UNKNOWN = -1,
+	FRAME_NOT_ENCRYPTED = 0,
+	FRAME_ENCRYPTED = 1
 };
 
 #define MAX_NUM_MLD_LINKS 15

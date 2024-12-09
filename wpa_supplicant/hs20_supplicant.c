@@ -20,13 +20,13 @@
 #include "driver_i.h"
 #include "config.h"
 #include "scan.h"
-#include "notify.h"
 #include "bss.h"
 #include "bssid_ignore.h"
 #include "gas_query.h"
 #include "interworking.h"
 #include "hs20_supplicant.h"
 #include "base64.h"
+#include "notify.h"
 
 
 #define OSU_MAX_ITEMS 10
@@ -68,7 +68,6 @@ struct osu_provider {
 void hs20_configure_frame_filters(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_bss *bss = wpa_s->current_bss;
-	u8 *bssid = wpa_s->bssid;
 	const u8 *ie;
 	const u8 *ext_capa;
 	u32 filter = 0;
@@ -79,9 +78,8 @@ void hs20_configure_frame_filters(struct wpa_supplicant *wpa_s)
 			|| !is_hs20_config(wpa_s)
 #endif
 			) {
-		wpa_printf(MSG_DEBUG,
-			   "Not configuring frame filtering - BSS " MACSTR
-			   " is not a Hotspot 2.0 network", MAC2STR(bssid));
+		/* Not configuring frame filtering - BSS is not a Hotspot 2.0
+		 * network */
 		return;
 	}
 
@@ -336,7 +334,7 @@ static struct icon_entry * hs20_find_icon(struct wpa_supplicant *wpa_s,
 	struct icon_entry *icon;
 
 	dl_list_for_each(icon, &wpa_s->icon_head, struct icon_entry, list) {
-		if (os_memcmp(icon->bssid, bssid, ETH_ALEN) == 0 &&
+		if (ether_addr_equal(icon->bssid, bssid) &&
 		    os_strcmp(icon->file_name, file_name) == 0 && icon->image)
 			return icon;
 	}
@@ -412,7 +410,7 @@ int hs20_del_icon(struct wpa_supplicant *wpa_s, const u8 *bssid,
 
 	dl_list_for_each_safe(icon, tmp, &wpa_s->icon_head, struct icon_entry,
 			      list) {
-		if ((!bssid || os_memcmp(icon->bssid, bssid, ETH_ALEN) == 0) &&
+		if ((!bssid || ether_addr_equal(icon->bssid, bssid)) &&
 		    (!file_name ||
 		     os_strcmp(icon->file_name, file_name) == 0)) {
 			dl_list_del(&icon->list);
@@ -458,7 +456,7 @@ static void hs20_remove_duplicate_icons(struct wpa_supplicant *wpa_s,
 			      list) {
 		if (icon == new_icon)
 			continue;
-		if (os_memcmp(icon->bssid, new_icon->bssid, ETH_ALEN) == 0 &&
+		if (ether_addr_equal(icon->bssid, new_icon->bssid) &&
 		    os_strcmp(icon->file_name, new_icon->file_name) == 0) {
 			dl_list_del(&icon->list);
 			hs20_free_icon_entry(icon);
@@ -479,7 +477,7 @@ static int hs20_process_icon_binary_file(struct wpa_supplicant *wpa_s,
 
 	dl_list_for_each(icon, &wpa_s->icon_head, struct icon_entry, list) {
 		if (icon->dialog_token == dialog_token && !icon->image &&
-		    os_memcmp(icon->bssid, sa, ETH_ALEN) == 0) {
+		    ether_addr_equal(icon->bssid, sa)) {
 			icon->image = os_memdup(pos, slen);
 			if (!icon->image)
 				return -1;
@@ -489,10 +487,6 @@ static int hs20_process_icon_binary_file(struct wpa_supplicant *wpa_s,
 				RX_HS20_ICON MACSTR " %s %u",
 				MAC2STR(sa), icon->file_name,
 				(unsigned int) icon->image_len);
-			wpas_notify_hs20_icon_query_done(wpa_s, sa,
-							 icon->file_name,
-							 icon->image,
-							 icon->image_len);
 			return 0;
 		}
 	}
@@ -1298,7 +1292,6 @@ void hs20_rx_subscription_remediation(struct wpa_supplicant *wpa_s,
 			osu_method, url);
 	else
 		wpa_msg(wpa_s, MSG_INFO, HS20_SUBSCRIPTION_REMEDIATION);
-	wpas_notify_hs20_rx_subscription_remediation(wpa_s, url, osu_method);
 }
 
 
@@ -1312,7 +1305,6 @@ void hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s, u8 code,
 
 	wpa_msg(wpa_s, MSG_INFO, HS20_DEAUTH_IMMINENT_NOTICE "%u %u %s",
 		code, reauth_delay, url);
-	wpas_notify_hs20_rx_deauth_imminent_notice(wpa_s, code, reauth_delay, url);
 
 	if (code == HS20_DEAUTH_REASON_CODE_BSS) {
 		wpa_printf(MSG_DEBUG, "HS 2.0: Add BSS to ignore list");
@@ -1354,8 +1346,7 @@ void hs20_rx_t_c_acceptance(struct wpa_supplicant *wpa_s, const char *url)
 		return;
 	}
 
-	wpa_msg(wpa_s, MSG_INFO, HS20_T_C_ACCEPTANCE "%s", url);
-	wpas_notify_hs20_rx_terms_and_conditions_acceptance(wpa_s, url);
+	wpas_notify_hs20_t_c_acceptance(wpa_s, url);
 }
 
 

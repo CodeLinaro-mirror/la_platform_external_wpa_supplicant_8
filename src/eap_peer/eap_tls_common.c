@@ -242,6 +242,12 @@ static int eap_tls_params_from_conf(struct eap_sm *sm,
 
 	sm->ext_cert_check = !!(params->flags & TLS_CONN_EXT_CERT_CHECK);
 
+	if (!phase2)
+		data->client_cert_conf = params->client_cert ||
+			params->client_cert_blob ||
+			params->private_key ||
+			params->private_key_blob;
+
 	return 0;
 }
 
@@ -281,7 +287,7 @@ static int eap_tls_init_connection(struct eap_sm *sm,
 	}
 	if (res) {
 		wpa_printf(MSG_INFO, "TLS: Failed to set TLS connection "
-			   "parameters, error code: %d", res);
+			   "parameters");
 		tls_connection_deinit(data->ssl_ctx, data->conn);
 		data->conn = NULL;
 		return -1;
@@ -781,10 +787,6 @@ int eap_peer_tls_process_helper(struct eap_sm *sm, struct eap_ssl_data *data,
 		wpa_printf(MSG_DEBUG, "SSL: Failed - tls_out available to "
 			   "report error (len=%u)",
 			   (unsigned int) wpabuf_len(data->tls_out));
-		if (sm->eapol_cb->notify_open_ssl_failure) {
-			sm->eapol_cb->notify_open_ssl_failure(sm->eapol_ctx,
-				"TLS processing has failed");
-		}
 		ret = -1;
 		/* TODO: clean pin if engine used? */
 		if (wpabuf_len(data->tls_out) == 0) {

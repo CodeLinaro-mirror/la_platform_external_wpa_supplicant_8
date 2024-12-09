@@ -267,6 +267,7 @@ SM_STATE(EAP, INITIALIZE)
 	sm->reauthInit = false;
 	sm->erp_seq = (u32) -1;
 	sm->use_machine_cred = 0;
+	sm->eap_fast_mschapv2 = false;
 }
 
 
@@ -429,17 +430,6 @@ SM_STATE(EAP, GET_METHOD)
 	wpa_msg(sm->msg_ctx, MSG_INFO, WPA_EVENT_EAP_METHOD
 		"EAP vendor %u method %u (%s) selected",
 		sm->reqVendor, method, sm->m->name);
-
-	if (sm->eapol_cb->notify_eap_method_selected) {
-		char *format_str = "EAP vendor %u method %u (%s) selected";
-		int msg_len = snprintf(NULL, 0, format_str,
-			sm->reqVendor, method, sm->m->name) + 1;
-		char *msg = os_malloc(msg_len);
-		snprintf(msg, msg_len, format_str,
-			sm->reqVendor, method, sm->m->name);
-		sm->eapol_cb->notify_eap_method_selected(sm->eapol_ctx, msg);
-		os_free(msg);
-	}
 	return;
 
 nak:
@@ -1707,7 +1697,7 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 		identity_len = config->machine_identity_len;
 		wpa_hexdump_ascii(MSG_DEBUG, "EAP: using machine identity",
 				  identity, identity_len);
-	} else if (config->imsi_privacy_key && config->identity &&
+	} else if (config->imsi_privacy_cert && config->identity &&
 		   config->identity_len > 0) {
 		const u8 *pos = config->identity;
 		const u8 *end = config->identity + config->identity_len;
@@ -1767,6 +1757,11 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
 		return NULL;
 
 	wpabuf_put_data(resp, identity, identity_len);
+
+	os_free(sm->identity);
+	sm->identity = os_memdup(identity, identity_len);
+	sm->identity_len = identity_len;
+
 	wpabuf_free(privacy_identity);
 
 	return resp;
@@ -2226,9 +2221,15 @@ struct eap_sm * eap_peer_sm_init(void *eapol_ctx,
 	dl_list_init(&sm->erp_keys);
 
 	os_memset(&tlsconf, 0, sizeof(tlsconf));
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	tlsconf.opensc_engine_path = conf->opensc_engine_path;
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	tlsconf.pkcs11_engine_path = conf->pkcs11_engine_path;
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	tlsconf.pkcs11_module_path = conf->pkcs11_module_path;
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	tlsconf.openssl_ciphers = conf->openssl_ciphers;
 #ifdef CONFIG_FIPS
 	tlsconf.fips_mode = 1;
@@ -2272,6 +2273,7 @@ void eap_peer_sm_deinit(struct eap_sm *sm)
 		tls_deinit(sm->ssl_ctx2);
 	tls_deinit(sm->ssl_ctx);
 	eap_peer_erp_free_keys(sm);
+	os_free(sm->identity);
 	os_free(sm);
 }
 
@@ -2850,9 +2852,8 @@ const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len) {
 	}
 
 	/* Look for the realm of the anonymous identity. */
-	identity = config->anonymous_identity;
-	identity_len = config->anonymous_identity_len;
-	realm = strnchr(identity, identity_len, '@');
+	realm = strnchr(config->anonymous_identity,
+	    config->anonymous_identity_len, '@');
 	if (NULL != realm) {
 		wpa_printf(MSG_DEBUG, "Get the realm from anonymous identity.");
 		*len = identity_len - (realm - identity);
@@ -2860,9 +2861,8 @@ const u8 * eap_get_config_realm(struct eap_sm *sm, size_t *len) {
 	}
 
 	/* Look for the realm of the real identity. */
-	identity = config->imsi_identity;
-	identity_len = config->imsi_identity_len;
-	realm = strnchr(identity, identity_len, '@');
+	realm = strnchr(config->imsi_identity,
+	    config->imsi_identity_len, '@');
 	if (NULL != realm) {
 		wpa_printf(MSG_DEBUG, "Get the realm from IMSI identity.");
 		*len = identity_len - (realm - identity);

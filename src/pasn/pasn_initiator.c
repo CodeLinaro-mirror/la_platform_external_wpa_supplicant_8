@@ -26,6 +26,14 @@
 #include "pasn_common.h"
 
 
+void pasn_set_initiator_pmksa(struct pasn_data *pasn,
+			      struct rsn_pmksa_cache *pmksa)
+{
+	if (pasn)
+		pasn->pmksa = pmksa;
+}
+
+
 #ifdef CONFIG_SAE
 
 static struct wpabuf * wpas_pasn_wd_sae_commit(struct pasn_data *pasn)
@@ -378,8 +386,8 @@ static int wpas_pasn_wd_fils_rx(struct pasn_data *pasn, struct wpabuf *wd)
 		return -1;
 	}
 
-	fils_wd = ieee802_11_defrag(&elems, WLAN_EID_EXTENSION,
-				    WLAN_EID_EXT_WRAPPED_DATA);
+	fils_wd = ieee802_11_defrag(elems.wrapped_data, elems.wrapped_data_len,
+				    true);
 
 	if (!fils_wd) {
 		wpa_printf(MSG_DEBUG,
@@ -553,7 +561,7 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 		struct rsn_pmksa_cache_entry *pmksa;
 
 		pmksa = pmksa_cache_get(pasn->pmksa, pasn->peer_addr,
-					NULL, NULL, pasn->akmp);
+					pasn->own_addr, NULL, NULL, pasn->akmp);
 		if (pmksa && pasn->custom_pmkid_valid)
 			pmkid = pasn->custom_pmkid;
 		else if (pmksa)
@@ -741,6 +749,11 @@ void wpa_pasn_reset(struct pasn_data *pasn)
 	pasn->rsn_ie_len = 0;
 	pasn->rsnxe_ie = NULL;
 	pasn->custom_pmkid_valid = false;
+
+	if (pasn->extra_ies) {
+		os_free((u8 *) pasn->extra_ies);
+		pasn->extra_ies = NULL;
+	}
 }
 
 
@@ -795,6 +808,7 @@ static int wpas_pasn_set_pmk(struct pasn_data *pasn,
 		}
 
 		pmksa = pmksa_cache_get(pasn->pmksa, pasn->peer_addr,
+					pasn->own_addr,
 					pmkid, NULL, pasn->akmp);
 		if (pmksa) {
 			wpa_printf(MSG_DEBUG, "PASN: Using PMKSA");
@@ -1023,15 +1037,15 @@ static bool is_pasn_auth_frame(struct pasn_data *pasn,
 		return false;
 
 	/* Not our frame; do nothing */
-	if (os_memcmp(mgmt->bssid, pasn->bssid, ETH_ALEN) != 0)
+	if (!ether_addr_equal(mgmt->bssid, pasn->bssid))
 		return false;
 
-	if (rx && (os_memcmp(mgmt->da, pasn->own_addr, ETH_ALEN) != 0 ||
-		   os_memcmp(mgmt->sa, pasn->peer_addr, ETH_ALEN) != 0))
+	if (rx && (!ether_addr_equal(mgmt->da, pasn->own_addr) ||
+		   !ether_addr_equal(mgmt->sa, pasn->peer_addr)))
 		return false;
 
-	if (!rx && (os_memcmp(mgmt->sa, pasn->own_addr, ETH_ALEN) != 0 ||
-		    os_memcmp(mgmt->da, pasn->peer_addr, ETH_ALEN) != 0))
+	if (!rx && (!ether_addr_equal(mgmt->sa, pasn->own_addr) ||
+		    !ether_addr_equal(mgmt->da, pasn->peer_addr)))
 		return false;
 
 	/* Not PASN; do nothing */
@@ -1199,9 +1213,9 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
 	}
 
 	if (pasn_params->wrapped_data_format != WPA_PASN_WRAPPED_DATA_NO) {
-		wrapped_data = ieee802_11_defrag(&elems,
-						 WLAN_EID_EXTENSION,
-						 WLAN_EID_EXT_WRAPPED_DATA);
+		wrapped_data = ieee802_11_defrag(elems.wrapped_data,
+						 elems.wrapped_data_len,
+						 true);
 
 		if (!wrapped_data) {
 			wpa_printf(MSG_DEBUG, "PASN: Missing wrapped data");

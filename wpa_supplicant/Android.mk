@@ -88,8 +88,9 @@ L_CFLAGS += -mabi=aapcs-linux
 L_CFLAGS += -DARCH_ARM_32
 endif
 
-# C++ flags for aidl interface
-L_CPPFLAGS := -Wall -Werror
+
+# C++ flags for binder interface
+L_CPPFLAGS := -std=c++11 -Wall -Werror
 # TODO: Remove these allowed warnings later.
 L_CPPFLAGS += -Wno-unused-variable -Wno-unused-parameter
 L_CPPFLAGS += -Wno-unused-private-field
@@ -103,6 +104,7 @@ INCLUDES += $(LOCAL_PATH)/src/eap_common
 INCLUDES += $(LOCAL_PATH)/src/eapol_supp
 INCLUDES += $(LOCAL_PATH)/src/eap_peer
 INCLUDES += $(LOCAL_PATH)/src/eap_server
+INCLUDES += $(LOCAL_PATH)/src/hlr_auc_gw
 INCLUDES += $(LOCAL_PATH)/src/l2_packet
 INCLUDES += $(LOCAL_PATH)/src/radius
 INCLUDES += $(LOCAL_PATH)/src/rsn_supp
@@ -139,6 +141,9 @@ OBJS += op_classes.c
 OBJS += rrm.c
 OBJS += twt.c
 OBJS += robust_av.c
+OBJS += src/common/ptksa_cache.c
+OBJS += src/rsn_supp/pmksa_cache.c
+OBJS += twt.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
 OBJS_p += src/utils/wpa_debug.c
@@ -278,6 +283,7 @@ L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
 L_CFLAGS += -DCONFIG_SAE_PK
+NEED_AES_SIV=y
 OBJS += src/common/sae_pk.c
 endif
 NEED_ECC=y
@@ -318,6 +324,12 @@ L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN_USD
+OBJS += src/common/nan_de.c
+OBJS += nan_usd.c
+L_CFLAGS += -DCONFIG_NAN_USD
+endif
+
 ifeq ($(CONFIG_OWE),y)
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
@@ -343,6 +355,10 @@ endif
 endif
 
 ifdef CONFIG_MBO
+CONFIG_WNM=y
+endif
+
+ifdef CONFIG_BGSCAN_SIMPLE
 CONFIG_WNM=y
 endif
 
@@ -422,6 +438,7 @@ NEED_SHA256=y
 NEED_SHA384=y
 OBJS += src/common/ptksa_cache.c
 OBJS += src/pasn/pasn_initiator.c
+OBJS += src/pasn/pasn_common.c
 OBJS += pasn_supplicant.c
 endif
 
@@ -458,6 +475,28 @@ endif
 
 ifdef CONFIG_NO_TKIP
 L_CFLAGS += -DCONFIG_NO_TKIP
+endif
+
+ifdef CONFIG_NO_RRM
+L_CFLAGS += -DCONFIG_NO_RRM
+else
+OBJS += rrm.c
+ifdef CONFIG_AP
+OBJS += src/ap/rrm.c
+endif
+OBJS += op_classes.c
+endif
+
+ifdef CONFIG_NO_WMM_AC
+L_CFLAGS += -DCONFIG_NO_WMM_AC
+else
+OBJS += wmm_ac.c
+endif
+
+ifdef CONFIG_NO_ROBUST_AV
+L_CFLAGS += -DCONFIG_NO_ROBUST_AV
+else
+OBJS += robust_av.c
 endif
 
 
@@ -1009,6 +1048,9 @@ OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
 endif
+ifdef CONFIG_NAN_USD
+OBJS += src/ap/nan_usd_ap.c
+endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y
 endif
@@ -1027,6 +1069,7 @@ endif
 
 ifdef CONFIG_TESTING_OPTIONS
 L_CFLAGS += -DCONFIG_TESTING_OPTIONS
+NEED_AES_WRAP=y
 endif
 
 ifdef NEED_RSN_AUTHENTICATOR
@@ -1566,6 +1609,10 @@ endif
 ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
 SUPPLICANT_VENDOR_AIDL=y
 L_CFLAGS += -DCONFIG_SUPPLICANT_VENDOR_AIDL
+
+ifdef CONFIG_CTRL_IFACE_BINDER
+WPA_SUPPLICANT_USE_BINDER=y
+L_CFLAGS += -DCONFIG_BINDER -DCONFIG_CTRL_IFACE_BINDER
 endif
 
 ifdef CONFIG_READLINE
@@ -1819,8 +1866,9 @@ endif
 
 PASNOBJS += src/common/ptksa_cache.c
 
-ifndef CONFIG_NO_WPA
 PASNOBJS += src/rsn_supp/pmksa_cache.c
+
+ifndef CONFIG_NO_WPA
 PASNOBJS += src/rsn_supp/wpa_ie.c
 endif
 
@@ -1846,6 +1894,7 @@ PASNOBJS += src/crypto/crypto_openssl.c
 ifdef TLS_FUNCS
 PASNOBJS += src/crypto/tls_openssl.c
 PASNOBJS += src/crypto/tls_openssl_ocsp.c
+PASNOBJS += -lssl -lcrypto
 NEED_TLS_PRF_SHA256=y
 endif
 endif
@@ -1906,6 +1955,7 @@ endif
 
 PASNOBJS += src/pasn/pasn_initiator.c
 PASNOBJS += src/pasn/pasn_responder.c
+PASNOBJS += src/pasn/pasn_common.c
 
 ########################
 
@@ -1942,12 +1992,12 @@ LOCAL_SHARED_LIBRARIES += $(LIB_SHARED_EAP_PROXY)
 LOCAL_HEADER_LIBRARIES += $(LIB_HEADER_EAP_PROXY)
 endif
 ifeq ($(CONFIG_TLS), openssl)
-LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
+LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore_binder
 endif
 
 # With BoringSSL we need libkeystore-engine in order to provide access to
 # keystore keys.
-LOCAL_SHARED_LIBRARIES += libkeystore-engine-wifi-hidl
+LOCAL_SHARED_LIBRARIES += libkeystore-engine
 
 ifdef CONFIG_DRIVER_NL80211
 ifneq ($(wildcard external/libnl),)
@@ -1962,18 +2012,9 @@ LOCAL_C_INCLUDES := $(INCLUDES)
 ifeq ($(DBUS), y)
 LOCAL_SHARED_LIBRARIES += libdbus
 endif
-ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
-LOCAL_SHARED_LIBRARIES += android.hardware.wifi.supplicant-V1-ndk
-LOCAL_SHARED_LIBRARIES += libutils libbase
-LOCAL_SHARED_LIBRARIES += libbinder_ndk
-LOCAL_STATIC_LIBRARIES += libwpa_aidl
-LOCAL_VINTF_FRAGMENTS := aidl/android.hardware.wifi.supplicant.xml
-ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
-LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant-V1-ndk
-endif
-ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
-LOCAL_INIT_RC=aidl/android.hardware.wifi.supplicant-service.rc
-endif
+ifeq ($(WPA_SUPPLICANT_USE_BINDER), y)
+LOCAL_SHARED_LIBRARIES += libbinder libutils
+LOCAL_STATIC_LIBRARIES += libwpa_binder libwpa_binder_interface
 endif
 include $(BUILD_EXECUTABLE)
 
@@ -2013,66 +2054,57 @@ LOCAL_CFLAGS = $(L_CFLAGS)
 LOCAL_SRC_FILES = src/common/wpa_ctrl.c src/utils/os_$(CONFIG_OS).c
 LOCAL_C_INCLUDES = $(INCLUDES)
 LOCAL_SHARED_LIBRARIES := libcutils liblog
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/wpa_client_include $(LOCAL_PATH)/wpa_client_include/libwpa_client
+LOCAL_COPY_HEADERS_TO := libwpa_client
+LOCAL_COPY_HEADERS := src/common/wpa_ctrl.h
+LOCAL_COPY_HEADERS += src/common/qca-vendor.h
 include $(BUILD_SHARED_LIBRARY)
 
-ifeq ($(WPA_SUPPLICANT_USE_AIDL), y)
-### Aidl service library ###
+ifeq ($(WPA_SUPPLICANT_USE_BINDER), y)
+### Binder interface library ###
 ########################
+
 include $(CLEAR_VARS)
-LOCAL_MODULE := libwpa_aidl
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
-LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
-LOCAL_VENDOR_MODULE := true
+LOCAL_MODULE := libwpa_binder_interface
+LOCAL_AIDL_INCLUDES := \
+    $(LOCAL_PATH)/binder \
+    frameworks/native/aidl/binder
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/binder
+LOCAL_CPPFLAGS := $(L_CPPFLAGS)
+LOCAL_SRC_FILES := \
+    binder/binder_constants.cpp \
+    binder/fi/w1/wpa_supplicant/ISupplicant.aidl \
+    binder/fi/w1/wpa_supplicant/ISupplicantCallbacks.aidl \
+    binder/fi/w1/wpa_supplicant/IIface.aidl
+LOCAL_SHARED_LIBRARIES := libbinder
+include $(BUILD_STATIC_LIBRARY)
+
+### Binder service library ###
+########################
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libwpa_binder
 LOCAL_CPPFLAGS := $(L_CPPFLAGS)
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_C_INCLUDES := $(INCLUDES)
 LOCAL_SRC_FILES := \
-    aidl/aidl.cpp \
-    aidl/aidl_manager.cpp \
-    aidl/iface_config_utils.cpp \
-    aidl/p2p_iface.cpp \
-    aidl/p2p_network.cpp \
-    aidl/sta_iface.cpp \
-    aidl/sta_network.cpp \
-    aidl/supplicant.cpp
-ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
-LOCAL_SRC_FILES += \
-    vendor_aidl/aidl_vendor.cpp \
-    vendor_aidl/aidl_vendor_manager.cpp \
-    vendor_aidl/vendorsta_iface.cpp \
-    vendor_aidl/supplicantvendor.cpp
-endif
-
+    binder/binder.cpp binder/binder_manager.cpp \
+    binder/supplicant.cpp binder/iface.cpp
 LOCAL_SHARED_LIBRARIES := \
-    android.hardware.wifi.supplicant-V1-ndk \
-    libbinder_ndk \
-    libbase \
-    libutils \
-    liblog \
-    libssl
-ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
-LOCAL_SHARED_LIBRARIES += \
-    vendor.qti.hardware.wifi.supplicant-V1-ndk
-endif
-LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $(LOCAL_PATH)/aidl
+    libbinder \
+    libutils
+LOCAL_STATIC_LIBRARIES := libwpa_binder_interface
 include $(BUILD_STATIC_LIBRARY)
-endif # WPA_SUPPLICANT_USE_AIDL == y
+
+endif # BINDER == y
 
 include $(CLEAR_VARS)
 LOCAL_MODULE = libpasn
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
-LOCAL_LICENSE_CONDITIONS := notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
-LOCAL_VENDOR_MODULE := true
 LOCAL_CFLAGS = $(L_CFLAGS)
 LOCAL_SRC_FILES = $(PASNOBJS)
 LOCAL_C_INCLUDES = $(INCLUDES)
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 ifeq ($(CONFIG_TLS), openssl)
-LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore-wifi-hidl
-LOCAL_SHARED_LIBRARIES += libkeystore-engine-wifi-hidl
+LOCAL_SHARED_LIBRARIES := libcrypto libssl
 endif
 include $(BUILD_SHARED_LIBRARY)

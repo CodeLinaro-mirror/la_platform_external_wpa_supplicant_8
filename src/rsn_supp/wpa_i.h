@@ -106,8 +106,8 @@ struct wpa_sm {
 	int rsn_enabled; /* Whether RSN is enabled in configuration */
 	int mfp; /* 0 = disabled, 1 = optional, 2 = mandatory */
 	int ocv; /* Operating Channel Validation */
-	enum sae_pwe sae_pwe; /* SAE PWE generation options */
 	int adaptive11r_key_mgmt;
+	enum sae_pwe sae_pwe; /* SAE PWE generation options */
 
 	unsigned int sae_pk:1; /* whether SAE-PK is used */
 	unsigned int secure_ltf:1;
@@ -151,6 +151,7 @@ struct wpa_sm {
 	size_t pmk_r1_len;
 	u8 pmk_r1_name[WPA_PMK_NAME_LEN];
 	u8 mobility_domain[MOBILITY_DOMAIN_ID_LEN];
+	u8 key_mobility_domain[MOBILITY_DOMAIN_ID_LEN];
 	u8 r0kh_id[FT_R0KH_ID_MAX_LEN];
 	size_t r0kh_id_len;
 	u8 r1kh_id[FT_R1KH_ID_LEN];
@@ -182,12 +183,16 @@ struct wpa_sm {
 
 #ifdef CONFIG_TESTING_OPTIONS
 	struct wpabuf *test_assoc_ie;
+	struct wpabuf *test_eapol_m2_elems;
+	struct wpabuf *test_eapol_m4_elems;
 	int ft_rsnxe_used;
 	unsigned int oci_freq_override_eapol;
 	unsigned int oci_freq_override_eapol_g2;
 	unsigned int oci_freq_override_ft_assoc;
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int disable_eapol_g2_tx;
+	bool encrypt_eapol_m2;
+	bool encrypt_eapol_m4;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_FILS
@@ -220,6 +225,10 @@ struct wpa_sm {
 	int dpp_pfs;
 #endif /* CONFIG_DPP2 */
 	struct wpa_sm_mlo mlo;
+
+	bool wmm_enabled;
+	bool driver_bss_selection;
+	bool ft_prepend_pmkid;
 };
 
 
@@ -378,13 +387,13 @@ static inline int wpa_sm_send_tdls_mgmt(struct wpa_sm *sm, const u8 *dst,
 					u8 action_code, u8 dialog_token,
 					u16 status_code, u32 peer_capab,
 					int initiator, const u8 *buf,
-					size_t len)
+					size_t len, int link_id)
 {
 	if (sm->ctx->send_tdls_mgmt)
 		return sm->ctx->send_tdls_mgmt(sm->ctx->ctx, dst, action_code,
 					       dialog_token, status_code,
 					       peer_capab, initiator, buf,
-					       len);
+					       len, link_id);
 	return -1;
 }
 
@@ -408,7 +417,9 @@ wpa_sm_tdls_peer_addset(struct wpa_sm *sm, const u8 *addr, int add,
 			u8 qosinfo, int wmm, const u8 *ext_capab,
 			size_t ext_capab_len, const u8 *supp_channels,
 			size_t supp_channels_len, const u8 *supp_oper_classes,
-			size_t supp_oper_classes_len)
+			size_t supp_oper_classes_len,
+			const struct ieee80211_eht_capabilities *eht_capab,
+			size_t eht_capab_len, int mld_link_id)
 {
 	if (sm->ctx->tdls_peer_addset)
 		return sm->ctx->tdls_peer_addset(sm->ctx->ctx, addr, add,
@@ -421,7 +432,9 @@ wpa_sm_tdls_peer_addset(struct wpa_sm *sm, const u8 *addr, int add,
 						 supp_channels,
 						 supp_channels_len,
 						 supp_oper_classes,
-						 supp_oper_classes_len);
+						 supp_oper_classes_len,
+						 eht_capab, eht_capab_len,
+						 mld_link_id);
 	return -1;
 }
 
@@ -477,7 +490,7 @@ static inline void wpa_sm_transition_disable(struct wpa_sm *sm, u8 bitmap)
 }
 
 static inline void wpa_sm_store_ptk(struct wpa_sm *sm,
-				    u8 *addr, int cipher,
+				    const u8 *addr, int cipher,
 				    u32 life_time, struct wpa_ptk *ptk)
 {
 	if (sm->ctx->store_ptk)
