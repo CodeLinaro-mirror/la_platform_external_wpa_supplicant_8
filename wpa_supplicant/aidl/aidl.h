@@ -354,7 +354,7 @@ static ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases)
 static void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 	unsigned int count, int **scs_resp) {}
 #ifdef CONFIG_USE_VENDOR_AIDL
-void wpas_aidl_notify_vendor_ctrl_evet(struct wpa_supplicant *wpas, const char *msg)
+static void wpas_aidl_notify_vendor_ctrl_event(struct wpa_supplicant *wpas, const char *msg)
 {}
 #endif
 #endif  // CONFIG_CTRL_IFACE_AIDL

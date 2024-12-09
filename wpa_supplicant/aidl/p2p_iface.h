@@ -184,7 +184,9 @@ public:
 		const P2pAddGroupConfigurationParams& in_groupConfigurationParams) override;
 	::ndk::ScopedAStatus createGroupOwner(
 		const P2pCreateGroupOwnerInfo& in_groupOwnerInfo) override;
-
+#if 0
+	::ndk::ScopedAStatus getFeatureSet(int64_t* _aidl_return) override;
+#endif
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -316,6 +318,9 @@ private:
 		const P2pAddGroupConfigurationParams& groupConfigurationParams);
 	ndk::ScopedAStatus createGroupOwnerInternal(
 		const P2pCreateGroupOwnerInfo& groupOwnerInfo);
+#if 0
+	std::pair<int64_t, ndk::ScopedAStatus> getFeatureSetInternal();
+#endif
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(

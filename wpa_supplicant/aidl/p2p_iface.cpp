@@ -853,6 +853,16 @@ ndk::ScopedAStatus P2pIface::addGroup(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&P2pIface::createGroupOwnerInternal, in_groupOwnerInfo);
 }
+
+#if 0
+::ndk::ScopedAStatus P2pIface::getFeatureSet(int64_t* _aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		&P2pIface::getFeatureSetInternal, _aidl_return);
+}
+#endif
+
 std::pair<std::string, ndk::ScopedAStatus> P2pIface::getNameInternal()
 {
 	return {ifname_, ndk::ScopedAStatus::ok()};
@@ -1942,6 +1952,14 @@ ndk::ScopedAStatus P2pIface::createGroupOwnerInternal(
 	return addGroupInternal(
 		groupOwnerInfo.persistent, groupOwnerInfo.persistentNetworkId);
 }
+
+#if 0
+std::pair<int64_t, ndk::ScopedAStatus> P2pIface::getFeatureSetInternal()
+{
+	// TODO Fill the field when supplicant implementation is ready
+	return {0, ndk::ScopedAStatus::ok()};
+}
+#endif
 
 /**
  * Retrieve the underlying |wpa_supplicant| struct

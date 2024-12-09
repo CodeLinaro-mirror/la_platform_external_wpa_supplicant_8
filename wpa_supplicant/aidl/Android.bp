@@ -53,6 +53,7 @@ cc_library_static {
         "-Wno-unused-parameter",
         "-Wno-unused-private-field",
         "-Wno-unused-variable",
+	"-DCONFIG_USE_VENDOR_AIDL",
     ],
     header_libs: [
         "wpa_supplicant_headers",
@@ -82,4 +83,11 @@ libwpa_aidl_cflags_cc_defaults {
             cflags: ["-D%s"],
         },
     },
+}
+
+prebuilt_etc {
+    name: "android.hardware.wifi.supplicant.xml.prebuilt",
+    src: "android.hardware.wifi.supplicant.xml",
+    relative_install_path: "vintf",
+    installable: false,
 }
