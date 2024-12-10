@@ -422,7 +422,9 @@ void wpa_supplicant_set_non_wpa_policy(struct wpa_supplicant *wpa_s,
 	wpa_sm_set_ap_rsne_override_2(wpa_s->wpa, NULL, 0);
 	wpa_sm_set_ap_rsnxe_override(wpa_s->wpa, NULL, 0);
 	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+#ifndef CONFIG_NO_WPA
 	wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
+#endif /* CONFIG_NO_WPA */
 	wpa_s->rsnxe_len = 0;
 	wpa_s->pairwise_cipher = WPA_CIPHER_NONE;
 	wpa_s->group_cipher = WPA_CIPHER_NONE;
@@ -2167,6 +2169,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			return -1;
 		}
 
+#ifndef CONFIG_NO_WPA
 		wpa_s->rsnxe_len = sizeof(wpa_s->rsnxe);
 		if (wpa_sm_set_assoc_rsnxe_default(wpa_s->wpa, wpa_s->rsnxe,
 						   &wpa_s->rsnxe_len)) {
@@ -2174,6 +2177,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 				"RSN: Failed to generate RSNXE");
 			return -1;
 		}
+#endif /* CONFIG_NO_WPA */
 	}
 
 	if (0) {
@@ -4296,7 +4300,9 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	/* Starting new association, so clear the possibly used WPA IE from the
 	 * previous association. */
 	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+#ifndef CONFIG_NO_WPA
 	wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
+#endif /* CONFIG_NO_WPA */
 	wpa_s->rsnxe_len = 0;
 #ifndef CONFIG_NO_ROBUST_AV
 	wpa_s->mscs_setup_done = false;
@@ -4768,8 +4774,10 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	}
 
 	wpa_supplicant_rsn_supp_set_config(wpa_s, wpa_s->current_ssid);
+#ifndef CONFIG_NO_WPA
 	if (bss)
 		wpa_sm_set_ssid(wpa_s->wpa, bss->ssid, bss->ssid_len);
+#endif /* CONFIG_NO_WPA */
 	wpa_supplicant_initiate_eapol(wpa_s);
 	if (old_ssid != wpa_s->current_ssid)
 		wpas_notify_network_changed(wpa_s);
@@ -7524,9 +7532,11 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_PASN
 	wpa_pasn_sm_set_caps(wpa_s->wpa, wpa_s->drv_flags2);
 #endif /* CONFIG_PASN */
+#ifndef CONFIG_NO_WPA
 	wpa_sm_set_driver_bss_selection(wpa_s->wpa,
 					!!(wpa_s->drv_flags &
 					   WPA_DRIVER_FLAGS_BSS_SELECTION));
+#endif /* CONFIG_NO_WPA */
 	if (wpa_s->max_remain_on_chan == 0)
 		wpa_s->max_remain_on_chan = 1000;
 

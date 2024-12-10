@@ -1222,6 +1222,7 @@ void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_DPP */
 }
 
+#ifdef CONFIG_DPP
 void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 	    enum dpp_status_error result)
 {
@@ -1232,6 +1233,7 @@ void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 	wpas_aidl_notify_dpp_connection_status_sent(wpa_s, result);
 #endif /* CONFIG_DPP2 */
 }
+#endif /* CONFIG_DPP */
 
 /* DPP Progress notifications */
 void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
@@ -1329,6 +1331,7 @@ void wpas_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_DPP2 */
 }
 
+#ifdef CONFIG_DPP
 void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 		enum dpp_status_error status, const char *ssid,
 		const char *channel_list, unsigned short band_list[], int size)
@@ -1337,6 +1340,7 @@ void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 	wpas_aidl_notify_dpp_conn_status(wpa_s, status, ssid, channel_list, band_list, size);
 #endif /* CONFIG_DPP2 */
 }
+#endif /* CONFIG_DPP */
 
 void wpas_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
 {

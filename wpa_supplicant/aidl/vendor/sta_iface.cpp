@@ -851,19 +851,19 @@ bool StaIface::isValid()
 }
 
 ::ndk::ScopedAStatus StaIface::startUsdPublish(int32_t in_cmdId,
-	const UsdPublishConfig& in_usdPublishConfig, int32_t* _aidl_return)
+	const UsdPublishConfig& in_usdPublishConfig)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
-		&StaIface::startUsdPublishInternal, _aidl_return, in_usdPublishConfig);
+		&StaIface::startUsdPublishInternal, in_usdPublishConfig);
 }
 
 ::ndk::ScopedAStatus StaIface::startUsdSubscribe(int32_t in_cmdId,
-	const UsdSubscribeConfig& in_usdSubscribeConfig, int32_t* _aidl_return)
+	const UsdSubscribeConfig& in_usdSubscribeConfig)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_UNKNOWN,
-		&StaIface::startUsdSubscribeInternal, _aidl_return, in_usdSubscribeConfig);
+		&StaIface::startUsdSubscribeInternal, in_usdSubscribeConfig);
 }
 
 ::ndk::ScopedAStatus StaIface::updateUsdPublish(int32_t in_publishId,
@@ -2612,14 +2612,14 @@ std::pair<UsdCapabilities, ndk::ScopedAStatus> StaIface::getUsdCapabilitiesInter
 	return {capabilities, ndk::ScopedAStatus::ok()};
 }
 
-std::pair<int32_t, ndk::ScopedAStatus> StaIface::startUsdPublishInternal(
+ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 		const UsdPublishConfig& usdPublishConfig) {
-	return {-1, createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
 
-std::pair<int32_t, ndk::ScopedAStatus> StaIface::startUsdSubscribeInternal(
+ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 		const UsdSubscribeConfig& usdSubscribeConfig) {
-	return {-1, createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
 
 ::ndk::ScopedAStatus StaIface::updateUsdPublishInternal(int32_t publishId,
