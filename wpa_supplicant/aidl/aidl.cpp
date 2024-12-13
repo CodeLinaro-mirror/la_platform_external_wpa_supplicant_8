@@ -16,15 +16,13 @@
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
-//#include <android/binder_process.h>
-//#include <android/binder_manager.h>
 #ifdef CONFIG_SUPPLICANT_RPC
 #include <aidl_rpc_manager.h>
 #include <cutils/properties.h>
 #endif
+#include <rpc/util/aidl_sock.h>
 
 #include "aidl_manager.h"
-
 extern "C"
 {
 #include "aidl.h"
@@ -33,8 +31,6 @@ extern "C"
 #include "utils/eloop.h"
 #include "utils/includes.h"
 #include "common/dpp.h"
-
-#include "aidl_sock.h"
 }
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
