@@ -35,29 +35,9 @@ extern "C"
 #include "drivers/linux_ioctl.h"
 }
 
-// don't use hostapd's wpa_printf for unit testing. It won't compile otherwise
+
 #ifdef ANDROID_HOSTAPD_UNITTEST
-#include <android-base/logging.h>
-constexpr size_t logbuf_size = 8192;
-static ::android::base::LogSeverity wpa_to_android_level(int level)
-{
-	if (level == MSG_ERROR)
-		return ::android::base::ERROR;
-	if (level == MSG_WARNING)
-		return ::android::base::WARNING;
-	if (level == MSG_INFO)
-		return ::android::base::INFO;
-	return ::android::base::DEBUG;
-}
-void wpa_printf(int level, const char *fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	char buffer[logbuf_size];
-	int res = snprintf(buffer, logbuf_size, fmt, ap);
-	if (res > 0 && res < logbuf_size) {
-		LOG(wpa_to_android_level(level)) << buffer;
-	}
-}
+#include "tests/unittest_overrides.h"
 #endif
 
 // The AIDL implementation for hostapd creates a hostapd.conf dynamically for
@@ -68,9 +48,78 @@ void wpa_printf(int level, const char *fmt, ...) {
 namespace {
 constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
 
+/**
+ * To add an overlay file, add
+ *
+ * PRODUCT_COPY_FILES += \
+ *   <your/path/here>/hostapd_unmetered_overlay.conf:/vendor/etc/wifi/hostapd_unmetered_overlay.conf
+ *
+ * to the build file for your device, with the <your/path/here> being the path to your overlay in
+ * your repo. See the resolveVendorConfPath function in this file for more specifics on where this
+ * overlay file will wind up on your device.
+ *
+ * This overlay may configure any of the parameters listed in kOverlayableKeys. The kOverlayableKeys
+ * list is subject to change over time, as certain parameters may be added as APIs instead in the
+ * future.
+ *
+ * Example of what an overlay file might look like:
+ * $> cat hostapd_unmetered_overlay.conf
+ * dtim_period=2
+ * ap_max_inactivity=300
+ *
+ * Anything added to this overlay will be prepended to the hostapd.conf for unmetered (typically
+ * local only hotspots) interfaces.
+ */
+constexpr char kUnmeteredIfaceOverlayPath[] = "/etc/wifi/hostapd_unmetered_overlay.conf";
+
+/**
+ * Allow-list of hostapd.conf parameters (keys) that can be set via overlay.
+ *
+ * If introducing new APIs, be sure to remove keys from this list that would otherwise be
+ * controlled by the new API. This way we can avoid conflicting settings.
+ * Please file an FR to add new keys to this list.
+ */
+static const std::set<std::string> kOverlayableKeys = {
+	"ap_max_inactivity",
+	"assocresp_elements"
+	"beacon_int",
+	"disassoc_low_ack",
+	"dtim_period",
+	"fragm_threshold",
+	"max_listen_interval",
+	"max_num_sta",
+	"rts_threshold",
+	"skip_inactivity_poll",
+	"uapsd_advertisement_enabled",
+	"wmm_enabled",
+	"wmm_ac_vo_aifs",
+	"wmm_ac_vo_cwmin",
+	"wmm_ac_vo_cwmax",
+	"wmm_ac_vo_txop_limit",
+	"wmm_ac_vo_acm",
+	"wmm_ac_vi_aifs",
+	"wmm_ac_vi_cwmin",
+	"wmm_ac_vi_cwmax",
+	"wmm_ac_vi_txop_limit",
+	"wmm_ac_vi_acm",
+	"wmm_ac_bk_cwmin"
+	"wmm_ac_bk_cwmax"
+	"wmm_ac_bk_aifs",
+	"wmm_ac_bk_txop_limit",
+	"wmm_ac_bk_acm",
+	"wmm_ac_be_aifs",
+	"wmm_ac_be_cwmin",
+	"wmm_ac_be_cwmax",
+	"wmm_ac_be_txop_limit",
+	"wmm_ac_be_acm",
+};
+
 using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
+#ifndef ANDROID_HOSTAPD_UNITTEST
+using android::base::ReadFileToString;
 using android::base::WriteStringToFile;
+#endif
 using aidl::android::hardware::wifi::hostapd::BandMask;
 using aidl::android::hardware::wifi::hostapd::ChannelBandwidth;
 using aidl::android::hardware::wifi::hostapd::ChannelParams;
@@ -150,6 +199,31 @@ bool GetInterfacesInBridge(std::string br_name,
 	return true;
 }
 
+std::string resolveVendorConfPath(const std::string& conf_path)
+{
+#if defined(__ANDROID_APEX__)
+	// returns "/apex/<apexname>" + conf_path
+	std::string path = android::base::GetExecutablePath();
+	return path.substr(0, path.find_first_of('/', strlen("/apex/"))) + conf_path;
+#else
+	return std::string("/vendor") + conf_path;
+#endif
+}
+
+void logHostapdConfigError(int error, const std::string& file_path) {
+	wpa_printf(MSG_ERROR, "Cannot read/write hostapd config %s, error: %s", file_path.c_str(),
+			strerror(error));
+	struct stat st;
+	int result = stat(file_path.c_str(), &st);
+	if (result == 0) {
+		wpa_printf(MSG_ERROR, "hostapd config file uid: %d, gid: %d, mode: %d",st.st_uid,
+				st.st_gid, st.st_mode);
+	} else {
+		wpa_printf(MSG_ERROR, "Error calling stat() on hostapd config file: %s",
+				strerror(errno));
+	}
+}
+
 std::string WriteHostapdConfig(
     const std::string& instance_name, const std::string& config,
     const std::string br_name, const bool usesMlo)
@@ -168,21 +242,7 @@ std::string WriteHostapdConfig(
 	}
 	// Diagnose failure
 	int error = errno;
-	wpa_printf(
-		MSG_ERROR, "Cannot write hostapd config to %s, error: %s",
-		file_path.c_str(), strerror(error));
-	struct stat st;
-	int result = stat(file_path.c_str(), &st);
-	if (result == 0) {
-		wpa_printf(
-			MSG_ERROR, "hostapd config file uid: %d, gid: %d, mode: %d",
-			st.st_uid, st.st_gid, st.st_mode);
-	} else {
-		wpa_printf(
-			MSG_ERROR,
-			"Error calling stat() on hostapd config file: %s",
-			strerror(errno));
-	}
+	logHostapdConfigError(errno, file_path);
 	return "";
 }
 
@@ -374,6 +434,14 @@ std::string getInterfaceMacAddress(const std::string& if_name)
 	mac_addr = StringPrintf("" MACSTR, MAC2STR(addr));
 
 	return mac_addr;
+}
+
+std::string trimWhitespace(const std::string& str) {
+	size_t pos = 0;
+	size_t len = str.size();
+	for (pos; pos < str.size() && std::isspace(str[pos]); ++pos){}
+	for (len; len - 1 > 0 && std::isspace(str[len-1]); --len){}
+	return str.substr(pos, len);
 }
 
 std::string CreateHostapdConfig(
@@ -805,7 +873,26 @@ std::string CreateHostapdConfig(
 			isAidlServiceVersionAtLeast(3) && nw_params.isClientIsolationEnabled ?
 			"1" : "0");
 
+	// Overlay for LOHS (unmetered SoftAP)
+	std::string overlay_path = resolveVendorConfPath(kUnmeteredIfaceOverlayPath);
+	std::string overlay_string;
+	if (!nw_params.isMetered
+			&& 0 == access(overlay_path.c_str(), R_OK)
+			&& !ReadFileToString(overlay_path, &overlay_string)) {
+		logHostapdConfigError(errno, overlay_path);
+		return "";
+	}
+	std::string sanitized_overlay = "";
+	std::istringstream overlay_stream(overlay_string);
+	for (std::string line; std::getline(overlay_stream, line);) {
+		std::string overlay_key = trimWhitespace(line.substr(0, line.find("=")));
+		if (kOverlayableKeys.contains(overlay_key)) {
+			sanitized_overlay.append(line + "\n");
+		}
+	}
+
 	return StringPrintf(
+		"%s\n"
 		"interface=%s\n"
 		"driver=nl80211\n"
 		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_%s\n"
@@ -836,6 +923,7 @@ std::string CreateHostapdConfig(
 		"ocv=%d\n"
 #endif
 		"beacon_prot=1\n",
+		sanitized_overlay.c_str(),
 		iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str(),
 		iface_params.name.c_str(),
 		ssid_as_string.c_str(),
@@ -1079,6 +1167,12 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 ::ndk::ScopedAStatus Hostapd::setDebugParams(DebugLevel level)
 {
 	return setDebugParamsInternal(level);
+}
+
+::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIface(
+        const std::string& iface_name, const std::string& linkIdentity)
+{
+	return removeLinkFromMultipleLinkBridgedApIfaceInternal(iface_name, linkIdentity);
 }
 
 ::ndk::ScopedAStatus Hostapd::addAccessPointInternal(
@@ -1525,6 +1619,23 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 {
 	wpa_debug_level = static_cast<uint32_t>(level);
 	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus Hostapd::removeLinkFromMultipleLinkBridgedApIfaceInternal(
+const std::string& iface_name, const std::string& linkIdentity)
+{
+	if (!hostapd_get_iface(interfaces_, iface_name.c_str())) {
+		wpa_printf(MSG_ERROR, "Interface %s doesn't exist", iface_name.c_str());
+		return createStatus(HostapdStatusCode::FAILURE_IFACE_UNKNOWN);
+	}
+	struct hostapd_data* iface_hapd =
+		hostapd_get_iface_by_link_id(interfaces_, (size_t) linkIdentity.c_str());
+	if (iface_hapd) {
+		if (0 == hostapd_link_remove(iface_hapd, 1)) {
+			return ndk::ScopedAStatus::ok();
+		}
+	}
+	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 }
 
 }  // namespace hostapd

@@ -858,7 +858,7 @@ ndk::ScopedAStatus P2pIface::addGroup(
 ::ndk::ScopedAStatus P2pIface::getFeatureSet(int64_t* _aidl_return)
 {
 	return validateAndCall(
-		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&P2pIface::getFeatureSetInternal, _aidl_return);
 }
 
@@ -867,7 +867,7 @@ ndk::ScopedAStatus P2pIface::addGroup(
 		int32_t* _aidl_return)
 {
 	return validateAndCall(
-		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&P2pIface::startUsdBasedServiceDiscoveryInternal, _aidl_return,
 		in_serviceDiscoveryConfig);
 }
@@ -884,7 +884,7 @@ ndk::ScopedAStatus P2pIface::addGroup(
 		int32_t* _aidl_return)
 {
 	return validateAndCall(
-		this, SupplicantStatusCode::FAILURE_UNKNOWN,
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&P2pIface::startUsdBasedServiceAdvertisementInternal, _aidl_return,
 		in_serviceAdvertisementConfig);
 }
@@ -902,6 +902,29 @@ ndk::ScopedAStatus P2pIface::addGroup(
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&P2pIface::provisionDiscoveryWithParamsInternal, in_params);
+}
+
+::ndk::ScopedAStatus P2pIface::getDirInfo(P2pDirInfo* _aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&P2pIface::getDirInfoInternal, _aidl_return);
+}
+
+::ndk::ScopedAStatus P2pIface::validateDirInfo(const P2pDirInfo& in_dirInfo,
+		int32_t* _aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&P2pIface::validateDirInfoInternal, _aidl_return, in_dirInfo);
+}
+
+::ndk::ScopedAStatus P2pIface::reinvokePersistentGroup(
+		const P2pReinvokePersistentGroupParams& in_reinvokeGroupParams)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&P2pIface::reinvokePersistentGroupInternal, in_reinvokeGroupParams);
 }
 
 std::pair<std::string, ndk::ScopedAStatus> P2pIface::getNameInternal()
@@ -2040,6 +2063,27 @@ ndk::ScopedAStatus P2pIface::stopUsdBasedServiceAdvertisementInternal(
 
 ndk::ScopedAStatus P2pIface::provisionDiscoveryWithParamsInternal(
 	const P2pProvisionDiscoveryParams& params)
+{
+	// TODO Fill the field when supplicant implementation is ready
+	return ndk::ScopedAStatus::ok();
+}
+
+std::pair<P2pDirInfo, ndk::ScopedAStatus> P2pIface::getDirInfoInternal()
+{
+	// TODO Fill the field when supplicant implementation is ready
+	P2pDirInfo dirInfo = {};
+	return {dirInfo, ndk::ScopedAStatus::ok()};
+}
+
+std::pair<int32_t, ndk::ScopedAStatus> P2pIface::validateDirInfoInternal(
+	const P2pDirInfo& dirInfo)
+{
+	// TODO Fill the field when supplicant implementation is ready
+	return {0, ndk::ScopedAStatus::ok()};
+}
+
+ndk::ScopedAStatus P2pIface::reinvokePersistentGroupInternal(
+	const P2pReinvokePersistentGroupParams& reinvokeGroupParams)
 {
 	// TODO Fill the field when supplicant implementation is ready
 	return ndk::ScopedAStatus::ok();
