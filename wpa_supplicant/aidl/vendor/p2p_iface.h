@@ -195,6 +195,11 @@ public:
 	::ndk::ScopedAStatus stopUsdBasedServiceAdvertisement(int32_t in_sessionId) override;
 	::ndk::ScopedAStatus provisionDiscoveryWithParams(
 		const P2pProvisionDiscoveryParams& in_params) override;
+	::ndk::ScopedAStatus getDirInfo(P2pDirInfo* _aidl_return) override;
+	::ndk::ScopedAStatus validateDirInfo(const P2pDirInfo &in_dirInfo,
+		int32_t* _aidl_return) override;
+	::ndk::ScopedAStatus reinvokePersistentGroup(
+		const P2pReinvokePersistentGroupParams& in_reinvokeGroupParams) override;
 
 
 private:
@@ -336,6 +341,11 @@ private:
 	::ndk::ScopedAStatus stopUsdBasedServiceAdvertisementInternal(uint32_t sessionId);
 	::ndk::ScopedAStatus provisionDiscoveryWithParamsInternal(
 		const P2pProvisionDiscoveryParams& params);
+	std::pair<P2pDirInfo, ndk::ScopedAStatus> getDirInfoInternal();
+	std::pair<int32_t, ndk::ScopedAStatus> validateDirInfoInternal(
+		const P2pDirInfo& dirInfo);
+	::ndk::ScopedAStatus reinvokePersistentGroupInternal(
+		const P2pReinvokePersistentGroupParams& reinvokeGroupParams);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 	struct wpa_supplicant* retrieveGroupIfacePtr(
