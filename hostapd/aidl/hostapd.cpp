@@ -35,6 +35,31 @@ extern "C"
 #include "drivers/linux_ioctl.h"
 }
 
+// don't use hostapd's wpa_printf for unit testing. It won't compile otherwise
+#ifdef ANDROID_HOSTAPD_UNITTEST
+#include <android-base/logging.h>
+constexpr size_t logbuf_size = 8192;
+static ::android::base::LogSeverity wpa_to_android_level(int level)
+{
+	if (level == MSG_ERROR)
+		return ::android::base::ERROR;
+	if (level == MSG_WARNING)
+		return ::android::base::WARNING;
+	if (level == MSG_INFO)
+		return ::android::base::INFO;
+	return ::android::base::DEBUG;
+}
+void wpa_printf(int level, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	char buffer[logbuf_size];
+	int res = snprintf(buffer, logbuf_size, fmt, ap);
+	if (res > 0 && res < logbuf_size) {
+		LOG(wpa_to_android_level(level)) << buffer;
+	}
+}
+#endif
+
 // The AIDL implementation for hostapd creates a hostapd.conf dynamically for
 // each interface. This file can then be used to hook onto the normal config
 // file parsing logic in hostapd code.  Helps us to avoid duplication of code
@@ -77,6 +102,12 @@ inline int32_t isAidlServiceVersionAtLeast(int32_t expected_version)
 inline int32_t isAidlClientVersionAtLeast(int32_t expected_version)
 {
 	return expected_version <= aidl_client_version;
+}
+
+inline int32_t areAidlServiceAndClientAtLeastVersion(int32_t expected_version)
+{
+	return isAidlServiceVersionAtLeast(expected_version)
+		&& isAidlClientVersionAtLeast(expected_version);
 }
 
 #define MAX_PORTS 1024
@@ -770,6 +801,10 @@ std::string CreateHostapdConfig(
 			"owe_transition_ifname=%s", owe_transition_ifname.c_str());
 	}
 
+	std::string ap_isolation_as_string = StringPrintf("ap_isolate=%s",
+			isAidlServiceVersionAtLeast(3) && nw_params.isClientIsolationEnabled ?
+			"1" : "0");
+
 	return StringPrintf(
 		"interface=%s\n"
 		"driver=nl80211\n"
@@ -796,6 +831,7 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"%s\n"
 		"%s\n"
+		"%s\n",
 #ifdef CONFIG_OCV
 		"ocv=%d\n"
 #endif
@@ -818,7 +854,8 @@ std::string CreateHostapdConfig(
 		owe_transition_ifname_as_string.c_str(),
 		enable_edmg_as_string.c_str(),
 		edmg_channel_as_string.c_str(),
-		vendor_elements_as_string.c_str()
+		vendor_elements_as_string.c_str(),
+                ap_isolation_as_string.c_str()
 #ifdef CONFIG_OCV
 #ifdef CONFIG_IEEE80211BE
 		/* TODO: Don't enable OCV for Wi-Fi 7 until further notice from WFA */
