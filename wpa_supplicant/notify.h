@@ -190,8 +190,10 @@ void wpas_notify_hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s,
 void wpas_notify_dpp_config_received(struct wpa_supplicant *wpa_s,
 		struct wpa_ssid *ssid, bool conn_status_requested);
 void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s);
+#ifdef CONFIG_DPP
 void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 		enum dpp_status_error result);
+#endif /* CONFIG_DPP */
 void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_resp_pending(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_not_compatible(struct wpa_supplicant *wpa_s);
@@ -201,9 +203,11 @@ void wpas_notify_dpp_timeout(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_auth_failure(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_failure(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_config_sent_wait_response(struct wpa_supplicant *wpa_s);
+#ifdef CONFIG_DPP
 void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 		enum dpp_status_error status, const char *ssid,
 		const char *channel_list, unsigned short band_list[], int size);
+#endif /* CONFIG_DPP */
 void wpas_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s);
 void wpas_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s);
 void wpas_notify_transition_disable(struct wpa_supplicant *wpa_s,
