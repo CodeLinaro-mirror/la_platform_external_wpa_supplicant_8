@@ -1222,6 +1222,18 @@ cc_defaults {
     ],
 }
 
+cc_defaults {
+    name: "wpa_supplicant_usd_defaults",
+    cflags: [
+        "-DCONFIG_NAN_USD",
+    ],
+    srcs: [
+        "nan_usd.c",
+        "src/ap/nan_usd_ap.c",
+        "src/common/nan_de.c",
+    ],
+}
+
 cc_binary {
     name: "wpa_cli",
     proprietary: true,
