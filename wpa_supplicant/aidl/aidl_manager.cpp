@@ -112,6 +112,31 @@ int removeAidlObjectFromMap(
 	return 0;
 }
 
+int removeIfaceFromSomeipMap(
+	const std::string &iface_name,
+	std::map<const uint16_t, std::string> &someip_map)
+{
+	bool is_found = 0;
+	uint16_t instance_id;
+	for (const auto& pair : someip_map) {
+		if (pair.second == iface_name) {
+			instance_id = pair.first;
+			is_found = 1;
+			break;
+		}
+	}
+
+	if (is_found) {
+		const auto &object_iter = someip_map.find(instance_id);
+		someip_map.erase(object_iter);
+		wpa_printf(MSG_INFO, "iface someip map remove success");
+		return 0;
+	} else {
+		wpa_printf(MSG_INFO, "iface someip map remove failed");
+		return 1;
+	}
+}
+
 template <class CallbackType>
 int addIfaceCallbackAidlObjectToMap(
 	const std::string &ifname, const std::shared_ptr<CallbackType> &callback,
@@ -544,16 +569,20 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 //		success = !removeAllIfaceCallbackAidlObjectsFromMap(
 //			death_notifier_, wpa_s->ifname, p2p_iface_callbacks_map_);
 //	} else {  // assumed to be STA
-		bool success = !removeAidlObjectFromMap(
+		bool success1 = !removeAidlObjectFromMap(
 			wpa_s->ifname, sta_iface_object_map_);
-		if (success) {
+		bool success2 = !removeIfaceFromSomeipMap(
+			wpa_s->ifname, sta_iface_someip_map_);
+		bool success = 0;
+
+		if (success1 && success2) {
 			success = !removeAllIfaceCallbackAidlObjectsFromMap(
 				wpa_s->ifname, sta_iface_callbacks_map_);
 		}
 #ifdef CONFIG_USE_VENDOR_AIDL
-		success = !removeAidlObjectFromMap(
+		success1 = !removeAidlObjectFromMap(
 			wpa_s->ifname, vendor_sta_iface_object_map_);
-		if (success) {
+		if (success1) {
 			success = !removeAllIfaceCallbackAidlObjectsFromMap(
 				wpa_s->ifname, vendor_sta_iface_callbacks_map_);
 		}
@@ -1547,7 +1576,7 @@ void AidlManager::notifyP2pGroupStarted(
 			   params.p2pClientIpInfo.ipAddressClient,
 			   params.p2pClientIpInfo.ipAddressMask,
 			   params.p2pClientIpInfo.ipAddressGo);
-        }
+		}
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,
