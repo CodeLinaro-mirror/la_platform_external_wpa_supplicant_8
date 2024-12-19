@@ -224,13 +224,6 @@ void SupplicantProcessSomeIPRequestMessage(const std::shared_ptr<SomeipMessage> 
     uint16_t methodId = msg->getMethodId();
 
     ALOGI("Recv Someip Request message with method_id 0x%04X", methodId);
-#ifdef CONFIG_USE_NONSTD_CALLBACK
-    if(methodId == NON_STANDARD_CERT_GET_BLOB_REQ || methodId == NON_STANDARD_CERT_LIST_ALIASES_REQ)
-    {
-        ALOGI("Dump non-std request 0x%04X", methodId);
-        return;
-    }
-#endif
     MessageHandler handler = SupplicantGetMessageHandler(methodId);
     if (!handler)
     {

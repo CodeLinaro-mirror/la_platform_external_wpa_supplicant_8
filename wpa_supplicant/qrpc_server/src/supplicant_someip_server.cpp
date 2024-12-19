@@ -7,12 +7,15 @@
 
 #include <rpc/util/log_common.h>
 #include <rpc/util/someip_server.h>
+#include <rpc/util/message_queue.h>
 #include <rpc/util/aidl_sock.h>
 
 #include "supplicant_someip_server.h"
 #include "supplicant_message_handler.h"
 #include "supplicant_event_callback.h"
+#ifdef CONFIG_USE_NONSTD_CALLBACK
 #include "SupplicantNonStdCallback.h"
+#endif
 
 #define SUPPLICANT_INSTANCE_ID                              ((uint16_t) 0x3330)
 #define SUPPLICANT_EVENTGROUP_ID                            ((uint16_t) 0xCCC0)
@@ -25,10 +28,12 @@ using qti::hal::rpc::SomeipMessage;
 
 std::shared_ptr<std::thread> wpas_someip_service_thread;
 std::shared_ptr<SomeipServer> wpas_someip_server;
+std::shared_ptr<MessageQueue<std::shared_ptr<SomeipMessage>>> wpas_someip_msg_queue;
 
 std::string SUPPLICANT_SERVICE_NAME = "supplicant_someip_service";
 std::string cpath = "/data/vendor/wifi/wpa/aidl_client";
 
+#ifdef CONFIG_USE_NONSTD_CALLBACK
 uint16_t reqId = 0xFFFF;
 uint32_t defaultTimeout = 500;
 
@@ -63,16 +68,20 @@ static std::shared_ptr<SomeipMessage> WaitforMsg(uint32_t timeout)
 
     return req;
 }
+#endif
 
 static void wpas_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
 {
+#ifdef CONFIG_USE_NONSTD_CALLBACK
     if (msg->getMethodId() == reqId)
     {
         ALOGI("Received unlock request (0x%04X)", reqId);
         reqMsg = msg;
         condition_.notify_one();
+        return;
     }
-
+#endif
+    wpas_someip_msg_queue->push(msg);
     qti_notify_aidl_socket();
 }
 
@@ -80,7 +89,16 @@ static void someip_process_queued_msg()
 {
     if (!wpas_someip_server)
         return;
-    wpas_someip_server->handleMessageQueue();
+
+    if(wpas_someip_msg_queue->empty()){
+        ALOGE("Error: Message queue is empty");
+        return;
+    }
+    auto message = wpas_someip_msg_queue->front();
+    wpas_someip_msg_queue->pop();
+
+    SupplicantProcessSomeIPRequestMessage(message);
+    message.reset();
 }
 
 bool SupplicantSomeIPServerInit()
@@ -89,18 +107,19 @@ bool SupplicantSomeIPServerInit()
     SomeipContext context(WIFI_SUPPLICANT_SERVICE_ID, SUPPLICANT_INSTANCE_ID,
         SUPPLICANT_EVENTGROUP_ID, SupplicantEvent);
     SomeipCallback cb(nullptr,
-                      nullptr,
-                      SupplicantProcessSomeIPRequestMessage);
-    context.registerCallback(cb);
+                      wpas_msg_scheduler);
 
+    Someip::setup(cb);
     wpas_someip_server = std::make_shared<SomeipServer>(SUPPLICANT_SERVICE_NAME, context);
 
     if (!wpas_someip_server)
         return false;
 
-    wpas_someip_server->initMessageSchedule(wpas_msg_scheduler);
+    wpas_someip_msg_queue = std::make_shared<MessageQueue<std::shared_ptr<SomeipMessage>>>();
 
-    return wpas_someip_server->init();
+    ALOGI("Supplicant someip service is initialized");
+
+    return true;
 }
 
 bool SupplicantSomeIPServerStart()
@@ -137,7 +156,7 @@ void SupplicantSomeIPServerDeinit()
         return;
 
     ALOGI("Supplicant someip service deinit...");
-    wpas_someip_server->deinit();
+    wpas_someip_msg_queue = nullptr;
     wpas_someip_server = nullptr;
 }
 
@@ -146,13 +165,6 @@ bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data)
     if (!wpas_someip_server)
         return false;
     return wpas_someip_server->sendRequest(method_id, data);
-}
-
-bool someip_send_response(uint16_t method_id, std::vector<uint8_t> &data)
-{
-    if (!wpas_someip_server)
-        return false;
-    return wpas_someip_server->sendResponse(method_id, data);
 }
 
 bool someip_send_event(uint16_t method_id, std::vector<uint8_t> &data)
@@ -169,6 +181,7 @@ bool someip_send_message(std::shared_ptr<SomeipMessage> message)
     return wpas_someip_server->sendMessage(message);
 }
 
+#ifdef CONFIG_USE_NONSTD_CALLBACK
 std::shared_ptr<SomeipMessage> someip_send_nonstd_event(uint16_t method_id, const std::vector<uint8_t>& data, uint16_t unlock_id)
 {
     if (!wpas_someip_server)
@@ -182,3 +195,4 @@ std::shared_ptr<SomeipMessage> someip_send_nonstd_event(uint16_t method_id, cons
 
     return WaitforMsg(defaultTimeout);
 }
+#endif
