@@ -6,7 +6,7 @@
 #include "hostapd_event_callback.h"
 using aidl::android::hardware::wifi::hostapd::HostapdStatusCode;
 
-std::vector<uint16_t> HostapdEvent{
+std::vector<uint16_t> HostapdEventArray{
     /* IHostapdCallback */
     HOSTAPD_ON_AP_INSTANCE_INFO_CHANGED_IND,
     HOSTAPD_ON_CONNECTED_CLIENTS_CHANGED_IND,

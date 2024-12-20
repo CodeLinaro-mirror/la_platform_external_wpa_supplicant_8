@@ -10,7 +10,9 @@
 #include <rpc/util/log_common.h>
 #include <rpc/util/someip_server.h>
 #include <rpc/util/aidl_sock.h>
-
+#include <rpc/util/someip_util.h>
+#include <rpc/util/message_queue.h>
+#include <rpc/util/message_scheduler.h>
 #include "hostapd_someip_server.h"
 #include "hostapd_message_handler.h"
 #include "hostapd_event_callback.h"
@@ -23,23 +25,26 @@ using qti::hal::rpc::SomeipContext;
 using qti::hal::rpc::SomeipCallback;
 using qti::hal::rpc::SomeipServer;
 using qti::hal::rpc::SomeipMessage;
+using qti::hal::rpc::Someip;
+using qti::hal::rpc::SomeipMessageHandler;
 
+std::string HOSTAPD_SERVICE_NAME = "hostapd_someip_service";
 std::shared_ptr<std::thread> hostapd_someip_service_thread;
 std::shared_ptr<SomeipServer> hostapd_someip_server;
 
-#define HOSTAPD_SERVICE_NAME         "hostapd_someip_service"
 std::string cpath = "/data/vendor/wifi/hostapd/aidl_client";
+std::shared_ptr<MessageScheduler<std::shared_ptr<SomeipMessage>, SomeipMessageHandler>> hostapd_message_scheduler;
 
-static void hostapd_msg_scheduler(const std::shared_ptr<SomeipMessage> &msg)
+static void hostapd_message_schedule(const std::shared_ptr<SomeipMessage> &msg)
 {
-    qti_notify_aidl_socket();
+    hostapd_message_scheduler->schedule(msg);
 }
 
 static void someip_process_queued_msg()
 {
     if (!hostapd_someip_server)
         return;
-    hostapd_someip_server->handleMessageQueue();
+    hostapd_message_scheduler->handle();
 }
 
 
@@ -50,23 +55,28 @@ bool HostapdSomeIPServerInit()
     property_get("persist.vendor.someip.config_file", someip_config_file, "/etc/someip/vsomeip_server.json");
     if(strstr(someip_config_file, "cem")){
         hostapd_instance_id = HOSTAPD_INSTANCE_ID_CEM;
+        ALOGI("Hostapd CHM someip service init...");
     }else{
         hostapd_instance_id = HOSTAPD_INSTANCE_ID_CHM;
+        ALOGI("Hostapd CEM someip service init...");
     }
+
+    hostapd_message_scheduler = std::make_shared<MessageScheduler<std::shared_ptr<SomeipMessage>, SomeipMessageHandler>>();
+    hostapd_message_scheduler->registerSchedulerHandler(qti_notify_aidl_socket);
+    hostapd_message_scheduler->registerMessageHandler(HostapdProcessSomeIPRequestMessage);
+    SomeipCallback cb(nullptr,
+                      hostapd_message_schedule);
+    hostapd_someip_server->setup(cb);
     /*Initialize Context*/
     SomeipContext context(WIFI_HOSTAPD_SERVICE_ID, hostapd_instance_id,
-        HOSTAPD_EVENTGROUP_ID, HostapdEvent);
-    SomeipCallback cb(nullptr,
-                      nullptr,
-                      HostapdProcessSomeIPRequestMessage);
-    context.registerCallback(cb);
+        HOSTAPD_EVENTGROUP_ID, HostapdEventArray);
+
     hostapd_someip_server = std::make_shared<SomeipServer>(HOSTAPD_SERVICE_NAME, context);
 
     if (!hostapd_someip_server) {
         return false;
     }
-    hostapd_someip_server->initMessageSchedule(hostapd_msg_scheduler);
-    return hostapd_someip_server->init();
+    return true;
 }
 
 bool HostapdSomeIPServerStart()
@@ -101,18 +111,18 @@ void HostapdSomeIPServerDeinit()
     hostapd_someip_server = nullptr;
 }
 
-bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data)
+bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data, uint16_t session_id)
 {
     if (!hostapd_someip_server)
         return false;
-    return hostapd_someip_server->sendRequest(method_id, data);
+    return hostapd_someip_server->sendRequest(method_id, data, &session_id);
 }
 
-bool someip_send_response(uint16_t method_id, std::vector<uint8_t> &data)
+bool someip_send_response(std::shared_ptr<vsomeip::message> &msg, std::vector<uint8_t> &data)
 {
     if (!hostapd_someip_server)
         return false;
-    return hostapd_someip_server->sendResponse(method_id, data);
+    return hostapd_someip_server->sendResponse(msg, data);
 }
 
 bool someip_send_event(uint16_t method_id, std::vector<uint8_t> &data)
