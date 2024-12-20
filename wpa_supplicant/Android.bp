@@ -1307,6 +1307,7 @@ wpa_supplicant_cc_binary {
         "wpa_supplicant_srcs_default",
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_usd_defaults",
     ],
     soong_config_variables: {
         board_wpa_supplicant_private_lib: {
