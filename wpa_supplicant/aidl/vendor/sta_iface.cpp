@@ -395,7 +395,6 @@ bool validateUsdSubscribeConfig(UsdSubscribeConfig subscribeConfig) {
 }
 
 struct nan_publish_params convertAidlNanPublishParamsToInternal(UsdPublishConfig publishConfig) {
-	// TODO: Fill the disable_events field
 	struct nan_publish_params nanPublishParams;
 	nanPublishParams.unsolicited =
 		publishConfig.publishType == UsdPublishConfig::PublishType::UNSOLICITED_ONLY
@@ -409,6 +408,7 @@ struct nan_publish_params convertAidlNanPublishParamsToInternal(UsdPublishConfig
 	nanPublishParams.fsd = publishConfig.isFsd;
 	nanPublishParams.freq = publishConfig.usdBaseConfig.defaultFreqMhz;
 	nanPublishParams.announcement_period = publishConfig.announcementPeriodMillis;
+	nanPublishParams.disable_events = !publishConfig.eventsEnabled;
 	// Pass the original pointer to the freq list, since the receiver will memcpy the data
 	nanPublishParams.freq_list = publishConfig.usdBaseConfig.freqsMhz.data();
 	return nanPublishParams;
