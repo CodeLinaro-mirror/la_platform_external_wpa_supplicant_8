@@ -938,6 +938,9 @@ Generation getGeneration(hostapd_hw_modes *current_mode)
 	case HOSTAPD_MODE_IEEE80211B:
 		return Generation::WIFI_STANDARD_LEGACY;
 	case HOSTAPD_MODE_IEEE80211G:
+		if (current_mode->he_capab->he_supported) {
+			return Generation::WIFI_STANDARD_11AX;
+		}
 		return current_mode->ht_capab == 0 ?
 				Generation::WIFI_STANDARD_LEGACY : Generation::WIFI_STANDARD_11N;
 	case HOSTAPD_MODE_IEEE80211A:
