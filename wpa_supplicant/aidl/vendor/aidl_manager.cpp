@@ -2976,6 +2976,162 @@ void AidlManager::notifyQosPolicyScsResponse(struct wpa_supplicant *wpa_s,
 			std::placeholders::_1, scsResponses));
 }
 
+void AidlManager::notifyUsdPublishStarted(struct wpa_supplicant *wpa_s,
+		int cmd_id, int publish_id)
+{
+	if (!wpa_s) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdPublishStarted,
+			std::placeholders::_1, cmd_id, publish_id));
+}
+void AidlManager::notifyUsdSubscribeStarted(struct wpa_supplicant *wpa_s,
+		int cmd_id, int subscribe_id)
+{
+	if (!wpa_s) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdSubscribeStarted,
+			std::placeholders::_1, cmd_id, subscribe_id));
+}
+void AidlManager::notifyUsdPublishConfigFailed(struct wpa_supplicant *wpa_s, int cmd_id)
+{
+	if (!wpa_s) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdPublishConfigFailed,
+			std::placeholders::_1, cmd_id));
+}
+
+void AidlManager::notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s, int cmd_id)
+{
+	if (!wpa_s) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdSubscribeConfigFailed,
+			std::placeholders::_1, cmd_id));
+}
+
+UsdServiceProtoType convertUsdServiceProtoTypeToAidl(nan_service_protocol_type type) {
+	switch (type) {
+		case NAN_SRV_PROTO_GENERIC:
+			return UsdServiceProtoType::GENERIC;
+		case NAN_SRV_PROTO_CSA_MATTER:
+			return UsdServiceProtoType::CSA_MATTER;
+		default:
+			// Should not reach here
+			wpa_printf(MSG_ERROR, "Received invalid USD proto type %d from internal",
+				static_cast<int>(type));
+			return UsdServiceProtoType::GENERIC;
+	}
+}
+
+UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
+		enum nan_service_protocol_type srv_proto_type,
+		int own_id, int peer_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len) {
+	// TODO: Fill the matchFilter field in the AIDL struct
+	UsdServiceDiscoveryInfo discoveryInfo;
+	discoveryInfo.ownId = own_id;
+	discoveryInfo.peerId = peer_id;
+	discoveryInfo.peerMacAddress = macAddrToArray(peer_addr);
+	discoveryInfo.protoType = convertUsdServiceProtoTypeToAidl(srv_proto_type);
+	discoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	discoveryInfo.isFsd = fsd;
+	return discoveryInfo;
+}
+
+void AidlManager::notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len)
+{
+	if (!wpa_s || !peer_addr || !ssi) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
+		srv_proto_type, subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdServiceDiscovered,
+			std::placeholders::_1, discoveryInfo));
+}
+
+void AidlManager::notifyUsdPublishReplied(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int publish_id, int peer_subscribe_id,
+		const u8 *peer_addr, const u8 *ssi, size_t ssi_len)
+{
+	if (!wpa_s || !peer_addr || !ssi) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
+		srv_proto_type, publish_id, peer_subscribe_id, peer_addr, false /* fsd */,
+		ssi, ssi_len);
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdPublishReplied,
+			std::placeholders::_1, discoveryInfo));
+}
+
+void AidlManager::notifyUsdMessageReceived(struct wpa_supplicant *wpa_s, int id,
+		int peer_instance_id, const u8 *peer_addr,
+		const u8 *message, size_t message_len)
+{
+	if (!wpa_s || !peer_addr || !message) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+
+	UsdMessageInfo messageInfo;
+	messageInfo.ownId = id;
+	messageInfo.peerId = peer_instance_id;
+	messageInfo.peerMacAddress = macAddrToArray(peer_addr);
+	messageInfo.message = byteArrToVec(message, message_len);
+
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdMessageReceived,
+			std::placeholders::_1, messageInfo));
+}
+
+UsdTerminateReasonCode convertUsdTerminateReasonCodeToAidl(nan_de_reason reason) {
+	switch (reason) {
+	case NAN_DE_REASON_TIMEOUT:
+		return UsdTerminateReasonCode::TIMEOUT;
+	case NAN_DE_REASON_USER_REQUEST:
+		return UsdTerminateReasonCode::USER_REQUEST;
+	case NAN_DE_REASON_FAILURE:
+		return UsdTerminateReasonCode::FAILURE;
+	default:
+		return UsdTerminateReasonCode::UNKNOWN;
+	}
+}
+
+void AidlManager::notifyUsdPublishTerminated(struct wpa_supplicant *wpa_s,
+		int publish_id, enum nan_de_reason reason)
+{
+	if (!wpa_s) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdPublishTerminated,
+			std::placeholders::_1, publish_id,
+			convertUsdTerminateReasonCodeToAidl(reason)));
+}
+
+void AidlManager::notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
+		int subscribe_id, enum nan_de_reason reason)
+{
+	if (!wpa_s) return;
+	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
+	callWithEachStaIfaceCallback(
+		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+			&ISupplicantStaIfaceCallback::onUsdSubscribeTerminated,
+			std::placeholders::_1, subscribe_id,
+			convertUsdTerminateReasonCodeToAidl(reason)));
+}
+
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

@@ -157,6 +157,21 @@ extern "C"
 	ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases);
 	void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 		unsigned int count, int **scs_resp);
+	void wpas_aidl_notify_usd_service_discovered(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len);
+	void wpas_aidl_notify_usd_publish_replied(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int publish_id, int peer_subscribe_id,
+		const u8 *peer_addr, const u8 *ssi, size_t ssi_len);
+	void wpas_aidl_notify_usd_message_received(struct wpa_supplicant *wpa_s, int id,
+		int peer_instance_id, const u8 *peer_addr,
+		const u8 *message, size_t message_len);
+	void wpas_aidl_notify_usd_publish_terminated(struct wpa_supplicant *wpa_s,
+		int publish_id, enum nan_de_reason reason);
+	void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
+		int subscribe_id, enum nan_de_reason reason);
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -357,6 +372,21 @@ static ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases)
 }
 static void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 	unsigned int count, int **scs_resp) {}
+static void wpas_aidl_notify_usd_service_discovered(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len) {}
+static void wpas_aidl_notify_usd_publish_replied(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int publish_id, int peer_subscribe_id,
+		const u8 *peer_addr, const u8 *ssi, size_t ssi_len) {}
+static void wpas_aidl_notify_usd_message_received(struct wpa_supplicant *wpa_s, int id,
+		int peer_instance_id, const u8 *peer_addr,
+		const u8 *message, size_t message_len) {}
+static void wpas_aidl_notify_usd_publish_terminated(struct wpa_supplicant *wpa_s,
+		int publish_id, enum nan_de_reason reason) {}
+static void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
+		int subscribe_id, enum nan_de_reason reason) {}
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus
