@@ -1116,3 +1116,81 @@ void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 	wpa_printf(MSG_DEBUG, "Notifying Qos Policy SCS Response");
 	aidl_manager->notifyQosPolicyScsResponse(wpa_s, count, scs_resp);
 }
+
+void wpas_aidl_notify_usd_service_discovered(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len)
+{
+	if (!wpa_s || !peer_addr || !ssi)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying USD service discovered");
+	aidl_manager->notifyUsdServiceDiscovered(wpa_s, srv_proto_type,
+		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
+}
+
+void wpas_aidl_notify_usd_publish_replied(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int publish_id, int peer_subscribe_id,
+		const u8 *peer_addr, const u8 *ssi, size_t ssi_len)
+{
+	if (!wpa_s || !peer_addr || !ssi)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying USD publish replied");
+	aidl_manager->notifyUsdPublishReplied(wpa_s, srv_proto_type,
+		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
+}
+
+void wpas_aidl_notify_usd_message_received(struct wpa_supplicant *wpa_s,
+		int id, int peer_instance_id, const u8 *peer_addr,
+		const u8 *message, size_t message_len)
+{
+	if (!wpa_s || !peer_addr || !message)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying USD message received");
+	aidl_manager->notifyUsdMessageReceived(wpa_s, id, peer_instance_id,
+		peer_addr, message, message_len);
+}
+
+void wpas_aidl_notify_usd_publish_terminated(struct wpa_supplicant *wpa_s,
+		int publish_id, enum nan_de_reason reason)
+{
+	if (!wpa_s)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying USD publish terminated");
+	aidl_manager->notifyUsdPublishTerminated(wpa_s, publish_id, reason);
+}
+
+void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
+		int subscribe_id, enum nan_de_reason reason)
+{
+	if (!wpa_s)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying USD subscribe terminated");
+	aidl_manager->notifyUsdSubscribeTerminated(wpa_s, subscribe_id, reason);
+}
