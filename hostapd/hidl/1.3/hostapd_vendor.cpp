@@ -220,45 +220,61 @@ Return<void> HostapdVendor::hostapdCmd(
 	    this, &HostapdVendor::hostapdCmdInternal, _hidl_cb, iface_name, cmd);
 }
 
+bool HostapdVendor::handleCtrlEvent(
+    const android::sp<V1_3::IHostapdVendorIfaceCallback> &callback,
+    const std::string &iface_name,
+    const std::string &event_str)
+{
+	auto ret = callback->onCtrlEvent(iface_name, event_str);
+	if (!ret.isOk()) {
+		wpa_printf(MSG_ERROR, "%s: onCtrlEvent failed with error: %s", __func__, ret.description().c_str());
+		if (ret.isDeadObject()) {
+			wpa_printf(MSG_ERROR, "%s: Unable to process the request due to Dead Object.", __func__);
+			return false;
+		}
+	}
+	return true;
+}
+
+std::string HostapdVendor::getThermalLevel(const std::string &iface_name)
+{
+	auto res = hostapdCmdInternal(iface_name, "DRIVER GET_THERMAL_INFO");
+	std::string reply = res.second;
+	if (reply.size() >= MIN_THERMAL_REPLY_SIZE) {
+		int index = reply.rfind(" ");
+		return reply.substr(index + 1);
+	}
+	return THERMAL_LEVEL_UNKNOWN;
+}
+
 // private hidl implementation
 HostapdStatus HostapdVendor::registerCallbackInternal_1_3(
     const std::string& iface_name,
     const android::sp<V1_3::IHostapdVendorIfaceCallback> &callback)
 {
-	// Iface_name ignored, treat it as global callback
-	// Hook the hapd callback if not registered.
-	int i, j;
-
+	// Define the internal control event callback if not already defined
 	if (!on_ctrl_event_internal_callback) {
-		on_ctrl_event_internal_callback =
-		    [this](struct hostapd_data* iface_hapd, const char *msg) {
+		on_ctrl_event_internal_callback = [this](struct hostapd_data* iface_hapd, const char *msg) {
 			if (vendor_hostapd_callbacks_.size() == 0) {
 				wpa_printf(MSG_ERROR, "No hostapd vendor callback registered");
 				return;
 			}
 			const std::string ifname(iface_hapd->conf->iface);
 			const std::string event_str(msg);
-			for (auto callback = vendor_hostapd_callbacks_.begin(); callback != vendor_hostapd_callbacks_.end();) {
-				auto ret = (*callback)->onCtrlEvent(ifname, event_str);
-				if (!ret.isOk()){
-					wpa_printf(MSG_ERROR, "%s: onCtrlEvent failed with error: %s.", __func__, ret.description().c_str());
-					if(ret.isDeadObject()){
-						wpa_printf(MSG_ERROR,"%s,Unable to process the request due to Dead Object", __func__);
-						callback = vendor_hostapd_callbacks_.erase(callback);
-					} else {
-						++callback;
-					}
+			for (auto it = vendor_hostapd_callbacks_.begin(); it != vendor_hostapd_callbacks_.end();) {
+				if (!handleCtrlEvent(*it, ifname, event_str)) {
+					it = vendor_hostapd_callbacks_.erase(it);
 				} else {
-					++callback;
+					++it;
 				}
 			}
 		};
 	}
 
-	for (i = 0; i < interfaces_->count; i++) {
+	// Initialize control event callbacks for all interfaces
+	for (int i = 0; i < interfaces_->count; ++i) {
 		struct hostapd_iface *iface = interfaces_->iface[i];
-
-		for (j = 0; j < iface->num_bss; j++) {
+		for (int j = 0; j < iface->num_bss; ++j) {
 			struct hostapd_data *hapd = iface->bss[j];
 			if (!hapd->ctrl_event_hidl_cb) {
 				hapd->ctrl_event_hidl_cb = onVendorCtrlEventCb;
@@ -267,20 +283,12 @@ HostapdStatus HostapdVendor::registerCallbackInternal_1_3(
 		}
 	}
 
-	// Save client callbacks
+	// Save the client callback
 	vendor_hostapd_callbacks_.push_back(callback);
 
-	// return default thermal status
-	auto res = hostapdCmdInternal(iface_name, "DRIVER GET_THERMAL_INFO");
-	std::string reply = res.second;
-	std::string thermal_level = THERMAL_LEVEL_UNKNOWN;
-	if (reply.size() >= MIN_THERMAL_REPLY_SIZE) {
-		int index = reply.rfind(" ");
-		thermal_level = reply.substr(index + 1);
-	}
-	std::string thermal_event = "CTRL-EVENT-THERMAL-CHANGED level=";
-	thermal_event += thermal_level;
-	callback->onCtrlEvent(iface_name, thermal_event);
+	// Send thermal status event
+	std::string thermal_event = "CTRL-EVENT-THERMAL-CHANGED level=" + getThermalLevel(iface_name);
+	handleCtrlEvent(callback, iface_name, thermal_event);
 
 	return {HostapdStatusCode::SUCCESS, ""};
 }
