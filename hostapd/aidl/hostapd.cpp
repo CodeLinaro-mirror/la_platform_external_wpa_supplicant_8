@@ -784,7 +784,7 @@ std::string CreateHostapdConfig(
 
 	std::string bridge_as_string;
 	if (!br_name.empty()) {
-		bridge_as_string = StringPrintf("bridge=%s", br_name.c_str());
+		bridge_as_string = StringPrintf("vlan_bridge=%s", br_name.c_str());
 	}
 
 	// vendor_elements string
