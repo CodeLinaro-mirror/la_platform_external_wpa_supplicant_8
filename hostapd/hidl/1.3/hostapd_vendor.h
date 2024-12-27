@@ -122,6 +122,11 @@ private:
 	std::pair<HostapdStatus, std::vector<hidl_string>> listInterfacesInternal();
 	std::pair<HostapdStatus, std::string> hostapdCmdInternal(
 	    const std::string& iface_name, const std::string& cmd);
+	bool handleCtrlEvent(
+	    const android::sp<V1_3::IHostapdVendorIfaceCallback> &callback,
+	    const std::string &iface_name,
+	    const std::string &event_str);
+	std::string getThermalLevel(const std::string &iface_name);
 	HostapdStatus registerCallbackInternal_1_3(
 	    const std::string& iface_name,
 	    const android::sp<V1_3::IHostapdVendorIfaceCallback>& callback);
