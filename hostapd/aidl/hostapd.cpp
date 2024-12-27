@@ -924,11 +924,11 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"%s\n"
 		"%s\n"
-		"%s\n",
 #ifdef CONFIG_OCV
 		"ocv=%d\n"
 #endif
-		"beacon_prot=1\n",
+		"beacon_prot=1\n"
+		"%s\n",
 		sanitized_overlay.c_str(),
 		iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str(),
 		iface_params.name.c_str(),
@@ -949,16 +949,15 @@ std::string CreateHostapdConfig(
 		enable_edmg_as_string.c_str(),
 		edmg_channel_as_string.c_str(),
 		vendor_elements_as_string.c_str(),
-                ap_isolation_as_string.c_str()
 #ifdef CONFIG_OCV
 #ifdef CONFIG_IEEE80211BE
 		/* TODO: Don't enable OCV for Wi-Fi 7 until further notice from WFA */
-		, (is_11be_supported && enable_11be) ? 0 : 2
+		(is_11be_supported && enable_11be) ? 0 : 2,
 #else /* CONFIG_IEEE80211BE */
-		, 2
+		2,
 #endif /* CONFIG_IEEE80211BE */
 #endif /* CONFIG_OCV */
-		);
+		ap_isolation_as_string.c_str());
 }
 
 Generation getGeneration(hostapd_hw_modes *current_mode)
