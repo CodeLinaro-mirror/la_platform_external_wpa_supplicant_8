@@ -91,6 +91,7 @@ private:
 	    const std::vector<uint8_t>& client_address,
 	    Ieee80211ReasonCode reason_code);
 	::ndk::ScopedAStatus setDebugParamsInternal(DebugLevel level);
+	::ndk::ScopedAStatus configApInterfaceIP();
 
 	// Raw pointer to the global structure maintained by the core.
 	struct hapd_interfaces* interfaces_;

@@ -1290,7 +1290,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 
     // Save bridge interface info
 	br_interfaces_[br_name] = managed_interfaces;
-	return ndk::ScopedAStatus::ok();
+	return configApInterfaceIP();
 }
 
 ::ndk::ScopedAStatus Hostapd::addConcurrentAccessPoints(
@@ -1463,7 +1463,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 			iface_params.name.c_str());
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
-	return ndk::ScopedAStatus::ok();
+	return configApInterfaceIP();
 }
 
 ::ndk::ScopedAStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
@@ -1486,6 +1486,18 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus Hostapd::configApInterfaceIP()
+{
+	const char* command = "ifconfig ap_br_wlan2 10.43.3.1 netmask 255.255.0.0";
+	int result = system(command);
+	if (result == 0) {
+		return ndk::ScopedAStatus::ok();
+	} else {
+		wpa_printf(MSG_ERROR, "Config Interface Ip fail!");
+		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
+	}
 }
 
 ::ndk::ScopedAStatus Hostapd::registerCallbackInternal(
