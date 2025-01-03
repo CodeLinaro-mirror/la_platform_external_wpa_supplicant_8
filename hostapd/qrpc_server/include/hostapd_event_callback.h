@@ -12,7 +12,7 @@
 #include <rpc/message/hostapd_vendor/hostapd_vendor_message_def.h>
 #include <aidl/android/hardware/wifi/hostapd/ScopedAStatus.h>
 
-extern std::vector<uint16_t> HostapdEvent;
+extern std::vector<uint16_t> HostapdEventArray;
 
 ndk::ScopedAStatus HostapdSendEvent(uint16_t eventId, std::vector<uint8_t>& data);
 bool someip_send_event(uint16_t message_type, std::vector<uint8_t> &data);

@@ -4,7 +4,6 @@
  */
 
 #include <rpc/util/common_util.h>
-#include <rpc/util/someip_api.h>
 #include <rpc/util/log_common.h>
 #include <rpc/message/hostapd_vendor/hostapd_vendor_msg.h>
 #include "hostapd_someip_server.h"
