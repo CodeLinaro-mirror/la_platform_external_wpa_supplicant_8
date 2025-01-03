@@ -182,8 +182,10 @@ public:
 			int cmd_id, int publish_id);
 	void notifyUsdSubscribeStarted(struct wpa_supplicant *wpa_s,
 			int cmd_id, int subscribe_id);
-	void notifyUsdPublishConfigFailed(struct wpa_supplicant *wpa_s, int cmd_id);
-	void notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s, int cmd_id);
+	void notifyUsdPublishConfigFailed(struct wpa_supplicant *wpa_s,
+			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
+	void notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s,
+			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
 	void notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
 			enum nan_service_protocol_type srv_proto_type,
 			int subscribe_id, int peer_publish_id, const u8 *peer_addr,
