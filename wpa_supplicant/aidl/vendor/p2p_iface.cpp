@@ -2064,8 +2064,11 @@ ndk::ScopedAStatus P2pIface::stopUsdBasedServiceAdvertisementInternal(
 ndk::ScopedAStatus P2pIface::provisionDiscoveryWithParamsInternal(
 	const P2pProvisionDiscoveryParams& params)
 {
-	// TODO Fill the field when supplicant implementation is ready
-	return ndk::ScopedAStatus::ok();
+	std::vector<uint8_t> peerMacAddressVec {
+		params.peerMacAddress.begin(),
+		params.peerMacAddress.end()};
+	// TODO Add the pairing method when supplicant implementation is ready
+	return provisionDiscoveryInternal(peerMacAddressVec, params.provisionMethod);
 }
 
 std::pair<P2pDirInfo, ndk::ScopedAStatus> P2pIface::getDirInfoInternal()

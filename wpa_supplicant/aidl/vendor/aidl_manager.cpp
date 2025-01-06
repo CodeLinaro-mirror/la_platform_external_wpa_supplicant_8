@@ -2996,24 +2996,26 @@ void AidlManager::notifyUsdSubscribeStarted(struct wpa_supplicant *wpa_s,
 			&ISupplicantStaIfaceCallback::onUsdSubscribeStarted,
 			std::placeholders::_1, cmd_id, subscribe_id));
 }
-void AidlManager::notifyUsdPublishConfigFailed(struct wpa_supplicant *wpa_s, int cmd_id)
+void AidlManager::notifyUsdPublishConfigFailed(struct wpa_supplicant *wpa_s,
+	int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code)
 {
 	if (!wpa_s) return;
 	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 			&ISupplicantStaIfaceCallback::onUsdPublishConfigFailed,
-			std::placeholders::_1, cmd_id));
+			std::placeholders::_1, cmd_id, error_code));
 }
 
-void AidlManager::notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s, int cmd_id)
+void AidlManager::notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s,
+	int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code)
 {
 	if (!wpa_s) return;
 	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 			&ISupplicantStaIfaceCallback::onUsdSubscribeConfigFailed,
-			std::placeholders::_1, cmd_id));
+			std::placeholders::_1, cmd_id, error_code));
 }
 
 UsdServiceProtoType convertUsdServiceProtoTypeToAidl(nan_service_protocol_type type) {

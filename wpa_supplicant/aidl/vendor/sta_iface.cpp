@@ -2795,7 +2795,8 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 	WPA_ASSERT(aidl_manager);
 	if (publishId < 0) {
 		wpa_printf(MSG_INFO, "Failed to configure USD publish");
-		aidl_manager->notifyUsdPublishConfigFailed(wpa_s, cmdId);
+		aidl_manager->notifyUsdPublishConfigFailed(
+			wpa_s, cmdId, UsdConfigErrorCode::FAILURE_UNKNOWN);
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	aidl_manager->notifyUsdPublishStarted(wpa_s, cmdId, publishId);
@@ -2829,7 +2830,8 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	WPA_ASSERT(aidl_manager);
 	if (subscribeId < 0) {
 		wpa_printf(MSG_INFO, "Failed to configure USD subscribe");
-		aidl_manager->notifyUsdSubscribeConfigFailed(wpa_s, cmdId);
+		aidl_manager->notifyUsdSubscribeConfigFailed(
+			wpa_s, cmdId, UsdConfigErrorCode::FAILURE_UNKNOWN);
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	aidl_manager->notifyUsdSubscribeStarted(wpa_s, cmdId, subscribeId);
