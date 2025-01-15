@@ -3145,6 +3145,11 @@ static int wpa_supplicant_ctrl_iface_scan_result(
 		return -1;
 	pos += ret;
 
+	ret = os_snprintf(pos, end - pos, "\t%d", bss->noise);
+	if (os_snprintf_error(end - pos, ret))
+		return -1;
+	pos += ret;
+
 	ret = os_snprintf(pos, end - pos, "\n");
 	if (os_snprintf_error(end - pos, ret))
 		return -1;
@@ -3164,7 +3169,7 @@ static int wpa_supplicant_ctrl_iface_scan_results(
 	pos = buf;
 	end = buf + buflen;
 	ret = os_snprintf(pos, end - pos, "bssid / frequency / signal level / "
-			  "flags / ssid\n");
+			  "flags / ssid / noise\n");
 	if (os_snprintf_error(end - pos, ret))
 		return pos - buf;
 	pos += ret;
