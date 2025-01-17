@@ -42,7 +42,9 @@ extern "C"
 // TOOD(b/71872409): Add unit tests for this.
 namespace {
 constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
+#ifdef CONFIG_IEEE80211BE
 constexpr char kMLOConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s_%d.conf";
+#endif //CONFIG_IEEE80211BE
 
 using android::base::RemoveFileIfExists;
 using android::base::StringPrintf;
@@ -151,7 +153,7 @@ std::string WriteHostapdConfig(
 	return "";
 }
 
-
+#ifdef CONFIG_IEEE80211BE
 std::string WriteMLOHostapdConfig(
     const std::string& interface_name, const std::string& config, const int id)
 {
@@ -181,7 +183,7 @@ std::string WriteMLOHostapdConfig(
 	}
 	return "";
 }
-
+#endif //CONFIG_IEEE80211BE
 
 /*
  * Get the op_class for a channel/band
@@ -1057,11 +1059,13 @@ Hostapd::Hostapd(struct hapd_interfaces* interfaces)
 		wpa_printf(MSG_INFO, "AddDualAccessPoint, iface=%s",
 			iface_params.name.c_str());
 		return addConcurrentAccessPoints(iface_params, nw_params);
+#ifdef CONFIG_IEEE80211BE
 	} else if (channelParamsSize > 1 && iface_params.hwModeParams.enable80211BE) {
 		// MultiLink AP
 		wpa_printf(MSG_INFO, "Add MultiLink AccessPoint, iface=%s",
 			iface_params.name.c_str());
 		return addMultiLinkAccessPoints(iface_params, nw_params);
+#endif //CONFIG_IEEE80211BE
 	}
 	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 }
@@ -1078,6 +1082,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	return vssid;
 }
 
+#ifdef CONFIG_IEEE80211BE
 ::ndk::ScopedAStatus Hostapd::addMultiLinkIface(
 	const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
@@ -1088,17 +1093,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		const auto conf_params = CreateHostapdConfig(iface_params,
 				iface_params.channelParams[i], nw_params, "", "",
 				iface_params.hwModeParams.enable80211BE);
-/*
-		if (i == 1) {
-			ChannelParams channelParams_new = iface_params.channelParams[i];
-			channelParams_new.channel = 36;
-			channelParams_new.bandMask = BandMask::BAND_5_GHZ;
-			channelParams_new.enableAcs = false;
-			auto conf_params = CreateHostapdConfig(iface_params,
-				channelParams_new, nw_params, "", "",
-				iface_params.hwModeParams.enable80211BE);
-		}
-*/
+
 		if (conf_params.empty()) {
 			wpa_printf(MSG_ERROR, "Failed to create config params");
 			return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
@@ -1247,6 +1242,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 
 	return ndk::ScopedAStatus::ok();
 }
+#endif //CONFIG_IEEE80211BE
 
 ::ndk::ScopedAStatus Hostapd::addConcurrentAccessPoints(
 	const IfaceParams& iface_params, const NetworkParams& nw_params)
