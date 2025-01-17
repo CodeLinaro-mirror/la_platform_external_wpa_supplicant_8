@@ -79,6 +79,8 @@ int band6Ghz = (int)BandMask::BAND_6_GHZ;
 int band60Ghz = (int)BandMask::BAND_60_GHZ;
 
 int ctrlInterfaceCount = 0;
+bool ap_isexist = false;
+bool is_br_ap = false;
 
 #define MAX_PORTS 1024
 bool GetInterfacesInBridge(std::string br_name,
@@ -1158,6 +1160,10 @@ std::vector<uint8_t>  generateRandomOweSsid()
 ::ndk::ScopedAStatus Hostapd::addMultiLinkAccessPoints(
 	const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
+	if(ap_isexist){
+		removeAccessPointInternal(iface_params.name);
+		terminate();
+	}
 	// Get available interfaces in bridge
 	std::vector<std::string> managed_interfaces;
 	std::string br_name = StringPrintf(
@@ -1290,12 +1296,18 @@ std::vector<uint8_t>  generateRandomOweSsid()
 
     // Save bridge interface info
 	br_interfaces_[br_name] = managed_interfaces;
+	ap_isexist = true;
 	return configApInterfaceIP();
 }
 
 ::ndk::ScopedAStatus Hostapd::addConcurrentAccessPoints(
 	const IfaceParams& iface_params, const NetworkParams& nw_params)
 {
+	if(ap_isexist) {
+		removeAccessPointInternal(iface_params.name);
+		terminate();
+	}
+	is_br_ap = true;
 	int channelParamsListSize = iface_params.channelParams.size();
 	// Get available interfaces in bridge
 	std::vector<std::string> managed_interfaces;
@@ -1338,6 +1350,8 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	}
 	// Save bridge interface info
 	br_interfaces_[br_name] = managed_interfaces;
+	ap_isexist = true;
+	is_br_ap = false;
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -1349,6 +1363,10 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	const std::string owe_transition_ifname,
 	bool enable_11be)
 {
+	if(ap_isexist && !is_br_ap) {
+		removeAccessPointInternal(iface_params.name);
+		terminate();
+	}
 	if (hostapd_get_iface(interfaces_, iface_params.name.c_str())) {
 		wpa_printf(
 			MSG_ERROR, "Interface %s already present",
@@ -1463,6 +1481,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 			iface_params.name.c_str());
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
+	ap_isexist = is_br_ap?false:true;
 	return configApInterfaceIP();
 }
 
@@ -1485,6 +1504,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	if (is_error) {
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
+	ap_isexist = false;
 	return ndk::ScopedAStatus::ok();
 }
 
