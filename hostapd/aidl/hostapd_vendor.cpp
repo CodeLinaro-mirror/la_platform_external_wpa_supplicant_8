@@ -123,6 +123,10 @@ bool HostapdVendor::isValid()
 ::ndk::ScopedAStatus HostapdVendor::registerHostapdVendorCallbackInternal(
 	const std::shared_ptr<IHostapdVendorCallback>& callback)
 {
+	if (!callback) {
+		wpa_printf(MSG_ERROR, "callback null");
+		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
+	}
 	binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
 			death_notifier_, this /* cookie */);
 	if (status != STATUS_OK) {
