@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// The wpa_supplicant related modules are split into 2 sections:
+// 1. For cuttlefish series products, start from `wpa_supplicant_headers` to `libpasn`.
+// 2. For non-cuttlefish series products, ex: physical devices created by oems,
+//    the section starts from `wpa_supplicant_driver_srcs_default` to the end of this file.
+
 package {
     default_applicable_licenses: [
         // Inherits SPDX-license-identifier-BSD-3-Clause
@@ -36,6 +41,9 @@ filegroup {
     ],
 }
 
+// The section below is for cuttlefish series products. For non-cuttlefish
+// products please update the section starting at `wpa_supplicant_driver_srcs_default`.
+// Start of cuttlefish section
 cc_library_headers {
     name: "wpa_supplicant_headers",
     export_include_dirs: [
@@ -706,7 +714,29 @@ cc_library {
     },
 }
 
-// For converting the default to soong
+// End of cuttlefish section
+
+// The section starting below is for non-cuttlefish products.
+// For cuttlefish series please update the section starting from `wpa_supplicant_headers`.
+
+// If you need to add a new build setting based on a product config, ex:
+// ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
+//   L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
+// endif
+
+// In order to export the Makefile variable to soong, you will need to use a `soong_config_set` method
+// under `build/core/board_config_wpa_supplicant.mk`. Ex:
+// ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
+//   $(call soong_config_set_bool,wpa_supplicant_8,wifi_priv_cmd_update_mbo_cell_status,true)
+// endif
+
+// And then use the select statement in Android.bp to reflect the condition you need, ex:
+// select(soong_config_variable("wpa_supplicant_8", "wifi_priv_cmd_update_mbo_cell_status"), {
+//     true: ["-DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS"],
+//     default: [],
+// })
+
+// Start of non-cuttlefish section
 cc_defaults {
     name: "wpa_supplicant_driver_srcs_default",
     srcs: [
@@ -1497,3 +1527,5 @@ cc_library_static {
         "wpa_supplicant_includes_default",
     ],
 }
+
+// End of non-cuttlefish section
