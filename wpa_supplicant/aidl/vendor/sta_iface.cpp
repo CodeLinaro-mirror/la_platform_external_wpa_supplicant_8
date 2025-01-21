@@ -2763,9 +2763,6 @@ std::pair<UsdCapabilities, ndk::ScopedAStatus> StaIface::getUsdCapabilitiesInter
 	return {capabilities, ndk::ScopedAStatus::ok()};
 }
 
-// TODO (b/384527237): Fix linker error to avoid having a separate default implementation
-#ifdef CONFIG_NAN_USD
-
 ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 		int32_t cmdId, const UsdPublishConfig& usdPublishConfig) {
 	if (!validateUsdPublishConfig(usdPublishConfig)) {
@@ -2796,7 +2793,7 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 	if (publishId < 0) {
 		wpa_printf(MSG_INFO, "Failed to configure USD publish");
 		aidl_manager->notifyUsdPublishConfigFailed(
-			wpa_s, cmdId, UsdConfigErrorCode::FAILURE_UNKNOWN);
+			wpa_s, cmdId, ISupplicantStaIfaceCallback::UsdConfigErrorCode::FAILURE_UNKNOWN);
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	aidl_manager->notifyUsdPublishStarted(wpa_s, cmdId, publishId);
@@ -2831,7 +2828,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	if (subscribeId < 0) {
 		wpa_printf(MSG_INFO, "Failed to configure USD subscribe");
 		aidl_manager->notifyUsdSubscribeConfigFailed(
-			wpa_s, cmdId, UsdConfigErrorCode::FAILURE_UNKNOWN);
+			wpa_s, cmdId, ISupplicantStaIfaceCallback::UsdConfigErrorCode::FAILURE_UNKNOWN);
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	aidl_manager->notifyUsdSubscribeStarted(wpa_s, cmdId, subscribeId);
@@ -2894,37 +2891,6 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	}
 	return ndk::ScopedAStatus::ok();
 }
-
-#else /* CONFIG_NAN_USD */
-
-ndk::ScopedAStatus StaIface::startUsdPublishInternal(
-		int32_t cmdId, const UsdPublishConfig& usdPublishConfig) {
-	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-}
-
-ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
-		int32_t cmdId, const UsdSubscribeConfig& usdSubscribeConfig) {
-	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-}
-
-::ndk::ScopedAStatus StaIface::updateUsdPublishInternal(int32_t publishId,
-		const std::vector<uint8_t>& serviceSpecificInfo) {
-	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-}
-
-::ndk::ScopedAStatus StaIface::cancelUsdPublishInternal(int32_t publishId) {
-	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-}
-
-::ndk::ScopedAStatus StaIface::cancelUsdSubscribeInternal(int32_t subscribeId) {
-	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-}
-
-::ndk::ScopedAStatus StaIface::sendUsdMessageInternal(const UsdMessageInfo& messageInfo) {
-	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-}
-
-#endif /* CONFIG_NAN_USD */
 
 /**
  * Retrieve the underlying |wpa_supplicant| struct
