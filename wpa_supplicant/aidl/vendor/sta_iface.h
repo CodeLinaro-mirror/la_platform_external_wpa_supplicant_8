@@ -31,6 +31,7 @@ extern "C"
 #include "wpa_supplicant_i.h"
 #include "config.h"
 #include "driver_i.h"
+#include "nan_usd.h"
 #include "wpa.h"
 }
 
@@ -167,6 +168,16 @@ public:
 		std::vector<QosPolicyScsRequestStatus>* _aidl_return) override;
 	::ndk::ScopedAStatus configureMscs(const MscsParams& in_params) override;
 	::ndk::ScopedAStatus disableMscs() override;
+	::ndk::ScopedAStatus getUsdCapabilities(UsdCapabilities* _aidl_return);
+	::ndk::ScopedAStatus startUsdPublish(int32_t in_cmdId,
+		const UsdPublishConfig& in_usdPublishConfig);
+	::ndk::ScopedAStatus startUsdSubscribe(int32_t in_cmdId,
+		const UsdSubscribeConfig& in_usdSubscribeConfig);
+	::ndk::ScopedAStatus updateUsdPublish(int32_t in_publishId,
+		const std::vector<uint8_t>& in_serviceSpecificInfo);
+	::ndk::ScopedAStatus cancelUsdPublish(int32_t in_publishId);
+	::ndk::ScopedAStatus cancelUsdSubscribe(int32_t in_subscribeId);
+	::ndk::ScopedAStatus sendUsdMessage(const UsdMessageInfo& in_messageInfo);
 
 private:
 	// Corresponding worker functions for the AIDL methods.
@@ -281,6 +292,16 @@ private:
 		const std::vector<uint8_t>& scsPolicyIds);
 	::ndk::ScopedAStatus configureMscsInternal(const MscsParams& params);
 	::ndk::ScopedAStatus disableMscsInternal();
+	std::pair<UsdCapabilities, ndk::ScopedAStatus> getUsdCapabilitiesInternal();
+	::ndk::ScopedAStatus startUsdPublishInternal(
+		int32_t cmdId, const UsdPublishConfig& usdPublishConfig);
+	::ndk::ScopedAStatus startUsdSubscribeInternal(
+		int32_t cmdId, const UsdSubscribeConfig& usdSubscribeConfig);
+	::ndk::ScopedAStatus updateUsdPublishInternal(int32_t publishId,
+		const std::vector<uint8_t>& serviceSpecificInfo);
+	::ndk::ScopedAStatus cancelUsdPublishInternal(int32_t publishId);
+	::ndk::ScopedAStatus cancelUsdSubscribeInternal(int32_t subscribeId);
+	::ndk::ScopedAStatus sendUsdMessageInternal(const UsdMessageInfo& messageInfo);
 
 	struct wpa_supplicant* retrieveIfacePtr();
 

@@ -120,6 +120,15 @@ public:
 	void notifyP2pSdResponse(
 		struct wpa_supplicant *wpa_s, const u8 *sa, u16 update_indic,
 		const u8 *tlvs, size_t tlvs_len);
+	void notifyUsdBasedServiceDiscoveryResult(
+		struct wpa_supplicant *wpa_s, const u8 *peer_addr, int subscribe_id,
+		int peer_publish_id, int srv_proto_type, const u8 *ssi, size_t ssi_len);
+	void notifyUsdBasedServiceDiscoveryTerminated(
+		struct wpa_supplicant *wpa_s, int subscribe_id,
+		int reason);
+	void notifyUsdBasedServiceAdvertisementTerminated(
+		struct wpa_supplicant *wpa_s, int publish_id,
+		int reason);
 	void notifyApStaAuthorized(
 		struct wpa_supplicant *wpa_s, const u8 *sta,
 		const u8 *p2p_dev_addr, const u8 *ip);
@@ -169,10 +178,34 @@ public:
 			unsigned int count, int **scs_resp);
 	void notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
 				       enum mlo_info_change_reason reason);
+	void notifyUsdPublishStarted(struct wpa_supplicant *wpa_s,
+			int cmd_id, int publish_id);
+	void notifyUsdSubscribeStarted(struct wpa_supplicant *wpa_s,
+			int cmd_id, int subscribe_id);
+	void notifyUsdPublishConfigFailed(struct wpa_supplicant *wpa_s,
+			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
+	void notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s,
+			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
+	void notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
+			enum nan_service_protocol_type srv_proto_type,
+			int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+			bool fsd, const u8 *ssi, size_t ssi_len);
+	void notifyUsdPublishReplied(struct wpa_supplicant *wpa_s,
+			enum nan_service_protocol_type srv_proto_type,
+			int publish_id, int peer_subscribe_id,
+			const u8 *peer_addr, const u8 *ssi, size_t ssi_len);
+	void notifyUsdMessageReceived(struct wpa_supplicant *wpa_s, int id,
+			int peer_instance_id, const u8 *peer_addr,
+			const u8 *message, size_t message_len);
+	void notifyUsdPublishTerminated(struct wpa_supplicant *wpa_s,
+			int publish_id, enum nan_de_reason reason);
+	void notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
+			int subscribe_id, enum nan_de_reason reason);
 
 	// Methods called from aidl objects.
 	int32_t isAidlServiceVersionAtLeast(int32_t expected_version);
 	int32_t isAidlClientVersionAtLeast(int32_t expected_version);
+	int32_t areAidlServiceAndClientAtLeastVersion(int32_t expected_version);
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
 	void notifyExtRadioWorkTimeout(
 		struct wpa_supplicant *wpa_s, uint32_t id);

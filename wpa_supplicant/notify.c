@@ -26,7 +26,11 @@
 #include "p2p_supplicant.h"
 #include "sme.h"
 #include "notify.h"
-#include "aidl/aidl.h"
+#include "aidl/vendor/aidl.h"
+
+#ifdef MAINLINE_SUPPLICANT
+#include "aidl/mainline/service.h"
+#endif
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global)
 {
@@ -48,6 +52,12 @@ int wpas_notify_supplicant_initialized(struct wpa_global *global)
 	}
 #endif /* CONFIG_AIDL */
 
+#ifdef MAINLINE_SUPPLICANT
+	global->aidl = mainline_aidl_init(global);
+	if (!global->aidl)
+		return -1;
+#endif /* MAINLINE_SUPPLICANT */
+
 	return 0;
 }
 
@@ -63,6 +73,12 @@ void wpas_notify_supplicant_deinitialized(struct wpa_global *global)
 	if (global->aidl)
 		wpas_aidl_deinit(global->aidl);
 #endif /* CONFIG_AIDL */
+
+#ifdef MAINLINE_SUPPLICANT
+	if (global->aidl)
+		mainline_aidl_deinit(global->aidl);
+#endif /* MAINLINE_SUPPLICANT */
+
 }
 
 
@@ -1206,6 +1222,7 @@ void wpas_notify_dpp_config_sent(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_DPP */
 }
 
+#ifdef CONFIG_DPP
 void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 	    enum dpp_status_error result)
 {
@@ -1216,6 +1233,7 @@ void wpas_notify_dpp_connection_status_sent(struct wpa_supplicant *wpa_s,
 	wpas_aidl_notify_dpp_connection_status_sent(wpa_s, result);
 #endif /* CONFIG_DPP2 */
 }
+#endif /* CONFIG_DPP */
 
 /* DPP Progress notifications */
 void wpas_notify_dpp_auth_success(struct wpa_supplicant *wpa_s)
@@ -1313,6 +1331,7 @@ void wpas_notify_dpp_config_accepted(struct wpa_supplicant *wpa_s)
 #endif /* CONFIG_DPP2 */
 }
 
+#ifdef CONFIG_DPP
 void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 		enum dpp_status_error status, const char *ssid,
 		const char *channel_list, unsigned short band_list[], int size)
@@ -1321,6 +1340,7 @@ void wpas_notify_dpp_conn_status(struct wpa_supplicant *wpa_s,
 	wpas_aidl_notify_dpp_conn_status(wpa_s, status, ssid, channel_list, band_list, size);
 #endif /* CONFIG_DPP2 */
 }
+#endif /* CONFIG_DPP */
 
 void wpas_notify_dpp_config_rejected(struct wpa_supplicant *wpa_s)
 {
@@ -1492,6 +1512,9 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 		subscribe_id, peer_publish_id, MAC2STR(peer_addr),
 		fsd, fsd_gas, srv_proto_type, ssi_hex);
 	os_free(ssi_hex);
+
+	wpas_aidl_notify_usd_service_discovered(wpa_s, srv_proto_type,
+		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
 }
 
 
@@ -1514,6 +1537,9 @@ void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 		publish_id, MAC2STR(peer_addr), peer_subscribe_id,
 		srv_proto_type, ssi_hex);
 	os_free(ssi_hex);
+
+	wpas_aidl_notify_usd_publish_replied(wpa_s, srv_proto_type,
+		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
 }
 
 
@@ -1532,6 +1558,9 @@ void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
 		"id=%d peer_instance_id=%d address=" MACSTR " ssi=%s",
 		id, peer_instance_id, MAC2STR(peer_addr), ssi_hex);
 	os_free(ssi_hex);
+
+	wpas_aidl_notify_usd_message_received(wpa_s, id, peer_instance_id,
+		peer_addr, ssi, ssi_len);
 }
 
 
@@ -1557,6 +1586,7 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_INFO, NAN_PUBLISH_TERMINATED
 		"publish_id=%d reason=%s",
 		publish_id, nan_reason_txt(reason));
+	wpas_aidl_notify_usd_publish_terminated(wpa_s, publish_id, reason);
 }
 
 
@@ -1567,6 +1597,7 @@ void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_INFO, NAN_SUBSCRIBE_TERMINATED
 		"subscribe_id=%d reason=%s",
 		subscribe_id, nan_reason_txt(reason));
+	wpas_aidl_notify_usd_subscribe_terminated(wpa_s, subscribe_id, reason);
 }
 
 #endif /* CONFIG_NAN_USD */
