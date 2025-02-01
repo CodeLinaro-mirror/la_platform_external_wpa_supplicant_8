@@ -1486,6 +1486,7 @@ cc_library_static {
     name: "libwpa_aidl",
     vendor: true,
     cppflags: [
+        "-DCONFIG_NAN_USD",
         "-Wall",
         "-Werror",
         "-Wno-unused-parameter",
