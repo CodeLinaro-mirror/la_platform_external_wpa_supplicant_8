@@ -191,7 +191,8 @@ int joinGroup(
 	if (wpas_p2p_group_add_persistent(
 		wpa_s, wpa_network, 0, 0, freq, 0, ht40, vht,
 		CONF_OPER_CHWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s),
-		P2P_JOIN_LIMIT, isAnyEtherAddr(group_owner_bssid) ? NULL : group_owner_bssid)) {
+		P2P_JOIN_LIMIT, isAnyEtherAddr(group_owner_bssid) ? NULL : group_owner_bssid,
+		NULL, NULL, NULL, 0)) {
 		ret = -1;
 	}
 
@@ -1139,7 +1140,7 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 		wpa_s, peer_address.data(), pin, wps_method, persistent, false,
 		join_existing_group, false, go_intent_signed, 0, 0, -1, false, ht40,
 		vht, CONF_OPER_CHWIDTH_USE_HT, he, edmg, nullptr, 0, is6GhzAllowed(wpa_s),
-		false, 0, NULL);
+		false, 0, NULL, false);
 	if (new_pin < 0) {
 		return {"", createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
@@ -1263,7 +1264,7 @@ ndk::ScopedAStatus P2pIface::reinvokeInternal(
 	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
-		CONF_OPER_CHWIDTH_USE_HT, 0, he, edmg, is6GhzAllowed(wpa_s))) {
+		CONF_OPER_CHWIDTH_USE_HT, 0, he, edmg, is6GhzAllowed(wpa_s), false)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -1726,7 +1727,8 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 	if (ssid == NULL) {
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, 0, 0, ht40, vht,
-			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s))) {
+			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s),
+			false, WPA_P2P_MODE_WFD_R1)) {
 			return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
@@ -1735,7 +1737,8 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 		if (wpas_p2p_group_add_persistent(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
 			CONF_OPER_CHWIDTH_USE_HT, he, edmg, NULL, 0, 0,
-			is6GhzAllowed(wpa_s), 0, NULL)) {
+			is6GhzAllowed(wpa_s), 0, NULL,
+			NULL, NULL, NULL, 0)) {
 			return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
@@ -1785,7 +1788,8 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, freq, 0, ht40, vht,
-			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s))) {
+			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s),
+			false, WPA_P2P_MODE_WFD_R1)) {
 			return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 		}
 		return ndk::ScopedAStatus::ok();

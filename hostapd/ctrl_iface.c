@@ -2707,7 +2707,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 	}
 
 	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
-					     settings.punct_bitmap);
+					     settings.freq_params.punct_bitmap);
 	if (ret) {
 		wpa_printf(MSG_INFO,
 			   "chanswitch: invalid frequency settings provided");
@@ -3210,6 +3210,7 @@ static int hostapd_ctrl_iface_log_level(struct hostapd_data *hapd, char *cmd,
 
 
 #ifdef NEED_AP_MLME
+
 static int hostapd_ctrl_iface_track_sta_list(struct hostapd_data *hapd,
 					     char *buf, size_t buflen)
 {
@@ -3243,6 +3244,35 @@ static int hostapd_ctrl_iface_track_sta_list(struct hostapd_data *hapd,
 
 	return pos - buf;
 }
+
+
+static int hostapd_ctrl_iface_dump_beacon(struct hostapd_data *hapd,
+					  char *buf, size_t buflen)
+{
+	struct beacon_data beacon;
+	char *pos, *end;
+	int ret;
+
+	if (hostapd_build_beacon_data(hapd, &beacon) < 0)
+		return -1;
+
+	if (2 * (beacon.head_len + beacon.tail_len) > buflen)
+		return -1;
+
+	pos = buf;
+	end = buf + buflen;
+
+	ret = wpa_snprintf_hex(pos, end - pos, beacon.head, beacon.head_len);
+	pos += ret;
+
+	ret = wpa_snprintf_hex(pos, end - pos, beacon.tail, beacon.tail_len);
+	pos += ret;
+
+	free_beacon_data(&beacon);
+
+	return pos - buf;
+}
+
 #endif /* NEED_AP_MLME */
 
 
@@ -4026,7 +4056,7 @@ static int hostapd_ctrl_nan_transmit(struct hostapd_data *hapd, char *cmd)
 	}
 
 	ret = hostapd_nan_usd_transmit(hapd, handle, ssi, NULL, peer_addr,
-				    req_instance_id);
+				       req_instance_id);
 fail:
 	wpabuf_free(ssi);
 	return ret;
@@ -4347,6 +4377,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strcmp(buf, "TRACK_STA_LIST") == 0) {
 		reply_len = hostapd_ctrl_iface_track_sta_list(
 			hapd, reply, reply_size);
+	} else if (os_strcmp(buf, "DUMP_BEACON") == 0) {
+		reply_len = hostapd_ctrl_iface_dump_beacon(hapd, reply,
+							   reply_size);
 #endif /* NEED_AP_MLME */
 	} else if (os_strcmp(buf, "PMKSA") == 0) {
 		reply_len = hostapd_ctrl_iface_pmksa_list(hapd, reply,
