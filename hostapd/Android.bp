@@ -454,6 +454,7 @@ hostapd_cc_defaults_type {
         "-DCONFIG_CTRL_IFACE",
         "-DCONFIG_CTRL_IFACE_UNIX",
         "-DCONFIG_SAE",
+        "-DCONFIG_OWE",
         "-DCONFIG_IEEE80211AC",
         "-DCONFIG_WEP",
         "-DCONFIG_WPS",
