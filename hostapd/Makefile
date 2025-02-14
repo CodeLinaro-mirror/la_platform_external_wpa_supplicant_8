@@ -1302,6 +1302,11 @@ ifdef CONFIG_NO_TKIP
 CFLAGS += -DCONFIG_NO_TKIP
 endif
 
+ifdef ASAN
+LIBS += -lasan
+LIBS_c += -lasan
+endif
+
 $(DESTDIR)$(BINDIR)/%: %
 	install -D $(<) $(@)
 
