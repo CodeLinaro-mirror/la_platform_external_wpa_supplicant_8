@@ -140,6 +140,10 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
 			elems->sae_pk = pos + 4;
 			elems->sae_pk_len = elen - 4;
 			break;
+		case WFA_CAPA_OUI_TYPE:
+			elems->wfa_capab = pos + 4;
+			elems->wfa_capab_len = elen - 4;
+			break;
 		case WFA_RSNE_OVERRIDE_OUI_TYPE:
 			elems->rsne_override = pos;
 			elems->rsne_override_len = elen;
@@ -147,6 +151,10 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
 		case WFA_RSNE_OVERRIDE_2_OUI_TYPE:
 			elems->rsne_override_2 = pos;
 			elems->rsne_override_2_len = elen;
+			break;
+		case WFA_RSNXE_OVERRIDE_OUI_TYPE:
+			elems->rsnxe_override = pos;
+			elems->rsnxe_override_len = elen;
 			break;
 		case WFA_RSN_SELECTION_OUI_TYPE:
 			if (elen < 4 + 1) {
@@ -993,14 +1001,14 @@ void ieee802_11_elems_clear_ext_ids(struct ieee802_11_elems *elems,
 }
 
 
-ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
-					 struct ieee802_11_elems *elems,
+ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
 					 struct wpabuf *mlbuf,
 					 u8 link_id, bool show_errors)
 {
 	const struct ieee80211_eht_ml *ml;
 	const u8 *pos;
 	ParseRes res = ParseFailed;
+	size_t len;
 
 	pos = wpabuf_head(mlbuf);
 	len = wpabuf_len(mlbuf);
@@ -3152,7 +3160,7 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
 	if (flen > 4)
 		flen = 4;
 	for (i = 0; i < flen; i++)
-		capabs |= rsnxe[i] << (8 * i);
+		capabs |= (u32) rsnxe[i] << (8 * i);
 
 	return !!(capabs & BIT(capab));
 }
