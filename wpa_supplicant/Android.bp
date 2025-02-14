@@ -1521,3 +1521,16 @@ cc_library_static {
 }
 
 // End of non-cuttlefish section
+
+genrule {
+    name: "com.android.hardware.wpa_supplicant.rc-gen",
+    srcs: ["aidl/vendor/android.hardware.wifi.supplicant-service.rc"],
+    out: ["com.android.hardware.wpa_supplicant.rc"],
+    cmd: "sed -E 's@/vendor/bin@/apex/com.android.hardware.wpa_supplicant/bin@' $(in) > $(out)",
+}
+
+prebuilt_etc {
+    name: "com.android.hardware.wpa_supplicant.rc",
+    src: ":com.android.hardware.wpa_supplicant.rc-gen",
+    installable: false,
+}
