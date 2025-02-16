@@ -149,7 +149,7 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
 					     bool authorized)
 {
 #ifdef CONFIG_IEEE80211BE
-	unsigned int i, link_id;
+	unsigned int i;
 
 	if (!hostapd_is_mld_ap(hapd))
 		return;
@@ -161,32 +161,30 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
 	if (authorized && hapd->mld_link_id != sta->mld_assoc_link_id)
 		return;
 
-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		struct mld_link_info *link = &sta->mld_info.links[link_id];
+	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+		struct sta_info *tmp_sta;
+		struct mld_link_info *link;
+		struct hostapd_data *tmp_hapd =
+			hapd->iface->interfaces->iface[i]->bss[0];
 
+		if (!hostapd_is_ml_partner(hapd, tmp_hapd))
+			continue;
+
+		link = &sta->mld_info.links[tmp_hapd->mld_link_id];
 		if (!link->valid)
 			continue;
 
-		for (i = 0; i < hapd->iface->interfaces->count; i++) {
-			struct sta_info *tmp_sta;
-			struct hostapd_data *tmp_hapd =
-				hapd->iface->interfaces->iface[i]->bss[0];
-
-			if (!hostapd_is_ml_partner(hapd, tmp_hapd))
+		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+		     tmp_sta = tmp_sta->next) {
+			if (tmp_sta == sta ||
+			    tmp_sta->mld_assoc_link_id !=
+			    sta->mld_assoc_link_id ||
+			    tmp_sta->aid != sta->aid)
 				continue;
 
-			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
-			     tmp_sta = tmp_sta->next) {
-				if (tmp_sta == sta ||
-				    tmp_sta->mld_assoc_link_id !=
-				    sta->mld_assoc_link_id ||
-				    tmp_sta->aid != sta->aid)
-					continue;
-
-				ieee802_1x_set_authorized(tmp_hapd, tmp_sta,
-							  authorized, true);
-				break;
-			}
+			ieee802_1x_set_authorized(tmp_hapd, tmp_sta,
+						  authorized, true);
+			break;
 		}
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -1252,6 +1250,27 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE8021X,
 			       HOSTAPD_LEVEL_DEBUG,
 			       "received EAPOL-Start from STA");
+#ifdef CONFIG_IEEE80211R_AP
+		if (hapd->conf->wpa && sta->wpa_sm &&
+		    (wpa_key_mgmt_ft(wpa_auth_sta_key_mgmt(sta->wpa_sm)) ||
+		     sta->auth_alg == WLAN_AUTH_FT)) {
+			/* When FT is used, reauthentication to generate a new
+			 * PMK-R0 would be complicated since the current AP
+			 * might not be the one with which the currently used
+			 * PMK-R0 was generated. IEEE Std 802.11-2020, 13.4.2
+			 * (FT initial mobility domain association in an RSN)
+			 * mandates STA to perform a new FT initial mobility
+			 * domain association whenever its Supplicant would
+			 * trigger sending of an EAPOL-Start frame. As such,
+			 * this EAPOL-Start frame should not have been sent.
+			 * Discard it to avoid unexpected behavior. */
+			hostapd_logger(hapd, sta->addr,
+				       HOSTAPD_MODULE_IEEE8021X,
+				       HOSTAPD_LEVEL_DEBUG,
+				       "discard unexpected EAPOL-Start from STA that uses FT");
+			break;
+		}
+#endif /* CONFIG_IEEE80211R_AP */
 		sta->eapol_sm->flags &= ~EAPOL_SM_WAIT_START;
 		pmksa = wpa_auth_sta_get_pmksa(sta->wpa_sm);
 		if (pmksa) {
