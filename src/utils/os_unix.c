@@ -364,7 +364,7 @@ int os_program_init(void)
 	gid_t groups[5];
 	int group_idx = 0;
 
-	grp = getgrnam("system");
+	grp = getgrnam("vendor_someip");
 	groups[group_idx] = grp ? grp->gr_gid : 0;
 	if (!groups[group_idx]) return -1;
 	group_idx++;
