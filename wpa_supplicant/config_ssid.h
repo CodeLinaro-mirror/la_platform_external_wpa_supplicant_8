@@ -79,6 +79,20 @@ enum wpas_mac_addr_style {
 };
 
 /**
+ * rsn_overriding - RSN overriding
+ *
+ * 0 = Disabled
+ * 1 = Enabled automatically if the driver indicates support
+ * 2 = Forced to be enabled even without driver capability indication
+ */
+enum wpas_rsn_overriding {
+	RSN_OVERRIDING_NOT_SET = -1,
+	RSN_OVERRIDING_DISABLED = 0,
+	RSN_OVERRIDING_AUTO = 1,
+	RSN_OVERRIDING_ENABLED = 2,
+};
+
+/**
  * struct wpa_ssid - Network configuration data
  *
  * This structure includes all the configuration variables for a network. This
@@ -230,6 +244,11 @@ struct wpa_ssid {
 	 * 63 characters (inclusive).
 	 */
 	char *passphrase;
+
+	/**
+	 * pmk_valid - Whether PMK is valid in case of P2P2 derived from PASN
+	 */
+	bool pmk_valid;
 
 	/**
 	 * sae_password - SAE password
@@ -1282,6 +1301,17 @@ struct wpa_ssid {
 	 * ssid_protection - Whether to use SSID protection in 4-way handshake
 	 */
 	bool ssid_protection;
+
+	/**
+	 * rsn_overriding - RSN overriding (per-network override for the global
+	 *	parameter with the same name)
+	 */
+	enum wpas_rsn_overriding rsn_overriding;
+
+	/**
+	 * p2p_mode - P2P R1 only, P2P R2 only, or PCC mode
+	 */
+	enum wpa_p2p_mode p2p_mode;
 };
 
 #endif /* CONFIG_SSID_H */

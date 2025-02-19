@@ -1313,6 +1313,33 @@ void AidlManager::notifyWpsEventPbcOverlap(struct wpa_supplicant *wpa_s)
 		std::placeholders::_1));
 }
 
+int32_t convertP2pPairingBootstrappingMethodsToAidl(u16 bootstrap_methods)
+{
+	int32_t pairingBootstrappingMethods = 0;
+
+	if (bootstrap_methods & P2P_PBMA_OPPORTUNISTIC) {
+		pairingBootstrappingMethods |=
+			P2pPairingBootstrappingMethodMask::BOOTSTRAPPING_OPPORTUNISTIC;
+	}
+	if (bootstrap_methods & P2P_PBMA_PIN_CODE_DISPLAY) {
+		pairingBootstrappingMethods |=
+			P2pPairingBootstrappingMethodMask::BOOTSTRAPPING_DISPLAY_PINCODE;
+	}
+	if (bootstrap_methods & P2P_PBMA_PASSPHRASE_DISPLAY) {
+		pairingBootstrappingMethods |=
+			P2pPairingBootstrappingMethodMask::BOOTSTRAPPING_DISPLAY_PASSPHRASE;
+	}
+	if (bootstrap_methods & P2P_PBMA_PIN_CODE_KEYPAD) {
+		pairingBootstrappingMethods |=
+			P2pPairingBootstrappingMethodMask::BOOTSTRAPPING_KEYPAD_PINCODE;
+	}
+	if (bootstrap_methods & P2P_PBMA_PASSPHRASE_KEYPAD) {
+		pairingBootstrappingMethods |=
+			P2pPairingBootstrappingMethodMask::BOOTSTRAPPING_KEYPAD_PASSPHRASE;
+	}
+
+	return pairingBootstrappingMethods;
+}
 void AidlManager::notifyP2pDeviceFound(
 	struct wpa_supplicant *wpa_s, const u8 *addr,
 	const struct p2p_peer_info *info, const u8 *peer_wfd_device_info,
@@ -1375,8 +1402,9 @@ void AidlManager::notifyP2pDeviceFound(
 		params.wfdR2DeviceInfo = aidl_peer_wfd_r2_device_info;
 		params.vendorElemBytes = aidl_vendor_elems;
 		if (areAidlServiceAndClientAtLeastVersion(4)) {
-			// TODO Fill the field when supplicant implementation is ready
-			params.pairingBootstrappingMethods = 0;
+			// TODO Fill the DIRA info when supplicant implementation is ready
+			params.pairingBootstrappingMethods = convertP2pPairingBootstrappingMethodsToAidl(
+				info->pairing_config.bootstrap_methods);
 		}
 		callWithEachP2pIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
@@ -1485,6 +1513,18 @@ void AidlManager::notifyP2pGroupFormationFailure(
 		std::placeholders::_1, reason));
 }
 
+uint32_t convertSupplicantKeyMgmtForP2pGroupConnectionToAidl(int supp_key_mgmt)
+{
+	uint32_t aidl_key_mgmt = 0;
+	if (supp_key_mgmt & WPA_KEY_MGMT_PSK) {
+		aidl_key_mgmt |= static_cast<uint32_t>(KeyMgmtMask::WPA_PSK);
+	}
+	if (supp_key_mgmt & WPA_KEY_MGMT_SAE) {
+		aidl_key_mgmt |= static_cast<uint32_t>(KeyMgmtMask::SAE);
+	}
+	return aidl_key_mgmt;
+}
+
 void AidlManager::notifyP2pGroupStarted(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 	int persistent, int client, const u8 *ip)
@@ -1538,10 +1578,10 @@ void AidlManager::notifyP2pGroupStarted(
 			   params.p2pClientIpInfo.ipAddressClient,
 			   params.p2pClientIpInfo.ipAddressMask,
 			   params.p2pClientIpInfo.ipAddressGo);
-        }
+    }
 	if (areAidlServiceAndClientAtLeastVersion(4)) {
-		// TODO Fill the field when supplicant implementation is ready
-		params.keyMgmtMask = 0;
+		params.keyMgmtMask = convertSupplicantKeyMgmtForP2pGroupConnectionToAidl(
+			wpa_group_s->key_mgmt);
 	}
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
@@ -1677,75 +1717,6 @@ void AidlManager::notifyP2pSdResponse(
 		&ISupplicantP2pIfaceCallback::onServiceDiscoveryResponse,
 		std::placeholders::_1, macAddrToVec(sa), update_indic,
 		byteArrToVec(tlvs, tlvs_len)));
-}
-
-void AidlManager::notifyUsdBasedServiceDiscoveryResult(
-	struct wpa_supplicant *wpa_s, const u8 *peer_addr, int subscribe_id,
-	int peer_publish_id, int srv_proto_type, const u8 *ssi, size_t ssi_len)
-{
-	// TODO define the reason and map to AIDL defenition.
-	if (!wpa_s)
-		return;
-
-	if (p2p_iface_object_map_.find(wpa_s->ifname) ==
-		p2p_iface_object_map_.end())
-		return;
-
-	if (!areAidlServiceAndClientAtLeastVersion(4)) {
-	      return;
-	}
-	// TODO Fill the fields when supplicant implementation is ready
-	P2pUsdBasedServiceDiscoveryResultParams params;
-
-	callWithEachP2pIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryResult,
-		std::placeholders::_1, params));
-}
-
-void AidlManager::notifyUsdBasedServiceDiscoveryTerminated(
-	struct wpa_supplicant *wpa_s, int subscribe_id, int reason)
-{
-	// TODO define the reason and map to AIDL defenition.
-	if (!wpa_s)
-		return;
-
-	if (p2p_iface_object_map_.find(wpa_s->ifname) ==
-		p2p_iface_object_map_.end())
-		return;
-
-	if (!areAidlServiceAndClientAtLeastVersion(4)) {
-	      return;
-	}
-
-	callWithEachP2pIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryTerminated,
-		std::placeholders::_1, subscribe_id, UsdTerminateReasonCode::UNKNOWN));
-}
-
-void AidlManager::notifyUsdBasedServiceAdvertisementTerminated(
-	struct wpa_supplicant *wpa_s, int publish_id, int reason)
-{
-	// TODO define the reason and map to AIDL defenition.
-	if (!wpa_s)
-		return;
-
-	if (p2p_iface_object_map_.find(wpa_s->ifname) ==
-		p2p_iface_object_map_.end())
-		return;
-
-	if (!areAidlServiceAndClientAtLeastVersion(4)) {
-	      return;
-	}
-
-	callWithEachP2pIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&ISupplicantP2pIfaceCallback::onUsdBasedServiceAdvertisementTerminated,
-		std::placeholders::_1, publish_id, UsdTerminateReasonCode::UNKNOWN));
 }
 
 void AidlManager::notifyApStaAuthorized(
@@ -3032,6 +3003,21 @@ UsdServiceProtoType convertUsdServiceProtoTypeToAidl(nan_service_protocol_type t
 	}
 }
 
+P2pUsdBasedServiceDiscoveryResultParams createP2pUsdBasedServiceDiscoveryResult(
+		enum nan_service_protocol_type srv_proto_type,
+		int own_id, int peer_id, const u8 *peer_addr,
+		const u8 *ssi, size_t ssi_len) {
+	P2pUsdBasedServiceDiscoveryResultParams p2pServiceDiscoveryInfo;
+	p2pServiceDiscoveryInfo.peerMacAddress = macAddrToArray(peer_addr);
+	p2pServiceDiscoveryInfo.sessionId = own_id;
+	p2pServiceDiscoveryInfo.peerSessionId = peer_id;
+	p2pServiceDiscoveryInfo.serviceProtocolType = static_cast<int>(srv_proto_type);
+	if (ssi != NULL) {
+		p2pServiceDiscoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	}
+	return p2pServiceDiscoveryInfo;
+}
+
 UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 		enum nan_service_protocol_type srv_proto_type,
 		int own_id, int peer_id, const u8 *peer_addr,
@@ -3052,14 +3038,25 @@ void AidlManager::notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
 		bool fsd, const u8 *ssi, size_t ssi_len)
 {
-	if (!wpa_s || !peer_addr || !ssi) return;
+	if (!wpa_s || !peer_addr) return;
 	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
-		srv_proto_type, subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
-	callWithEachStaIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onUsdServiceDiscovered,
-			std::placeholders::_1, discoveryInfo));
+	if (p2p_iface_object_map_.find(wpa_s->ifname) != p2p_iface_object_map_.end()) {
+		// Notify service discovered event on P2P device interface.
+		P2pUsdBasedServiceDiscoveryResultParams p2pServiceDiscoveryInfo =
+			createP2pUsdBasedServiceDiscoveryResult(srv_proto_type, subscribe_id,
+				peer_publish_id, peer_addr, ssi, ssi_len);
+		callWithEachP2pIfaceCallback(misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryResult,
+			std::placeholders::_1, p2pServiceDiscoveryInfo));
+	} else {
+		// Notify service discovered event on STA interface.
+		UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
+			srv_proto_type, subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
+		callWithEachStaIfaceCallback(
+				misc_utils::charBufToString(wpa_s->ifname), std::bind(
+					&ISupplicantStaIfaceCallback::onUsdServiceDiscovered,
+					std::placeholders::_1, discoveryInfo));
+	}
 }
 
 void AidlManager::notifyUsdPublishReplied(struct wpa_supplicant *wpa_s,
@@ -3115,11 +3112,21 @@ void AidlManager::notifyUsdPublishTerminated(struct wpa_supplicant *wpa_s,
 {
 	if (!wpa_s) return;
 	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	callWithEachStaIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+	UsdTerminateReasonCode aidlReasonCode = convertUsdTerminateReasonCodeToAidl(reason);
+	if (p2p_iface_object_map_.find(wpa_s->ifname) != p2p_iface_object_map_.end()) {
+		// Notify publish terminated event on P2P device interface.
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onUsdBasedServiceAdvertisementTerminated,
+			std::placeholders::_1, publish_id, aidlReasonCode));
+	} else {
+		// Notify publish terminated event on STA interface.
+		callWithEachStaIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname), std::bind(
 			&ISupplicantStaIfaceCallback::onUsdPublishTerminated,
-			std::placeholders::_1, publish_id,
-			convertUsdTerminateReasonCodeToAidl(reason)));
+			std::placeholders::_1, publish_id, aidlReasonCode));
+	}
 }
 
 void AidlManager::notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
@@ -3127,11 +3134,21 @@ void AidlManager::notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
 {
 	if (!wpa_s) return;
 	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	callWithEachStaIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname), std::bind(
+	UsdTerminateReasonCode aidlReasonCode = convertUsdTerminateReasonCodeToAidl(reason);
+	if (p2p_iface_object_map_.find(wpa_s->ifname) != p2p_iface_object_map_.end()) {
+		// Notify subscribe terminated event on P2P device interface.
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryTerminated,
+			std::placeholders::_1, subscribe_id, aidlReasonCode));
+	} else {
+		// Notify subscribe terminated event on STA interface.
+		callWithEachStaIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname), std::bind(
 			&ISupplicantStaIfaceCallback::onUsdSubscribeTerminated,
-			std::placeholders::_1, subscribe_id,
-			convertUsdTerminateReasonCodeToAidl(reason)));
+			std::placeholders::_1, subscribe_id, aidlReasonCode));
+	}
 }
 
 }  // namespace supplicant

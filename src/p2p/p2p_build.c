@@ -741,6 +741,9 @@ void p2p_buf_add_pcea(struct wpabuf *buf, struct p2p_data *p2p)
 	if (p2p->cfg->dfs_owner)
 		capability_info |= P2P_PCEA_DFS_OWNER;
 
+	if (p2p->cfg->chan_switch_req_enable)
+		capability_info |= P2P_PCEA_CLI_REQ_CS;
+
 	if (p2p->cfg->pairing_config.pairing_capable)
 		capability_info |= P2P_PCEA_PAIRING_CAPABLE;
 
@@ -806,8 +809,7 @@ void p2p_buf_add_dira(struct wpabuf *buf, struct p2p_data *p2p)
 	struct p2p_id_key *dev_ik;
 
 	if (!p2p->cfg->pairing_config.pairing_capable ||
-	    !p2p->cfg->pairing_config.enable_pairing_cache ||
-	    !p2p->cfg->pairing_config.enable_pairing_verification)
+	    !p2p->cfg->pairing_config.enable_pairing_cache)
 		return;
 
 	dev_ik = &p2p->pairing_info->dev_ik;
