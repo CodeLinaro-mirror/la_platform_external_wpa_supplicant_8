@@ -404,8 +404,11 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	 * ACL if the driver supports ACL offload to avoid potentially
 	 * conflicting ACL rules.
 	 */
-	if (hapd->iface->drv_max_acl_mac_addrs == 0 &&
-	    hostapd_check_acl(hapd, addr, NULL) != HOSTAPD_ACL_ACCEPT) {
+	if ((hapd->iface->drv_max_acl_mac_addrs == 0
+#ifdef CONFIG_IEEE80211BE
+	     || hapd->conf->mld_ap
+#endif /* CONFIG_IEEE80211BE */
+	    ) && hostapd_check_acl(hapd, addr, NULL) != HOSTAPD_ACL_ACCEPT) {
 		wpa_printf(MSG_INFO, "STA " MACSTR " not allowed to connect",
 			   MAC2STR(addr));
 		reason = WLAN_REASON_UNSPECIFIED;
