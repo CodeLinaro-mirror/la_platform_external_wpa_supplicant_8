@@ -2756,8 +2756,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			return 1;
 		}
 		bss->eap_teap_auth = val;
-	} else if (os_strcmp(buf, "eap_teap_pac_no_inner") == 0) {
-		bss->eap_teap_pac_no_inner = atoi(pos);
 	} else if (os_strcmp(buf, "eap_teap_separate_result") == 0) {
 		bss->eap_teap_separate_result = atoi(pos);
 	} else if (os_strcmp(buf, "eap_teap_id") == 0) {
@@ -3964,6 +3962,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			return 1;
 		}
 		conf->mbssid = mbssid;
+	} else if (os_strcmp(buf, "mbssid_index") == 0) {
+		bss->mbssid_index = atoi(pos);
+	} else if (os_strcmp(buf, "mbssid_max") == 0) {
+		conf->mbssid_max = atoi(pos);
 #endif /* CONFIG_IEEE80211AX */
 	} else if (os_strcmp(buf, "max_listen_interval") == 0) {
 		bss->max_listen_interval = atoi(pos);
@@ -5132,6 +5134,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		if (val < 0 || val > 1)
 			return 1;
 		bss->ssid_protection = val;
+	} else if (os_strcmp(buf, "channel_usage") == 0) {
+		conf->channel_usage = atoi(pos);
+	} else if (os_strcmp(buf, "peer_to_peer_twt") == 0) {
+		conf->peer_to_peer_twt = atoi(pos);
 #ifdef CONFIG_IEEE80211BE
 	} else if (os_strcmp(buf, "ieee80211be") == 0) {
 		conf->ieee80211be = atoi(pos);

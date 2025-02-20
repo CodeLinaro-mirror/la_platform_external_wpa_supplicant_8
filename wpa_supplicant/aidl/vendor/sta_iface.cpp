@@ -2104,7 +2104,7 @@ StaIface::getWpaDriverCapabilitiesInternal()
 #endif
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	WPA_ASSERT(aidl_manager);
-	if (aidl_manager->isAidlServiceVersionAtLeast(4) && wpas_rsn_overriding(wpa_s)) {
+	if (aidl_manager->isAidlServiceVersionAtLeast(4) && wpas_rsn_overriding(wpa_s, NULL)) {
 		mask |= static_cast<uint32_t>(WpaDriverCapabilitiesMask::RSN_OVERRIDING);
 	}
 
