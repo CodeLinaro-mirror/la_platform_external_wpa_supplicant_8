@@ -881,7 +881,7 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"interface=%s\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_%s\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		// ssid2 signals to hostapd that the value is not a literal value
 		// for use as a SSID.  In this case, we're giving it a hex
 		// std::string and hostapd needs to expect that.
@@ -907,7 +907,6 @@ std::string CreateHostapdConfig(
 		"%s\n",
 		sanitized_overlay.c_str(),
 		iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str(),
-		iface_params.name.c_str(),
 		ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
