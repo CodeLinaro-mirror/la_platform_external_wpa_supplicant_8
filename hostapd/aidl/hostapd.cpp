@@ -927,23 +927,40 @@ std::string CreateHostapdConfig(
 		ap_isolation_as_string.c_str());
 }
 
-Generation getGeneration(hostapd_hw_modes *current_mode)
+Generation getGeneration(hostapd_hw_modes *current_mode,
+						 bool is_conf_enable_11ax,
+						 bool is_conf_enable_11be)
 {
 	wpa_printf(MSG_DEBUG, "getGeneration hwmode=%d, ht_enabled=%d,"
-		   " vht_enabled=%d, he_supported=%d",
-		   current_mode->mode, current_mode->ht_capab != 0,
-		   current_mode->vht_capab != 0, current_mode->he_capab->he_supported);
+			" vht_enabled=%d, he_supported=%d, eht_supported=%d,"
+			" ieee80211ax = %d, ieee80211be=%d",
+			current_mode->mode, current_mode->ht_capab != 0,
+			current_mode->vht_capab != 0,
+			current_mode->he_capab[IEEE80211_MODE_AP].he_supported,
+			current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported,
+			is_conf_enable_11ax,
+			is_conf_enable_11be);
 	switch (current_mode->mode) {
 	case HOSTAPD_MODE_IEEE80211B:
 		return Generation::WIFI_STANDARD_LEGACY;
 	case HOSTAPD_MODE_IEEE80211G:
-		if (current_mode->he_capab->he_supported) {
+		if (is_conf_enable_11be
+			&& current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported) {
+			return Generation::WIFI_STANDARD_11BE;
+		}
+		if (is_conf_enable_11ax
+			&& current_mode->he_capab[IEEE80211_MODE_AP].he_supported) {
 			return Generation::WIFI_STANDARD_11AX;
 		}
 		return current_mode->ht_capab == 0 ?
 				Generation::WIFI_STANDARD_LEGACY : Generation::WIFI_STANDARD_11N;
 	case HOSTAPD_MODE_IEEE80211A:
-		if (current_mode->he_capab->he_supported) {
+		if (is_conf_enable_11be
+			&& current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported) {
+			return Generation::WIFI_STANDARD_11BE;
+		}
+		if (is_conf_enable_11ax
+			&& current_mode->he_capab[IEEE80211_MODE_AP].he_supported) {
 			return Generation::WIFI_STANDARD_11AX;
 		}
 		return current_mode->vht_capab == 0 ?
@@ -1467,7 +1484,9 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 			info.apIfaceInstance = instanceName;
 			info.freqMhz = iface_hapd->iface->freq;
 			info.channelBandwidth = getChannelBandwidth(iface_hapd->iconf);
-			info.generation = getGeneration(iface_hapd->iface->current_mode);
+			info.generation =
+				getGeneration(iface_hapd->iface->current_mode,
+					iface_hapd->iconf->ieee80211ax, iface_hapd->iconf->ieee80211be);
 			info.apIfaceInstanceMacAddress.assign(iface_hapd->own_addr,
 				iface_hapd->own_addr + ETH_ALEN);
 #ifdef CONFIG_IEEE80211BE
