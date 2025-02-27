@@ -780,7 +780,6 @@ cc_defaults {
         "src/eap_peer",
         "src/eap_server",
         "src/eapol_supp",
-        "src/fst",
         "src/l2_packet",
         "src/pasn",
         "src/radius",
@@ -922,19 +921,6 @@ wpa_supplicant_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["-DCONFIG_IEEE80211BE"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": [
-            "-DCONFIG_DPP3",
-            "-DCONFIG_FST",
-            "-DCONFIG_OCV",
-        ],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
-        true: ["-DCONFIG_IEEE80211AX"],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
-        true: ["-DCONFIG_IEEE80211BE"],
-        default: [],
     }),
     arch: {
         arm: {
@@ -958,10 +944,7 @@ cc_defaults {
     cflags: [
         "-DCONFIG_AIDL",
         "-DCONFIG_CTRL_IFACE_AIDL",
-    ] + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": ["-DCONFIG_SUPPLICANT_VENDOR_AIDL"],
-        default: [],
-    }),
+    ],
     defaults: [
         "wpa_supplicant_no_aidl_cflags_default",
     ],
@@ -1216,23 +1199,6 @@ cc_defaults {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["src/ap/ieee802_11_eht.c"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": [
-            "src/common/ocv.c",
-            "src/fst/fst.c",
-            "src/fst/fst_session.c",
-            "src/fst/fst_iface.c",
-            "src/fst/fst_group.c",
-            "src/fst/fst_ctrl_aux.c",
-            "src/fst/fst_ctrl_iface.c",
-        ],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
-        true: ["src/ap/ieee802_11_he.c"],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
-        true: ["src/ap/ieee802_11_eht.c"],
-        default: [],
     }),
     defaults: [
         "wpa_supplicant_driver_srcs_default",
@@ -1375,10 +1341,7 @@ wpa_supplicant_cc_binary {
         "libbase",
         "libbinder_ndk",
         "libutils",
-    ] + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": ["vendor.qti.hardware.wifi.supplicant-V1-ndk"],
-        default: [],
-    }),
+    ],
     defaults: [
         "wpa_supplicant_srcs_default",
         "wpa_supplicant_cflags_default",
@@ -1554,15 +1517,7 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
-    ] + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": [
-            "vendor_aidl/aidl_vendor.cpp",
-            "vendor_aidl/aidl_vendor_manager.cpp",
-            "vendor_aidl/vendorsta_iface.cpp",
-            "vendor_aidl/supplicantvendor.cpp",
-        ],
-        default: [],
-    }),
+    ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V4-ndk",
         "android.system.keystore2-V1-ndk",
@@ -1571,11 +1526,8 @@ cc_library_static {
         "libutils",
         "liblog",
         "libssl",
-    ] + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": ["vendor.qti.hardware.wifi.supplicant-V1-ndk"],
-        default: [],
-    }),
-    export_include_dirs: ["aidl", "vendor_aidl"],
+    ],
+    export_include_dirs: ["aidl"],
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
