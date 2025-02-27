@@ -923,6 +923,12 @@ wpa_supplicant_cc_defaults_type {
             "-DCONFIG_OCV",
         ],
         default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
+        true: ["-DCONFIG_IEEE80211AX"],
+        default: [],
+    }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
+        true: ["-DCONFIG_IEEE80211BE"],
+        default: [],
     }),
     arch: {
         arm: {
@@ -1559,3 +1565,16 @@ cc_library_static {
 }
 
 // End of non-cuttlefish section
+
+genrule {
+    name: "com.android.hardware.wpa_supplicant.rc-gen",
+    srcs: ["aidl/vendor/android.hardware.wifi.supplicant-service.rc"],
+    out: ["com.android.hardware.wpa_supplicant.rc"],
+    cmd: "sed -E 's@/vendor/bin@/apex/com.android.hardware.wpa_supplicant/bin@' $(in) > $(out)",
+}
+
+prebuilt_etc {
+    name: "com.android.hardware.wpa_supplicant.rc",
+    src: ":com.android.hardware.wpa_supplicant.rc-gen",
+    installable: false,
+}
