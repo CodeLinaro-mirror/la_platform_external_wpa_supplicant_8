@@ -526,10 +526,7 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
 
 	authsrv_deinit(hapd);
 
-	/* For single drv, first bss would have interface_added flag set.
-	 * Don't remove interface now. Driver deinit part will take care
-	 */
-	if (hapd->interface_added && hapd->iface->bss[0] != hapd) {
+	if (hapd->interface_added) {
 		hapd->interface_added = 0;
 		if (hostapd_if_remove(hapd, WPA_IF_AP_BSS, hapd->conf->iface)) {
 			wpa_printf(MSG_WARNING,
@@ -3471,7 +3468,8 @@ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
 	 * still being used by some other BSS before de-initiallizing. */
 	if (!iface->bss[0]->conf->mld_ap) {
 		driver->hapd_deinit(drv_priv);
-	} else if (driver->is_drv_shared &&
+	} else if (hostapd_mld_is_first_bss(iface->bss[0]) &&
+		   driver->is_drv_shared &&
 		   !driver->is_drv_shared(drv_priv,
 					  iface->bss[0]->mld_link_id)) {
 		driver->hapd_deinit(drv_priv);
