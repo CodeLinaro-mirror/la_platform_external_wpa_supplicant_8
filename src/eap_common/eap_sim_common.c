@@ -1209,6 +1209,7 @@ void eap_sim_report_notification(void *msg_ctx, int notification, int aka)
 	}
 }
 
+
 static const u8 * get_last_char(const u8 *val, size_t len, char c)
 {
 	while (len > 0) {
@@ -1221,6 +1222,7 @@ static const u8 * get_last_char(const u8 *val, size_t len, char c)
 
 	return NULL;
 }
+
 
 int eap_sim_anonymous_username(const u8 *id, size_t id_len)
 {
@@ -1247,6 +1249,6 @@ int eap_sim_anonymous_username(const u8 *id, size_t id_len)
 		return eap_sim_anonymous_username(decorated,
 						  id + id_len - decorated);
 	}
+
 	return 0;
 }
-

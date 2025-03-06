@@ -49,7 +49,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 		    size_t eht_capab_len,
 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
-		    int set, const u8 *link_addr, bool mld_link_sta);
+		    int set, const u8 *link_addr, bool mld_link_sta,
+		    u16 eml_cap);
 int hostapd_set_privacy(struct hostapd_data *hapd, int enabled);
 int hostapd_set_generic_elem(struct hostapd_data *hapd, const u8 *elem,
 			     size_t elem_len);
@@ -61,10 +62,13 @@ int hostapd_if_add(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 		   const char *bridge, int use_existing);
 int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 		      const char *ifname);
+int hostapd_if_link_remove(struct hostapd_data *hapd,
+			   enum wpa_driver_if_type type,
+			   const char *ifname, u8 link_id);
 int hostapd_set_ieee8021x(struct hostapd_data *hapd,
 			  struct wpa_bss_params *params);
 int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
-		       const u8 *addr, int idx, u8 *seq);
+		       const u8 *addr, int idx, int link_id, u8 *seq);
 int hostapd_flush(struct hostapd_data *hapd);
 int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
 		     int freq, int channel, int edmg, u8 edmg_channel,
@@ -113,6 +117,11 @@ int hostapd_drv_send_action_addr3_ap(struct hostapd_data *hapd,
 				     unsigned int freq,
 				     unsigned int wait, const u8 *dst,
 				     const u8 *data, size_t len);
+int hostapd_drv_send_action_forced_addr3(struct hostapd_data *hapd,
+					 unsigned int freq,
+					 unsigned int wait, const u8 *dst,
+					 const u8 *a3,
+					 const u8 *data, size_t len);
 static inline void
 hostapd_drv_send_action_cancel_wait(struct hostapd_data *hapd)
 {
@@ -391,6 +400,7 @@ static inline int hostapd_drv_vendor_cmd(struct hostapd_data *hapd,
 static inline int hostapd_drv_stop_ap(struct hostapd_data *hapd)
 {
 	int link_id = -1;
+
 	if (!hapd->driver || !hapd->driver->stop_ap || !hapd->drv_priv)
 		return 0;
 #ifdef CONFIG_IEEE80211BE
@@ -450,15 +460,37 @@ hostapd_drv_register_frame(struct hostapd_data *hapd, u16 type,
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_IEEE80211BE
+
 static inline int hostapd_drv_link_add(struct hostapd_data *hapd,
 				       u8 link_id, const u8 *addr)
 {
 	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->link_add)
 		return -1;
 
-	return hapd->driver->link_add(hapd->drv_priv, link_id, addr);
+	return hapd->driver->link_add(hapd->drv_priv, link_id, addr, hapd);
 
 }
+
+static inline int hostapd_drv_link_sta_remove(struct hostapd_data *hapd,
+					      const u8 *addr)
+{
+	if (!hapd->conf->mld_ap || !hapd->driver || !hapd->drv_priv ||
+	    !hapd->driver->link_sta_remove)
+		return -1;
+
+	return hapd->driver->link_sta_remove(hapd->drv_priv, hapd->mld_link_id,
+					     addr);
+}
+
 #endif /* CONFIG_IEEE80211BE */
+
+struct hostapd_multi_hw_info *
+hostapd_get_multi_hw_info(struct hostapd_data *hapd,
+			  unsigned int *num_multi_hws);
+
+int hostapd_drv_add_pmkid(struct hostapd_data *hapd,
+			  struct wpa_pmkid_params *params);
+int hostapd_add_pmkid(struct hostapd_data *hapd, const u8 *bssid, const u8 *pmk,
+		      size_t pmk_len, const u8 *pmkid, int akmp);;
 
 #endif /* AP_DRV_OPS */

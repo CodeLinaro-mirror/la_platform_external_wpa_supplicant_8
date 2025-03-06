@@ -540,7 +540,7 @@ enum ocsp_result check_ocsp_resp(SSL_CTX *ssl_ctx, SSL *ssl, X509 *cert,
 		return OCSP_INVALID;
 	}
 
-	basic_data = ASN1_STRING_get0_data(bytes->response);
+	basic_data = ASN1_STRING_data(bytes->response);
 	basic_len = ASN1_STRING_length(bytes->response);
 	wpa_hexdump(MSG_DEBUG, "OpenSSL: BasicOCSPResponse",
 		    basic_data, basic_len);

@@ -52,6 +52,7 @@
 #define WPA_KEY_MGMT_PASN BIT(25)
 #define WPA_KEY_MGMT_SAE_EXT_KEY BIT(26)
 #define WPA_KEY_MGMT_FT_SAE_EXT_KEY BIT(27)
+#define WPA_KEY_MGMT_IEEE8021X_SHA384 BIT(28)
 
 
 #define WPA_KEY_MGMT_FT (WPA_KEY_MGMT_FT_PSK | \
@@ -75,7 +76,8 @@ static inline int wpa_key_mgmt_wpa_ieee8021x(int akm)
 			 WPA_KEY_MGMT_FILS_SHA256 |
 			 WPA_KEY_MGMT_FILS_SHA384 |
 			 WPA_KEY_MGMT_FT_FILS_SHA256 |
-			 WPA_KEY_MGMT_FT_FILS_SHA384));
+			 WPA_KEY_MGMT_FT_FILS_SHA384 |
+			 WPA_KEY_MGMT_IEEE8021X_SHA384));
 }
 
 static inline int wpa_key_mgmt_wpa_psk_no_sae(int akm)
@@ -127,6 +129,15 @@ static inline int wpa_key_mgmt_sae_ext_key(int akm)
 			 WPA_KEY_MGMT_FT_SAE_EXT_KEY));
 }
 
+static inline int wpa_key_mgmt_only_sae(int akm)
+{
+	return wpa_key_mgmt_sae(akm) &&
+		!(akm & ~(WPA_KEY_MGMT_SAE |
+			  WPA_KEY_MGMT_SAE_EXT_KEY |
+			  WPA_KEY_MGMT_FT_SAE |
+			  WPA_KEY_MGMT_FT_SAE_EXT_KEY));
+}
+
 static inline int wpa_key_mgmt_fils(int akm)
 {
 	return !!(akm & (WPA_KEY_MGMT_FILS_SHA256 |
@@ -153,7 +164,8 @@ static inline int wpa_key_mgmt_sha384(int akm)
 	return !!(akm & (WPA_KEY_MGMT_IEEE8021X_SUITE_B_192 |
 			 WPA_KEY_MGMT_FT_IEEE8021X_SHA384 |
 			 WPA_KEY_MGMT_FILS_SHA384 |
-			 WPA_KEY_MGMT_FT_FILS_SHA384));
+			 WPA_KEY_MGMT_FT_FILS_SHA384 |
+			 WPA_KEY_MGMT_IEEE8021X_SHA384));
 }
 
 static inline int wpa_key_mgmt_suite_b(int akm)
@@ -533,5 +545,16 @@ enum sae_pwe {
 	SAE_PWE_FORCE_HUNT_AND_PECK = 3,
 	SAE_PWE_NOT_SET = 4,
 };
+
+enum wpa_p2p_mode {
+	WPA_P2P_MODE_WFD_R1	= 0,
+	WPA_P2P_MODE_WFD_R2	= 1,
+	WPA_P2P_MODE_WFD_PCC	= 2,
+};
+
+#define USEC_80211_TU 1024
+
+#define USEC_TO_TU(m) ((m) / USEC_80211_TU)
+#define TU_TO_USEC(m) ((m) * USEC_80211_TU)
 
 #endif /* DEFS_H */

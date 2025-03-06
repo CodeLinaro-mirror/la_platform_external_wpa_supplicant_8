@@ -29,7 +29,7 @@
 
 static const char *const wpa_cli_version =
 "wpa_cli v" VERSION_STR "\n"
-"Copyright (c) 2004-2022, Jouni Malinen <j@w1.fi> and contributors";
+"Copyright (c) 2004-2024, Jouni Malinen <j@w1.fi> and contributors";
 
 #define VENDOR_ELEM_FRAME_ID \
 	"  0: Probe Req (P2P), 1: Probe Resp (P2P) , 2: Probe Resp (GO), " \
@@ -548,6 +548,13 @@ static int wpa_cli_cmd_driver_flags(struct wpa_ctrl *ctrl, int argc,
 				    char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "DRIVER_FLAGS");
+}
+
+
+static int wpa_cli_cmd_driver_flags2(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "DRIVER_FLAGS2");
 }
 
 
@@ -2091,10 +2098,19 @@ static int wpa_cli_cmd_resume(struct wpa_ctrl *ctrl, int argc, char *argv[])
 
 
 #ifdef CONFIG_TESTING_OPTIONS
+
 static int wpa_cli_cmd_drop_sa(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "DROP_SA");
 }
+
+
+static int wpa_cli_cmd_ml_probe_req(struct wpa_ctrl *ctrl,
+				    int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "ML_PROBE_REQ", 2, argc, argv);
+}
+
 #endif /* CONFIG_TESTING_OPTIONS */
 
 
@@ -2831,6 +2847,8 @@ static int wpa_cli_cmd_tdls_link_status(struct wpa_ctrl *ctrl, int argc,
 }
 
 
+#ifndef CONFIG_NO_WMM_AC
+
 static int wpa_cli_cmd_wmm_ac_addts(struct wpa_ctrl *ctrl, int argc,
 				    char *argv[])
 {
@@ -2850,6 +2868,8 @@ static int wpa_cli_cmd_wmm_ac_status(struct wpa_ctrl *ctrl, int argc,
 {
 	return wpa_ctrl_command(ctrl, "WMM_AC_STATUS");
 }
+
+#endif /* CONFIG_NO_WMM_AC */
 
 
 static int wpa_cli_cmd_tdls_chan_switch(struct wpa_ctrl *ctrl, int argc,
@@ -3322,6 +3342,59 @@ static int wpa_cli_cmd_dscp_query(struct wpa_ctrl *ctrl, int argc, char *argv[])
 }
 
 
+#ifdef CONFIG_NAN_USD
+
+static int wpa_cli_cmd_nan_publish(struct wpa_ctrl *ctrl, int argc,
+				   char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_PUBLISH", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_cancel_publish(struct wpa_ctrl *ctrl, int argc,
+					  char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_CANCEL_PUBLISH", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_update_publish(struct wpa_ctrl *ctrl, int argc,
+					  char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_UPDATE_PUBLISH", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_subscribe(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_SUBSCRIBE", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_cancel_subscribe(struct wpa_ctrl *ctrl, int argc,
+					    char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_CANCEL_SUBSCRIBE", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_transmit(struct wpa_ctrl *ctrl, int argc,
+				    char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_TRANSMIT", 3, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_flush(struct wpa_ctrl *ctrl, int argc,
+				 char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "NAN_FLUSH");
+}
+
+#endif /* CONFIG_NAN_USD */
+
+
 enum wpa_cli_cmd_flags {
 	cli_cmd_flag_none		= 0x00,
 	cli_cmd_flag_sensitive		= 0x01
@@ -3382,6 +3455,9 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "driver_flags", wpa_cli_cmd_driver_flags, NULL,
 	  cli_cmd_flag_none,
 	  "= list driver flags" },
+	{ "driver_flags2", wpa_cli_cmd_driver_flags2, NULL,
+	  cli_cmd_flag_none,
+	  "= list driver flags2" },
 	{ "logon", wpa_cli_cmd_logon, NULL,
 	  cli_cmd_flag_none,
 	  "= IEEE 802.1X EAPOL state machine logon" },
@@ -3680,6 +3756,8 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 #ifdef CONFIG_TESTING_OPTIONS
 	{ "drop_sa", wpa_cli_cmd_drop_sa, NULL, cli_cmd_flag_none,
 	  "= drop SA without deauth/disassoc (test command)" },
+	{ "ml_probe_req", wpa_cli_cmd_ml_probe_req, NULL, cli_cmd_flag_none,
+	  "= send Multi-Link Probe request <bssid=addr> <mld_id=id> [link_id=id] (test command)" },
 #endif /* CONFIG_TESTING_OPTIONS */
 	{ "roam", wpa_cli_cmd_roam, wpa_cli_complete_bss,
 	  cli_cmd_flag_none,
@@ -3875,6 +3953,7 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "tdls_link_status", wpa_cli_cmd_tdls_link_status, NULL,
 	  cli_cmd_flag_none,
 	  "<addr> = TDLS link status with <addr>" },
+#ifndef CONFIG_NO_WMM_AC
 	{ "wmm_ac_addts", wpa_cli_cmd_wmm_ac_addts, NULL,
 	  cli_cmd_flag_none,
 	  "<uplink/downlink/bidi> <tsid=0..7> <up=0..7> [nominal_msdu_size=#] "
@@ -3886,6 +3965,7 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "wmm_ac_status", wpa_cli_cmd_wmm_ac_status, NULL,
 	  cli_cmd_flag_none,
 	  "= show status for Wireless Multi-Media Admission-Control" },
+#endif /* CONFIG_NO_WMM_AC */
 	{ "tdls_chan_switch", wpa_cli_cmd_tdls_chan_switch, NULL,
 	  cli_cmd_flag_none,
 	  "<addr> <oper class> <freq> [sec_channel_offset=] [center_freq1=] "
@@ -4068,6 +4148,24 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "mlo_signal_poll", wpa_cli_cmd_mlo_signal_poll, NULL,
 	  cli_cmd_flag_none,
 	  "= get mlo signal parameters" },
+#ifdef CONFIG_NAN_USD
+	{ "nan_publish", wpa_cli_cmd_nan_publish, NULL,
+	  cli_cmd_flag_none,
+	  "service_name=<name> [ttl=<time-to-live-in-sec>] [freq=<in MHz>] [freq_list=<comma separate list of MHz>] [srv_proto_type=<type>] [ssi=<service specific information (hexdump)>] [solicited=0] [unsolicited=0] [fsd=0] [p2p=1] = Publish NAN service" },
+	{ "nan_cancel_publish", wpa_cli_cmd_nan_cancel_publish, NULL,
+	  cli_cmd_flag_none, "publish_id=<id from NAN_PUBLISH> = Cancel NAN USD publish instance" },
+	{ "nan_update_publish", wpa_cli_cmd_nan_update_publish, NULL,
+	  cli_cmd_flag_none, "publish_id=<id from NAN_PUBLISH> [ssi=<service specific information (hexdump)> = Update publish" },
+	{ "nan_subscribe", wpa_cli_cmd_nan_subscribe, NULL,
+	  cli_cmd_flag_none,
+	  "service_name=<name> [active=1] [ttl=<time-to-live-in-sec>] [freq=<in MHz>] [srv_proto_type=<type>] [ssi=<service specific information (hexdump)>] [p2p=1] = Subscribe to NAN service" },
+	{ "nan_cancel_subscribe", wpa_cli_cmd_nan_cancel_subscribe, NULL,
+	  cli_cmd_flag_none, "subscribe_id=<id from NAN_PUBLISH> = Cancel NAN USD subscribe instance" },
+	{ "nan_transmit", wpa_cli_cmd_nan_transmit, NULL,
+	  cli_cmd_flag_none, "handle=<id from NAN_PUBLISH or NAN_SUBSCRIBE> req_instance_id=<peer's id> address=<peer's MAC address> [ssi=<service specific information (hexdump)>] = Transmit NAN follow up" },
+	{ "nan_flush", wpa_cli_cmd_nan_flush, NULL,
+	  cli_cmd_flag_none, "= Flush all NAN USD services" },
+#endif /* CONFIG_NAN_USD */
 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
 };
 
@@ -4363,6 +4461,8 @@ static void wpa_cli_action_process(const char *msg)
 			wpa_cli_exec(action_file, ifname, "DISCONNECTED");
 		}
 	} else if (str_starts(pos, WPA_EVENT_CHANNEL_SWITCH_STARTED)) {
+		wpa_cli_exec(action_file, ctrl_ifname, pos);
+	} else if (str_starts(pos, WPA_EVENT_CHANNEL_SWITCH)) {
 		wpa_cli_exec(action_file, ctrl_ifname, pos);
 	} else if (str_starts(pos, AP_EVENT_ENABLED)) {
 		wpa_cli_exec(action_file, ctrl_ifname, pos);
@@ -5113,7 +5213,7 @@ int main(int argc, char *argv[])
 
 	eloop_register_signal_terminate(wpa_cli_terminate, NULL);
 
-	if (ctrl_ifname == NULL)
+	if (!ctrl_ifname && !global)
 		ctrl_ifname = wpa_cli_get_default_ifname();
 
 	if (reconnect && action_file && ctrl_ifname) {
