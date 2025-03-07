@@ -18,7 +18,8 @@ MainlineSupplicant::MainlineSupplicant(struct wpa_global* global) {
     wpa_global_ = global;
 }
 
-ndk::ScopedAStatus MainlineSupplicant::addUsdInterface(const std::string& ifaceName) {
+ndk::ScopedAStatus MainlineSupplicant::addUsdInterface(const std::string& ifaceName,
+        std::shared_ptr<IUsdInterface>* _aidl_return) {
     if (ifaceName.empty()) {
         wpa_printf(MSG_ERROR, "Empty iface name provided");
         return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
@@ -26,6 +27,8 @@ ndk::ScopedAStatus MainlineSupplicant::addUsdInterface(const std::string& ifaceN
 
     if (active_usd_ifaces_.find(ifaceName) != active_usd_ifaces_.end()) {
         wpa_printf(MSG_INFO, "Interface %s already exists", ifaceName.c_str());
+        std::shared_ptr<IUsdInterface> usdIface = active_usd_ifaces_[ifaceName];
+        _aidl_return = &usdIface;
         return ndk::ScopedAStatus::ok();
     }
 
@@ -46,8 +49,12 @@ ndk::ScopedAStatus MainlineSupplicant::addUsdInterface(const std::string& ifaceN
         return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
     }
 
+    std::shared_ptr<IUsdInterface> usdIface =
+        ndk::SharedRefBase::make<UsdIface>(wpa_global_, ifaceName);
+    active_usd_ifaces_[ifaceName] = usdIface;
+    _aidl_return = &usdIface;
+
     wpa_printf(MSG_INFO, "Interface %s was added successfully", ifaceName.c_str());
-    active_usd_ifaces_.insert(ifaceName);
     return ndk::ScopedAStatus::ok();
 }
 
