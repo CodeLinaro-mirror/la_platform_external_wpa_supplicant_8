@@ -320,6 +320,7 @@ endif
 ifdef CONFIG_NAN_USD
 OBJS += ../src/common/nan_de.o
 OBJS += nan_usd.o
+NEED_OFFCHANNEL=y
 CFLAGS += -DCONFIG_NAN_USD
 endif
 
@@ -763,7 +764,7 @@ endif
 
 ifdef CONFIG_EAP_TEAP
 # EAP-TEAP
-SRC_EAP_TEAP = ../src/eap_peer/eap_teap.c ../src/eap_peer/eap_teap_pac.c
+SRC_EAP_TEAP = ../src/eap_peer/eap_teap.c
 SRC_EAP_TEAP += ../src/eap_common/eap_teap_common.c
 ifeq ($(CONFIG_EAP_TEAP), dyn)
 CFLAGS += -DEAP_TEAP_DYNAMIC

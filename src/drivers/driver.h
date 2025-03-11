@@ -892,6 +892,14 @@ struct hostapd_freq_params {
 	bool eht_enabled;
 
 	/**
+	 * punct_bitmap - Preamble puncturing bitmap
+	 * Each bit corresponds to a 20 MHz subchannel, the lowest bit for the
+	 * channel with the lowest frequency. A bit set to 1 indicates that the
+	 * subchannel is punctured, otherwise active.
+	 */
+	u16 punct_bitmap;
+
+	/**
 	 * link_id: If >=0 indicates the link of the AP MLD to configure
 	 */
 	int link_id;
@@ -2492,6 +2500,10 @@ struct wpa_driver_capa {
 	unsigned int mbssid_max_interfaces;
 	/* Maximum profile periodicity for enhanced MBSSID advertisement */
 	unsigned int ema_max_periodicity;
+
+	/* Maximum number of bytes of extra IE(s) that can be added to Probe
+	 * Request frames */
+	size_t max_probe_req_ie_len;
 };
 
 
@@ -2598,6 +2610,7 @@ struct hostapd_sta_add_params {
 	bool mld_link_sta;
 	s8 mld_link_id;
 	const u8 *mld_link_addr;
+	u16 eml_cap;
 };
 
 struct mac_address {
@@ -2772,7 +2785,6 @@ struct beacon_data {
  * @beacon_after: Next beacon/probe resp/asooc resp info
  * @counter_offset_beacon: Offset to the count field in beacon's tail
  * @counter_offset_presp: Offset to the count field in probe resp.
- * @punct_bitmap - Preamble puncturing bitmap
  * @link_id: Link ID to determine the link for MLD; -1 for non-MLD
  * @ubpr: Unsolicited broadcast Probe Response frame data
  */
@@ -2787,7 +2799,6 @@ struct csa_settings {
 	u16 counter_offset_beacon[2];
 	u16 counter_offset_presp[2];
 
-	u16 punct_bitmap;
 	int link_id;
 
 	struct unsol_bcast_probe_resp ubpr;
@@ -3503,12 +3514,15 @@ struct wpa_driver_ops {
 	 * e.g., wpa_supplicant_event()
 	 * @ifname: interface name, e.g., wlan0
 	 * @global_priv: private driver global data from global_init()
+	 * @p2p_mode: P2P mode for a GO (not applicable for other interface
+	 *	types)
 	 * Returns: Pointer to private data, %NULL on failure
 	 *
 	 * This function can be used instead of init() if the driver wrapper
 	 * uses global data.
 	 */
-	void * (*init2)(void *ctx, const char *ifname, void *global_priv);
+	void * (*init2)(void *ctx, const char *ifname, void *global_priv,
+			enum wpa_p2p_mode p2p_mode);
 
 	/**
 	 * get_interfaces - Get information about available interfaces
@@ -4044,7 +4058,10 @@ struct wpa_driver_ops {
 	 * @bssid: BSSID (Address 3)
 	 * @data: Frame body
 	 * @data_len: data length in octets
-	 @ @no_cck: Whether CCK rates must not be used to transmit this frame
+	 * @no_cck: Whether CCK rates must not be used to transmit this frame
+	 * @link_id: Link ID of the specified link; -1 for non-MLO cases and for
+	 *	frames that target the MLD instead of a specific link in MLO
+	 *	cases
 	 * Returns: 0 on success, -1 on failure
 	 *
 	 * This command can be used to request the driver to transmit an action
@@ -4065,7 +4082,8 @@ struct wpa_driver_ops {
 	 */
 	int (*send_action)(void *priv, unsigned int freq, unsigned int wait,
 			   const u8 *dst, const u8 *src, const u8 *bssid,
-			   const u8 *data, size_t data_len, int no_cck);
+			   const u8 *data, size_t data_len, int no_cck,
+			   int link_id);
 
 	/**
 	 * send_action_cancel_wait - Cancel action frame TX wait
@@ -5332,6 +5350,25 @@ struct wpa_driver_ops {
 	 * Returns: 0 on success, negative value on failure
 	 */
 	int (*nan_cancel_subscribe)(void *priv, int subscribe_id);
+
+	/**
+	 * can_share_drv - Check whether driver interface can be shared
+	 * @ctx: Pointer to hostapd context
+	 * @params: Configuration for the driver wrapper
+	 * @hapd: Pointer for overwriting the hapd context or %NULL
+	 * 	if can't find a shared drv
+	 *
+	 * Checks whether the driver interface with same phy name is
+	 * already present under the global driver which can be shared
+	 * instead of creating a new driver interface instance. If present,
+	 * @hapd will be overwritten with the hapd pointer which this shared
+	 * drv's first BSS is using. This will help the caller to later call
+	 * if_add().
+	 *
+	 * Returns: true if it can be shared or else false.
+	 */
+	bool (*can_share_drv)(void *ctx, struct wpa_init_params *params,
+			      void **hapd);
 
 #ifdef CONFIG_TESTING_OPTIONS
 	int (*register_frame)(void *priv, u16 type,

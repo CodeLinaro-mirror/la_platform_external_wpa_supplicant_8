@@ -881,7 +881,7 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"interface=%s\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_%s\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		// ssid2 signals to hostapd that the value is not a literal value
 		// for use as a SSID.  In this case, we're giving it a hex
 		// std::string and hostapd needs to expect that.
@@ -907,7 +907,6 @@ std::string CreateHostapdConfig(
 		"%s\n",
 		sanitized_overlay.c_str(),
 		iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str(),
-		iface_params.name.c_str(),
 		ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
@@ -928,20 +927,40 @@ std::string CreateHostapdConfig(
 		ap_isolation_as_string.c_str());
 }
 
-Generation getGeneration(hostapd_hw_modes *current_mode)
+Generation getGeneration(hostapd_hw_modes *current_mode,
+						 bool is_conf_enable_11ax,
+						 bool is_conf_enable_11be)
 {
 	wpa_printf(MSG_DEBUG, "getGeneration hwmode=%d, ht_enabled=%d,"
-		   " vht_enabled=%d, he_supported=%d",
-		   current_mode->mode, current_mode->ht_capab != 0,
-		   current_mode->vht_capab != 0, current_mode->he_capab->he_supported);
+			" vht_enabled=%d, he_supported=%d, eht_supported=%d,"
+			" ieee80211ax = %d, ieee80211be=%d",
+			current_mode->mode, current_mode->ht_capab != 0,
+			current_mode->vht_capab != 0,
+			current_mode->he_capab[IEEE80211_MODE_AP].he_supported,
+			current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported,
+			is_conf_enable_11ax,
+			is_conf_enable_11be);
 	switch (current_mode->mode) {
 	case HOSTAPD_MODE_IEEE80211B:
 		return Generation::WIFI_STANDARD_LEGACY;
 	case HOSTAPD_MODE_IEEE80211G:
+		if (is_conf_enable_11be
+			&& current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported) {
+			return Generation::WIFI_STANDARD_11BE;
+		}
+		if (is_conf_enable_11ax
+			&& current_mode->he_capab[IEEE80211_MODE_AP].he_supported) {
+			return Generation::WIFI_STANDARD_11AX;
+		}
 		return current_mode->ht_capab == 0 ?
 				Generation::WIFI_STANDARD_LEGACY : Generation::WIFI_STANDARD_11N;
 	case HOSTAPD_MODE_IEEE80211A:
-		if (current_mode->he_capab->he_supported) {
+		if (is_conf_enable_11be
+			&& current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported) {
+			return Generation::WIFI_STANDARD_11BE;
+		}
+		if (is_conf_enable_11ax
+			&& current_mode->he_capab[IEEE80211_MODE_AP].he_supported) {
 			return Generation::WIFI_STANDARD_11AX;
 		}
 		return current_mode->vht_capab == 0 ?
@@ -1305,19 +1324,32 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 	const std::string owe_transition_ifname)
 {
 	if (iface_params.usesMlo) { // the mlo case, iface name is instance name which is mld_link_id
-		if (hostapd_get_iface_by_link_id(interfaces_, (size_t) iface_params.name.c_str())) {
+		if (hostapd_get_iface_by_link_id(interfaces_, std::stoi(iface_params.name.c_str()))) {
 			wpa_printf(
 				MSG_ERROR, "Instance link id %s already present",
 				iface_params.name.c_str());
 			return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
 		}
-	}
-	if (hostapd_get_iface(interfaces_,
-			iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str())) {
-		wpa_printf(
-			MSG_ERROR, "Instance interface %s already present",
-			iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str());
-		return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
+#ifdef CONFIG_IEEE80211BE
+		// The MLO AP uses the same interface name for all links. Thus, make sure the
+		// interface name wasn't used for non-mld AP only when adding a new interface.
+		// Also it is valid to have a hostapd_data with the same interface name when adding
+		// the second link instance.
+		struct hostapd_data* hapd = hostapd_get_iface(interfaces_, br_name.c_str());
+		if (hapd && !hapd->conf->mld_ap) {
+			wpa_printf(
+				MSG_ERROR, "Instance interface %s already present",
+						br_name.c_str());
+			return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
+		}
+#endif
+	} else {
+		if (hostapd_get_iface(interfaces_, iface_params.name.c_str())) {
+			wpa_printf(
+				MSG_ERROR, "Instance interface %s already present",
+					iface_params.name.c_str());
+			return createStatus(HostapdStatusCode::FAILURE_IFACE_EXISTS);
+		}
 	}
 	const auto conf_params = CreateHostapdConfig(iface_params, channelParams, nw_params,
 					br_name, owe_transition_ifname);
@@ -1345,7 +1377,7 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 
 	// find the iface and set up callback.
 	struct hostapd_data* iface_hapd = iface_params.usesMlo ?
-		hostapd_get_iface_by_link_id(interfaces_, (size_t) iface_params.name.c_str()) :
+		hostapd_get_iface_by_link_id(interfaces_, std::stoi(iface_params.name.c_str())) :
 		hostapd_get_iface(interfaces_, iface_params.name.c_str());
 	WPA_ASSERT(iface_hapd != nullptr && iface_hapd->iface != nullptr);
 	if (iface_params.usesMlo) {
@@ -1452,7 +1484,9 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 			info.apIfaceInstance = instanceName;
 			info.freqMhz = iface_hapd->iface->freq;
 			info.channelBandwidth = getChannelBandwidth(iface_hapd->iconf);
-			info.generation = getGeneration(iface_hapd->iface->current_mode);
+			info.generation =
+				getGeneration(iface_hapd->iface->current_mode,
+					iface_hapd->iconf->ieee80211ax, iface_hapd->iconf->ieee80211be);
 			info.apIfaceInstanceMacAddress.assign(iface_hapd->own_addr,
 				iface_hapd->own_addr + ETH_ALEN);
 #ifdef CONFIG_IEEE80211BE
@@ -1606,7 +1640,7 @@ const std::string& iface_name, const std::string& linkIdentity)
 		return createStatus(HostapdStatusCode::FAILURE_IFACE_UNKNOWN);
 	}
 	struct hostapd_data* iface_hapd =
-		hostapd_get_iface_by_link_id(interfaces_, (size_t) linkIdentity.c_str());
+		hostapd_get_iface_by_link_id(interfaces_, std::stoi(linkIdentity.c_str()));
 	if (iface_hapd) {
 // Currently, hostapd_link_remove is still under CONFIG_TESTING_OPTIONS.
 // TODO: b/340821197 - Make sure to take out the hostapd_link_remove() and other related code
