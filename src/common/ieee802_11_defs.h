@@ -2624,6 +2624,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED  0x20
 
 /* IEEE P802.11be/D2.3, 9.4.2.311 - EHT Operation element */
+#define EHT_OPERATION_IE_MIN_LEN 1
 
 /* Figure 9-1002b: EHT Operation Parameters field subfields */
 #define EHT_OPER_INFO_PRESENT                          BIT(0)
@@ -2634,6 +2635,7 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define EHT_OPER_DISABLED_SUBCHAN_BITMAP_SIZE          2
 
 /* Control subfield: Channel Width subfield; see Table 9-401b */
+#define EHT_OPER_CHANNEL_WIDTH_MASK                    0x7
 #define EHT_OPER_CHANNEL_WIDTH_20MHZ                   0
 #define EHT_OPER_CHANNEL_WIDTH_40MHZ                   1
 #define EHT_OPER_CHANNEL_WIDTH_80MHZ                   2
@@ -2641,6 +2643,8 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define EHT_OPER_CHANNEL_WIDTH_320MHZ                  4
 
 /* Figure 9-1002c: EHT Operation Information field format */
+#define EHT_OPER_INFO_MIN_LEN 3
+
 struct ieee80211_eht_oper_info {
 	u8 control; /* B0..B2: Channel Width */
 	u8 ccfs0;
@@ -2656,6 +2660,8 @@ struct ieee80211_eht_operation {
 } STRUCT_PACKED;
 
 /* IEEE P802.11be/D1.5, 9.4.2.313 - EHT Capabilities element */
+
+#define  EHT_CAPABILITIES_IE_MIN_LEN 11
 
 /* Figure 9-1002af: EHT MAC Capabilities Information field */
 #define EHT_MACCAP_EPCS_PRIO			BIT(0)

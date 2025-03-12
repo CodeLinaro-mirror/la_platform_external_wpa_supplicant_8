@@ -171,8 +171,34 @@ static int wpa_cli_open_connection(const char *ifname, int attach)
 	ctrl_conn = wpa_ctrl_open2(cfile, client_socket_dir);
 	if (ctrl_conn == NULL) {
 		os_free(cfile);
+		cfile = NULL;
+
+#ifdef CONFIG_CTRL_IFACE_DIR2
+		goto try2;
+#endif /* CONFIG_CTRL_IFACE_DIR2 */
 		return -1;
 	}
+#ifdef CONFIG_CTRL_IFACE_DIR2
+try2:
+	if (cfile == NULL) {
+		flen = os_strlen(CONFIG_CTRL_IFACE_DIR2) + os_strlen(ifname) + 2;
+		cfile = os_malloc(flen);
+		if (cfile == NULL)
+			return -1;
+		res = os_snprintf(cfile, flen, "%s/%s", CONFIG_CTRL_IFACE_DIR2,
+				  ifname);
+		if (os_snprintf_error(flen, res)) {
+			os_free(cfile);
+			return -1;
+		}
+	}
+
+	ctrl_conn = wpa_ctrl_open2(cfile, client_socket_dir);
+	if (ctrl_conn == NULL) {
+		os_free(cfile);
+		return -1;
+	}
+#endif /* CONFIG_CTRL_IFACE_DIR2 */
 
 	if (attach && interactive)
 		mon_conn = wpa_ctrl_open2(cfile, client_socket_dir);
@@ -5012,6 +5038,36 @@ static char * wpa_cli_get_default_ifname(void)
 	struct dirent *dent;
 	DIR *dir = opendir(ctrl_iface_dir);
 	if (!dir) {
+#ifdef CONFIG_CTRL_IFACE_DIR2
+		goto try2;
+#endif /* ifdef CONFIG_CTRL_IFACE_DIR2 */
+		return NULL;
+	}
+	while ((dent = readdir(dir))) {
+#ifdef _DIRENT_HAVE_D_TYPE
+		/*
+		 * Skip the file if it is not a socket. Also accept
+		 * DT_UNKNOWN (0) in case the C library or underlying
+		 * file system does not support d_type.
+		 */
+		if (dent->d_type != DT_SOCK && dent->d_type != DT_UNKNOWN)
+			continue;
+#endif /* _DIRENT_HAVE_D_TYPE */
+		/* Skip current/previous directory and special P2P Device
+		 * interfaces. */
+		if (os_strcmp(dent->d_name, ".") == 0 ||
+		    os_strcmp(dent->d_name, "..") == 0 ||
+		    os_strncmp(dent->d_name, "p2p-dev-", 8) == 0)
+			continue;
+		printf("Selected interface '%s'\n", dent->d_name);
+		ifname = os_strdup(dent->d_name);
+		goto found;
+	}
+	closedir(dir);
+#ifdef CONFIG_CTRL_IFACE_DIR2
+try2:
+	dir = opendir(CONFIG_CTRL_IFACE_DIR2);
+	if (!dir) {
 		return NULL;
 	}
 	while ((dent = readdir(dir))) {
@@ -5035,6 +5091,7 @@ static char * wpa_cli_get_default_ifname(void)
 		break;
 	}
 	closedir(dir);
+#endif /* CONFIG_CTRL_IFACE_DIR2 */
 #endif /* CONFIG_CTRL_IFACE_UNIX */
 
 #ifdef CONFIG_CTRL_IFACE_NAMED_PIPE
@@ -5060,6 +5117,7 @@ static char * wpa_cli_get_default_ifname(void)
 #endif /* CONFIG_CTRL_IFACE_NAMED_PIPE */
 #endif /* ANDROID */
 
+found:
 	return ifname;
 }
 
