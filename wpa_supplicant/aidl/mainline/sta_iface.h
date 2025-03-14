@@ -23,9 +23,9 @@ class StaIface : public BnStaInterface {
             const std::shared_ptr<IStaInterfaceCallback>& in_callback) override;
         ::ndk::ScopedAStatus getUsdCapabilities(UsdCapabilities* _aidl_return) override;
         ::ndk::ScopedAStatus startUsdPublish(int32_t in_cmdId,
-            const PublishConfig& in_usdPublishConfig) override;
+            const UsdPublishConfig& in_publishConfig) override;
         ::ndk::ScopedAStatus startUsdSubscribe(int32_t in_cmdId,
-            const SubscribeConfig& in_usdSubscribeConfig) override;
+            const UsdSubscribeConfig& in_subscribeConfig) override;
         ::ndk::ScopedAStatus updateUsdPublish(int32_t in_publishId,
             const std::vector<uint8_t>& in_serviceSpecificInfo) override;
         ::ndk::ScopedAStatus cancelUsdPublish(int32_t in_publishId) override;

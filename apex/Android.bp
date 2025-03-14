@@ -6,6 +6,19 @@ prebuilt_etc {
     installable: false,
 }
 
+genrule {
+    name: "com.android.hardware.hostapd.rc-gen",
+    srcs: ["android.hardware.hostapd.rc"],
+    out: ["com.android.hardware.hostapd.rc"],
+    cmd: "sed -E 's@/vendor/bin@/apex/com.android.hardware.wpa_supplicant/bin@' $(in) > $(out)",
+}
+
+prebuilt_etc {
+    name: "com.android.hardware.hostapd.rc",
+    src: ":com.android.hardware.hostapd.rc-gen",
+    installable: false,
+}
+
 apex {
     name: "com.android.hardware.wpa_supplicant",
     manifest: "apex_manifest.json",

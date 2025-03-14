@@ -21,12 +21,12 @@ StaIface::StaIface(struct wpa_global* wpa_global, std::string iface_name)
 }
 
 ::ndk::ScopedAStatus StaIface::startUsdPublish(int32_t in_cmdId,
-        const PublishConfig& in_usdPublishConfig) {
+        const UsdPublishConfig& in_publishConfig) {
     return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus StaIface::startUsdSubscribe(int32_t in_cmdId,
-        const SubscribeConfig& in_usdSubscribeConfig) {
+        const UsdSubscribeConfig& in_subscribeConfig) {
     return ndk::ScopedAStatus::ok();
 }
 
