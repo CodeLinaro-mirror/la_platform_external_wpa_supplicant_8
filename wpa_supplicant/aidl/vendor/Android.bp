@@ -58,6 +58,7 @@ cc_library_static {
     header_libs: [
         "wpa_supplicant_headers",
         "libwpa_aidl_headers",
+        "libwpa_shared_aidl_headers_vendor",
     ],
 }
 
