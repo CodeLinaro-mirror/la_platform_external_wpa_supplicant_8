@@ -52,7 +52,7 @@ ndk::ScopedAStatus MainlineSupplicant::addStaInterface(const std::string& ifaceN
     std::shared_ptr<IStaInterface> staIface =
         ndk::SharedRefBase::make<StaIface>(wpa_global_, ifaceName);
     active_sta_ifaces_[ifaceName] = staIface;
-    _aidl_return = &staIface;
+    *_aidl_return = staIface;
 
     wpa_printf(MSG_INFO, "Interface %s was added successfully", ifaceName.c_str());
     return ndk::ScopedAStatus::ok();
