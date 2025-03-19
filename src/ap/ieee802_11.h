@@ -63,7 +63,7 @@ u8 * hostapd_eid_ht_operation(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_vht_capabilities(struct hostapd_data *hapd, u8 *eid, u32 nsts);
 u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_vendor_vht(struct hostapd_data *hapd, u8 *eid);
-u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid);
+u8 * hostapd_eid_chsw_wrapper(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 			  enum ieee80211_op_mode opmode);
@@ -129,11 +129,12 @@ u16 copy_sta_he_6ghz_capab(struct hostapd_data *hapd, struct sta_info *sta,
 			   const u8 *he_6ghz_capab);
 int hostapd_get_he_twt_responder(struct hostapd_data *hapd,
 				 enum ieee80211_op_mode mode);
+bool hostapd_get_ht_vht_twt_responder(struct hostapd_data *hapd);
+void hostapd_wfa_capab(struct hostapd_data *hapd, struct sta_info *sta,
+		       const u8 *pos, const u8 *end);
 u8 * hostapd_eid_cca(struct hostapd_data *hapd, u8 *eid);
 void hostapd_tx_status(struct hostapd_data *hapd, const u8 *addr,
 		       const u8 *buf, size_t len, int ack);
-void hostapd_eapol_tx_status(struct hostapd_data *hapd, const u8 *dst,
-			     const u8 *data, size_t len, int ack);
 void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
 				int wds);
 u8 * hostapd_eid_assoc_comeback_time(struct hostapd_data *hapd,
@@ -148,7 +149,8 @@ u8 * hostapd_eid_time_adv(struct hostapd_data *hapd, u8 *eid);
 u8 * hostapd_eid_time_zone(struct hostapd_data *hapd, u8 *eid);
 int hostapd_update_time_adv(struct hostapd_data *hapd);
 void hostapd_client_poll_ok(struct hostapd_data *hapd, const u8 *addr);
-u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid);
+u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
+				     u16 value);
 
 int auth_sae_init_committed(struct hostapd_data *hapd, struct sta_info *sta);
 #ifdef CONFIG_SAE
@@ -227,8 +229,10 @@ void auth_sae_process_commit(void *eloop_ctx, void *user_ctx);
 u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len);
 u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
 		    const u8 *ext_capab_ie, size_t ext_capab_ie_len);
-size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type);
-u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type);
+size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type,
+			   bool include_mld_params);
+u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type,
+		     bool include_mld_params);
 int ieee802_11_set_radius_info(struct hostapd_data *hapd, struct sta_info *sta,
 			       int res, struct radius_sta *info);
 size_t hostapd_eid_eht_capab_len(struct hostapd_data *hapd,

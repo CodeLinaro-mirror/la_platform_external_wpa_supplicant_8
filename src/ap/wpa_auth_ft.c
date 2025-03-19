@@ -2247,8 +2247,7 @@ static u8 * wpa_ft_gtk_subelem(struct wpa_state_machine *sm, size_t *len)
 		pad_len += 8;
 	if (pad_len && key_len < sizeof(keybuf)) {
 		os_memcpy(keybuf, gsm->GTK[gsm->GN - 1], key_len);
-		if (conf->disable_gtk ||
-		    sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+		if (conf->disable_gtk) {
 			/*
 			 * Provide unique random GTK to each STA to prevent use
 			 * of GTK in the BSS.
@@ -2260,7 +2259,7 @@ static u8 * wpa_ft_gtk_subelem(struct wpa_state_machine *sm, size_t *len)
 		keybuf[key_len] = 0xdd;
 		key_len += pad_len;
 		key = keybuf;
-	} else if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+	} else if (conf->disable_gtk) {
 		/*
 		 * Provide unique random GTK to each STA to prevent use of GTK
 		 * in the BSS.
@@ -2339,7 +2338,7 @@ static u8 * wpa_ft_igtk_subelem(struct wpa_state_machine *sm, size_t *len)
 	pos += 6;
 	*pos++ = igtk_len;
 	igtk = gsm->IGTK[gsm->GN_igtk - 4];
-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+	if (conf->disable_gtk) {
 		/*
 		 * Provide unique random IGTK to each STA to prevent use of
 		 * IGTK in the BSS.
@@ -2372,7 +2371,6 @@ static u8 * wpa_ft_bigtk_subelem(struct wpa_state_machine *sm, size_t *len)
 	const u8 *kek, *bigtk;
 	size_t kek_len;
 	size_t bigtk_len;
-	u8 stub_bigtk[WPA_IGTK_MAX_LEN];
 
 	if (wpa_key_mgmt_fils(sm->wpa_key_mgmt)) {
 		kek = sm->PTK.kek2;
@@ -2400,17 +2398,6 @@ static u8 * wpa_ft_bigtk_subelem(struct wpa_state_machine *sm, size_t *len)
 	pos += 6;
 	*pos++ = bigtk_len;
 	bigtk = gsm->BIGTK[gsm->GN_bigtk - 6];
-	if (sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
-		/*
-		 * Provide unique random BIGTK to each OSEN STA to prevent use
-		 * of BIGTK in the BSS.
-		 */
-		if (random_get_bytes(stub_bigtk, bigtk_len / 8) < 0) {
-			os_free(subelem);
-			return NULL;
-		}
-		bigtk = stub_bigtk;
-	}
 	if (aes_wrap(kek, kek_len, bigtk_len / 8, bigtk, pos)) {
 		wpa_printf(MSG_DEBUG,
 			   "FT: BIGTK subelem encryption failed: kek_len=%d",
@@ -3442,9 +3429,9 @@ out:
 }
 
 
-void wpa_ft_process_auth(struct wpa_state_machine *sm, const u8 *bssid,
+void wpa_ft_process_auth(struct wpa_state_machine *sm,
 			 u16 auth_transaction, const u8 *ies, size_t ies_len,
-			 void (*cb)(void *ctx, const u8 *dst, const u8 *bssid,
+			 void (*cb)(void *ctx, const u8 *dst,
 				    u16 auth_transaction, u16 status,
 				    const u8 *ies, size_t ies_len),
 			 void *ctx)
@@ -3462,7 +3449,8 @@ void wpa_ft_process_auth(struct wpa_state_machine *sm, const u8 *bssid,
 
 	wpa_printf(MSG_DEBUG, "FT: Received authentication frame: STA=" MACSTR
 		   " BSSID=" MACSTR " transaction=%d",
-		   MAC2STR(sm->addr), MAC2STR(bssid), auth_transaction);
+		   MAC2STR(sm->addr), MAC2STR(sm->wpa_auth->addr),
+		   auth_transaction);
 	sm->ft_pending_cb = cb;
 	sm->ft_pending_cb_ctx = ctx;
 	sm->ft_pending_auth_transaction = auth_transaction;
@@ -3480,8 +3468,7 @@ void wpa_ft_process_auth(struct wpa_state_machine *sm, const u8 *bssid,
 		   MAC2STR(sm->addr), auth_transaction + 1, status,
 		   status2str(status));
 	wpa_hexdump(MSG_DEBUG, "FT: Response IEs", resp_ies, resp_ies_len);
-	cb(ctx, sm->addr, bssid, auth_transaction + 1, status,
-	   resp_ies, resp_ies_len);
+	cb(ctx, sm->addr, auth_transaction + 1, status, resp_ies, resp_ies_len);
 	os_free(resp_ies);
 }
 
@@ -3810,7 +3797,7 @@ int wpa_ft_action_rx(struct wpa_state_machine *sm, const u8 *data, size_t len)
 }
 
 
-static void wpa_ft_rrb_rx_request_cb(void *ctx, const u8 *dst, const u8 *bssid,
+static void wpa_ft_rrb_rx_request_cb(void *ctx, const u8 *dst,
 				     u16 auth_transaction, u16 resp,
 				     const u8 *ies, size_t ies_len)
 {
@@ -4339,7 +4326,7 @@ static void ft_finish_pull(struct wpa_state_machine *sm)
 	wpa_printf(MSG_DEBUG, "FT: Postponed auth callback result for " MACSTR
 		   " - status %u", MAC2STR(sm->addr), status);
 
-	sm->ft_pending_cb(sm->ft_pending_cb_ctx, sm->addr, sm->wpa_auth->addr,
+	sm->ft_pending_cb(sm->ft_pending_cb_ctx, sm->addr,
 			  sm->ft_pending_auth_transaction + 1, status,
 			  resp_ies, resp_ies_len);
 	os_free(resp_ies);

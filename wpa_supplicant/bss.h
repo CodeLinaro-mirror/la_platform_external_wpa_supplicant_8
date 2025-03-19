@@ -61,9 +61,6 @@ struct wpa_bss_anqp {
 	struct wpabuf *hs20_wan_metrics;
 	struct wpabuf *hs20_connection_capability;
 	struct wpabuf *hs20_operating_class;
-	struct wpabuf *hs20_osu_providers_list;
-	struct wpabuf *hs20_operator_icon_metadata;
-	struct wpabuf *hs20_osu_providers_nai_list;
 #endif /* CONFIG_HS20 */
 };
 
@@ -165,6 +162,9 @@ void wpa_bss_flush(struct wpa_supplicant *wpa_s);
 void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age);
 struct wpa_bss * wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
 			     const u8 *ssid, size_t ssid_len);
+struct wpa_bss * wpa_bss_get_connection(struct wpa_supplicant *wpa_s,
+					const u8 *bssid,
+					const u8 *ssid, size_t ssid_len);
 struct wpa_bss * wpa_bss_get_bssid(struct wpa_supplicant *wpa_s,
 				   const u8 *bssid);
 struct wpa_bss * wpa_bss_get_bssid_latest(struct wpa_supplicant *wpa_s,
@@ -175,6 +175,7 @@ struct wpa_bss * wpa_bss_get_id(struct wpa_supplicant *wpa_s, unsigned int id);
 struct wpa_bss * wpa_bss_get_id_range(struct wpa_supplicant *wpa_s,
 				      unsigned int idf, unsigned int idl);
 const u8 * wpa_bss_get_ie(const struct wpa_bss *bss, u8 ie);
+const u8 * wpa_bss_get_ie_beacon(const struct wpa_bss *bss, u8 ie);
 const u8 * wpa_bss_get_ie_ext(const struct wpa_bss *bss, u8 ext);
 const u8 * wpa_bss_get_vendor_ie(const struct wpa_bss *bss, u32 vendor_type);
 const u8 * wpa_bss_get_vendor_ie_beacon(const struct wpa_bss *bss,
@@ -224,5 +225,12 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
 				   u8 *ap_mld_id);
 u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 				    struct wpa_bss *bss);
+
+const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			    bool mlo);
+const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+			     const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			     bool mlo);
 
 #endif /* BSS_H */
