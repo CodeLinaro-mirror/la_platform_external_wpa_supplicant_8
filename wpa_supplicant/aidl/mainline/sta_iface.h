@@ -35,6 +35,8 @@ class StaIface : public BnStaInterface {
     private:
         wpa_global* wpa_global_;
         std::string iface_name_;
+
+        struct wpa_supplicant* retrieveIfacePtr();
 };
 
 #endif // MAINLINE_SUPPLICANT_STA_IFACE_H

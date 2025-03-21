@@ -1427,6 +1427,7 @@ wpa_supplicant_cc_binary {
         "wpa_supplicant_mainline_srcs_default",
         "wpa_supplicant_includes_default",
         "wpa_supplicant_mainline_cflags_default",
+        "wpa_supplicant_usd_defaults",
     ],
     apex_available: [
         "//apex_available:platform",
@@ -1465,6 +1466,7 @@ cc_fuzz {
         "wpa_supplicant_includes_default",
         "wpa_supplicant_mainline_cflags_default",
         "wpa_supplicant_mainline_srcs_default",
+        "wpa_supplicant_usd_defaults",
     ],
     shared_libs: [
         "android.system.wifi.mainline_supplicant-ndk",
