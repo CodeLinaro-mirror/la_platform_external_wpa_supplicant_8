@@ -9,6 +9,8 @@
 #ifndef MAINLINE_SUPPLICANT_UTILS_H
 #define MAINLINE_SUPPLICANT_UTILS_H
 
+#include "callback_manager.h"
+
 #include <aidl/android/system/wifi/mainline_supplicant/SupplicantStatusCode.h>
 
 extern "C"
@@ -58,6 +60,28 @@ inline wpabuf_unique_ptr createWpaBufUniquePtr(struct wpabuf *raw_ptr) {
 // Create a wpabuf ptr with a custom deleter, copying the data from the provided vector
 inline wpabuf_unique_ptr convertVectorToWpaBuf(const std::vector<uint8_t> &data) {
     return createWpaBufUniquePtr(wpabuf_alloc_copy(data.data(), data.size()));
+}
+
+// Convert a byte array representation of a MAC address to an std::array
+inline std::array<uint8_t, ETH_ALEN> macAddrBytesToArray(const uint8_t* mac_addr) {
+    std::array<uint8_t, ETH_ALEN> arr;
+    std::copy(mac_addr, mac_addr + ETH_ALEN, std::begin(arr));
+    return arr;
+}
+
+// Convert a byte array to an std::vector
+inline std::vector<uint8_t> byteArrToVec(const uint8_t* arr, int len) {
+    return std::vector<uint8_t>{arr, arr + len};
+}
+
+// Wrapper to retrieve a STA iface callback registered with the callback manager
+static std::shared_ptr<IStaInterfaceCallback> getStaIfaceCallback(
+        std::string ifaceName) {
+    CallbackManager* callback_manager = CallbackManager::getInstance();
+    if (!callback_manager) {
+        return nullptr;
+    }
+    return callback_manager->getStaIfaceCallback(ifaceName);
 }
 
 #endif // MAINLINE_SUPPLICANT_UTILS_H

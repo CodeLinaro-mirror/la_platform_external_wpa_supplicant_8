@@ -111,11 +111,6 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
 			elems->hs20 = pos;
 			elems->hs20_len = elen;
 			break;
-		case HS20_OSEN_OUI_TYPE:
-			/* Hotspot 2.0 OSEN */
-			elems->osen = pos;
-			elems->osen_len = elen;
-			break;
 		case MBO_OUI_TYPE:
 			/* MBO-OCE */
 			elems->mbo = pos;
@@ -2586,6 +2581,9 @@ const u8 * get_vendor_ie(const u8 *ies, size_t len, u32 vendor_type)
 {
 	const struct element *elem;
 
+	if (!ies)
+		return NULL;
+
 	for_each_element_id(elem, WLAN_EID_VENDOR_SPECIFIC, ies, len) {
 		if (elem->datalen >= 4 &&
 		    vendor_type == WPA_GET_BE32(elem->data))
@@ -3411,7 +3409,7 @@ int chwidth_freq2_to_ch_width(int chwidth, int freq2)
 struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
 {
 	struct wpabuf *buf;
-	const u8 *pos, *end = data + len;
+	const u8 *pos, *end;
 	size_t min_defrag_len = ext_elem ? 255 : 256;
 
 	if (!data || !len)
@@ -3425,6 +3423,7 @@ struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
 		return NULL;
 
 	pos = &data[min_defrag_len - 1];
+	end = data + len;
 	len -= min_defrag_len - 1;
 	while (len > 2 && pos[0] == WLAN_EID_FRAGMENT && pos[1]) {
 		int ret;

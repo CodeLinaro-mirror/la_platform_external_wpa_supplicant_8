@@ -253,8 +253,9 @@ private:
 		const std::vector<uint8_t>& go_device_address,
 		const std::vector<uint8_t>& peer_address);
 	ndk::ScopedAStatus reinvokeInternal(
+		const std::vector<uint8_t>& peer_address,
 		int32_t persistent_network_id,
-		const std::vector<uint8_t>& peer_address);
+		int32_t device_identity_entry_id);
 	ndk::ScopedAStatus configureExtListenInternal(
 		uint32_t period_in_millis, uint32_t interval_in_millis);
 	ndk::ScopedAStatus setListenChannelInternal(

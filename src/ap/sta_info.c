@@ -419,7 +419,6 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 	hostapd_free_psk_list(sta->psk);
 	os_free(sta->identity);
 	os_free(sta->radius_cui);
-	os_free(sta->remediation_url);
 	os_free(sta->t_c_url);
 	wpabuf_free(sta->hs20_deauth_req);
 	os_free(sta->hs20_session_info_url);
@@ -947,7 +946,8 @@ static void ap_sta_disassoc_cb_timeout(void *eloop_ctx, void *timeout_ctx)
 
 
 static void ap_sta_disconnect_common(struct hostapd_data *hapd,
-				     struct sta_info *sta, unsigned int timeout)
+				     struct sta_info *sta, unsigned int timeout,
+				     bool free_1x)
 {
 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
 
@@ -961,7 +961,8 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
 	eloop_cancel_timeout(ap_handle_timer, hapd, sta);
 	eloop_register_timeout(timeout, 0, ap_handle_timer, hapd, sta);
 	accounting_sta_stop(hapd, sta);
-	ieee802_1x_free_station(hapd, sta);
+	if (free_1x)
+		ieee802_1x_free_station(hapd, sta);
 #ifdef CONFIG_IEEE80211BE
 	if (!hapd->conf->mld_ap ||
 	    hapd->mld_link_id == sta->mld_assoc_link_id) {
@@ -1005,7 +1006,8 @@ static void ap_sta_handle_disassociate(struct hostapd_data *hapd,
 		sta->timeout_next = STA_DEAUTH;
 	}
 
-	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DISASSOC);
+	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DISASSOC,
+				 true);
 	ap_sta_disassociate_common(hapd, sta, reason);
 }
 
@@ -1043,7 +1045,8 @@ static void ap_sta_handle_deauthenticate(struct hostapd_data *hapd,
 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
 
 	sta->timeout_next = STA_REMOVE;
-	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH);
+	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH,
+				 true);
 	ap_sta_deauthenticate_common(hapd, sta, reason);
 }
 
@@ -1060,7 +1063,8 @@ static void ap_sta_handle_disconnect(struct hostapd_data *hapd,
 	sta->timeout_next = STA_REMOVE;
 
 	sta->deauth_reason = reason;
-	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH);
+	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH,
+				 false);
 	ap_sta_deauthenticate_common(hapd, sta, reason);
 }
 
@@ -1767,7 +1771,7 @@ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
 
 	buf[0] = '\0';
 	res = os_snprintf(buf, buflen,
-			  "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+			  "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 			  (flags & WLAN_STA_AUTH ? "[AUTH]" : ""),
 			  (flags & WLAN_STA_ASSOC ? "[ASSOC]" : ""),
 			  (flags & WLAN_STA_AUTHORIZED ? "[AUTHORIZED]" : ""),
@@ -1790,6 +1794,7 @@ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
 			  (flags & WLAN_STA_EHT ? "[EHT]" : ""),
 			  (flags & WLAN_STA_6GHZ ? "[6GHZ]" : ""),
 			  (flags & WLAN_STA_VENDOR_VHT ? "[VENDOR_VHT]" : ""),
+			  (flags & WLAN_STA_SPP_AMSDU ? "[SPP-A-MSDU]" : ""),
 			  (flags & WLAN_STA_WNM_SLEEP_MODE ?
 			   "[WNM_SLEEP_MODE]" : ""));
 	if (os_snprintf_error(buflen, res))

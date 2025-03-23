@@ -6,6 +6,7 @@
  * See README for more details.
  */
 
+#include "callback_manager.h"
 #include "sta_iface.h"
 #include "usd_utils.h"
 
@@ -24,8 +25,14 @@ struct wpa_supplicant* StaIface::retrieveIfacePtr() {
 }
 
 ::ndk::ScopedAStatus StaIface::registerCallback(
-        const std::shared_ptr<IStaInterfaceCallback>& in_callback) {
-    return ndk::ScopedAStatus::ok();
+        const std::shared_ptr<IStaInterfaceCallback>& callback) {
+    CallbackManager* callbackManager = CallbackManager::getInstance();
+    WPA_ASSERT(callbackManager);
+    if (callbackManager->registerStaIfaceCallback(iface_name_, callback)) {
+        return ndk::ScopedAStatus::ok();
+    } else {
+        return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+    }
 }
 
 ::ndk::ScopedAStatus StaIface::getUsdCapabilities(UsdCapabilities* _aidl_return) {
@@ -64,7 +71,18 @@ struct wpa_supplicant* StaIface::retrieveIfacePtr() {
         convertAidlServiceProtoTypeToInternal(
             publishConfig.baseConfig.serviceProtoType),
         ssiBuffer.get(), &nanPublishParams, false /* p2p */);
-    // TODO: Return status code in a callback
+
+    // Core supplicant does not have an internal callback for USD publish,
+    // so invoke the failure callback directly if needed.
+    if (publishId < 0) {
+        wpa_printf(MSG_INFO, "Failed to configure USD publish");
+        auto callback = getStaIfaceCallback(iface_name_);
+        if (callback) {
+            callback->onUsdPublishConfigFailed(
+                cmdId, IStaInterfaceCallback::UsdConfigErrorCode::FAILURE_UNKNOWN);
+        }
+        return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+    }
     return ndk::ScopedAStatus::ok();
 }
 
@@ -91,7 +109,18 @@ struct wpa_supplicant* StaIface::retrieveIfacePtr() {
         convertAidlServiceProtoTypeToInternal(
             subscribeConfig.baseConfig.serviceProtoType),
         ssiBuffer.get(), &nanSubscribeParams, false /* p2p */);
-    // TODO: Return status code in a callback
+
+    // Core supplicant does not have an internal callback for USD subscribe,
+    // so invoke the failure callback directly if needed.
+    if (subscribeId < 0) {
+        wpa_printf(MSG_INFO, "Failed to configure USD subscribe");
+        auto callback = getStaIfaceCallback(iface_name_);
+        if (callback) {
+            callback->onUsdSubscribeConfigFailed(
+                cmdId, IStaInterfaceCallback::UsdConfigErrorCode::FAILURE_UNKNOWN);
+        }
+        return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+    }
     return ndk::ScopedAStatus::ok();
 }
 

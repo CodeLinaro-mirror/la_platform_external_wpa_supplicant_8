@@ -150,4 +150,47 @@ static nan_service_protocol_type convertAidlServiceProtoTypeToInternal(
     };
 }
 
+static UsdServiceProtoType convertInternalUsdServiceProtoTypeToAidl(
+        nan_service_protocol_type protocolType) {
+    switch (protocolType) {
+        case NAN_SRV_PROTO_GENERIC:
+            return UsdServiceProtoType::GENERIC;
+        case NAN_SRV_PROTO_CSA_MATTER:
+            return UsdServiceProtoType::CSA_MATTER;
+        default:
+            wpa_printf(MSG_ERROR, "Received invalid USD proto type %d from internal",
+                static_cast<int>(protocolType));
+            return UsdServiceProtoType::GENERIC;
+    }
+}
+
+static IStaInterfaceCallback::UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
+        enum nan_service_protocol_type srv_proto_type,
+        int own_id, int peer_id, const u8 *peer_addr,
+        bool fsd, const u8 *ssi, size_t ssi_len) {
+    IStaInterfaceCallback::UsdServiceDiscoveryInfo discoveryInfo;
+    discoveryInfo.ownId = own_id;
+    discoveryInfo.peerId = peer_id;
+    // TODO: Fill the matchFilter field in the AIDL struct
+    discoveryInfo.matchFilter = std::vector<uint8_t>();
+    discoveryInfo.peerMacAddress = macAddrBytesToArray(peer_addr);
+    discoveryInfo.serviceProtoType = convertInternalUsdServiceProtoTypeToAidl(srv_proto_type);
+    discoveryInfo.serviceSpecificInfo = ssi ? byteArrToVec(ssi, ssi_len) : std::vector<uint8_t>();
+    discoveryInfo.isFsd = fsd;
+    return discoveryInfo;
+}
+
+static IStaInterfaceCallback::UsdTerminateReasonCode convertInternalUsdTerminateReasonCodeToAidl(
+        nan_de_reason terminateReason) {
+    switch (terminateReason) {
+        case NAN_DE_REASON_TIMEOUT:
+            return IStaInterfaceCallback::UsdTerminateReasonCode::TIMEOUT;
+        case NAN_DE_REASON_USER_REQUEST:
+            return IStaInterfaceCallback::UsdTerminateReasonCode::USER_REQUESTED;
+        case NAN_DE_REASON_FAILURE:
+        default:
+            return IStaInterfaceCallback::UsdTerminateReasonCode::FAILURE_UNKNOWN;
+    }
+}
+
 #endif // MAINLINE_SUPPLICANT_USD_UTILS_H
