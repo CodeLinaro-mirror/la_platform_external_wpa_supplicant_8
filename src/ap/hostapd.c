@@ -1784,6 +1784,13 @@ int hostapd_set_acl(struct hostapd_data *hapd)
 
 	if (hapd->iface->drv_max_acl_mac_addrs == 0)
 		return 0;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap) {
+		wpa_printf(MSG_DEBUG, "NL80211 doesn't support offloaded ACL."
+			   " use hostapd based ACL instead.");
+		return 0;
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	if (conf->bss[0]->macaddr_acl == DENY_UNLESS_ACCEPTED) {
 		accept_acl = 1;
@@ -3270,6 +3277,7 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 {
 	struct hostapd_iface *new_iface = NULL, *iface = NULL;
 	struct hostapd_data *hapd;
+	struct hostapd_config *conf;
 	int k;
 	size_t i, bss_idx;
 
@@ -3285,17 +3293,26 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 
 	wpa_printf(MSG_INFO, "Configuration file: %s (phy %s)%s",
 		   config_fname, phy, iface ? "" : " --> new PHY");
+
+	conf = interfaces->config_read_cb(config_fname);
+	if (!conf)
+		return NULL;
+
+#ifdef CONFIG_IEEE80211BE
+	/* AP MLD can be enabled with the same interface name, so even if we
+	 * get the interface, we still need to allocate a new hostapd_iface
+	 * structure. */
+	if (conf->bss[0]->mld_ap)
+		iface = NULL;
+#endif /* CONFIG_IEEE80211BE */
+
 	if (iface) {
-		struct hostapd_config *conf;
 		struct hostapd_bss_config **tmp_conf;
 		struct hostapd_data **tmp_bss;
 		struct hostapd_bss_config *bss;
 		const char *ifname;
 
 		/* Add new BSS to existing iface */
-		conf = interfaces->config_read_cb(config_fname);
-		if (conf == NULL)
-			return NULL;
 		if (conf->num_bss > 1) {
 			wpa_printf(MSG_ERROR, "Multiple BSSes specified in BSS-config");
 			hostapd_config_free(conf);
@@ -3345,6 +3362,8 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 		conf->bss[0] = NULL;
 		hostapd_config_free(conf);
 	} else {
+		hostapd_config_free(conf);
+
 		/* Add a new iface with the first BSS */
 		new_iface = iface = hostapd_init(interfaces, config_fname);
 		if (!iface)
@@ -4007,6 +4026,22 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 
 	ap_sta_clear_disconnect_timeouts(hapd, sta);
 	ap_sta_clear_assoc_timeout(hapd, sta);
+
+#ifdef CONFIG_IEEE80211BE
+	if (ap_sta_is_mld(hapd, sta)) {
+		struct hostapd_data *bss;
+		struct sta_info *lsta;
+
+		for_each_mld_link(bss, hapd) {
+			if (bss == hapd)
+				continue;
+			lsta = ap_get_sta(bss, sta->addr);
+			if (lsta)
+				ap_sta_clear_assoc_timeout(bss, lsta);
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 	sta->post_csa_sa_query = 0;
 
 #ifdef CONFIG_P2P

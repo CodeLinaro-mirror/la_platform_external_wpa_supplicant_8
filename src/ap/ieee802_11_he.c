@@ -70,7 +70,10 @@ static int ieee80211_invalid_he_cap_size(const u8 *buf, size_t len)
 	u8 ppe_thres_hdr;
 
 	cap = (struct ieee80211_he_capabilities *) buf;
-	cap_len = sizeof(*cap) - sizeof(cap->optional);
+
+	/* he_basic_supported_mcs_set is also not mandatory */
+	cap_len = sizeof(*cap) - sizeof(cap->optional)
+		  - sizeof(cap->he_basic_supported_mcs_set);
 	if (len < cap_len)
 		return 1;
 

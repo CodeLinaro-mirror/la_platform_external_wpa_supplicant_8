@@ -404,8 +404,11 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	 * ACL if the driver supports ACL offload to avoid potentially
 	 * conflicting ACL rules.
 	 */
-	if (hapd->iface->drv_max_acl_mac_addrs == 0 &&
-	    hostapd_check_acl(hapd, addr, NULL) != HOSTAPD_ACL_ACCEPT) {
+	if ((hapd->iface->drv_max_acl_mac_addrs == 0
+#ifdef CONFIG_IEEE80211BE
+	     || hapd->conf->mld_ap
+#endif /* CONFIG_IEEE80211BE */
+	    ) && hostapd_check_acl(hapd, addr, NULL) != HOSTAPD_ACL_ACCEPT) {
 		wpa_printf(MSG_INFO, "STA " MACSTR " not allowed to connect",
 			   MAC2STR(addr));
 		reason = WLAN_REASON_UNSPECIFIED;
@@ -528,7 +531,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
 					  elems.mdie, elems.mdie_len,
-					  elems.owe_dh, elems.owe_dh_len, NULL);
+					  elems.owe_dh, elems.owe_dh_len, NULL,
+					  ap_sta_is_mld(hapd, sta));
 		reason = WLAN_REASON_INVALID_IE;
 		status = WLAN_STATUS_INVALID_IE;
 		switch (res) {
@@ -857,6 +861,12 @@ skip_wpa_check:
 	}
 #endif /* CONFIG_IEEE80211R_AP || CONFIG_FILS */
 
+	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
+	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
+	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
+
+	hostapd_set_sta_flags(hapd, sta);
+
 #ifdef CONFIG_IEEE80211BE
 	if (hostapd_process_assoc_ml_info(hapd, sta, req_ies, req_ies_len,
 					  !!reassoc, WLAN_STATUS_SUCCESS,
@@ -867,11 +877,6 @@ skip_wpa_check:
 	}
 #endif /* CONFIG_IEEE80211BE */
 
-	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
-	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
-	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
-
-	hostapd_set_sta_flags(hapd, sta);
 	if (updated)
 		ap_sta_set_authorized_event(hapd, sta, 1);
 
