@@ -1784,6 +1784,13 @@ int hostapd_set_acl(struct hostapd_data *hapd)
 
 	if (hapd->iface->drv_max_acl_mac_addrs == 0)
 		return 0;
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap) {
+		wpa_printf(MSG_DEBUG, "NL80211 doesn't support offloaded ACL."
+			   " use hostapd based ACL instead.");
+		return 0;
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 	if (conf->bss[0]->macaddr_acl == DENY_UNLESS_ACCEPTED) {
 		accept_acl = 1;

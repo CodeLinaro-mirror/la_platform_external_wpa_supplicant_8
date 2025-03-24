@@ -602,6 +602,32 @@ static int wpa_auth_okc_iter(struct wpa_authenticator *a, void *ctx)
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+
+struct wpa_auth_link_iter_data {
+	struct wpa_authenticator *wpa_auth;
+	struct rsn_pmksa_cache_entry *pmksa;
+	const u8 *spa;
+	const u8 *pmkid;
+};
+
+static int wpa_auth_pmksa_iter(struct wpa_authenticator *a, void *ctx)
+{
+	struct wpa_auth_link_iter_data *data = ctx;
+
+	if (a == data->wpa_auth ||
+	    !ether_addr_equal(a->mld_addr, data->wpa_auth->mld_addr))
+		return 0;
+
+	data->pmksa = pmksa_cache_auth_get(a->pmksa, data->spa, data->pmkid);
+	if (data->pmksa)
+		return 1;
+	return 0;
+}
+
+#endif /* CONFIG_IEEE80211BE */
+
+
 enum wpa_validate_result
 wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		    struct wpa_state_machine *sm, int freq,
@@ -609,7 +635,7 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		    const u8 *rsnxe, size_t rsnxe_len,
 		    const u8 *mdie, size_t mdie_len,
 		    const u8 *owe_dh, size_t owe_dh_len,
-		    struct wpa_state_machine *assoc_sm)
+		    struct wpa_state_machine *assoc_sm, bool is_ml)
 {
 	struct wpa_auth_config *conf = &wpa_auth->conf;
 	struct wpa_ie_data data;
@@ -983,10 +1009,35 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 
 	sm->pmksa = NULL;
 	for (i = 0; i < data.num_pmkid; i++) {
+		struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
+
 		wpa_hexdump(MSG_DEBUG, "RSN IE: STA PMKID",
 			    &data.pmkid[i * PMKID_LEN], PMKID_LEN);
-		sm->pmksa = pmksa_cache_auth_get(wpa_auth->pmksa, sm->addr,
+#ifdef CONFIG_IEEE80211BE
+		if (is_ml)
+			pmksa = wpa_auth->ml_pmksa;
+#endif /* CONFIG_IEEE80211BE */
+		sm->pmksa = pmksa_cache_auth_get(pmksa, sm->addr,
 						 &data.pmkid[i * PMKID_LEN]);
+#ifdef CONFIG_IEEE80211BE
+		if (!sm->pmksa && !is_ml && wpa_auth->is_ml)
+			sm->pmksa = pmksa_cache_auth_get(
+				wpa_auth->ml_pmksa, sm->addr,
+				&data.pmkid[i * PMKID_LEN]);
+		if (!sm->pmksa && is_ml) {
+			struct wpa_auth_link_iter_data idata;
+
+			idata.wpa_auth = wpa_auth;
+			idata.pmksa = NULL;
+			idata.spa = sm->addr;
+			idata.pmkid = &data.pmkid[i * PMKID_LEN];
+			wpa_auth_for_each_auth(wpa_auth,
+					       wpa_auth_pmksa_iter,
+					       &idata);
+			if (idata.pmksa)
+				sm->pmksa = idata.pmksa;
+		}
+#endif /* CONFIG_IEEE80211BE */
 		if (sm->pmksa) {
 			pmkid = sm->pmksa->pmkid;
 			break;
