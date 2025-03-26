@@ -1,22 +1,26 @@
 /*
- * WPA Supplicant - Interface for USD operations
+ * WPA Supplicant - Station mode interface
  * Copyright (c) 2024, Google Inc. All rights reserved.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
  */
 
-#ifndef MAINLINE_SUPPLICANT_USD_IFACE_H
-#define MAINLINE_SUPPLICANT_USD_IFACE_H
+#ifndef MAINLINE_SUPPLICANT_STA_IFACE_H
+#define MAINLINE_SUPPLICANT_STA_IFACE_H
 
-#include <aidl/android/system/wifi/mainline_supplicant/BnUsdInterface.h>
+#include <aidl/android/system/wifi/mainline_supplicant/BnStaInterface.h>
+#include <aidl/android/system/wifi/mainline_supplicant/IStaInterfaceCallback.h>
 
-using ::aidl::android::system::wifi::mainline_supplicant::BnUsdInterface;
+using ::aidl::android::system::wifi::mainline_supplicant::BnStaInterface;
+using ::aidl::android::system::wifi::mainline_supplicant::IStaInterfaceCallback;
 using ::aidl::android::system::wifi::mainline_supplicant::UsdMessageInfo;
 
-class UsdIface : public BnUsdInterface {
+class StaIface : public BnStaInterface {
     public:
-        UsdIface(struct wpa_global* wpa_global, std::string iface_name);
+        StaIface(struct wpa_global* wpa_global, std::string iface_name);
+        ::ndk::ScopedAStatus registerCallback(
+            const std::shared_ptr<IStaInterfaceCallback>& in_callback) override;
         ::ndk::ScopedAStatus getUsdCapabilities(UsdCapabilities* _aidl_return) override;
         ::ndk::ScopedAStatus startUsdPublish(int32_t in_cmdId,
             const PublishConfig& in_usdPublishConfig) override;
@@ -33,4 +37,4 @@ class UsdIface : public BnUsdInterface {
         std::string iface_name_;
 };
 
-#endif // MAINLINE_SUPPLICANT_USD_IFACE_H
+#endif // MAINLINE_SUPPLICANT_STA_IFACE_H
