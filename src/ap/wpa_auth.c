@@ -133,11 +133,8 @@ void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
 		return;
 
 	for_each_sm_auth(sm, link_id) {
-		if (link_id == release_link_id) {
-			wpa_group_put(sm->mld_links[link_id].wpa_auth,
-				      sm->mld_links[link_id].wpa_auth->group);
+		if (link_id == release_link_id)
 			sm->mld_links[link_id].wpa_auth = NULL;
-		}
 	}
 }
 
@@ -366,6 +363,25 @@ static inline int wpa_auth_start_ampe(struct wpa_authenticator *wpa_auth,
 	return wpa_auth->cb->start_ampe(wpa_auth->cb_ctx, addr);
 }
 #endif /* CONFIG_MESH */
+
+
+static inline int wpa_auth_get_drv_flags(struct wpa_authenticator *wpa_auth,
+					 u64 *drv_flags, u64 *drv_flags2)
+{
+	if (!wpa_auth->cb->get_drv_flags)
+		return -1;
+	return wpa_auth->cb->get_drv_flags(wpa_auth->cb_ctx, drv_flags,
+					   drv_flags2);
+}
+
+
+static bool wpa_auth_4way_handshake_offload(struct wpa_authenticator *wpa_auth)
+{
+	u64 drv_flags = 0, drv_flags2 = 0;
+
+	return wpa_auth_get_drv_flags(wpa_auth, &drv_flags, &drv_flags2) == 0 &&
+		(drv_flags2 &  WPA_DRIVER_FLAGS2_4WAY_HANDSHAKE_AP_PSK);
+}
 
 
 int wpa_auth_for_each_sta(struct wpa_authenticator *wpa_auth,
@@ -1003,7 +1019,13 @@ int wpa_auth_sta_associated(struct wpa_authenticator *wpa_auth,
 	if (wpa_sm_step(sm) == 1)
 		return 1; /* should not really happen */
 	sm->Init = false;
-	sm->AuthenticationRequest = true;
+
+	if (wpa_auth_4way_handshake_offload(sm->wpa_auth))
+		wpa_auth_logger(wpa_auth, sm->addr, LOGGER_DEBUG,
+				"Skip EAPOL for 4-way handshake offload case");
+	else
+		sm->AuthenticationRequest = true;
+
 	return wpa_sm_step(sm);
 }
 
@@ -1049,11 +1071,8 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
 	os_free(sm->rsnxe);
 	os_free(sm->rsn_selection);
 #ifdef CONFIG_IEEE80211BE
-	for_each_sm_auth(sm, link_id) {
-		wpa_group_put(sm->mld_links[link_id].wpa_auth,
-			      sm->mld_links[link_id].wpa_auth->group);
+	for_each_sm_auth(sm, link_id)
 		sm->mld_links[link_id].wpa_auth = NULL;
-	}
 #endif /* CONFIG_IEEE80211BE */
 	wpa_group_put(sm->wpa_auth, sm->group);
 #ifdef CONFIG_DPP2
@@ -2361,7 +2380,12 @@ int wpa_auth_sm_event(struct wpa_state_machine *sm, enum wpa_event event)
 			if (wpa_sm_step(sm) == 1)
 				return 1; /* should not really happen */
 			sm->Init = false;
-			sm->AuthenticationRequest = true;
+
+			if (wpa_auth_4way_handshake_offload(sm->wpa_auth))
+				wpa_printf(MSG_DEBUG,
+					   "Skip EAPOL for 4-way handshake offload case");
+			else
+				sm->AuthenticationRequest = true;
 			break;
 		}
 
@@ -3820,7 +3844,6 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 		key_data_buf_len = key_data_length;
 		if (aes_unwrap(PTK.kek, PTK.kek_len, key_data_length / 8,
 			       key_data, key_data_buf)) {
-			bin_clear_free(key_data_buf, key_data_buf_len);
 			wpa_printf(MSG_INFO,
 				   "RSN: AES unwrap failed - could not decrypt EAPOL-Key key data");
 			goto out;
@@ -6613,6 +6636,26 @@ wpa_auth_pmksa_get(struct wpa_authenticator *wpa_auth, const u8 *sta_addr,
 }
 
 
+int wpa_auth_pmksa_get_pmk(struct wpa_authenticator *wpa_auth,
+			   const u8 *sta_addr, const u8 **pmk, size_t *pmk_len,
+			   const u8 **pmkid)
+{
+	struct rsn_pmksa_cache_entry *pmksa;
+
+	pmksa = wpa_auth_pmksa_get(wpa_auth, sta_addr, NULL);
+	if (!pmksa) {
+		wpa_printf(MSG_DEBUG, "RSN: Failed to get PMKSA for " MACSTR,
+			   MAC2STR(sta_addr));
+		return -1;
+	}
+
+	*pmk = pmksa->pmk;
+	*pmk_len = pmksa->pmk_len;
+	*pmkid = pmksa->pmkid;
+	return 0;
+}
+
+
 void wpa_auth_pmksa_set_to_sm(struct rsn_pmksa_cache_entry *pmksa,
 			      struct wpa_state_machine *sm,
 			      struct wpa_authenticator *wpa_auth,
@@ -7467,11 +7510,8 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
 			ctx.wpa_auth = NULL;
 			wpa_auth_for_each_auth(sm->wpa_auth,
 					       wpa_get_link_sta_auth, &ctx);
-			if (ctx.wpa_auth) {
+			if (ctx.wpa_auth)
 				sm_link->wpa_auth = ctx.wpa_auth;
-				wpa_group_get(sm_link->wpa_auth,
-					      sm_link->wpa_auth->group);
-			}
 		} else {
 			sm_link->wpa_auth = sm->wpa_auth;
 		}
