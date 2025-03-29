@@ -39,6 +39,8 @@ u32 hostapd_sta_flags_to_drv(u32 flags)
 		res |= WPA_STA_AUTHENTICATED;
 	if (flags & WLAN_STA_ASSOC)
 		res |= WPA_STA_ASSOCIATED;
+	if (flags & WLAN_STA_SPP_AMSDU)
+		res |= WPA_STA_SPP_AMSDU;
 	return res;
 }
 
@@ -180,11 +182,6 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 
 #ifdef CONFIG_HS20
 	pos = hostapd_eid_hs20_indication(hapd, buf);
-	if (add_buf_data(&beacon, buf, pos - buf) < 0 ||
-	    add_buf_data(&proberesp, buf, pos - buf) < 0)
-		goto fail;
-
-	pos = hostapd_eid_osen(hapd, buf);
 	if (add_buf_data(&beacon, buf, pos - buf) < 0 ||
 	    add_buf_data(&proberesp, buf, pos - buf) < 0)
 		goto fail;

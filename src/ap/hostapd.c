@@ -162,7 +162,7 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
 	else
 		hostapd_set_drv_ieee8021x(hapd, hapd->conf->iface, 0);
 
-	if ((hapd->conf->wpa || hapd->conf->osen) && hapd->wpa_auth == NULL) {
+	if (hapd->conf->wpa && hapd->wpa_auth == NULL) {
 		hostapd_setup_wpa(hapd);
 		if (hapd->wpa_auth)
 			wpa_init_keys(hapd->wpa_auth);
@@ -358,7 +358,7 @@ static void hostapd_broadcast_key_clear_iface(struct hostapd_data *hapd,
 				   ifname, i);
 		}
 	}
-	if (hapd->conf->ieee80211w) {
+	if (ap_pmf_enabled(hapd->conf)) {
 		for (i = NUM_WEP_KEYS; i < NUM_WEP_KEYS + 2; i++) {
 			if (hostapd_drv_set_key(ifname, hapd, WPA_ALG_NONE,
 						NULL, i, 0, 0, NULL,
@@ -1671,7 +1671,7 @@ setup_mld:
 		return -1;
 	}
 
-	if ((conf->wpa || conf->osen) && hostapd_setup_wpa(hapd))
+	if (conf->wpa && hostapd_setup_wpa(hapd))
 		return -1;
 
 	if (accounting_init(hapd)) {
@@ -2765,7 +2765,7 @@ dfs_offload:
 		hostapd_neighbor_set_own_report(iface->bss[j]);
 
 	if (iface->interfaces && iface->interfaces->count > 1)
-		ieee802_11_set_beacons(iface);
+		ieee802_11_update_beacons(iface);
 
 	return 0;
 
@@ -2965,6 +2965,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
 #ifdef CONFIG_SAE
 	dl_list_init(&hapd->sae_commit_queue);
 #endif /* CONFIG_SAE */
+	dl_list_init(&hapd->erp_keys);
 
 	return hapd;
 }
@@ -3354,6 +3355,7 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 {
 	struct hostapd_iface *new_iface = NULL, *iface = NULL;
 	struct hostapd_data *hapd;
+	struct hostapd_config *conf;
 	int k;
 	size_t i, bss_idx;
 
@@ -3369,17 +3371,26 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 
 	wpa_printf(MSG_INFO, "Configuration file: %s (phy %s)%s",
 		   config_fname, phy, iface ? "" : " --> new PHY");
+
+	conf = interfaces->config_read_cb(config_fname);
+	if (!conf)
+		return NULL;
+
+#ifdef CONFIG_IEEE80211BE
+	/* AP MLD can be enabled with the same interface name, so even if we
+	 * get the interface, we still need to allocate a new hostapd_iface
+	 * structure. */
+	if (conf->bss[0]->mld_ap)
+		iface = NULL;
+#endif /* CONFIG_IEEE80211BE */
+
 	if (iface) {
-		struct hostapd_config *conf;
 		struct hostapd_bss_config **tmp_conf;
 		struct hostapd_data **tmp_bss;
 		struct hostapd_bss_config *bss;
 		const char *ifname;
 
 		/* Add new BSS to existing iface */
-		conf = interfaces->config_read_cb(config_fname);
-		if (conf == NULL)
-			return NULL;
 		if (conf->num_bss > 1) {
 			wpa_printf(MSG_ERROR, "Multiple BSSes specified in BSS-config");
 			hostapd_config_free(conf);
@@ -3429,6 +3440,8 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
 		conf->bss[0] = NULL;
 		hostapd_config_free(conf);
 	} else {
+		hostapd_config_free(conf);
+
 		/* Add a new iface with the first BSS */
 		new_iface = iface = hostapd_init(interfaces, config_fname);
 		if (!iface)
@@ -3463,21 +3476,24 @@ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
 		return;
 
 #ifdef CONFIG_IEEE80211BE
-	/* In case of non-ML operation, de-init. But if ML operation exist,
-	 * even if that's the last BSS in the interface, the driver (drv) could
-	 * be in use for a different AP MLD. Hence, need to check if drv is
-	 * still being used by some other BSS before de-initiallizing. */
-	if (!iface->bss[0]->conf->mld_ap) {
-		driver->hapd_deinit(drv_priv);
-	} else if (driver->is_drv_shared &&
-		   !driver->is_drv_shared(drv_priv,
-					  iface->bss[0]->mld_link_id)) {
+	if (!driver->is_drv_shared ||
+	    !driver->is_drv_shared(drv_priv, iface->bss[0]->mld_link_id)) {
 		driver->hapd_deinit(drv_priv);
 		hostapd_mld_interface_freed(iface->bss[0]);
-	} else if (hostapd_if_link_remove(iface->bss[0],
-					  WPA_IF_AP_BSS,
-					  iface->bss[0]->conf->iface,
-					  iface->bss[0]->mld_link_id)) {
+		iface->bss[0]->drv_priv = NULL;
+		return;
+	}
+
+	if (iface->bss[0]->conf->mld_ap) {
+		if (hostapd_if_link_remove(iface->bss[0],
+					WPA_IF_AP_BSS,
+					iface->bss[0]->conf->iface,
+					iface->bss[0]->mld_link_id))
+			wpa_printf(MSG_WARNING,
+				   "Failed to remove link BSS interface %s",
+				   iface->bss[0]->conf->iface);
+	} else if (hostapd_if_remove(iface->bss[0], WPA_IF_AP_BSS,
+				     iface->bss[0]->conf->iface)) {
 		wpa_printf(MSG_WARNING, "Failed to remove BSS interface %s",
 			   iface->bss[0]->conf->iface);
 	}
@@ -4089,6 +4105,22 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 
 	ap_sta_clear_disconnect_timeouts(hapd, sta);
 	ap_sta_clear_assoc_timeout(hapd, sta);
+
+#ifdef CONFIG_IEEE80211BE
+	if (ap_sta_is_mld(hapd, sta)) {
+		struct hostapd_data *bss;
+		struct sta_info *lsta;
+
+		for_each_mld_link(bss, hapd) {
+			if (bss == hapd)
+				continue;
+			lsta = ap_get_sta(bss, sta->addr);
+			if (lsta)
+				ap_sta_clear_assoc_timeout(bss, lsta);
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 	sta->post_csa_sa_query = 0;
 
 #ifdef CONFIG_P2P
@@ -4105,7 +4137,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 	/* Start accounting here, if IEEE 802.1X and WPA are not used.
 	 * IEEE 802.1X/WPA code will start accounting after the station has
 	 * been authorized. */
-	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa && !hapd->conf->osen) {
+	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa) {
 		if (ap_sta_set_authorized(hapd, sta, 1)) {
 			/* Update driver authorized flag for the STA to cover
 			 * the case where AP SME is in the driver and there is

@@ -367,7 +367,7 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
 	struct wpa_config *config;
 	static int id = 0;
 	static int cred_id = 0;
-	static int identity_id = 0;
+	static int identity_id = 1;
 
 	if (name == NULL)
 		return NULL;
@@ -698,6 +698,17 @@ static void write_p2p_client_list(FILE *f, struct wpa_ssid *ssid)
 }
 
 
+static void write_p2p2_client_list(FILE *f, struct wpa_ssid *ssid)
+{
+	char *value = wpa_config_get(ssid, "p2p2_client_list");
+
+	if (!value)
+		return;
+	fprintf(f, "\tp2p2_client_list=%s\n", value);
+	os_free(value);
+}
+
+
 static void write_psk_list(FILE *f, struct wpa_ssid *ssid)
 {
 	struct psk_list_entry *psk;
@@ -856,7 +867,9 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #endif /* IEEE8021X_EAPOL */
 	INT(mode);
 	INT(no_auto_peer);
-	INT(mesh_fwding);
+#ifdef CONFIG_MESH
+	INT_DEF(mesh_fwding, DEFAULT_MESH_FWDING);
+#endif /* CONFIG_MESH */
 	INT(frequency);
 	INT(enable_edmg);
 	INT(edmg_channel);
@@ -883,7 +896,9 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #ifdef CONFIG_P2P
 	write_go_p2p_dev_addr(f, ssid);
 	write_p2p_client_list(f, ssid);
+	write_p2p2_client_list(f, ssid);
 	write_psk_list(f, ssid);
+	INT(go_dik_id);
 #endif /* CONFIG_P2P */
 	INT(ap_max_inactivity);
 	INT(dtim_period);
@@ -899,6 +914,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(macsec_port);
 	INT_DEF(mka_priority, DEFAULT_PRIO_NOT_KEY_SERVER);
 	INT(macsec_csindex);
+	INT(macsec_icv_indicator);
 #endif /* CONFIG_MACSEC */
 #ifdef CONFIG_HS20
 	INT(update_identifier);
@@ -1672,9 +1688,6 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 
 	if (config->twt_requester)
 		fprintf(f, "twt_requester=%d\n", config->twt_requester);
-
-	if (config->osu_dir)
-		fprintf(f, "osu_dir=%s\n", config->osu_dir);
 
 	if (config->fst_group_id)
 		fprintf(f, "fst_group_id=%s\n", config->fst_group_id);
