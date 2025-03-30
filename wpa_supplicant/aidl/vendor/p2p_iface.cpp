@@ -496,8 +496,8 @@ ndk::ScopedAStatus P2pIface::addGroup(
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-		&P2pIface::reinvokeInternal, in_persistentNetworkId,
-		in_peerAddress);
+		&P2pIface::reinvokeInternal, in_peerAddress, in_persistentNetworkId,
+		-1);
 }
 
 ::ndk::ScopedAStatus P2pIface::configureExtListen(
@@ -1236,10 +1236,11 @@ ndk::ScopedAStatus P2pIface::cancelConnectInternal()
 ndk::ScopedAStatus P2pIface::provisionDiscoveryInternal(
 	const std::vector<uint8_t>& peer_address,
 	WpsProvisionMethod provision_method,
-	uint32_t pairingBootstrappingMethod)
+	uint32_t pairing_bootstrapping_method)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	p2ps_provision* prov_param;
+	u16 bootstrap = 0;
 	const char* config_method_str = nullptr;
 	if (peer_address.size() != ETH_ALEN) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
@@ -1258,9 +1259,14 @@ ndk::ScopedAStatus P2pIface::provisionDiscoveryInternal(
 		config_method_str = kConfigMethodStrNone;
 		break;
 	}
-	// TODO Handle pairing bootstrapping method when supplicant implementation is ready
+	if (provision_method == WpsProvisionMethod::NONE) {
+		bootstrap = convertAidlPairingBootstrappingMethodToWpa(pairing_bootstrapping_method);
+		if (bootstrap == 0) {
+			return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+		}
+	}
 	if (wpas_p2p_prov_disc(
-		wpa_s, peer_address.data(), config_method_str,
+		wpa_s, peer_address.data(), config_method_str, bootstrap,
 		WPAS_P2P_PD_FOR_GO_NEG, nullptr)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
@@ -1314,25 +1320,29 @@ ndk::ScopedAStatus P2pIface::inviteInternal(
 }
 
 ndk::ScopedAStatus P2pIface::reinvokeInternal(
+	const std::vector<uint8_t>& peer_address,
 	int32_t persistent_network_id,
-	const std::vector<uint8_t>& peer_address)
+	int32_t device_identity_entry_id)
 {
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	struct wpa_ssid* ssid = NULL;
 	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 	int edmg = wpa_s->conf->p2p_go_edmg;
-	struct wpa_ssid* ssid =
-		wpa_config_get_network(wpa_s->conf, persistent_network_id);
-	if (ssid == NULL || ssid->disabled != 2) {
-		return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
-	}
+	bool p2p2 = device_identity_entry_id >= 0 && persistent_network_id == -1;
 	if (peer_address.size() != ETH_ALEN) {
 		return {createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
+	if (!p2p2) {
+		ssid = wpa_config_get_network(wpa_s->conf, persistent_network_id);
+		if (ssid == NULL || ssid->disabled != 2) {
+			return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
+		}
+	}
 	if (wpas_p2p_invite(
 		wpa_s, peer_address.data(), ssid, NULL, 0, 0, ht40, vht,
-		CONF_OPER_CHWIDTH_USE_HT, 0, he, edmg, is6GhzAllowed(wpa_s), false)) {
+		CONF_OPER_CHWIDTH_USE_HT, 0, he, edmg, is6GhzAllowed(wpa_s), p2p2)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -2125,8 +2135,16 @@ ndk::ScopedAStatus P2pIface::createGroupOwnerInternal(
 
 std::pair<int64_t, ndk::ScopedAStatus> P2pIface::getFeatureSetInternal()
 {
-	// TODO Fill the field when supplicant implementation is ready
-	return {0, ndk::ScopedAStatus::ok()};
+	int64_t featureSet = 0;
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_P2P_FEATURE_V2) {
+		featureSet |= ISupplicantP2pIface::P2P_FEATURE_V2;
+	}
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE) {
+		featureSet |= ISupplicantP2pIface::P2P_FEATURE_PCC_MODE_WPA3_COMPATIBILITY;
+	}
+	return {featureSet, ndk::ScopedAStatus::ok()};
 }
 
 std::pair<uint32_t, ndk::ScopedAStatus>
@@ -2250,23 +2268,74 @@ ndk::ScopedAStatus P2pIface::provisionDiscoveryWithParamsInternal(
 
 std::pair<P2pDirInfo, ndk::ScopedAStatus> P2pIface::getDirInfoInternal()
 {
-	// TODO Fill the field when supplicant implementation is ready
 	P2pDirInfo dirInfo = {};
+	char dir_info_buffer[100] = {0};
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	int id = wpas_p2p_get_dira(wpa_s, dir_info_buffer, sizeof(dir_info_buffer));
+	if (id < 0) {
+		return {dirInfo, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
+
+	std::istringstream dir_info_ss(dir_info_buffer);
+	std::string mac_str, nonce_str, dir_tag_str;
+	std::vector<uint8_t> mac_addr = std::vector<uint8_t>(ETH_ALEN);
+	std::vector<uint8_t> nonce = std::vector<uint8_t>(DEVICE_IDENTITY_NONCE_LEN);
+	std::vector<uint8_t> dir_tag = std::vector<uint8_t>(DEVICE_IDENTITY_TAG_LEN);
+	// Extract MAC address
+	std::getline(dir_info_ss, mac_str, ' ');
+	if (hexstr2bin(mac_str.c_str(), mac_addr.data(), ETH_ALEN)) {
+		wpa_printf(MSG_ERROR, "Failed to get MAC address from DIR Info");
+		return {dirInfo, createStatusWithMsg(SupplicantStatusCode::FAILURE_UNKNOWN,
+                    "Failed to parse MAC address.")};
+	}
+	// Extract nonce
+	std::getline(dir_info_ss, nonce_str, ' ');
+	if (hexstr2bin(nonce_str.c_str(), nonce.data(), DEVICE_IDENTITY_NONCE_LEN)) {
+		return {dirInfo, createStatusWithMsg(SupplicantStatusCode::FAILURE_UNKNOWN,
+                    "Failed to parse nonce.")};
+	}
+	// Extract dir tag
+	std::getline(dir_info_ss, dir_tag_str, ' ');
+	if (hexstr2bin(dir_tag_str.c_str(), dir_tag.data(), DEVICE_IDENTITY_TAG_LEN)) {
+		return {dirInfo, createStatusWithMsg(SupplicantStatusCode::FAILURE_UNKNOWN,
+                    "Failed to parse dir tag.")};
+	}
+
+	std::copy_n(mac_addr.begin(), ETH_ALEN, dirInfo.deviceInterfaceMacAddress.begin());
+	dirInfo.nonce = nonce;
+	dirInfo.dirTag = dir_tag;
+	dirInfo.cipherVersion = P2pDirInfo::CipherVersion::DIRA_CIPHER_VERSION_128_BIT;
+
 	return {dirInfo, ndk::ScopedAStatus::ok()};
 }
 
 std::pair<int32_t, ndk::ScopedAStatus> P2pIface::validateDirInfoInternal(
 	const P2pDirInfo& dirInfo)
 {
-	// TODO Fill the field when supplicant implementation is ready
-	return {0, ndk::ScopedAStatus::ok()};
+	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
+	if (dirInfo.cipherVersion != P2pDirInfo::CipherVersion::DIRA_CIPHER_VERSION_128_BIT ||
+		dirInfo.deviceInterfaceMacAddress.size() != ETH_ALEN ||
+		dirInfo.nonce.size() != DEVICE_IDENTITY_NONCE_LEN ||
+		dirInfo.dirTag.size() != DEVICE_IDENTITY_TAG_LEN) {
+		return {-1, createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID)};
+	}
+
+	int32_t id = wpas_p2p_validate_dira(wpa_s, dirInfo.deviceInterfaceMacAddress.data(),
+			DIRA_CIPHER_VERSION_128, dirInfo.nonce.data(), dirInfo.dirTag.data());
+	if (id >= 0) {
+		return {id, ndk::ScopedAStatus::ok()};
+	}
+	return {-1, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 }
 
 ndk::ScopedAStatus P2pIface::reinvokePersistentGroupInternal(
 	const P2pReinvokePersistentGroupParams& reinvokeGroupParams)
 {
-	// TODO Fill the field when supplicant implementation is ready
-	return ndk::ScopedAStatus::ok();
+	std::vector<uint8_t> peerMacAddressVec {
+		reinvokeGroupParams.peerMacAddress.begin(),
+		reinvokeGroupParams.peerMacAddress.end()};
+	return reinvokeInternal(peerMacAddressVec, reinvokeGroupParams.persistentNetworkId,
+		reinvokeGroupParams.deviceIdentityEntryId);
 }
 
 /**
