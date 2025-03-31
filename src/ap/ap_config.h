@@ -451,7 +451,6 @@ struct hostapd_bss_config {
 	int pac_key_lifetime;
 	int pac_key_refresh_time;
 	int eap_teap_auth;
-	int eap_teap_pac_no_inner;
 	int eap_teap_separate_result;
 	int eap_teap_id;
 	int eap_teap_method_sequence;
@@ -995,6 +994,7 @@ struct hostapd_bss_config {
 	bool mld_indicate_disabled;
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
+	int mbssid_index;
 };
 
 /**
@@ -1248,9 +1248,13 @@ struct hostapd_config {
 		MBSSID_ENABLED = 1,
 		ENHANCED_MBSSID_ENABLED = 2,
 	} mbssid;
+	unsigned int mbssid_max;
 
 	/* Whether to enable TWT responder in HT and VHT modes */
 	bool ht_vht_twt_responder;
+
+	bool channel_usage;
+	bool peer_to_peer_twt;
 };
 
 
