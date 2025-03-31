@@ -91,9 +91,6 @@ static struct wpa_bss_anqp * wpa_bss_anqp_clone(struct wpa_bss_anqp *anqp)
 	ANQP_DUP(hs20_wan_metrics);
 	ANQP_DUP(hs20_connection_capability);
 	ANQP_DUP(hs20_operating_class);
-	ANQP_DUP(hs20_osu_providers_list);
-	ANQP_DUP(hs20_operator_icon_metadata);
-	ANQP_DUP(hs20_osu_providers_nai_list);
 #endif /* CONFIG_HS20 */
 #undef ANQP_DUP
 
@@ -176,9 +173,6 @@ static void wpa_bss_anqp_free(struct wpa_bss_anqp *anqp)
 	wpabuf_free(anqp->hs20_wan_metrics);
 	wpabuf_free(anqp->hs20_connection_capability);
 	wpabuf_free(anqp->hs20_operating_class);
-	wpabuf_free(anqp->hs20_osu_providers_list);
-	wpabuf_free(anqp->hs20_operator_icon_metadata);
-	wpabuf_free(anqp->hs20_osu_providers_nai_list);
 #endif /* CONFIG_HS20 */
 
 	os_free(anqp);
@@ -463,6 +457,28 @@ static bool is_p2p_pending_bss(struct wpa_supplicant *wpa_s,
 }
 
 
+#ifdef CONFIG_OWE
+static int wpa_bss_owe_trans_known(struct wpa_supplicant *wpa_s,
+				   struct wpa_bss *bss,
+				   const u8 *entry_ssid, size_t entry_ssid_len)
+{
+	const u8 *owe, *owe_bssid, *owe_ssid;
+	size_t owe_ssid_len;
+
+	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
+	if (!owe)
+		return 0;
+
+	if (wpas_get_owe_trans_network(owe, &owe_bssid, &owe_ssid,
+				       &owe_ssid_len))
+		return 0;
+
+	return entry_ssid_len == owe_ssid_len &&
+		os_memcmp(owe_ssid, entry_ssid, owe_ssid_len) == 0;
+}
+#endif /* CONFIG_OWE */
+
+
 static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 {
 	struct wpa_ssid *ssid;
@@ -476,6 +492,11 @@ static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 		if (ssid->ssid_len == bss->ssid_len &&
 		    os_memcmp(ssid->ssid, bss->ssid, ssid->ssid_len) == 0)
 			return 1;
+#ifdef CONFIG_OWE
+		if (wpa_bss_owe_trans_known(wpa_s, bss, ssid->ssid,
+					    ssid->ssid_len))
+			return 1;
+#endif /* CONFIG_OWE */
 	}
 
 	return 0;
@@ -526,6 +547,7 @@ static int wpa_bss_remove_oldest_unknown(struct wpa_supplicant *wpa_s)
 
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
 		if (!wpa_bss_known(wpa_s, bss) &&
+		    !wpa_bss_in_use(wpa_s, bss) &&
 		    !wpa_bss_is_wps_candidate(wpa_s, bss)) {
 			wpa_bss_remove(wpa_s, bss, __func__);
 			return 0;
@@ -1642,12 +1664,9 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 	pos += sizeof(*ap_info);
 
 	for (i = 0; i < count; i++, pos += ap_info->tbtt_info_len) {
-		u8 bss_params;
-
 		if (end - pos < ap_info->tbtt_info_len)
 			break;
 
-		bss_params = pos[1 + ETH_ALEN + 4];
 		mld_params = pos + mld_params_offset;
 
 		link_id = *(mld_params + 1) & EHT_ML_LINK_ID_MSK;
@@ -1674,10 +1693,8 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 			if (!neigh_bss) {
 				*missing |= BIT(link_id);
 			} else if ((!ssid ||
-				    (bss_params & (RNR_BSS_PARAM_SAME_SSID |
-						   RNR_BSS_PARAM_CO_LOCATED)) ||
 				    wpa_scan_res_match(wpa_s, 0, neigh_bss,
-						       ssid, 1, 0)) &&
+						       ssid, 1, 0, true)) &&
 				   !wpa_bssid_ignore_is_listed(
 					   wpa_s, neigh_bss->bssid)) {
 				struct mld_link *l;
@@ -1916,8 +1933,9 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 	const u8 *pos = wpa_bss_ie_ptr(bss);
 	size_t len = bss->ie_len ? bss->ie_len : bss->beacon_ie_len;
 	const struct ieee80211_eht_ml *ml;
+	const struct eht_ml_reconf_common_info *common_info;
 	u16 removed_links = 0;
-	u8 ml_common_len;
+	u8 expected_ml_common_len;
 
 	if (ieee802_11_parse_elems(pos, len, &elems, 1) == ParseFailed)
 		return 0;
@@ -1932,22 +1950,33 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 	ml = (const struct ieee80211_eht_ml *) wpabuf_head(mlbuf);
 	len = wpabuf_len(mlbuf);
 
-	if (len < sizeof(*ml))
+	/* There must be at least one octet for the Common Info Length subfield
+	 */
+	if (len < sizeof(*ml) + 1UL)
 		goto out;
 
-	ml_common_len = 1;
-	if (ml->ml_control & RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
-		ml_common_len += ETH_ALEN;
+	expected_ml_common_len = 1;
+	if (le_to_host16(ml->ml_control) &
+	    RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
+		expected_ml_common_len += ETH_ALEN;
 
-	if (len < sizeof(*ml) + ml_common_len) {
+	common_info = (const struct eht_ml_reconf_common_info *) ml->variable;
+	if (len < sizeof(*ml) + common_info->len) {
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Unexpected Reconfiguration ML element length: (%zu < %zu)",
-			   len, sizeof(*ml) + ml_common_len);
+			   len, sizeof(*ml) + common_info->len);
 		goto out;
 	}
 
-	pos = ml->variable + ml_common_len;
-	len -= sizeof(*ml) + ml_common_len;
+	if (common_info->len < expected_ml_common_len) {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Invalid common info len=%u; min expected=%u",
+			   common_info->len, expected_ml_common_len);
+		goto out;
+	}
+
+	pos = ml->variable + common_info->len;
+	len -= sizeof(*ml) + common_info->len;
 
 	while (len >= 2 + sizeof(struct ieee80211_eht_per_sta_profile)) {
 		size_t sub_elem_len = *(pos + 1);
@@ -1959,7 +1988,8 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 			goto out;
 		}
 
-		if  (*pos == EHT_ML_SUB_ELEM_PER_STA_PROFILE) {
+		if  (*pos == EHT_ML_SUB_ELEM_PER_STA_PROFILE &&
+		     sub_elem_len >= 2) {
 			const struct ieee80211_eht_per_sta_profile *sta_prof =
 				(const struct ieee80211_eht_per_sta_profile *)
 				(pos + 2);

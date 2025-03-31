@@ -1345,22 +1345,7 @@ ndk::ScopedAStatus StaIface::initiateVenueUrlAnqpQueryInternal(
 ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 	const std::vector<uint8_t> &mac_address, const std::string &file_name)
 {
-#ifdef CONFIG_HS20
-	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
-	if (mac_address.size() != ETH_ALEN) {
-		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
-	}
-	wpa_s->fetch_osu_icon_in_progress = 0;
-	if (hs20_anqp_send_req(
-		wpa_s, mac_address.data(), BIT(HS20_STYPE_ICON_REQUEST),
-		reinterpret_cast<const uint8_t *>(file_name.c_str()),
-		file_name.size(), true)) {
-		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
-	}
-	return ndk::ScopedAStatus::ok();
-#else
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-#endif /* CONFIG_HS20 */
 }
 
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>

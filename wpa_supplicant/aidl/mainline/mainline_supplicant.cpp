@@ -7,6 +7,7 @@
  */
 
 #include "aidl/shared/shared_utils.h"
+#include "callback_manager.h"
 #include "mainline_supplicant.h"
 #include "utils.h"
 
@@ -52,7 +53,7 @@ ndk::ScopedAStatus MainlineSupplicant::addStaInterface(const std::string& ifaceN
     std::shared_ptr<IStaInterface> staIface =
         ndk::SharedRefBase::make<StaIface>(wpa_global_, ifaceName);
     active_sta_ifaces_[ifaceName] = staIface;
-    _aidl_return = &staIface;
+    *_aidl_return = staIface;
 
     wpa_printf(MSG_INFO, "Interface %s was added successfully", ifaceName.c_str());
     return ndk::ScopedAStatus::ok();
@@ -80,8 +81,13 @@ ndk::ScopedAStatus MainlineSupplicant::removeStaInterface(const std::string& ifa
         return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
     }
 
-    wpa_printf(MSG_INFO, "Interface %s was removed successfully", ifaceName.c_str());
+    // Remove interface and callback from the internal maps
+    CallbackManager* callbackManager = CallbackManager::getInstance();
+    WPA_ASSERT(callbackManager);
+    callbackManager->unregisterStaIfaceCallback(ifaceName);
     active_sta_ifaces_.erase(ifaceName);
+
+    wpa_printf(MSG_INFO, "Interface %s was removed successfully", ifaceName.c_str());
     return ndk::ScopedAStatus::ok();
 }
 

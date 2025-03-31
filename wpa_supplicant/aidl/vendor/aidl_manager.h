@@ -116,7 +116,8 @@ public:
 	void notifyP2pProvisionDiscovery(
 		struct wpa_supplicant *wpa_s, const u8 *dev_addr, int request,
 		enum p2p_prov_disc_status status, u16 config_methods,
-		unsigned int generated_pin, const char *group_ifname);
+		unsigned int generated_pin, const char *group_ifname,
+		u16 pairing_bootstrapping_method);
 	void notifyP2pSdResponse(
 		struct wpa_supplicant *wpa_s, const u8 *sa, u16 update_indic,
 		const u8 *tlvs, size_t tlvs_len);
@@ -352,10 +353,6 @@ static_assert(
 	WPA_KEY_MGMT_FT_PSK,
 	"KeyMgmt value mismatch");
 static_assert(
-	static_cast<uint32_t>(KeyMgmtMask::OSEN) ==
-	WPA_KEY_MGMT_OSEN,
-	"KeyMgmt value mismatch");
-static_assert(
 	static_cast<uint32_t>(KeyMgmtMask::SAE) ==
 	WPA_KEY_MGMT_SAE,
 	"KeyMgmt value mismatch");
@@ -390,10 +387,6 @@ static_assert(
 static_assert(
 	static_cast<uint32_t>(ProtoMask::RSN) ==
 	WPA_PROTO_RSN,
-	"Proto value mismatch");
-static_assert(
-	static_cast<uint32_t>(ProtoMask::OSEN) ==
-	WPA_PROTO_OSEN,
 	"Proto value mismatch");
 static_assert(
 	static_cast<uint32_t>(ProtoMask::WAPI) ==
@@ -511,11 +504,6 @@ static_assert(
 	static_cast<uint32_t>(
 	Hs20AnqpSubtypes::CONNECTION_CAPABILITY) ==
 	HS20_STYPE_CONNECTION_CAPABILITY,
-	"HS Subtype value mismatch");
-static_assert(
-	static_cast<uint32_t>(
-	Hs20AnqpSubtypes::OSU_PROVIDERS_LIST) ==
-	HS20_STYPE_OSU_PROVIDERS_LIST,
 	"HS Subtype value mismatch");
 
 static_assert(
