@@ -429,9 +429,70 @@ static void hostapd_link_remove_timeout_handler(void *eloop_data,
 			       hapd, NULL);
 }
 
+static int hostapd_send_ml_reconfig_link_removal(struct hostapd_data *hapd, u32 count)
+{
+	struct driver_reconfig_link_removal_params params;
+	int ret;
+
+	params.link_id = hapd->mld_link_id;
+	params.removal_count = count;
+
+	params.ml_reconfig_elem_len = hostapd_eid_eht_ml_reconfig_len(hapd);
+	params.ml_reconfig_elem = os_zalloc(params.ml_reconfig_elem_len);
+
+	hostapd_eid_eht_reconf_ml(hapd, params.ml_reconfig_elem);
+
+	/*send NL with tbtt count and ml reconfig ie */
+	ret = hostapd_drv_ml_reconfig_link_remove(hapd, WPA_IF_AP_BSS, &params);
+
+	os_free(params.ml_reconfig_elem);
+
+	return ret;
+}
+
+
+static bool is_link_reconfigure_allowed(struct hostapd_data *hapd)
+{
+	struct hostapd_mld *mld = hapd->mld;
+	struct hostapd_iface *iface = hapd->iface;
+	size_t i;
+	u8 list_len;
+
+	if (!hapd->mld->num_links) {
+		wpa_printf(MSG_ERROR, "mld_ap is NOT set\n");
+		return false;
+	}
+
+	list_len = dl_list_len(&mld->links);
+	if (!list_len || list_len == 1) {
+		wpa_printf(MSG_INFO, "link reconfigure is currently not applicable for this list:%u\n",
+				list_len);
+		return false;
+	}
+
+	if (iface->conf->mbssid != MBSSID_DISABLED &&
+	    hapd == hostapd_mbssid_get_tx_bss(hapd)) {
+		for (i = 1; i < hapd->iface->num_bss; i++) {
+			struct hostapd_data *bss = hapd->iface->bss[i];
+			mld = bss->mld;
+
+			list_len = dl_list_len(&mld->links);
+			if (!list_len || list_len == 1) {
+				wpa_printf(MSG_INFO, "link reconfigure is currently not applicable for this list:%u\n",
+						list_len);
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
 
 int hostapd_link_remove(struct hostapd_data *hapd, u32 count)
 {
+	struct hostapd_iface *iface = hapd->iface;
+	size_t i;
+
 	if (!hapd->conf->mld_ap)
 		return -1;
 
@@ -441,6 +502,34 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count)
 
 	hapd->eht_mld_link_removal_count = count;
 	hapd->eht_mld_bss_param_change++;
+	if (iface->drv_flags2 & WPA_DRIVER_FLAG2_MLD_LINK_REMOVAL_OFFLOAD) {
+		if (!is_link_reconfigure_allowed(hapd)) {
+			wpa_printf(MSG_INFO, "link reconfigure is currently not applicable\n");
+			return -1;
+		}
+
+		/* Check if the link removal is scheduled for tx BSS
+		 * If yes, schedule link removal for all non-tx BSS first
+		 */
+		if (iface->conf->mbssid != MBSSID_DISABLED &&
+		    hapd == hostapd_mbssid_get_tx_bss(hapd)) {
+			for (i = 1; i < hapd->iface->num_bss; i++) {
+				struct hostapd_data *bss = hapd->iface->bss[i];
+
+				bss->eht_mld_link_removal_inprogress = true;
+				bss->eht_mld_link_removal_count = count;
+				if (hostapd_send_ml_reconfig_link_removal(bss, count)) {
+					wpa_printf(MSG_DEBUG,
+						   "Failed to send link removal non-tx BSS");
+					return -EINVAL;
+				}
+			}
+		}
+
+		hapd->eht_mld_link_removal_inprogress = true;
+		return hostapd_send_ml_reconfig_link_removal(hapd, count);
+	}
+
 	if (hapd->eht_mld_bss_param_change == 255)
 		hapd->eht_mld_bss_param_change = 0;
 
