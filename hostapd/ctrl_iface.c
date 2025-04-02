@@ -3718,7 +3718,6 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
 }
 
 
-#ifdef CONFIG_TESTING_OPTIONS
 static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
 					  char *buf, size_t buflen)
 {
@@ -3739,7 +3738,6 @@ static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
 
 	return ret;
 }
-#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
 
 
@@ -4637,12 +4635,10 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strcmp(buf, "DISABLE_MLD") == 0) {
 		if (hostapd_ctrl_iface_disable_mld(hapd->iface))
 			reply_len = -1;
-#ifdef CONFIG_TESTING_OPTIONS
 	} else if (os_strncmp(buf, "LINK_REMOVE ", 12) == 0) {
 		if (hostapd_ctrl_iface_link_remove(hapd, buf + 12,
 						   reply, reply_size))
 			reply_len = -1;
-#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
