@@ -667,7 +667,54 @@ out:
 }
 
 
-static u8 * hostapd_eid_eht_reconf_ml(struct hostapd_data *hapd, u8 *eid)
+/* Common info (1) + MLD Mac address (6) + STA Info
+ * length(1) + STA Mac address(6) + AP removal
+ * timer(2) + Operation parameters(3)
+ */
+#define ML_RECONFIG_FIXED_IE_LEN 19
+size_t hostapd_eid_eht_ml_reconfig_len(struct hostapd_data *hapd) {
+	size_t len;
+	struct hostapd_data *link_bss;
+
+	/* Include WLAN_EID_EXT_MULTI_LINK (1) */
+	len = 1;
+	/* Control Field */
+	len += 2;
+	/* Common Info - Doesn't include any information */
+	len += 1;
+
+	for_each_mld_link(link_bss, hapd) {
+
+		/* Currently we support removing only one link
+		 * at a time from a MLD
+		 */
+		if (!link_bss->eht_mld_link_removal_count ||
+		    !link_bss->eht_mld_link_removal_inprogress)
+			continue;
+
+		/* Sub-Element field */
+		len += 2;
+
+		/* Per-STA profile */
+
+		/*STA-Control(2) field - only AP removal timer */
+		len += 2;
+
+		/* STA-Info(3) */
+
+		/* STA-Info length */
+		len += 1;
+
+		/* STA-Info AP removal timer */
+		len += 2;
+	}
+
+	/*WLAN_EID_EXTENSION (1) + length (1) */
+	return len + 2;
+}
+
+
+u8 * hostapd_eid_eht_reconf_ml(struct hostapd_data *hapd, u8 *eid)
 {
 	struct hostapd_data *other_hapd;
 	u16 control;
