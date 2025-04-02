@@ -2383,6 +2383,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
 /** Driver supports RSN override elements */
 #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
+/** Driver support ML reconfigure link removal offload */
+#define WPA_DRIVER_FLAG2_MLD_LINK_REMOVAL_OFFLOAD 0x0000000000400000ULL
 /** Driver supports NAN offload */
 #define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
 /** Driver/device supports SPP A-MSDUs */

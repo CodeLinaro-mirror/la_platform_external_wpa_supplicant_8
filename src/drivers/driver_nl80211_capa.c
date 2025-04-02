@@ -720,6 +720,11 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_SPP_AMSDU_SUPPORT))
 		capa->flags2 |= WPA_DRIVER_FLAGS2_SPP_AMSDU;
+#ifdef CONFIG_TESTING_OPTIONS
+	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_MLD_LINK_REMOVAL_OFFLOAD))
+		capa->flags2 |= WPA_DRIVER_FLAG2_MLD_LINK_REMOVAL_OFFLOAD;
+#endif /* CONFIG_TESTING_OPTIONS */
 }
 
 
