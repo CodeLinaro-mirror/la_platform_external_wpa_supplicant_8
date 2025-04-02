@@ -7655,6 +7655,30 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
 #endif /* CONFIG_IEEE80211BE */
 }
 
+void wpa_auth_reconfig_primary_auth(struct wpa_authenticator *wpa_auth,
+				    struct wpa_authenticator *wpa_pauth)
+{
+#ifdef CONFIG_IEEE80211BE
+	struct wpa_authenticator *primary_wpa_auth;
+
+	primary_wpa_auth = wpa_get_primary_auth(wpa_auth);
+	if (primary_wpa_auth != wpa_auth)
+		return;
+
+	/* If the link to be removed is the primary authenticator for GTK
+	 * rekeying, then change the primary authenticator and re-schedule the
+	 * GTK rekeying with the new wpa_auth.
+	 */
+	wpa_auth->primary_auth = false;
+	wpa_pauth->primary_auth = true;
+
+	eloop_cancel_timeout(wpa_rekey_gtk, wpa_auth, NULL);
+
+	eloop_register_timeout(wpa_pauth->conf.wpa_group_rekey, 0,
+			       wpa_rekey_gtk, wpa_pauth, NULL);
+#endif /* CONFIG_IEEE80211BE */
+}
+
 
 bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
 					  const u8 *timestamp,

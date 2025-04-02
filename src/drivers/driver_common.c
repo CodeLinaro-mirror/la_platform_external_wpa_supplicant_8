@@ -101,6 +101,8 @@ const char * event_to_string(enum wpa_event_type event)
 	E2S(TID_LINK_MAP);
 	E2S(LINK_RECONFIG);
 	E2S(MLD_INTERFACE_FREED);
+	E2S(LINK_REMOVAL_STARTED);
+	E2S(LINK_REMOVAL_COMPLETED);
 	}
 
 	return "UNKNOWN";

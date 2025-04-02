@@ -2417,6 +2417,107 @@ static void hostapd_eapol_tx_status(struct hostapd_data *hapd, const u8 *dst,
 }
 #endif /* NEED_AP_MLME */
 
+#ifdef CONFIG_IEEE80211BE
+static void hostapd_update_link_removal_field(struct hostapd_data *hapd,
+					      struct link_removal_event *ev,
+					      enum wpa_event_type event)
+{
+	struct hostapd_data *phapd, *tx_hapd = NULL;
+	struct hostapd_iface *iface;
+	unsigned int i;
+#ifdef CONFIG_WNM_AP
+#ifdef CONFIG_TESTING_OPTIONS
+	u8 bss_term_dur[12];
+	u8 req_mode;
+	u32 total_us;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif
+
+	if (event == EVENT_LINK_REMOVAL_STARTED) {
+#ifdef CONFIG_WNM_AP
+#ifdef CONFIG_TESTING_OPTIONS
+		req_mode = WNM_BSS_TM_REQ_DISASSOC_IMMINENT |
+			   WNM_BSS_TM_REQ_BSS_TERMINATION_INCLUDED |
+			   WNM_BSS_TM_REQ_LINK_REMOVAL_IMMINENT;
+
+		bss_term_dur[0] = 4; /* Subelement ID */
+		bss_term_dur[1] = 10; /* Length */
+		/* TSF timer when corresponding BSS will be removed
+		 * link_removal_count * beacon_interval will give total number of
+		 * beacons ML reconfiguration element will be present after which the
+		 * BSS will be removed
+		 * Adding this with the TSF value of first beacon with ML reconfiguration
+		 * element is sent will be equal/greater than the last beacon with ML
+		 * reconfiguration element will be sent.
+		 */
+		total_us = host_to_le16(ev->link_removal_count) *
+			TU_TO_USEC(hapd->iconf->beacon_int);
+		bss_term_dur[2] = ev->tsf + total_us;
+		os_memset(&bss_term_dur[3], 0, 7); /* Optional */
+
+		wnm_send_bss_tm_req(hapd, NULL, req_mode, ev->link_removal_count,
+				    0x01, &bss_term_dur[0], 0x01, NULL, NULL, 0,
+				    NULL, 0);
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif
+		wpa_printf(MSG_DEBUG, "Do not sen BSS transition in this version.");
+		hapd->eht_mld_link_removal_count = ev->link_removal_count;
+		hapd->eht_mld_link_removal_inprogress = true;
+	} else if (event == EVENT_LINK_REMOVAL_COMPLETED) {
+		hapd->eht_mld_link_removal_inprogress = false;
+		hapd->eht_mld_link_removal_count = 0;
+		iface = hapd->iface;
+
+		if (iface->num_bss == 1) {
+			hostapd_free_link_stas(hapd);
+			hostapd_disable_iface(iface);
+		} else {
+			/* Should be updated when MBSSID grouping is enabled */
+			for (i = 0; i < iface->conf->num_bss; i++) {
+				if (iface->bss[i] == hapd)
+					break;
+			}
+
+			if (i >= iface->conf->num_bss) {
+				wpa_printf(MSG_ERROR, "Wrong hapd is provided\n");
+				return;
+			}
+
+			/* Save one of the partner bss to update the beacon */
+			for_each_mld_link(phapd, hapd)
+				if (phapd != hapd)
+					break;
+
+			/* Save tx bss, if the link getting removed is from
+			 * MBSSID
+			 */
+			if (hapd->iface->conf->mbssid != MBSSID_DISABLED) {
+				tx_hapd = hostapd_mbssid_get_tx_bss(hapd);
+				if (tx_hapd == hapd)
+					tx_hapd = NULL;
+			}
+
+			/* reconfigure GTK rekey primary auth */
+			wpa_auth_reconfig_primary_auth(hapd->wpa_auth, phapd->wpa_auth);
+
+			hostapd_remove_bss(iface, i, true);
+
+			/* Refresh partner beacons */
+			ieee802_11_set_beacon(phapd);
+
+			if (tx_hapd)
+				ieee802_11_set_beacon(tx_hapd);
+
+			if (phapd->iface->conf->mbssid != MBSSID_DISABLED) {
+				tx_hapd = hostapd_mbssid_get_tx_bss(phapd);
+				if (tx_hapd != phapd)
+					ieee802_11_set_beacon(tx_hapd);
+			}
+		}
+	}
+}
+#endif /* CONFIG_IEEE80211BE */
+
 
 #ifdef CONFIG_IEEE80211AX
 static void hostapd_event_color_change(struct hostapd_data *hapd, bool success)
@@ -2876,6 +2977,19 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		wpa_printf(MSG_DEBUG, "MLD: Interface %s freed",
 			   hapd->conf->iface);
 		hostapd_mld_interface_freed(hapd);
+		break;
+	case EVENT_LINK_REMOVAL_STARTED:
+		hapd = switch_link_hapd(hapd, data->link_removal_event.link_id);
+		if (hapd)
+			hostapd_update_link_removal_field(hapd,
+							  &data->link_removal_event,
+							  EVENT_LINK_REMOVAL_STARTED);
+		break;
+	case EVENT_LINK_REMOVAL_COMPLETED:
+		hapd = switch_link_hapd(hapd, data->link_removal_event.link_id);
+		if (hapd)
+			hostapd_update_link_removal_field(hapd, 0,
+							  EVENT_LINK_REMOVAL_COMPLETED);
 		break;
 #endif /* CONFIG_IEEE80211BE */
 	default:

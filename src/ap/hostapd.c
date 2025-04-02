@@ -4084,7 +4084,8 @@ fail:
 }
 
 
-static int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx)
+int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx,
+			bool is_link_remove)
 {
 	size_t i;
 
@@ -4101,6 +4102,17 @@ static int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx)
 		hapd->conf = NULL;
 #ifdef CONFIG_IEEE80211BE
 		hostapd_mld_ref_dec(hapd->mld);
+		if (is_link_remove)
+			/* If first bss is removed, if_link_remove will not be
+			 * called in hostapd_remove_bss, hence call
+			 * if_link_remove before calling the remove bss if the
+			 * first bss is removed.
+			 */
+			if (hapd->iface->bss[0] == hapd)
+				hostapd_if_link_remove(hapd, WPA_IF_AP_BSS,
+						       hapd->conf->iface,
+						       hapd->mld_link_id);
+
 #endif /* CONFIG_IEEE80211BE */
 		os_free(hapd);
 
@@ -4154,7 +4166,7 @@ int hostapd_remove_iface(struct hapd_interfaces *interfaces, char *buf)
 				hapd_iface->driver_ap_teardown =
 					!(hapd_iface->drv_flags &
 					  WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT);
-				return hostapd_remove_bss(hapd_iface, j);
+				return hostapd_remove_bss(hapd_iface, j, false);
 			}
 		}
 	}

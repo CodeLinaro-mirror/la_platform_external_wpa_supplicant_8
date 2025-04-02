@@ -1596,6 +1596,10 @@ enum nl80211_commands {
 	NL80211_CMD_ASSOC_MLO_RECONF,
 	NL80211_CMD_EPCS_CFG,
 
+        NL80211_CMD_LINK_REMOVAL_STARTED,
+
+        NL80211_CMD_LINK_REMOVAL_COMPLETED,
+
 	/* add new commands above here */
 
 	/* used to define NL80211_CMD_MAX below */
@@ -3457,6 +3461,7 @@ enum nl80211_attrs {
 	NL80211_ATTR_ASSOC_MLD_EXT_CAPA_OPS,
 
 	NL80211_ATTR_AP_REMOVAL_COUNT,
+	NL80211_ATTR_TSF,
 	/* add attributes here, update the policy in nl80211.c */
 
 	__NL80211_ATTR_AFTER_LAST,

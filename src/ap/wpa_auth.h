@@ -692,6 +692,8 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 void wpa_release_link_auth_ref(struct wpa_state_machine *sm, u8 link_id,
 			       bool rejected);
 
+void wpa_auth_reconfig_primary_auth(struct wpa_authenticator *wpa_auth,
+				    struct wpa_authenticator *wpa_pauth);
 #define for_each_sm_auth(sm, link_id) \
 	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++)	\
 		if (sm->mld_links[link_id].valid &&			\
