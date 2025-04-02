@@ -978,7 +978,10 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 	mgmt = (struct ieee80211_mgmt *) buf;
 	mgmt->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT,
 					   WLAN_FC_STYPE_ACTION);
-	os_memcpy(mgmt->da, sta->addr, ETH_ALEN);
+	if (sta)
+		os_memcpy(mgmt->da, sta->addr, ETH_ALEN);
+	else
+		os_memcpy(mgmt->da, broadcast_ether_addr, ETH_ALEN);
 	os_memcpy(mgmt->sa, own_addr, ETH_ALEN);
 	os_memcpy(mgmt->bssid, own_addr, ETH_ALEN);
 	mgmt->u.action.category = WLAN_ACTION_WNM;
@@ -1028,7 +1031,7 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 	os_free(buf);
 
-	if (disassoc_timer) {
+	if (disassoc_timer && sta) {
 #ifdef CONFIG_IEEE80211BE
 		if (ap_sta_is_mld(hapd, sta)) {
 			int i;

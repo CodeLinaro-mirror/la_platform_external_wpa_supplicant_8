@@ -6094,6 +6094,28 @@ enum wpa_event_type {
 	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
 	 */
 	EVENT_MLD_INTERFACE_FREED,
+
+	/**
+	 * EVENT_LINK_REMOVAL_STARTED - Update link_removal_count and TSF
+	 * received
+	 *
+	 * This event is used by the driver to indicate the received link
+	 * removal count of the link that is scheduled for removal and
+	 * timestamp of the first beacon with ML reconfiguration element is
+	 * sent.
+	 */
+	EVENT_LINK_REMOVAL_STARTED,
+
+	/**
+	 * EVENT_LINK_REMOVAL_COMPLETED - Update link scheduled for removal
+	 * procedure is completed.
+	 *
+	 * This event is used by the driver to intimate userspace about the
+	 * completion of ML reconfiguration element for the TBTT count
+	 * specified and the userspace can proceed further on the cleaning up
+	 * of the respective link(s).
+	 */
+	EVENT_LINK_REMOVAL_COMPLETED,
 };
 
 
@@ -7081,6 +7103,15 @@ union wpa_event_data {
 		u8 valid_links;
 		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
 	} t2l_map_info;
+
+	/**
+	 * Data for link_removal update
+	 */
+	struct link_removal_event {
+		u8 link_id;
+		u16 link_removal_count;
+		u64 tsf;
+	} link_removal_event;
 };
 
 /**
