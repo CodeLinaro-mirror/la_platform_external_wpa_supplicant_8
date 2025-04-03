@@ -714,10 +714,7 @@ cc_library {
 
 // Start of non-cuttlefish section
 cc_defaults {
-    name: "wpa_supplicant_qca_default",
-    local_include_dirs: [
-        "src/fst",
-    ],
+    name: "wpa_supplicant_qca_cflags",
     cflags: [
         "-DCONFIG_DPP3",
         "-DCONFIG_FST",
@@ -725,6 +722,16 @@ cc_defaults {
         "-DCONFIG_SUPPLICANT_VENDOR_AIDL",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
+    ],
+}
+
+cc_defaults {
+    name: "wpa_supplicant_qca_default",
+    local_include_dirs: [
+        "src/fst",
+    ],
+    defaults: [
+        "wpa_supplicant_qca_cflags",
     ],
     srcs: [
         "src/common/ocv.c",
@@ -1322,6 +1329,7 @@ cc_binary {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
@@ -1483,6 +1491,7 @@ cc_library_shared {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
