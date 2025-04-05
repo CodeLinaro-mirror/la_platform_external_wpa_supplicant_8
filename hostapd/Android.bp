@@ -97,8 +97,6 @@ cc_defaults {
         "-DCONFIG_ETH_P_OUI",
         "-DCONFIG_SAE",
         "-DCONFIG_SAE_PK",
-        "-DCONFIG_PASN",
-        "-DCONFIG_PTKSA_CACHE",
         "-DCONFIG_OWE",
         "-DCONFIG_FILS",
         "-DCONFIG_WNM",
@@ -434,6 +432,35 @@ soong_config_module_type {
     properties: ["cflags"],
 }
 
+cc_defaults {
+    name: "hostapd_qca_default",
+    cflags: [
+        "-DCONFIG_IEEE80211AX",
+        "-DCONFIG_IEEE80211BE",
+        "-DCONFIG_OWE",
+        "-DCONFIG_FST",
+        "-DCONFIG_MBO",
+        "-DCONFIG_OCV",
+        "-DCONFIG_PASN",
+        "-DCONFIG_PTKSA_CACHE",
+    ],
+    local_include_dirs: [
+        "src/fst",
+    ],
+    srcs: [
+        "src/ap/ieee802_11_he.c",
+        "src/ap/ieee802_11_eht.c",
+        "src/ap/mbo_ap.c",
+        "src/common/ocv.c",
+        "src/fst/fst.c",
+        "src/fst/fst_group.c",
+        "src/fst/fst_iface.c",
+        "src/fst/fst_session.c",
+        "src/fst/fst_ctrl_aux.c",
+        "src/fst/fst_ctrl_iface.c",
+    ],
+}
+
 // Hostap related module share the same CFLAGS
 hostapd_cc_defaults_type {
     name: "hostapd_cflags_default",
@@ -456,8 +483,6 @@ hostapd_cc_defaults_type {
         "-DCONFIG_CTRL_IFACE",
         "-DCONFIG_CTRL_IFACE_UNIX",
         "-DCONFIG_SAE",
-        "-DCONFIG_PASN",
-        "-DCONFIG_PTKSA_CACHE",
         "-DCONFIG_IEEE80211AC",
         "-DCONFIG_WEP",
         "-DCONFIG_WPS",
@@ -495,14 +520,6 @@ hostapd_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "board_hostapd_private_lib_event"), {
         true: ["-DANDROID_LIB_EVENT"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": [
-            "-DCONFIG_FST",
-            "-DCONFIG_MBO",
-            "-DCONFIG_OCV",
-            "-DCONFIG_OWE",
-        ],
-        default: [],
     }),
     arch: {
         arm: {
@@ -531,7 +548,6 @@ cc_defaults {
         ".",
         "src",
         "src/utils",
-        "src/fst",
     ],
     include_dirs: [
         // There's an if condition for external/libnl but current code base should always have this.
@@ -653,19 +669,6 @@ cc_defaults {
     select(soong_config_variable("wpa_supplicant_8", "hostapd_11be"), {
         true: ["src/ap/ieee802_11_eht.c"],
         default: [],
-    }) +
-    select(soong_config_variable("wpa_supplicant_8", "board_wlan_device"), {
-        "qcwcn": [
-            "src/ap/mbo_ap.c",
-            "src/common/ocv.c",
-            "src/fst/fst.c",
-            "src/fst/fst_group.c",
-            "src/fst/fst_iface.c",
-            "src/fst/fst_session.c",
-            "src/fst/fst_ctrl_aux.c",
-            "src/fst/fst_ctrl_iface.c",
-        ],
-        default: [],
     }),
     defaults: [
         "hostapd_driver_srcs_default",
@@ -735,6 +738,7 @@ hostapd_cc_binary {
         "hostapd_srcs_default",
         "hostapd_cflags_default",
         "hostapd_includes_default",
+        "hostapd_qca_default",
     ],
     soong_config_variables: {
         board_hostapd_private_lib: {
@@ -770,16 +774,3 @@ cc_library_static {
 }
 
 // End of non-cuttlefish section
-
-genrule {
-    name: "com.android.hardware.hostapd.rc-gen",
-    srcs: ["hostapd.android.rc"],
-    out: ["com.android.hardware.hostapd.rc"],
-    cmd: "sed -E 's@/vendor/bin@/apex/com.android.hardware.wpa_supplicant/bin@' $(in) > $(out)",
-}
-
-prebuilt_etc {
-    name: "com.android.hardware.hostapd.rc",
-    src: ":com.android.hardware.hostapd.rc-gen",
-    installable: false,
-}

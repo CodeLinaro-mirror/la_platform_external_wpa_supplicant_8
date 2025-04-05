@@ -210,7 +210,7 @@ TEST_F(HostapdConfigTest, tetheredApConfigWriteFails) {
 
 TEST_F(HostapdConfigTest, tetheredAp) {
 	std::string config_string = CreateHostapdConfig(mIface_params, mChannel_params, mNetwork_params,
-			mBr_name, mOwe_transition_ifname, true);
+			mBr_name, mOwe_transition_ifname);
 	EXPECT_EQ(mWlan42_tethered_config, config_string);
 }
 
@@ -223,7 +223,7 @@ TEST_F(HostapdConfigTest, lohsAp) {
 			"another_invalid_key_dtim_period=-10000\n"
 			"skip_inactivity_poll = 1";
 	std::string config_string = CreateHostapdConfig(mIface_params, mChannel_params, mNetwork_params,
-			mBr_name, mOwe_transition_ifname, true);
+			mBr_name, mOwe_transition_ifname);
 	EXPECT_EQ(mWlan42_lohs_config, config_string);
 }
 
@@ -231,7 +231,7 @@ TEST_F(HostapdConfigTest, lohsApAccessFails) {
 	mNetwork_params.isMetered = false;
 	hostapd_unittest_accessRet = -1;
 	std::string config_string = CreateHostapdConfig(mIface_params, mChannel_params, mNetwork_params,
-			mBr_name, mOwe_transition_ifname, true);
+			mBr_name, mOwe_transition_ifname);
 	EXPECT_EQ(mWlan42_lohs_config_no_overlay, config_string);
 }
 
@@ -239,7 +239,7 @@ TEST_F(HostapdConfigTest, lohsApReadFails) {
 	mNetwork_params.isMetered = false;
 	hostapd_unittest_ReadFileToStringRet = false;
 	std::string config_string = CreateHostapdConfig(mIface_params, mChannel_params, mNetwork_params,
-			mBr_name, mOwe_transition_ifname, true);
+			mBr_name, mOwe_transition_ifname);
 	EXPECT_EQ("", config_string);
 }
 

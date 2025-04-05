@@ -23,6 +23,7 @@ extern "C"
 #include "dpp_supplicant.h"
 #include "rsn_supp/wpa.h"
 #include "rsn_supp/pmksa_cache.h"
+#include "src/common/nan_de.h"
 }
 
 namespace {
@@ -64,13 +65,23 @@ constexpr uint32_t kExtRadioWorkDefaultTimeoutInSec =
 	static_cast<uint32_t>(ISupplicant::EXT_RADIO_WORK_TIMEOUT_IN_SECS);
 constexpr char kExtRadioWorkNamePrefix[] = "ext:";
 
-constexpr bool kIsUsdPublisherSupported = false;
-constexpr bool kIsUsdSubscriberSupported = false;
+#ifdef CONFIG_NAN_USD
+constexpr bool kIsUsdPublisherSupported = true;
+constexpr bool kIsUsdSubscriberSupported = true;
 constexpr int32_t kMaxUsdLocalSsiLengthBytes = 1400;
 constexpr int32_t kMaxUsdServiceNameLengthBytes = 255;
-constexpr int32_t kMaxUsdMatchFilterLengthBytes = 255;
-constexpr int32_t kMaxNumUsdPublishSessions = 1;
-constexpr int32_t kMaxNumUsdSubscribeSessions = 1;
+constexpr int32_t kMaxUsdMatchFilterLengthBytes = 0;
+constexpr int32_t kMaxNumUsdPublishSessions = NAN_DE_MAX_SERVICE;
+constexpr int32_t kMaxNumUsdSubscribeSessions = NAN_DE_MAX_SERVICE;
+#else
+constexpr bool kIsUsdPublisherSupported = false;
+constexpr bool kIsUsdSubscriberSupported = false;
+constexpr int32_t kMaxUsdLocalSsiLengthBytes = 0;
+constexpr int32_t kMaxUsdServiceNameLengthBytes = 0;
+constexpr int32_t kMaxUsdMatchFilterLengthBytes = 0;
+constexpr int32_t kMaxNumUsdPublishSessions = 0;
+constexpr int32_t kMaxNumUsdSubscribeSessions = 0;
+#endif
 
 uint8_t convertAidlRxFilterTypeToInternal(
 	RxFilterType type)
@@ -1334,22 +1345,7 @@ ndk::ScopedAStatus StaIface::initiateVenueUrlAnqpQueryInternal(
 ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 	const std::vector<uint8_t> &mac_address, const std::string &file_name)
 {
-#ifdef CONFIG_HS20
-	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
-	if (mac_address.size() != ETH_ALEN) {
-		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
-	}
-	wpa_s->fetch_osu_icon_in_progress = 0;
-	if (hs20_anqp_send_req(
-		wpa_s, mac_address.data(), BIT(HS20_STYPE_ICON_REQUEST),
-		reinterpret_cast<const uint8_t *>(file_name.c_str()),
-		file_name.size(), true)) {
-		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
-	}
-	return ndk::ScopedAStatus::ok();
-#else
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
-#endif /* CONFIG_HS20 */
 }
 
 std::pair<std::vector<uint8_t>, ndk::ScopedAStatus>

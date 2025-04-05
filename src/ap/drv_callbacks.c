@@ -366,12 +366,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		ie = elems.wpa_ie - 2;
 		ielen = elems.wpa_ie_len + 2;
 		wpa_printf(MSG_DEBUG, "STA included WPA IE in (Re)AssocReq");
-#ifdef CONFIG_HS20
-	} else if (elems.osen) {
-		ie = elems.osen - 2;
-		ielen = elems.osen_len + 2;
-		wpa_printf(MSG_DEBUG, "STA included OSEN IE in (Re)AssocReq");
-#endif /* CONFIG_HS20 */
 	} else {
 		ie = NULL;
 		ielen = 0;
@@ -579,7 +573,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
 					  elems.mdie, elems.mdie_len,
-					  elems.owe_dh, elems.owe_dh_len, NULL);
+					  elems.owe_dh, elems.owe_dh_len, NULL,
+					  ap_sta_is_mld(hapd, sta));
 		reason = WLAN_REASON_INVALID_IE;
 		status = WLAN_STATUS_INVALID_IE;
 		switch (res) {
@@ -649,6 +644,11 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		else
 			sta->flags &= ~WLAN_STA_MFP;
 
+		if (wpa_auth_uses_spp_amsdu(sta->wpa_sm))
+			sta->flags |= WLAN_STA_SPP_AMSDU;
+		else
+			sta->flags &= ~WLAN_STA_SPP_AMSDU;
+
 #ifdef CONFIG_IEEE80211R_AP
 		if (sta->auth_alg == WLAN_AUTH_FT) {
 			status = wpa_ft_validate_reassoc(sta->wpa_sm, req_ies,
@@ -713,29 +713,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			sta->flags |= WLAN_STA_MAYBE_WPS;
 		wpabuf_free(wps);
 #endif /* CONFIG_WPS */
-#ifdef CONFIG_HS20
-	} else if (hapd->conf->osen) {
-		if (elems.osen == NULL) {
-			hostapd_logger(
-				hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
-				HOSTAPD_LEVEL_INFO,
-				"No HS 2.0 OSEN element in association request");
-			return WLAN_STATUS_INVALID_IE;
-		}
-
-		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
-		if (sta->wpa_sm == NULL)
-			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL);
-		if (sta->wpa_sm == NULL) {
-			wpa_printf(MSG_WARNING,
-				   "Failed to initialize WPA state machine");
-			return WLAN_STATUS_UNSPECIFIED_FAILURE;
-		}
-		if (wpa_validate_osen(hapd->wpa_auth, sta->wpa_sm,
-				      elems.osen - 2, elems.osen_len + 2) < 0)
-			return WLAN_STATUS_INVALID_IE;
-#endif /* CONFIG_HS20 */
 	}
 #ifdef CONFIG_WPS
 skip_wpa_check:
@@ -918,6 +895,12 @@ skip_wpa_check:
 	}
 #endif /* CONFIG_IEEE80211R_AP || CONFIG_FILS */
 
+	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
+	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
+	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
+
+	hostapd_set_sta_flags(hapd, sta);
+
 #ifdef CONFIG_IEEE80211BE
 	if (hostapd_process_assoc_ml_info(hapd, sta, req_ies, req_ies_len,
 					  !!reassoc, WLAN_STATUS_SUCCESS,
@@ -928,11 +911,6 @@ skip_wpa_check:
 	}
 #endif /* CONFIG_IEEE80211BE */
 
-	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
-	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
-	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
-
-	hostapd_set_sta_flags(hapd, sta);
 	if (updated)
 		ap_sta_set_authorized_event(hapd, sta, 1);
 
