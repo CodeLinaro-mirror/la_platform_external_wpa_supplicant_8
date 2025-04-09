@@ -24,9 +24,11 @@ static std::map<uint16_t, MessageHandler> msgHandlerMap = {
     {HOSTAPD_REMOVE_ACCESS_POINT_REQ,&HostapdMsgHandlerRemoveAccessPoint},
     {HOSTAPD_SET_DEBUG_PARAMS_REQ, &HostapdMsgHandlerSetDebugParams},
     {HOSTAPD_TERMINATE_REQ, &HostapdMsgHandlerTerminate},
+#ifdef CONFIG_USE_VENDOR_AIDL
     /* IHostapdVendor */
     {HOSTAPD_VENDOR_LIST_VENDOR_INTERFACES_REQ, &HostapdVendorMsgHandlerListVendorInterfaces},
-    {HOSTAPD_VENDOR_DO_DRIVER_CMD_REQ, &HostapdVendorMsgHandlerDoDriverCmd},
+    {HOSTAPD_VENDOR_DO_DRIVER_CMD_REQ, &HostapdVendorMsgHandlerDoDriverCmd}
+#endif
 };
 
 static inline MessageHandler HostapdGetMessageHandler(uint16_t methodId)

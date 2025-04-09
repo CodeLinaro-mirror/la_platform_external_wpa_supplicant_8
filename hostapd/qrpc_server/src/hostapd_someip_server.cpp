@@ -10,9 +10,7 @@
 #include <rpc/util/log_common.h>
 #include <rpc/util/someip_server.h>
 #include <rpc/util/aidl_sock.h>
-#include <rpc/util/someip_util.h>
 #include <rpc/util/message_queue.h>
-#include <rpc/util/message_scheduler.h>
 #include "hostapd_someip_server.h"
 #include "hostapd_message_handler.h"
 #include "hostapd_event_callback.h"
@@ -33,18 +31,26 @@ std::shared_ptr<std::thread> hostapd_someip_service_thread;
 std::shared_ptr<SomeipServer> hostapd_someip_server;
 
 std::string cpath = "/data/vendor/wifi/hostapd/aidl_client";
-std::shared_ptr<MessageScheduler<std::shared_ptr<SomeipMessage>, SomeipMessageHandler>> hostapd_message_scheduler;
+std::shared_ptr<MessageQueue<std::shared_ptr<SomeipMessage>>> hostapd_someip_msg_queue;
 
-static void hostapd_message_schedule(const std::shared_ptr<SomeipMessage> &msg)
+static void hostapd_msg_schedule(const std::shared_ptr<SomeipMessage> &msg)
 {
-    hostapd_message_scheduler->schedule(msg);
+    hostapd_someip_msg_queue->push(msg);
+    qti_notify_aidl_socket();
 }
 
 static void someip_process_queued_msg()
 {
     if (!hostapd_someip_server)
         return;
-    hostapd_message_scheduler->handle();
+    if(hostapd_someip_msg_queue->empty()){
+        ALOGE("Error: Message queue is empty");
+        return;
+    }
+    auto message = hostapd_someip_msg_queue->front();
+    hostapd_someip_msg_queue->pop();
+    HostapdProcessSomeIPRequestMessage(message);
+    message.reset();
 }
 
 
@@ -61,21 +67,20 @@ bool HostapdSomeIPServerInit()
         ALOGI("Hostapd CEM someip service init...");
     }
 
-    hostapd_message_scheduler = std::make_shared<MessageScheduler<std::shared_ptr<SomeipMessage>, SomeipMessageHandler>>();
-    hostapd_message_scheduler->registerSchedulerHandler(qti_notify_aidl_socket);
-    hostapd_message_scheduler->registerMessageHandler(HostapdProcessSomeIPRequestMessage);
-    SomeipCallback cb(nullptr,
-                      hostapd_message_schedule);
-    hostapd_someip_server->setup(cb);
     /*Initialize Context*/
     SomeipContext context(WIFI_HOSTAPD_SERVICE_ID, hostapd_instance_id,
         HOSTAPD_EVENTGROUP_ID, HostapdEventArray);
+    SomeipCallback cb(nullptr,
+                      hostapd_msg_schedule);
+    Someip::setup(cb);
 
     hostapd_someip_server = std::make_shared<SomeipServer>(HOSTAPD_SERVICE_NAME, context);
 
     if (!hostapd_someip_server) {
         return false;
     }
+    hostapd_someip_msg_queue = std::make_shared<MessageQueue<std::shared_ptr<SomeipMessage>>>();
+    ALOGI("Hostapd someip service is initialized");
     return true;
 }
 
@@ -108,21 +113,8 @@ void HostapdSomeIPServerDeinit()
         return;
     ALOGI("Hostapd someip service deinit...");
     hostapd_someip_server->deinit();
+    hostapd_someip_msg_queue = nullptr;
     hostapd_someip_server = nullptr;
-}
-
-bool someip_send_request(uint16_t method_id, std::vector<uint8_t> &data, uint16_t session_id)
-{
-    if (!hostapd_someip_server)
-        return false;
-    return hostapd_someip_server->sendRequest(method_id, data, &session_id);
-}
-
-bool someip_send_response(std::shared_ptr<vsomeip::message> &msg, std::vector<uint8_t> &data)
-{
-    if (!hostapd_someip_server)
-        return false;
-    return hostapd_someip_server->sendResponse(msg, data);
 }
 
 bool someip_send_event(uint16_t method_id, std::vector<uint8_t> &data)
