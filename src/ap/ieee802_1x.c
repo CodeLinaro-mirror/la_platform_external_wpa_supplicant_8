@@ -114,12 +114,15 @@ static void ieee802_1x_set_authorized(struct hostapd_data *hapd,
 				      bool authorized, bool mld)
 {
 	int res;
+	bool update;
 
 	if (sta->flags & WLAN_STA_PREAUTH)
 		return;
 
-	ap_sta_set_authorized(hapd, sta, authorized);
+	update = ap_sta_set_authorized_flag(hapd, sta, authorized);
 	res = hostapd_set_authorized(hapd, sta, authorized);
+	if (update)
+		ap_sta_set_authorized_event(hapd, sta, authorized);
 	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE8021X,
 		       HOSTAPD_LEVEL_DEBUG, "%sauthorizing port",
 		       authorized ? "" : "un");
@@ -146,7 +149,7 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
 					     bool authorized)
 {
 #ifdef CONFIG_IEEE80211BE
-	unsigned int i, link_id;
+	unsigned int i;
 
 	if (!hostapd_is_mld_ap(hapd))
 		return;
@@ -158,33 +161,30 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
 	if (authorized && hapd->mld_link_id != sta->mld_assoc_link_id)
 		return;
 
-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
-		struct mld_link_info *link = &sta->mld_info.links[link_id];
+	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+		struct sta_info *tmp_sta;
+		struct mld_link_info *link;
+		struct hostapd_data *tmp_hapd =
+			hapd->iface->interfaces->iface[i]->bss[0];
 
+		if (!hostapd_is_ml_partner(hapd, tmp_hapd))
+			continue;
+
+		link = &sta->mld_info.links[tmp_hapd->mld_link_id];
 		if (!link->valid)
 			continue;
 
-		for (i = 0; i < hapd->iface->interfaces->count; i++) {
-			struct sta_info *tmp_sta;
-			struct hostapd_data *tmp_hapd =
-				hapd->iface->interfaces->iface[i]->bss[0];
-
-			if (tmp_hapd->conf->mld_ap ||
-			    hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+		     tmp_sta = tmp_sta->next) {
+			if (tmp_sta == sta ||
+			    tmp_sta->mld_assoc_link_id !=
+			    sta->mld_assoc_link_id ||
+			    tmp_sta->aid != sta->aid)
 				continue;
 
-			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
-			     tmp_sta = tmp_sta->next) {
-				if (tmp_sta == sta ||
-				    tmp_sta->mld_assoc_link_id !=
-				    sta->mld_assoc_link_id ||
-				    tmp_sta->aid != sta->aid)
-					continue;
-
-				ieee802_1x_set_authorized(tmp_hapd, tmp_sta,
-							  authorized, true);
-				break;
-			}
+			ieee802_1x_set_authorized(tmp_hapd, tmp_sta,
+						  authorized, true);
+			break;
 		}
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -765,6 +765,9 @@ void ieee802_1x_encapsulate_radius(struct hostapd_data *hapd,
 		goto fail;
 	}
 
+	if (!radius_msg_add_msg_auth(msg))
+		goto fail;
+
 	if (sm->identity &&
 	    !radius_msg_add_attr(msg, RADIUS_ATTR_USER_NAME,
 				 sm->identity, sm->identity_len)) {
@@ -1247,6 +1250,27 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE8021X,
 			       HOSTAPD_LEVEL_DEBUG,
 			       "received EAPOL-Start from STA");
+#ifdef CONFIG_IEEE80211R_AP
+		if (hapd->conf->wpa && sta->wpa_sm &&
+		    (wpa_key_mgmt_ft(wpa_auth_sta_key_mgmt(sta->wpa_sm)) ||
+		     sta->auth_alg == WLAN_AUTH_FT)) {
+			/* When FT is used, reauthentication to generate a new
+			 * PMK-R0 would be complicated since the current AP
+			 * might not be the one with which the currently used
+			 * PMK-R0 was generated. IEEE Std 802.11-2020, 13.4.2
+			 * (FT initial mobility domain association in an RSN)
+			 * mandates STA to perform a new FT initial mobility
+			 * domain association whenever its Supplicant would
+			 * trigger sending of an EAPOL-Start frame. As such,
+			 * this EAPOL-Start frame should not have been sent.
+			 * Discard it to avoid unexpected behavior. */
+			hostapd_logger(hapd, sta->addr,
+				       HOSTAPD_MODULE_IEEE8021X,
+				       HOSTAPD_LEVEL_DEBUG,
+				       "discard unexpected EAPOL-Start from STA that uses FT");
+			break;
+		}
+#endif /* CONFIG_IEEE80211R_AP */
 		sta->eapol_sm->flags &= ~EAPOL_SM_WAIT_START;
 		pmksa = wpa_auth_sta_get_pmksa(sta->wpa_sm);
 		if (pmksa) {
@@ -2037,16 +2061,7 @@ ieee802_1x_receive_auth(struct radius_msg *msg, struct radius_msg *req,
 	}
 	sta = sm->sta;
 
-	/* RFC 2869, Ch. 5.13: valid Message-Authenticator attribute MUST be
-	 * present when packet contains an EAP-Message attribute */
-	if (hdr->code == RADIUS_CODE_ACCESS_REJECT &&
-	    radius_msg_get_attr(msg, RADIUS_ATTR_MESSAGE_AUTHENTICATOR, NULL,
-				0) < 0 &&
-	    radius_msg_get_attr(msg, RADIUS_ATTR_EAP_MESSAGE, NULL, 0) < 0) {
-		wpa_printf(MSG_DEBUG,
-			   "Allowing RADIUS Access-Reject without Message-Authenticator since it does not include EAP-Message");
-	} else if (radius_msg_verify(msg, shared_secret, shared_secret_len,
-				     req, 1)) {
+	if (radius_msg_verify(msg, shared_secret, shared_secret_len, req, 1)) {
 		wpa_printf(MSG_INFO,
 			   "Incoming RADIUS packet did not have correct Message-Authenticator - dropped");
 		return RADIUS_RX_INVALID_AUTHENTICATOR;
@@ -2537,13 +2552,29 @@ int ieee802_1x_init(struct hostapd_data *hapd)
 	struct eapol_auth_config conf;
 	struct eapol_auth_cb cb;
 
-	if (hapd->mld_first_bss) {
+#ifdef CONFIG_IEEE80211BE
+	if (!hostapd_mld_is_first_bss(hapd)) {
+		struct hostapd_data *first;
+
+		first = hostapd_mld_get_first_bss(hapd);
+		if (!first)
+			return -1;
+
+		if (!first->eapol_auth) {
+			wpa_printf(MSG_DEBUG,
+				   "MLD: First BSS IEEE 802.1X state machine does not exist. Init on its behalf");
+
+			if (ieee802_1x_init(first))
+				return -1;
+		}
+
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Using IEEE 802.1X state machine of the first BSS");
 
-		hapd->eapol_auth = hapd->mld_first_bss->eapol_auth;
+		hapd->eapol_auth = first->eapol_auth;
 		return 0;
 	}
+#endif /* CONFIG_IEEE80211BE */
 
 	dl_list_init(&hapd->erp_keys);
 
@@ -2629,13 +2660,15 @@ void ieee802_1x_erp_flush(struct hostapd_data *hapd)
 
 void ieee802_1x_deinit(struct hostapd_data *hapd)
 {
-	if (hapd->mld_first_bss) {
+#ifdef CONFIG_IEEE80211BE
+	if (!hostapd_mld_is_first_bss(hapd)) {
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Deinit IEEE 802.1X state machine of a non-first BSS");
 
 		hapd->eapol_auth = NULL;
 		return;
 	}
+#endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_WEP
 	eloop_cancel_timeout(ieee802_1x_rekey, hapd, NULL);

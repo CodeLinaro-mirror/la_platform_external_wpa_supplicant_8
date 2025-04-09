@@ -28,6 +28,7 @@ L_CFLAGS += -DVERSION_STR_POSTFIX=\"-$(PLATFORM_VERSION)\"
 # Set Android log name
 L_CFLAGS += -DANDROID_LOG_NAME=\"wpa_supplicant\"
 
+
 L_CFLAGS += -Wall -Werror
 
 # Keep sometimes uninitialized warnings
@@ -71,6 +72,7 @@ ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
 endif
 
+
 ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
 L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
 endif
@@ -85,11 +87,11 @@ L_CFLAGS += -DCONFIG_WPA_CLI_HISTORY_DIR=\"/data/vendor/wifi/wpa\"
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
-L_CFLAGS += -DARCH_ARM_32
 endif
 
 # C++ flags for aidl interface
 L_CPPFLAGS := -Wall -Werror
+
 # TODO: Remove these allowed warnings later.
 L_CPPFLAGS += -Wno-unused-variable -Wno-unused-parameter
 L_CPPFLAGS += -Wno-unused-private-field
@@ -103,6 +105,7 @@ INCLUDES += $(LOCAL_PATH)/src/eap_common
 INCLUDES += $(LOCAL_PATH)/src/eapol_supp
 INCLUDES += $(LOCAL_PATH)/src/eap_peer
 INCLUDES += $(LOCAL_PATH)/src/eap_server
+INCLUDES += $(LOCAL_PATH)/src/hlr_auc_gw
 INCLUDES += $(LOCAL_PATH)/src/l2_packet
 INCLUDES += $(LOCAL_PATH)/src/radius
 INCLUDES += $(LOCAL_PATH)/src/rsn_supp
@@ -134,11 +137,9 @@ OBJS += src/utils/wpabuf.c
 OBJS += src/utils/bitfield.c
 OBJS += src/utils/ip_addr.c
 OBJS += src/utils/crc32.c
-OBJS += wmm_ac.c
-OBJS += op_classes.c
-OBJS += rrm.c
+OBJS += src/common/ptksa_cache.c
+OBJS += src/rsn_supp/pmksa_cache.c
 OBJS += twt.c
-OBJS += robust_av.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
 OBJS_p += src/utils/wpa_debug.c
@@ -347,6 +348,10 @@ ifdef CONFIG_MBO
 CONFIG_WNM=y
 endif
 
+ifdef CONFIG_BGSCAN_SIMPLE
+CONFIG_WNM=y
+endif
+
 ifdef CONFIG_WNM
 L_CFLAGS += -DCONFIG_WNM
 OBJS += wnm_sta.c
@@ -368,7 +373,6 @@ endif
 ifndef CONFIG_NO_WPA
 OBJS += src/rsn_supp/wpa.c
 OBJS += src/rsn_supp/preauth.c
-OBJS += src/rsn_supp/pmksa_cache.c
 OBJS += src/rsn_supp/wpa_ie.c
 OBJS += src/common/wpa_common.c
 NEED_AES=y
@@ -421,8 +425,8 @@ NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
-OBJS += src/common/ptksa_cache.c
 OBJS += src/pasn/pasn_initiator.c
+OBJS += src/pasn/pasn_common.c
 OBJS += pasn_supplicant.c
 endif
 
@@ -459,6 +463,28 @@ endif
 
 ifdef CONFIG_NO_TKIP
 L_CFLAGS += -DCONFIG_NO_TKIP
+endif
+
+ifdef CONFIG_NO_RRM
+L_CFLAGS += -DCONFIG_NO_RRM
+else
+OBJS += rrm.c
+ifdef CONFIG_AP
+OBJS += src/ap/rrm.c
+endif
+OBJS += op_classes.c
+endif
+
+ifdef CONFIG_NO_WMM_AC
+L_CFLAGS += -DCONFIG_NO_WMM_AC
+else
+OBJS += wmm_ac.c
+endif
+
+ifdef CONFIG_NO_ROBUST_AV
+L_CFLAGS += -DCONFIG_NO_ROBUST_AV
+else
+OBJS += robust_av.c
 endif
 
 
@@ -949,7 +975,6 @@ OBJS += src/ap/beacon.c
 OBJS += src/ap/bss_load.c
 OBJS += src/ap/eap_user_db.c
 OBJS += src/ap/neighbor_db.c
-OBJS += src/ap/rrm.c
 OBJS += src/ap/ieee802_11_ht.c
 ifdef CONFIG_IEEE80211AC
 OBJS += src/ap/ieee802_11_vht.c
@@ -1005,10 +1030,13 @@ L_CFLAGS += -DEAP_SERVER_WSC
 OBJS += src/ap/wps_hostapd.c
 OBJS += src/eap_server/eap_server_wsc.c
 endif
-ifeq ($(CONFIG_DPP),y)
+ifdef CONFIG_DPP
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
+endif
+ifdef CONFIG_NAN_USD
+OBJS += src/ap/nan_usd_ap.c
 endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y
@@ -1028,6 +1056,7 @@ endif
 
 ifdef CONFIG_TESTING_OPTIONS
 L_CFLAGS += -DCONFIG_TESTING_OPTIONS
+NEED_AES_WRAP=y
 endif
 
 ifdef NEED_RSN_AUTHENTICATOR
@@ -1824,8 +1853,9 @@ endif
 
 PASNOBJS += src/common/ptksa_cache.c
 
-ifndef CONFIG_NO_WPA
 PASNOBJS += src/rsn_supp/pmksa_cache.c
+
+ifndef CONFIG_NO_WPA
 PASNOBJS += src/rsn_supp/wpa_ie.c
 endif
 
@@ -1911,6 +1941,7 @@ endif
 
 PASNOBJS += src/pasn/pasn_initiator.c
 PASNOBJS += src/pasn/pasn_responder.c
+PASNOBJS += src/pasn/pasn_common.c
 
 ########################
 
