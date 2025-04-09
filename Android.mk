@@ -1,3 +1,4 @@
+ifeq ($(filter $(TARGET_BOARD_PLATFORM), qssi qssi_64),)
 ifneq ($(TARGET_BUILD_VENDOR), true)
 S_LOCAL_PATH := $(call my-dir)
 
@@ -15,3 +16,4 @@ endif #End of Check for platform version
 endif #End of Check for target build variant
 endif
 endif #End of Check for vendor target
+endif
