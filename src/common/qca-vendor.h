@@ -1346,6 +1346,21 @@ enum qca_radiotap_vendor_ids {
  *
  *	The attributes used with this command are defined in
  * 	enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_CLASSIFIED_FLOW_STATUS: Vendor subcommand that can
+ *	be used to notify userspace about status updates of a classified flow
+ *	learned by the driver with
+ *	%QCA_NL80211_VENDOR_SUBCMD_FLOW_CLASSIFY_RESULT.
+ *	The attributes for this event are defined in
+ *	enum qca_wlan_vendor_attr_flow_status.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_RX_MCS_MAP_CONFIG: Subcommand to update the
+ *	RX MCS MAP capability. This configuration is only applicable to
+ *	non-AP STA or non-AP MLD and allowed only in associated state and
+ *	valid until disconnection. This command results in the driver triggering
+ *	re-association to re-negotiate the updated RX MCS capability with the
+ *	peer. The attributes used with this command are defined in
+ *	enum qca_wlan_vendor_attr_rx_mcs_map_params.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1587,6 +1602,8 @@ enum qca_nl80211_vendor_subcmds {
 	/* 255 - reserved for QCA */
 	QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE = 256,
 	QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG = 257,
+	QCA_NL80211_VENDOR_SUBCMD_CLASSIFIED_FLOW_STATUS = 258,
+	QCA_NL80211_VENDOR_SUBCMD_RX_MCS_MAP_CONFIG = 259,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -3887,6 +3904,18 @@ enum qca_wlan_vendor_attr_config {
 	 * 0 - Disable.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_SETUP_LINK_RECONFIG_SUPPORT = 130,
+
+	/* 8-bit unsigned value to enable/disable DFS No Wait feature support
+	 * in AP mode.
+	 * 1 - Enable
+	 * 0 - Disable.
+	 *
+	 * DFS No Wait allows AP to be started within the subset of channel
+	 * bandwidth that does not require DFS while waiting for CAC to
+	 * complete on the subset that requires DFS. If no radar was detected,
+	 * switch to the full configured channel bandwidth.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_DFS_NO_WAIT_SUPPORT = 131,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
@@ -6463,6 +6492,54 @@ enum qca_vendor_attr_roam_candidate_selection_criteria {
  *	better Wi-Fi bands. E.g., STA would initially connect to a 2.4 GHz BSSID
  *	and would migrate to 5/6 GHz when it comes closer to the AP (high RSSI
  *	for 2.4 GHz BSS).
+ *
+ * @QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_WEIGHTAGE_2P4GHZ: Unsigned 8-bit
+ *	value.
+ *	Represents the weightage in percentage (%) of the total score that is
+ *	given for the roam scan candidates present on the 2.4 GHz band. The
+ *	configuration is valid until next disconnection. If this attribute is
+ *	not present, the existing configuration shall be used.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_WEIGHTAGE_5GHZ: Unsigned 8-bit
+ *	value.
+ *	Represents the weightage in percentage (%) of the total score that is
+ *	given for the roam scan candidates present on the 5 GHz band.
+ *	The configuration is valid until next disconnection. If this attribute
+ *	is not present, the existing configuration shall be used.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_WEIGHTAGE_6GHZ: Unsigned 8-bit
+ *	value.
+ *	Represents the weightage in percentage (%) of the total score that is
+ *	given for the roam scan candidates present on the 6 GHz band.
+ *	The configuration is valid until next disconnection. If this attribute
+ *	is not present, the existing configuration shall be used.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_THRESHOLD_PERCENTAGE: Unsigned 8-bit
+ *	value.
+ *	This attribute indicates the minimum roam score difference in
+ *	percentage (%). The roam candidate AP will be ignored if the score
+ *	difference percentage between the roam candidate AP and the current
+ *	connected AP is less than current connected AP score roam score delta.
+ *	The configuration is valid until next disconnection.
+ *	If this attribute is not present, the existing configuration shall be
+ *	used.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_CONNECTED_LOW_RSSI_THRESHOLD_DECREMENT: Unsigned 8-bit
+ *	value in dB.
+ *	This attribute indicates the RSSI decrement value from the current low
+ *	RSSI threshold for the next low RSSI roam trigger when no candidate is
+ *	found during the current low RSSI roam trigger. This value is applicable
+ *	only for low RSSI roam triggers. This configuration is valid until next
+ *	disconnection. If this attribute is not present, the existing
+ *	configuration shall be used.
+ *
+ * @QCA_ATTR_ROAM_CONTROL_PERIODIC_ROAM_SCAN_INTERVAL: Unsigned 32-bit
+ *	value in seconds.
+ *	This attribute defines the interval after which the next roam scan will
+ *	start if the current scan finds no candidates. The scan repeats at this
+ *	interval until a candidate is found.
+ *	This configuration is valid until next disconnection. If this attribute
+ *	is not present, the existing configuration shall be used.
  */
 enum qca_vendor_attr_roam_control {
 	QCA_ATTR_ROAM_CONTROL_ENABLE = 1,
@@ -6496,6 +6573,12 @@ enum qca_vendor_attr_roam_control {
 	QCA_ATTR_ROAM_CONTROL_CANDIDATE_ROAM_RSSI_DIFF = 29,
 	QCA_ATTR_ROAM_CONTROL_6GHZ_CANDIDATE_ROAM_RSSI_DIFF = 30,
 	QCA_ATTR_ROAM_CONTROL_CONNECTED_HIGH_RSSI_OFFSET = 31,
+	QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_WEIGHTAGE_2P4GHZ = 32,
+	QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_WEIGHTAGE_5GHZ = 33,
+	QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_WEIGHTAGE_6GHZ = 34,
+	QCA_ATTR_ROAM_CONTROL_CANDIDATE_SCORE_THRESHOLD_PERCENTAGE = 35,
+	QCA_ATTR_ROAM_CONTROL_CONNECTED_LOW_RSSI_THRESHOLD_DECREMENT = 36,
+	QCA_ATTR_ROAM_CONTROL_PERIODIC_ROAM_SCAN_INTERVAL = 37,
 
 	/* keep last */
 	QCA_ATTR_ROAM_CONTROL_AFTER_LAST,
@@ -9193,6 +9276,22 @@ enum qca_wlan_vendor_attr_ndp_params {
 	 * frames from each other.
 	 */
 	QCA_WLAN_VENDOR_ATTR_NDP_GTK_REQUIRED = 33,
+	/* Unsigned 32-bit attribute. Indicates the maximum latency of the NAN
+	 * data packets to be transmitted/received in milliseconds.
+	 * This attribute is optional, and it is configured for active NDP
+	 * session of a given NDP instance ID
+	 * %QCA_WLAN_VENDOR_ATTR_NDP_INSTANCE_ID using the command
+	 * %QCA_WLAN_VENDOR_NDP_SUB_CMD_UPDATE_CONFIG.
+	 */
+	QCA_WLAN_VENDOR_ATTR_NDP_MAX_LATENCY_MS = 34,
+	/* 32-bit unsigned value to indicate throughput in Mbps for the NDP
+	 * data of a given NDP session.
+	 * This attribute is optional, and it is configured for active NDP
+	 * session of a given NDP instance ID
+	 * %QCA_WLAN_VENDOR_ATTR_NDP_INSTANCE_ID using the command
+	 * %QCA_WLAN_VENDOR_NDP_SUB_CMD_UPDATE_CONFIG.
+	 */
+	QCA_WLAN_VENDOR_ATTR_NDP_TPUT = 35,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_NDP_PARAMS_AFTER_LAST,
@@ -9240,7 +9339,14 @@ enum qca_wlan_ndp_sub_cmd {
 	/* Command to indicate the peer about the end request being received */
 	QCA_WLAN_VENDOR_ATTR_NDP_END_IND = 11,
 	/* Command to indicate the peer of schedule update */
-	QCA_WLAN_VENDOR_ATTR_NDP_SCHEDULE_UPDATE_IND = 12
+	QCA_WLAN_VENDOR_ATTR_NDP_SCHEDULE_UPDATE_IND = 12,
+	/* Command to update dynamic configurations of active NDP sessions.
+	 * %QCA_WLAN_VENDOR_ATTR_NDP_INSTANCE_ID is a mandatory attribute and
+	 * at least one of the attributes
+	 * %QCA_WLAN_VENDOR_ATTR_NDP_MAX_LATENCY_MS and
+	 * %QCA_WLAN_VENDOR_ATTR_NDP_TPUT must be configured in this command.
+	 */
+	QCA_WLAN_VENDOR_NDP_SUB_CMD_UPDATE_CONFIG = 13,
 };
 
 /**
@@ -15105,6 +15211,105 @@ enum qca_wlan_vendor_attr_ratemask_params {
 };
 
 /**
+ * enum qca_wlan_rx_mcs_map_params_phy_type - RX MCS map config PHY type
+ *
+ * @QCA_WLAN_RX_MCS_MAP_PARAMS_PHY_TYPE_VHT: VHT PHY type
+ * @QCA_WLAN_RX_MCS_MAP_PARAMS_PHY_TYPE_HE: HE PHY type
+ * @QCA_WLAN_RX_MCS_MAP_PARAMS_PHY_TYPE_EHT: EHT PHY type
+ */
+enum qca_wlan_rx_mcs_map_params_phy_type {
+	QCA_WLAN_RX_MCS_MAP_PARAMS_PHY_TYPE_VHT = 0,
+	QCA_WLAN_RX_MCS_MAP_PARAMS_PHY_TYPE_HE = 1,
+	QCA_WLAN_RX_MCS_MAP_PARAMS_PHY_TYPE_EHT = 2,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_rx_mcs_map_params - Used by the vendor command
+ * QCA_NL80211_VENDOR_SUBCMD_RX_MCS_MAP_CONFIG.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_LIST:
+ * Array of nested attributes containing
+ * QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_PHY_TYPE and
+ * QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_BITMAP and optionally
+ * QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_LINK_ID.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_PHY_TYPE: u8, represents
+ * the PHY type to which RX MCS Map config is to be applied.
+ * The values for this attribute are referred from enum
+ * qca_wlan_rx_mcs_map_params_phy_type.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_BITMAP: binary, RX MCS map bitmap.
+ *
+ * For EHT targets 3 bit correspond to one NSS setting.
+ * b0-2 => NSS1
+ * b3-5 => NSS2
+ * b6-8 => NSS3
+ * b9-11 => NSS4
+ * b12-14 => NSS5
+ * b15-17 => NSS6
+ * b18-20 => NSS7
+ * b21-23 => NSS8
+ *
+ * Below are the possible values
+ * 000 - Disabled/Not supported
+ * 001 - MCS 0-7
+ * 010 - MCS 0-9
+ * 011 - MCS 0-11
+ * 100 - MCS 0-13
+ * 110 - MCS 0-14
+ * 111 - MCS 0-15
+ *
+ * For HE targets, 2 bits correspond to one NSS setting
+ * b0-1 => NSS1
+ * b2-3 => NSS2
+ * b4-5 => NSS3
+ * b6-7 => NSS4
+ * b8-9 => NSS5
+ * b10-11 => NSS6
+ * b12-13 => NSS7
+ * b14-15 => NSS8
+ *
+ * Below are the possible values
+ * 00 - Disabled/Not supported
+ * 01 - MCS 0-7
+ * 10 - MCS 0-9
+ * 11 - MCS 0-11
+ *
+ * for VHT targets, 2 bits correspond to one NSS setting.
+ * b0-1 => NSS1
+ * b2-3 => NSS2
+ * b4-5 => NSS3
+ * b6-7 => NSS4
+ * b8-9 => NSS5
+ * b10-11 => NSS6
+ * b12-13 => NSS7
+ * b14-15 => NSS8
+ *
+ * Below are the possible values
+ * 00 - Disabled/Not supported
+ * 01 - MCS 0-7
+ * 10 - MCS 0-8
+ * 11 - MCS 0-9
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_LINK_ID: u8, used to specify the
+ * MLO link ID of a link to be configured. Optional attribute.
+ * No need of this attribute in non-MLO cases. If the attribute is
+ * not provided, MCS map will be applied for the association link.
+ */
+enum qca_wlan_vendor_attr_rx_mcs_map_params {
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_LIST = 1,
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_PHY_TYPE = 2,
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_BITMAP = 3,
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_LINK_ID = 4,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_MAX =
+	QCA_WLAN_VENDOR_ATTR_RX_MCS_MAP_PARAMS_AFTER_LAST - 1,
+};
+
+/**
  * enum qca_wlan_audio_data_path - Defines the data path to be used for audio
  * traffic.
  *
@@ -18236,11 +18441,16 @@ enum qca_wlan_vendor_attr_flow_stats {
  * @QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_TRAFFIC_TYPE: Mandatory u8
  * attribute indicates the traffic type learned for this flow tuple. Uses the
  * enum qca_traffic_type values.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_UL_TID: Optional u8 attribute
+ * indicates the TID value to be used by the driver in uplink direction for this
+ * flow tuple.
  */
 enum qca_wlan_vendor_attr_flow_classify_result {
 	QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_INVALID = 0,
 	QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_FLOW_TUPLE = 1,
 	QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_TRAFFIC_TYPE = 2,
+	QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_UL_TID = 3,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_FLOW_CLASSIFY_RESULT_LAST,
@@ -18651,10 +18861,15 @@ enum qca_wlan_connect_ext_features {
  * array. The feature flags are identified by their bit index (see &enum
  * qca_wlan_connect_ext_features) with the first byte being the least
  * significant one and the last one being the most significant one.
+ * @QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_ALLOWED_BSSIDS: Nested attribute of
+ * BSSIDs to indicate allowed BSSIDs for association. This configuration stays
+ * in effect only for the current connection request and for the next connect
+ * request if there is no connection currently.
  */
 enum qca_wlan_vendor_attr_connect_ext {
 	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_INVALID = 0,
 	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES = 1,
+	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_ALLOWED_BSSIDS = 2,
 
 	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_MAX =
@@ -19064,6 +19279,47 @@ enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg {
 	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_MAX =
 	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_flow_status_update_type - Attribute values for
+ * %QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_UPDATE_TYPE.
+ * @QCA_FLOW_STATUS_UPDATE_PAUSE: Flow paused.
+ * @QCA_FLOW_STATUS_UPDATE_RESUME: Flow resumed.
+ * @QCA_FLOW_STATUS_UPDATE_DELETE: Flow deleted.
+ */
+enum qca_flow_status_update_type {
+	QCA_FLOW_STATUS_UPDATE_PAUSE = 0,
+	QCA_FLOW_STATUS_UPDATE_RESUME = 1,
+	QCA_FLOW_STATUS_UPDATE_DELETE = 2,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_flow_status - Definition of attributes to
+ * specify status updates of a classified flow. This enum is used by
+ * @QCA_NL80211_VENDOR_SUBCMD_CLASSIFIED_FLOW_STATUS.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_TUPLE: Mandatory nested attribute
+ * containing attributes defined by enum qca_wlan_vendor_attr_flow_tuple.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_TRAFFIC_TYPE: Mandatory u8 attribute
+ * indicates the traffic type of this flow tuple. Uses the
+ * enum qca_traffic_type values.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_UPDATE_TYPE: Mandatory u8 attribute
+ * indicates the flow status update type.
+ * Uses the enum qca_flow_status_update_type values.
+ */
+enum qca_wlan_vendor_attr_flow_status {
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_TUPLE = 1,
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_TRAFFIC_TYPE = 2,
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_UPDATE_TYPE = 3,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_LAST,
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_MAX =
+	QCA_WLAN_VENDOR_ATTR_FLOW_STATUS_LAST - 1,
 };
 
 #endif /* QCA_VENDOR_H */
