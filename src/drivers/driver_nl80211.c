@@ -9195,7 +9195,7 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 		nl80211_init_bss(new_bss);
 
 		/* Set interface mode to NL80211_IFTYPE_AP */
-		if (nl80211_set_mode(new_bss, nlmode))
+		if (nl80211_set_mode(drv, ifidx, nlmode))
 			return -1;
 
 		/* Subscribe management frames for this WPA_IF_AP_BSS */
