@@ -248,9 +248,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		iface->ema_max_periodicity = capa.ema_max_periodicity;
 	}
 
-        if (!(iface->drv_flags2 & WPA_DRIVER_FLAGS2_MLO))
-                iface->conf->ieee80211be = 0;
-
 	return 0;
 }
 

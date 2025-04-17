@@ -705,8 +705,7 @@ void hostapd_prune_associations(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_notify_assoc_fils_finish(struct hostapd_data *hapd,
 				      struct sta_info *sta);
 int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
-			const u8 *ie, size_t ielen, const u8 *link_addr,
-			const u8 *resp_ies, size_t resp_ies_len, int reassoc);
+			const u8 *ie, size_t ielen, int reassoc);
 void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_event_sta_low_ack(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_event_connect_failed_reason(struct hostapd_data *hapd,
@@ -729,7 +728,6 @@ hostapd_get_eap_user(struct hostapd_data *hapd, const u8 *identity,
 
 struct hostapd_data * hostapd_get_iface(struct hapd_interfaces *interfaces,
 					const char *ifname);
-int hapd_link_id(struct hostapd_data *hapd);
 void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
 				      enum smps_mode smps_mode,
 				      enum chan_width chan_width, u8 rx_nss);

@@ -1458,10 +1458,6 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
 		return -1;
 	}
 
-	if (hapd_link_id(hapd) >= 0 &&
-	    hostapd_drv_add_link(hapd, hapd_link_id(hapd), hapd->own_addr))
-		return -1;
-
 	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
 		return -1;
 
@@ -4009,14 +4005,3 @@ void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx)
 	}
 }
 #endif /* CONFIG_OCV */
-
-
-int hapd_link_id(struct hostapd_data *hapd)
-{
-#if defined(CONFIG_IEEE80211AX) && defined(CONFIG_IEEE80211BE)
-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be)
-		return hapd->conf->link_id;
-#endif
-
-	return -1;
-}

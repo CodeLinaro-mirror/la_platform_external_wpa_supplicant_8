@@ -4734,16 +4734,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		conf->eht_phy_capab.su_beamformee = atoi(pos);
 	} else if (os_strcmp(buf, "eht_mu_beamformer") == 0) {
 		conf->eht_phy_capab.mu_beamformer = atoi(pos);
-	} else if (os_strcmp(buf, "link_id") == 0) {
-		int link_id = atoi(pos);
-
-		if (link_id < 0 || link_id >= MAX_NUM_MLD_LINKS) {
-			wpa_printf(MSG_ERROR, "Line %d: Invalid MLO link ID %d",
-				   line, link_id);
-			return 1;
-		}
-
-		bss->link_id = atoi(pos);
 #endif /* CONFIG_IEEE80211BE */
 	} else {
 		wpa_printf(MSG_ERROR,

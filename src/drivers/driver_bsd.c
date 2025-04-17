@@ -553,7 +553,7 @@ bsd_new_sta(void *priv, void *ctx, u8 addr[IEEE80211_ADDR_LEN])
 		ielen += 2;
 
 no_ie:
-	drv_event_assoc(ctx, addr, iebuf, ielen, NULL, NULL, 0, 0);
+	drv_event_assoc(ctx, addr, iebuf, ielen, 0);
 }
 
 static int
@@ -905,7 +905,7 @@ bsd_set_privacy(void *priv, int enabled)
 }
 
 static int
-bsd_get_seqnum(const char *ifname, void *priv, int link_id, const u8 *addr, int idx,
+bsd_get_seqnum(const char *ifname, void *priv, const u8 *addr, int idx,
 	       u8 *seq)
 {
 	struct ieee80211req_key wk;
@@ -1057,7 +1057,7 @@ bsd_deinit(void *priv)
 
 
 static int
-bsd_set_sta_authorized(void *priv, const u8 *addr, const u8 *link_addr,
+bsd_set_sta_authorized(void *priv, const u8 *addr,
 		       unsigned int total_flags, unsigned int flags_or,
 		       unsigned int flags_and)
 {

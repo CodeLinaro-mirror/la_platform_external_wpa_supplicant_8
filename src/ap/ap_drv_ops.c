@@ -262,15 +262,12 @@ int hostapd_set_authorized(struct hostapd_data *hapd,
 {
 	if (authorized) {
 		return hostapd_sta_set_flags(hapd, sta->addr,
-					     sta->is_mld ?
-					     sta->link_addr : NULL,
 					     hostapd_sta_flags_to_drv(
 						     sta->flags),
 					     WPA_STA_AUTHORIZED, ~0);
 	}
 
 	return hostapd_sta_set_flags(hapd, sta->addr,
-				     sta->is_mld ? sta->link_addr : NULL,
 				     hostapd_sta_flags_to_drv(sta->flags),
 				     0, ~WPA_STA_AUTHORIZED);
 }
@@ -279,7 +276,6 @@ int hostapd_set_authorized(struct hostapd_data *hapd,
 int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	int set_flags, total_flags, flags_and, flags_or;
-
 	total_flags = hostapd_sta_flags_to_drv(sta->flags);
 	set_flags = WPA_STA_SHORT_PREAMBLE | WPA_STA_WMM | WPA_STA_MFP;
 	if (((!hapd->conf->ieee802_1x && !hapd->conf->wpa) ||
@@ -288,10 +284,8 @@ int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta)
 		set_flags |= WPA_STA_AUTHORIZED;
 	flags_or = total_flags & set_flags;
 	flags_and = total_flags | ~set_flags;
-	return hostapd_sta_set_flags(hapd, sta->addr,
-				     sta->is_mld ? sta->link_addr : NULL,
-				     total_flags, flags_or,
-				     flags_and);
+	return hostapd_sta_set_flags(hapd, sta->addr, total_flags,
+				     flags_or, flags_and);
 }
 
 
@@ -536,12 +530,12 @@ int hostapd_set_ieee8021x(struct hostapd_data *hapd,
 }
 
 
-int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd, int link_id,
+int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
 		       const u8 *addr, int idx, u8 *seq)
 {
 	if (hapd->driver == NULL || hapd->driver->get_seqnum == NULL)
 		return 0;
-	return hapd->driver->get_seqnum(ifname, hapd->drv_priv, link_id, addr, idx,
+	return hapd->driver->get_seqnum(ifname, hapd->drv_priv, addr, idx,
 					seq);
 }
 
@@ -601,13 +595,12 @@ int hostapd_set_frag(struct hostapd_data *hapd, int frag)
 
 
 int hostapd_sta_set_flags(struct hostapd_data *hapd, u8 *addr,
-			  const u8 *link_addr, int total_flags, int flags_or,
-			  int flags_and)
+			  int total_flags, int flags_or, int flags_and)
 {
 	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->sta_set_flags)
 		return 0;
-	return hapd->driver->sta_set_flags(hapd->drv_priv, addr, link_addr,
-					   total_flags, flags_or, flags_and);
+	return hapd->driver->sta_set_flags(hapd->drv_priv, addr, total_flags,
+					   flags_or, flags_and);
 }
 
 
@@ -700,8 +693,8 @@ int hostapd_driver_set_noa(struct hostapd_data *hapd, u8 count, int start,
 }
 
 
-int hostapd_drv_mlo_set_key(const char *ifname, struct hostapd_data *hapd,
-			int link_id, enum wpa_alg alg, const u8 *addr,
+int hostapd_drv_set_key(const char *ifname, struct hostapd_data *hapd,
+			enum wpa_alg alg, const u8 *addr,
 			int key_idx, int vlan_id, int set_tx,
 			const u8 *seq, size_t seq_len,
 			const u8 *key, size_t key_len, enum key_flag key_flag)
@@ -723,21 +716,9 @@ int hostapd_drv_mlo_set_key(const char *ifname, struct hostapd_data *hapd,
 	params.key_len = key_len;
 	params.vlan_id = vlan_id;
 	params.key_flag = key_flag;
-	params.link_id = link_id;
+	params.link_id = -1;
 
 	return hapd->driver->set_key(hapd->drv_priv, &params);
-}
-
-
-int hostapd_drv_set_key(const char *ifname, struct hostapd_data *hapd,
-			enum wpa_alg alg, const u8 *addr,
-			int key_idx, int vlan_id, int set_tx,
-			const u8 *seq, size_t seq_len,
-			const u8 *key, size_t key_len, enum key_flag key_flag)
-{
-	return hostapd_drv_mlo_set_key(ifname, hapd, -1, alg, addr, key_idx,
-				       vlan_id, set_tx, seq, seq_len, key, key_len,
-				       key_flag);
 }
 
 

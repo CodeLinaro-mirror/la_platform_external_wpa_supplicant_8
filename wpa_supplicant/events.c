@@ -3639,9 +3639,6 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 				    data->assoc_info.addr,
 				    data->assoc_info.req_ies,
 				    data->assoc_info.req_ies_len,
-				    data->assoc_info.link_addr,
-				    data->assoc_info.resp_ies,
-				    data->assoc_info.resp_ies_len,
 				    data->assoc_info.reassoc);
 		return;
 	}

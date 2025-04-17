@@ -61,7 +61,7 @@ int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 		      const char *ifname);
 int hostapd_set_ieee8021x(struct hostapd_data *hapd,
 			  struct wpa_bss_params *params);
-int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd, int link_id,
+int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
 		       const u8 *addr, int idx, u8 *seq);
 int hostapd_flush(struct hostapd_data *hapd);
 int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
@@ -72,8 +72,7 @@ int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
 int hostapd_set_rts(struct hostapd_data *hapd, int rts);
 int hostapd_set_frag(struct hostapd_data *hapd, int frag);
 int hostapd_sta_set_flags(struct hostapd_data *hapd, u8 *addr,
-			  const u8 *link_addr, int total_flags, int flags_or,
-			  int flags_and);
+			  int total_flags, int flags_or, int flags_and);
 int hostapd_sta_set_airtime_weight(struct hostapd_data *hapd, const u8 *addr,
 				   unsigned int weight);
 int hostapd_set_country(struct hostapd_data *hapd, const char *country);
@@ -93,12 +92,6 @@ int hostapd_driver_set_noa(struct hostapd_data *hapd, u8 count, int start,
 			   int duration);
 int hostapd_drv_set_key(const char *ifname,
 			struct hostapd_data *hapd,
-			enum wpa_alg alg, const u8 *addr,
-			int key_idx, int vlan_id, int set_tx,
-			const u8 *seq, size_t seq_len,
-			const u8 *key, size_t key_len, enum key_flag key_flag);
-int hostapd_drv_mlo_set_key(const char *ifname,
-			struct hostapd_data *hapd, int link_id,
 			enum wpa_alg alg, const u8 *addr,
 			int key_idx, int vlan_id, int set_tx,
 			const u8 *seq, size_t seq_len,
@@ -441,14 +434,5 @@ hostapd_drv_register_frame(struct hostapd_data *hapd, u16 type,
 					    match_len, multicast);
 }
 #endif /* CONFIG_TESTING_OPTIONS */
-
-static inline int hostapd_drv_add_link(struct hostapd_data *hapd,
-				       u8 link_id, const u8 *addr)
-{
-	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->add_link)
-		return -1;
-
-	return hapd->driver->add_link(hapd->drv_priv, link_id, addr);
-}
 
 #endif /* AP_DRV_OPS */

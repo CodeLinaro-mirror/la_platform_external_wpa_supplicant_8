@@ -748,7 +748,6 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  "ieee80211ac=%d\n"
 			  "ieee80211ax=%d\n"
 			  "ieee80211be=%d\n"
-			  "link_id=%d\n"
 			  "beacon_int=%u\n"
 			  "dtim_period=%d\n",
 			  iface->conf->channel,
@@ -763,7 +762,6 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  !hapd->conf->disable_11ax,
 			  iface->conf->ieee80211be &&
 			  !hapd->conf->disable_11be,
-			  hapd_link_id(hapd),
 			  iface->conf->beacon_int,
 			  hapd->conf->dtim_period);
 	if (os_snprintf_error(buflen - len, ret))

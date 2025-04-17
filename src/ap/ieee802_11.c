@@ -474,24 +474,6 @@ static void handle_auth_ft_finish(void *ctx, const u8 *dst, const u8 *bssid,
 #endif /* CONFIG_IEEE80211R_AP */
 
 
-#define WPA_AUTH_FRAME_ML_IE_LEN (6 + ETH_ALEN)
-
-static void hapd_auth_ml_ie(struct wpabuf *buf, const u8 *mld_addr)
-{
-
-	wpabuf_put_u8(buf, WLAN_EID_EXTENSION);
-	wpabuf_put_u8(buf, WPA_AUTH_FRAME_ML_IE_LEN - 2);
-	wpabuf_put_u8(buf, WLAN_EID_EXT_MULTI_LINK);
-
-	/* Basic Multi-Link IE control field */
-	wpabuf_put_u8(buf, 0x0);
-	wpabuf_put_u8(buf, 0x0);
-
-	/* Common info: Common Info Length + MLD MAC LEN */
-	wpabuf_put_u8(buf, 0x7);
-	wpabuf_put_data(buf, mld_addr, ETH_ALEN);
-}
-
 #ifdef CONFIG_SAE
 
 static void sae_set_state(struct sta_info *sta, enum sae_state state,
@@ -615,8 +597,7 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 	}
 
 	buf = wpabuf_alloc(SAE_COMMIT_MAX_LEN +
-			   (rx_id ? 3 + os_strlen(rx_id) : 0) +
-			   (sta->is_mld ? WPA_AUTH_FRAME_ML_IE_LEN : 0));
+			   (rx_id ? 3 + os_strlen(rx_id) : 0));
 	if (buf &&
 	    sae_write_commit(sta->sae, buf, sta->sae->tmp ?
 			     sta->sae->tmp->anti_clogging_token : NULL,
@@ -624,8 +605,6 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 		wpabuf_free(buf);
 		buf = NULL;
 	}
-	if (sta->is_mld)
-		hapd_auth_ml_ie(buf, hapd->own_addr);
 
 	return buf;
 }
@@ -636,8 +615,7 @@ static struct wpabuf * auth_build_sae_confirm(struct hostapd_data *hapd,
 {
 	struct wpabuf *buf;
 
-	buf = wpabuf_alloc(SAE_CONFIRM_MAX_LEN +
-			   (sta->is_mld ? WPA_AUTH_FRAME_ML_IE_LEN : 0));
+	buf = wpabuf_alloc(SAE_CONFIRM_MAX_LEN);
 	if (buf == NULL)
 		return NULL;
 
@@ -652,8 +630,6 @@ static struct wpabuf * auth_build_sae_confirm(struct hostapd_data *hapd,
 		wpabuf_free(buf);
 		return NULL;
 	}
-	if (sta->is_mld)
-		hapd_auth_ml_ie(buf, hapd->own_addr);
 
 	return buf;
 }
@@ -838,9 +814,7 @@ static void sae_sme_send_external_auth_status(struct hostapd_data *hapd,
 
 	os_memset(&params, 0, sizeof(params));
 	params.status = status;
-	params.bssid = sta->is_mld ? sta->link_addr : sta->addr;
-	wpa_printf(MSG_DEBUG, "Send external auth status for " MACSTR,
-		   MAC2STR(params.bssid));
+	params.bssid = sta->addr;
 	if (status == WLAN_STATUS_SUCCESS && sta->sae &&
 	    !hapd->conf->disable_pmksa_caching)
 		params.pmkid = sta->sae->pmkid;
@@ -1220,7 +1194,6 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 	const u8 *pos, *end;
 	int sta_removed = 0;
 	bool success_status;
-	int ie_offset = 0;
 
 	if (!groups)
 		groups = default_groups;
@@ -1378,51 +1351,12 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 					&token_len, groups, status_code ==
 					WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
 					status_code == WLAN_STATUS_SAE_PK,
-					&ie_offset);
+					NULL);
 		if (resp == SAE_SILENTLY_DISCARD) {
 			wpa_printf(MSG_DEBUG,
 				   "SAE: Drop commit message from " MACSTR " due to reflection attack",
 				   MAC2STR(sta->addr));
 			goto remove_sta;
-		}
-
-		if (hapd_link_id(hapd) >= 0 && !sta->is_mld && ie_offset) {
-			struct ieee802_11_elems elems;
-
-			if (ieee802_11_parse_elems(mgmt->u.auth.variable +
-						   ie_offset,
-						   (((const u8 *) mgmt) + len -
-						   (mgmt->u.auth.variable +
-						    ie_offset)),
-						   &elems, 1) == ParseFailed) {
-				wpa_printf(MSG_DEBUG,
-					   "ERROR!! parse_elems failure for "
-					   MACSTR, MAC2STR(sta->addr));
-				goto remove_sta;
-			}
-
-			if (elems.basic_mle) {
-				const u8 *mld_addr = get_basic_mle_mld_addr(
-					elems.basic_mle, elems.basic_mle_len);
-				if (!mld_addr) {
-					wpa_printf(MSG_DEBUG,
-						   "ERROR!! failed to get MLD "
-						   "address " MACSTR,
-						    MAC2STR(sta->addr));
-					goto remove_sta;
-				}
-
-				// Convert STA to MLD STA
-				ap_sta_hash_del(hapd, sta);
-				os_memcpy(sta->link_addr,
-					  sta->addr, ETH_ALEN);
-				os_memcpy(sta->addr, mld_addr, ETH_ALEN);
-				sta->is_mld = true;
-				ap_sta_hash_add(hapd, sta);
-				wpa_printf(MSG_DEBUG, "SAE authentication with MLD:" MACSTR ", Link:" MACSTR,
-					   MAC2STR(sta->addr),
-					   MAC2STR(sta->link_addr));
-			}
 		}
 
 		if (resp == WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER) {
@@ -1857,7 +1791,7 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 
 	if (!sta->wpa_sm)
 		sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth, sta->addr,
-						NULL, NULL);
+						NULL);
 	if (!sta->wpa_sm) {
 		wpa_printf(MSG_DEBUG,
 			   "FILS: Failed to initialize RSN state machine");
@@ -3028,7 +2962,7 @@ static void handle_auth(struct hostapd_data *hapd,
 		}
 #endif /* CONFIG_MESH */
 
-		sta = ap_sta_add(hapd, mgmt->sa, NULL);
+		sta = ap_sta_add(hapd, mgmt->sa);
 		if (!sta) {
 			wpa_printf(MSG_DEBUG, "ap_sta_add() failed");
 			resp = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
@@ -3118,7 +3052,7 @@ static void handle_auth(struct hostapd_data *hapd,
 		sta->auth_alg = WLAN_AUTH_FT;
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL, NULL);
+							sta->addr, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_DEBUG, "FT: Failed to initialize WPA "
 				   "state machine");
@@ -3141,8 +3075,7 @@ static void handle_auth(struct hostapd_data *hapd,
 			if (sta->wpa_sm == NULL)
 				sta->wpa_sm =
 					wpa_auth_sta_init(hapd->wpa_auth,
-							  sta->addr, NULL,
-							  NULL);
+							  sta->addr, NULL);
 			if (sta->wpa_sm == NULL) {
 				wpa_printf(MSG_DEBUG,
 					   "SAE: Failed to initialize WPA state machine");
@@ -3606,8 +3539,6 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 
 	if (!sta->wpa_sm)
 		sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,	sta->addr,
-						sta->is_mld ?
-						sta->link_addr : NULL,
 						NULL);
 	if (!sta->wpa_sm) {
 		wpa_printf(MSG_WARNING,
@@ -3660,9 +3591,7 @@ end:
 	wpa_printf(MSG_DEBUG, "OWE: Update status %d, ie len %d for peer "
 			      MACSTR, status, (unsigned int) ie_len,
 			      MAC2STR(sta->addr));
-	hostapd_drv_update_dh_ie(hapd,
-				 sta->is_mld ? sta->link_addr : sta->addr,
-				 status,
+	hostapd_drv_update_dh_ie(hapd, sta->addr, status,
 				 status == WLAN_STATUS_SUCCESS ? ie : NULL,
 				 ie_len);
 
@@ -3871,7 +3800,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		wpa_ie_len += 2;
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL,
+							sta->addr,
 							p2p_dev_addr);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_WARNING, "Failed to initialize WPA "
@@ -4019,7 +3948,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
 		if (sta->wpa_sm == NULL)
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
-							sta->addr, NULL, NULL);
+							sta->addr, NULL);
 		if (sta->wpa_sm == NULL) {
 			wpa_printf(MSG_WARNING, "Failed to initialize WPA "
 				   "state machine");
@@ -4822,7 +4751,7 @@ static void handle_assoc(struct hostapd_data *hapd,
 
 			/* DMG/IEEE 802.11ad does not use authentication.
 			 * Allocate sta entry upon association. */
-			sta = ap_sta_add(hapd, mgmt->sa, NULL);
+			sta = ap_sta_add(hapd, mgmt->sa);
 			if (!sta) {
 				hostapd_logger(hapd, mgmt->sa,
 					       HOSTAPD_MODULE_IEEE80211,

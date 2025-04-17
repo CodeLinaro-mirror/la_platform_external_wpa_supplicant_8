@@ -277,8 +277,6 @@ struct wpa_auth_config {
 	bool force_kdk_derivation;
 
 	bool radius_psk;
-
-	int link_id;
 };
 
 typedef enum {
@@ -307,10 +305,7 @@ struct wpa_auth_callbacks {
 	int (*set_key)(void *ctx, int vlan_id, enum wpa_alg alg,
 		       const u8 *addr, int idx, u8 *key, size_t key_len,
 		       enum key_flag key_flag);
-	int (*mlo_set_key)(void *ctx, int link_id, int vlan_id, enum wpa_alg alg,
-		       const u8 *addr, int idx, u8 *key, size_t key_len,
-		       enum key_flag key_flag);
-	int (*get_seqnum)(void *ctx, int link_id, const u8 *addr, int idx, u8 *seq);
+	int (*get_seqnum)(void *ctx, const u8 *addr, int idx, u8 *seq);
 	int (*send_eapol)(void *ctx, const u8 *addr, const u8 *data,
 			  size_t data_len, int encrypt);
 	int (*for_each_sta)(void *ctx, int (*cb)(struct wpa_state_machine *sm,
@@ -395,7 +390,7 @@ void wpa_auth_set_ocv(struct wpa_state_machine *sm, int ocv);
 int wpa_auth_uses_ocv(struct wpa_state_machine *sm);
 struct wpa_state_machine *
 wpa_auth_sta_init(struct wpa_authenticator *wpa_auth, const u8 *addr,
-		  const u8 *link_addr, const u8 *p2p_dev_addr);
+		  const u8 *p2p_dev_addr);
 int wpa_auth_sta_associated(struct wpa_authenticator *wpa_auth,
 			    struct wpa_state_machine *sm);
 void wpa_auth_sta_no_wpa(struct wpa_state_machine *sm);

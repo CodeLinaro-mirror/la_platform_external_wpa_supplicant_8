@@ -325,7 +325,7 @@ static int hostap_send_eapol(void *priv, const u8 *addr, const u8 *data,
 }
 
 
-static int hostap_sta_set_flags(void *priv, const u8 *addr, const u8 *link_addr,
+static int hostap_sta_set_flags(void *priv, const u8 *addr,
 				unsigned int total_flags, unsigned int flags_or,
 				unsigned int flags_and)
 {
@@ -458,7 +458,7 @@ static int wpa_driver_hostap_set_key(void *priv,
 }
 
 
-static int hostap_get_seqnum(const char *ifname, void *priv, int link_id, const u8 *addr,
+static int hostap_get_seqnum(const char *ifname, void *priv, const u8 *addr,
 			     int idx, u8 *seq)
 {
 	struct hostap_driver_data *drv = priv;
@@ -663,7 +663,7 @@ static int hostap_sta_remove(void *priv, const u8 *addr)
 	struct hostap_driver_data *drv = priv;
 	struct prism2_hostapd_param param;
 
-	hostap_sta_set_flags(drv, addr, NULL, 0, 0, ~WPA_STA_AUTHORIZED);
+	hostap_sta_set_flags(drv, addr, 0, 0, ~WPA_STA_AUTHORIZED);
 
 	memset(&param, 0, sizeof(param));
 	param.cmd = PRISM2_HOSTAPD_REMOVE_STA;
