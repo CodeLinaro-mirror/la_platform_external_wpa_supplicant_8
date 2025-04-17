@@ -33,6 +33,8 @@
 #include "common/ptksa_cache.h"
 #include "crypto/random.h"
 #include "bssid_ignore.h"
+#include "blacklist.h"
+#include "crypto/sha1.h"
 #include "wpas_glue.h"
 #include "wps_supplicant.h"
 #include "ibss_rsn.h"
@@ -2730,14 +2732,13 @@ static int wpas_fst_update_mbie(struct wpa_supplicant *wpa_s,
 }
 #endif /* CONFIG_FST */
 
-
 static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 					      union wpa_event_data *data)
 {
 	int sel;
 	const u8 *p;
 	int l, len;
-	bool found = false;
+	Boolean found = FALSE;
 	struct wpa_ie_data ie;
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
 	struct wpa_bss *bss = wpa_s->current_bss;
@@ -2761,7 +2762,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		     (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 4 &&
 		      (os_memcmp(&p[2], "\x50\x6F\x9A\x12", 4) == 0)) ||
 		     (p[0] == WLAN_EID_RSN && p[1] >= 2))) {
-			found = true;
+			found = TRUE;
 			break;
 		}
 		l -= len;
@@ -2802,6 +2803,47 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		wpa_key_mgmt_txt(wpa_s->key_mgmt, wpa_s->wpa_proto),
 		wpa_s->wpa_proto);
 
+	/*
+	 * Update PSK to wpa_sm and driver if target AP's AKMP suite is
+	 * WPA/WPA2 PSK
+	 */
+	if (wpa_key_mgmt_wpa_psk_no_sae(wpa_s->key_mgmt)) {
+		u8 psk[PMK_LEN];
+		int psk_set = 0;
+
+		if (ssid->psk_set) {
+			wpa_hexdump_key(MSG_MSGDUMP, "PSK (set in config)",
+					ssid->psk, PMK_LEN);
+			os_memcpy(psk, ssid->psk, PMK_LEN);
+			psk_set = 1;
+		}
+
+#ifndef CONFIG_NO_PBKDF2
+		if (!psk_set && ssid->ssid_len == 0 && ssid->passphrase) {
+			pbkdf2_sha1(ssid->passphrase, bss->ssid, bss->ssid_len,
+				    4096, psk, PMK_LEN);
+			wpa_hexdump_key(MSG_MSGDUMP, "PSK (from passphrase)",
+					psk, PMK_LEN);
+			psk_set = 1;
+		}
+#endif /* CONFIG_NO_PBKDF2 */
+
+		if (!psk_set) {
+			wpa_dbg(wpa_s, MSG_INFO,
+				"No PSK available for association");
+			wpas_auth_failed(wpa_s, "NO_PSK_AVAILABLE");
+			return -1;
+		}
+
+		wpa_sm_set_pmk(wpa_s->wpa, psk, PMK_LEN, NULL, NULL);
+		if (wpa_s->conf->key_mgmt_offload &&
+		    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD) &&
+		    wpa_drv_set_key(wpa_s, 0, NULL, 0, 0, NULL, 0, psk, PMK_LEN,
+				    KEY_FLAG_PMK))
+			wpa_dbg(wpa_s, MSG_ERROR,
+				"WPA: Cannot set PMK for key management offload");
+	}
+
 	/* Update pairwise cipher from (Re)Association Request frame info */
 	sel = ie.pairwise_cipher;
 	if (ssid->pairwise_cipher)
@@ -2830,7 +2872,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 	}
 
 	/* Update GTK and IGTK from AP's RSNE */
-	found = false;
+	found = FALSE;
 
 	if (wpa_s->wpa_proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) {
 		const u8 *bss_rsn;
@@ -2839,7 +2881,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		if (bss_rsn) {
 			p = bss_rsn;
 			len = 2 + bss_rsn[1];
-			found = true;
+			found = TRUE;
 		}
 	} else if (wpa_s->wpa_proto & WPA_PROTO_WPA) {
 		const u8 *bss_wpa;
@@ -2848,7 +2890,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		if (bss_wpa) {
 			p = bss_wpa;
 			len = 2 + bss_wpa[1];
-			found = true;
+			found = TRUE;
 		}
 	}
 
@@ -2928,7 +2970,6 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 
 	return 0;
 }
-
 
 static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					  union wpa_event_data *data)
