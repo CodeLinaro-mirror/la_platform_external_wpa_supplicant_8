@@ -2946,7 +2946,6 @@ static int wpa_cipher_to_cipher_suites(unsigned int ciphers, u32 suites[],
 	return num_suites;
 }
 
-
 static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 				  int max_suites)
 {
@@ -2963,7 +2962,9 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 	__AKM(IEEE8021X_SHA256, 802_1X_SHA256);
 	__AKM(PSK_SHA256, PSK_SHA256);
 	__AKM(SAE, SAE);
+	__AKM(SAE_EXT_KEY, SAE_EXT_KEY);
 	__AKM(FT_SAE, FT_SAE);
+	__AKM(FT_SAE_EXT_KEY, FT_SAE_EXT_KEY);
 	__AKM(CCKM, CCKM);
 	__AKM(OSEN, OSEN);
 	__AKM(IEEE8021X_SUITE_B, 802_1X_SUITE_B);
@@ -2979,7 +2980,6 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 
 	return num_suites;
 }
-
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
@@ -5782,70 +5782,80 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	    params->key_mgmt_suite == WPA_KEY_MGMT_FT_FILS_SHA384 ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_OWE ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_DPP) {
-		int mgmt = RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X;
+		u32 mgmt[NL80211_MAX_NR_AKM_SUITES], akm_count = 1, i;
+
+		mgmt[0] = RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X;
 
 		switch (params->key_mgmt_suite) {
 		case WPA_KEY_MGMT_CCKM:
-			mgmt = RSN_AUTH_KEY_MGMT_CCKM;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_CCKM;
 			break;
 		case WPA_KEY_MGMT_IEEE8021X:
-			mgmt = RSN_AUTH_KEY_MGMT_UNSPEC_802_1X;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_UNSPEC_802_1X;
 			break;
 		case WPA_KEY_MGMT_FT_IEEE8021X:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_802_1X;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_802_1X;
 			break;
 		case WPA_KEY_MGMT_FT_PSK:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_PSK;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_PSK;
 			break;
 		case WPA_KEY_MGMT_IEEE8021X_SHA256:
-			mgmt = RSN_AUTH_KEY_MGMT_802_1X_SHA256;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_802_1X_SHA256;
 			break;
 		case WPA_KEY_MGMT_PSK_SHA256:
-			mgmt = RSN_AUTH_KEY_MGMT_PSK_SHA256;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_PSK_SHA256;
 			break;
 		case WPA_KEY_MGMT_OSEN:
-			mgmt = RSN_AUTH_KEY_MGMT_OSEN;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_OSEN;
 			break;
 		case WPA_KEY_MGMT_SAE:
-			mgmt = RSN_AUTH_KEY_MGMT_SAE;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_SAE;
 			break;
 		case WPA_KEY_MGMT_FT_SAE:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_SAE;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_SAE;
 			break;
 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B:
-			mgmt = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B;
 			break;
 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
-			mgmt = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B_192;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B_192;
 			break;
 		case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_802_1X_SHA384;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_802_1X_SHA384;
 			break;
 		case WPA_KEY_MGMT_FILS_SHA256:
-			mgmt = RSN_AUTH_KEY_MGMT_FILS_SHA256;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FILS_SHA256;
 			break;
 		case WPA_KEY_MGMT_FILS_SHA384:
-			mgmt = RSN_AUTH_KEY_MGMT_FILS_SHA384;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FILS_SHA384;
 			break;
 		case WPA_KEY_MGMT_FT_FILS_SHA256:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_FILS_SHA256;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_FILS_SHA256;
 			break;
 		case WPA_KEY_MGMT_FT_FILS_SHA384:
-			mgmt = RSN_AUTH_KEY_MGMT_FT_FILS_SHA384;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_FT_FILS_SHA384;
 			break;
 		case WPA_KEY_MGMT_OWE:
-			mgmt = RSN_AUTH_KEY_MGMT_OWE;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_OWE;
 			break;
 		case WPA_KEY_MGMT_DPP:
-			mgmt = RSN_AUTH_KEY_MGMT_DPP;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_DPP;
 			break;
 		case WPA_KEY_MGMT_PSK:
 		default:
-			mgmt = RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X;
+			mgmt[0] = RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X;
 			break;
 		}
-		wpa_printf(MSG_DEBUG, "  * akm=0x%x", mgmt);
-		if (nla_put_u32(msg, NL80211_ATTR_AKM_SUITES, mgmt))
+
+		akm_count += wpa_key_mgmt_to_suites(
+				 params->allowed_key_mgmts, &mgmt[1],
+				 NL80211_MAX_NR_AKM_SUITES - 1);
+
+		for (i = 0; i < akm_count; i++)
+			wpa_printf(MSG_DEBUG, "  * akm[%d]=0x%x", i, mgmt[i]);
+
+		if (nla_put(msg, NL80211_ATTR_AKM_SUITES,
+			    akm_count * sizeof(u32), mgmt))
 			return -1;
 	}
 
@@ -5912,7 +5922,8 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		return -1;
 
 	if ((params->key_mgmt_suite == WPA_KEY_MGMT_SAE ||
-	     params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE) &&
+	     params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE ||
+	     wpa_key_mgmt_sae(params->allowed_key_mgmts)) &&
 	    (!(drv->capa.flags & WPA_DRIVER_FLAGS_SME)) &&
 	    nla_put_flag(msg, NL80211_ATTR_EXTERNAL_AUTH_SUPPORT))
 		return -1;
@@ -5935,7 +5946,8 @@ static int wpa_driver_nl80211_try_connect(
 	if (params->req_key_mgmt_offload && params->psk &&
 	    (params->key_mgmt_suite == WPA_KEY_MGMT_PSK ||
 	     params->key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256 ||
-	     params->key_mgmt_suite == WPA_KEY_MGMT_FT_PSK)) {
+	     params->key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
+	     wpa_key_mgmt_wpa_psk_no_sae(params->allowed_key_mgmts))) {
 		wpa_printf(MSG_DEBUG, "nl80211: Key management set PSK");
 		ret = issue_key_mgmt_set_key(drv, params->psk, 32);
 		if (ret)
@@ -6068,7 +6080,8 @@ static int wpa_driver_nl80211_associate(
 		if (wpa_driver_nl80211_set_mode(priv, nlmode) < 0)
 			return -1;
 		if (params->key_mgmt_suite == WPA_KEY_MGMT_SAE ||
-		    params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE) {
+		    params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE ||
+		    wpa_key_mgmt_sae(params->allowed_key_mgmts)) {
 			nl_connect = bss->nl_connect;
 			bss->use_nl_connect = 1;
 		} else {
