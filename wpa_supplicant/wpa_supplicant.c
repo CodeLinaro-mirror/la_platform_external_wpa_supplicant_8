@@ -3637,6 +3637,14 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	params.group_suite = cipher_group;
 	params.mgmt_group_suite = cipher_group_mgmt;
 	params.key_mgmt_suite = wpa_s->key_mgmt;
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)) {
+		if (params.key_mgmt_suite == WPA_KEY_MGMT_PSK &&
+		    (ssid->key_mgmt & WPA_KEY_MGMT_SAE))
+			params.allowed_key_mgmts = WPA_KEY_MGMT_SAE;
+		else if (params.key_mgmt_suite == WPA_KEY_MGMT_SAE &&
+			 (ssid->key_mgmt & WPA_KEY_MGMT_PSK))
+			params.allowed_key_mgmts = WPA_KEY_MGMT_PSK;
+	}
 	params.wpa_proto = wpa_s->wpa_proto;
 	wpa_s->auth_alg = params.auth_alg;
 	params.mode = ssid->mode;
@@ -3656,7 +3664,9 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK) &&
 	    (params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
-	     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK)) {
+	     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
+	     (params.allowed_key_mgmts &
+	      (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_FT_PSK)))) {
 		params.passphrase = ssid->passphrase;
 		if (ssid->psk_set)
 			params.psk = ssid->psk;
@@ -3682,7 +3692,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 
 		if ((params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
 		     params.key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256 ||
-		     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK) &&
+		     params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
+		     wpa_key_mgmt_wpa_psk_no_sae(params.allowed_key_mgmts)) &&
 		    ssid->psk_set)
 			params.psk = ssid->psk;
 	}
