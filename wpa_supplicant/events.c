@@ -37,6 +37,7 @@
 #include "common/dpp.h"
 #include "crypto/random.h"
 #include "blacklist.h"
+#include "crypto/sha1.h"
 #include "wpas_glue.h"
 #include "wps_supplicant.h"
 #include "ibss_rsn.h"
@@ -2570,6 +2571,245 @@ static int wpas_fst_update_mbie(struct wpa_supplicant *wpa_s,
 }
 #endif /* CONFIG_FST */
 
+static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
+					      union wpa_event_data *data)
+{
+	int sel;
+	const u8 *p;
+	int l, len;
+	Boolean found = FALSE;
+	struct wpa_ie_data ie;
+	struct wpa_ssid *ssid = wpa_s->current_ssid;
+	struct wpa_bss *bss = wpa_s->current_bss;
+	int pmf;
+
+	if (!ssid)
+		return 0;
+
+	p = data->assoc_info.req_ies;
+	l = data->assoc_info.req_ies_len;
+
+	while (p && l >= 2) {
+		len = p[1] + 2;
+		if (len > l) {
+			wpa_hexdump(MSG_DEBUG, "Truncated IE in assoc_info",
+				    p, l);
+			break;
+		}
+		if (((p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 6 &&
+		      (os_memcmp(&p[2], "\x00\x50\xF2\x01\x01\x00", 6) == 0)) ||
+		     (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 4 &&
+		      (os_memcmp(&p[2], "\x50\x6F\x9A\x12", 4) == 0)) ||
+		     (p[0] == WLAN_EID_RSN && p[1] >= 2))) {
+			found = TRUE;
+			break;
+		}
+		l -= len;
+		p += len;
+	}
+
+	if (!found || wpa_parse_wpa_ie(p, len, &ie) < 0)
+		return 0;
+
+	wpa_hexdump(MSG_DEBUG,
+		    "WPA: Update cipher suite selection based on IEs in driver-generated WPA/RSNE in AssocReq",
+		    p, l);
+
+	/* Update proto from (Re)Association Request frame info */
+	wpa_s->wpa_proto = ie.proto;
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PROTO, wpa_s->wpa_proto);
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_ENABLED,
+			 !!(wpa_s->wpa_proto &
+			    (WPA_PROTO_RSN | WPA_PROTO_OSEN)));
+
+	/* Update AKMP suite from (Re)Association Request frame info */
+	sel = ie.key_mgmt;
+	if (ssid->key_mgmt)
+		sel &= ssid->key_mgmt;
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"WPA: AP key_mgmt 0x%x network key_mgmt 0x%x; available key_mgmt 0x%x",
+		ie.key_mgmt, ssid->key_mgmt, sel);
+	if (ie.key_mgmt && !sel) {
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_AKMP_NOT_VALID);
+		return -1;
+	}
+
+	wpa_s->key_mgmt = ie.key_mgmt;
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_KEY_MGMT, wpa_s->key_mgmt);
+	wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT %s and proto %d",
+		wpa_key_mgmt_txt(wpa_s->key_mgmt, wpa_s->wpa_proto),
+		wpa_s->wpa_proto);
+
+	/*
+	 * Update PSK to wpa_sm and driver if target AP's AKMP suite is
+	 * WPA/WPA2 PSK
+	 */
+	if (wpa_key_mgmt_wpa_psk_no_sae(wpa_s->key_mgmt)) {
+		u8 psk[PMK_LEN];
+		int psk_set = 0;
+
+		if (ssid->psk_set) {
+			wpa_hexdump_key(MSG_MSGDUMP, "PSK (set in config)",
+					ssid->psk, PMK_LEN);
+			os_memcpy(psk, ssid->psk, PMK_LEN);
+			psk_set = 1;
+		}
+
+#ifndef CONFIG_NO_PBKDF2
+		if (!psk_set && ssid->ssid_len == 0 && ssid->passphrase) {
+			pbkdf2_sha1(ssid->passphrase, bss->ssid, bss->ssid_len,
+				    4096, psk, PMK_LEN);
+			wpa_hexdump_key(MSG_MSGDUMP, "PSK (from passphrase)",
+					psk, PMK_LEN);
+			psk_set = 1;
+		}
+#endif /* CONFIG_NO_PBKDF2 */
+
+		if (!psk_set) {
+			wpa_dbg(wpa_s, MSG_INFO,
+				"No PSK available for association");
+			wpas_auth_failed(wpa_s, "NO_PSK_AVAILABLE");
+			return -1;
+		}
+
+		wpa_sm_set_pmk(wpa_s->wpa, psk, PMK_LEN, NULL, NULL);
+		if (wpa_s->conf->key_mgmt_offload &&
+		    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD) &&
+		    wpa_drv_set_key(wpa_s, 0, NULL, 0, 0, NULL, 0, psk, PMK_LEN,
+				    KEY_FLAG_PMK))
+			wpa_dbg(wpa_s, MSG_ERROR,
+				"WPA: Cannot set PMK for key management offload");
+	}
+
+	/* Update pairwise cipher from (Re)Association Request frame info */
+	sel = ie.pairwise_cipher;
+	if (ssid->pairwise_cipher)
+		sel &= ssid->pairwise_cipher;
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"WPA: AP pairwise cipher 0x%x network pairwise cipher 0x%x; available pairwise cipher 0x%x",
+		ie.pairwise_cipher, ssid->pairwise_cipher, sel);
+	if (ie.pairwise_cipher && !sel) {
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_PAIRWISE_CIPHER_NOT_VALID);
+		return -1;
+	}
+
+	wpa_s->pairwise_cipher = ie.pairwise_cipher;
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PAIRWISE,
+			 wpa_s->pairwise_cipher);
+	wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using PTK %s",
+		wpa_cipher_txt(wpa_s->pairwise_cipher));
+
+	/* Update other parameters based on AP's WPA IE/RSNE, if available */
+	if (!bss) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"WPA: current_bss == NULL - skip AP IE check");
+		return 0;
+	}
+
+	/* Update GTK and IGTK from AP's RSNE */
+	found = FALSE;
+
+	if (wpa_s->wpa_proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) {
+		const u8 *bss_rsn;
+
+		bss_rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+		if (bss_rsn) {
+			p = bss_rsn;
+			len = 2 + bss_rsn[1];
+			found = TRUE;
+		}
+	} else if (wpa_s->wpa_proto & WPA_PROTO_WPA) {
+		const u8 *bss_wpa;
+
+		bss_wpa = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
+		if (bss_wpa) {
+			p = bss_wpa;
+			len = 2 + bss_wpa[1];
+			found = TRUE;
+		}
+	}
+
+	if (!found || wpa_parse_wpa_ie(p, len, &ie) < 0)
+		return 0;
+
+	pmf = wpas_get_ssid_pmf(wpa_s, ssid);
+	if (!(ie.capabilities & WPA_CAPABILITY_MFPC) &&
+	    pmf == MGMT_FRAME_PROTECTION_REQUIRED) {
+		/* AP does not support MFP, local configuration requires it */
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_INVALID_RSN_IE_CAPAB);
+		return -1;
+	}
+	if ((ie.capabilities & WPA_CAPABILITY_MFPR) &&
+	    pmf == NO_MGMT_FRAME_PROTECTION) {
+		/* AP requires MFP, local configuration disables it */
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_INVALID_RSN_IE_CAPAB);
+		return -1;
+	}
+
+	/* Update PMF from local configuration now that MFP validation was done
+	 * above */
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_MFP, pmf);
+
+	/* Update GTK from AP's RSNE */
+	sel = ie.group_cipher;
+	if (ssid->group_cipher)
+		sel &= ssid->group_cipher;
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"WPA: AP group cipher 0x%x network group cipher 0x%x; available group cipher 0x%x",
+		ie.group_cipher, ssid->group_cipher, sel);
+	if (ie.group_cipher && !sel) {
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_GROUP_CIPHER_NOT_VALID);
+		return -1;
+	}
+
+	wpa_s->group_cipher = ie.group_cipher;
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_GROUP, wpa_s->group_cipher);
+	wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using GTK %s",
+		wpa_cipher_txt(wpa_s->group_cipher));
+
+	/* Update IGTK from AP RSN IE */
+	sel = ie.mgmt_group_cipher;
+	if (ssid->group_mgmt_cipher)
+		sel &= ssid->group_mgmt_cipher;
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"WPA: AP mgmt_group_cipher 0x%x network mgmt_group_cipher 0x%x; available mgmt_group_cipher 0x%x",
+		ie.mgmt_group_cipher, ssid->group_mgmt_cipher, sel);
+
+	if (pmf == NO_MGMT_FRAME_PROTECTION ||
+	    !(ie.capabilities & WPA_CAPABILITY_MFPC)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"WPA: STA/AP is not MFP capable; AP RSNE caps 0x%x",
+			ie.capabilities);
+		ie.mgmt_group_cipher = 0;
+	}
+
+	if (ie.mgmt_group_cipher && !sel) {
+		wpa_supplicant_deauthenticate(
+			wpa_s, WLAN_REASON_CIPHER_SUITE_REJECTED);
+		return -1;
+	}
+
+	wpa_s->mgmt_group_cipher = ie.mgmt_group_cipher;
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_MGMT_GROUP,
+			 wpa_s->mgmt_group_cipher);
+	if (wpa_s->mgmt_group_cipher)
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using MGMT group cipher %s",
+			wpa_cipher_txt(wpa_s->mgmt_group_cipher));
+	else
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: not using MGMT group cipher");
+
+	return 0;
+}
+
 static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					  union wpa_event_data *data)
 {
@@ -3015,6 +3255,10 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			return;
 		}
 	}
+
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
+	    data && wpa_supplicant_use_own_rsne_params(wpa_s, data) < 0)
+		return;
 
 	multi_ap_set_4addr_mode(wpa_s);
 
