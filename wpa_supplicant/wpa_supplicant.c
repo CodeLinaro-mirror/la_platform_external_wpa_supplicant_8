@@ -3637,14 +3637,9 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	params.group_suite = cipher_group;
 	params.mgmt_group_suite = cipher_group_mgmt;
 	params.key_mgmt_suite = wpa_s->key_mgmt;
-	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)) {
-		if (params.key_mgmt_suite == WPA_KEY_MGMT_PSK &&
-		    (ssid->key_mgmt & WPA_KEY_MGMT_SAE))
-			params.allowed_key_mgmts = WPA_KEY_MGMT_SAE;
-		else if (params.key_mgmt_suite == WPA_KEY_MGMT_SAE &&
-			 (ssid->key_mgmt & WPA_KEY_MGMT_PSK))
-			params.allowed_key_mgmts = WPA_KEY_MGMT_PSK;
-	}
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
+		params.allowed_key_mgmts =
+			ssid->key_mgmt & ~params.key_mgmt_suite;
 	params.wpa_proto = wpa_s->wpa_proto;
 	wpa_s->auth_alg = params.auth_alg;
 	params.mode = ssid->mode;
