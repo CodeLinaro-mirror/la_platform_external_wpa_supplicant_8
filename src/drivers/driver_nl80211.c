@@ -5782,7 +5782,16 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	    params->key_mgmt_suite == WPA_KEY_MGMT_FT_FILS_SHA384 ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_OWE ||
 	    params->key_mgmt_suite == WPA_KEY_MGMT_DPP) {
-		u32 mgmt[NL80211_MAX_NR_AKM_SUITES], akm_count = 1, i;
+		u32 *mgmt;
+		int akm_count = 1, i, max_akms_count;
+
+		max_akms_count = drv->capa.max_num_akms_connect ?
+			 drv->capa.max_num_akms_connect :
+			 NL80211_MAX_NR_AKM_SUITES;
+
+		mgmt = os_malloc(sizeof(u32) * max_akms_count);
+		if (!mgmt)
+			return -1;
 
 		mgmt[0] = RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X;
 
@@ -5849,14 +5858,18 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 
 		akm_count += wpa_key_mgmt_to_suites(
 				 params->allowed_key_mgmts, &mgmt[1],
-				 NL80211_MAX_NR_AKM_SUITES - 1);
+				 max_akms_count - 1);
 
 		for (i = 0; i < akm_count; i++)
 			wpa_printf(MSG_DEBUG, "  * akm[%d]=0x%x", i, mgmt[i]);
 
 		if (nla_put(msg, NL80211_ATTR_AKM_SUITES,
-			    akm_count * sizeof(u32), mgmt))
+			    akm_count * sizeof(u32), mgmt)) {
+			os_free(mgmt);
 			return -1;
+		}
+
+		os_free(mgmt);
 	}
 
 	if (params->req_handshake_offload &&
