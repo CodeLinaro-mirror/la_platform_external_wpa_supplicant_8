@@ -10654,10 +10654,6 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 	     nla_put_flag(msg, NL80211_ATTR_CH_SWITCH_BLOCK_TX)))
 		goto error;
 
-	if (bss->link_id >= 0 &&
-	    (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, bss->link_id)))
-		goto error;
-
 	/* beacon_after params */
 	ret = set_beacon_data(msg, &settings->beacon_after);
 	if (ret)
