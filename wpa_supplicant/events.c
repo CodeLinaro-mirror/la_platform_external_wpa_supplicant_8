@@ -440,7 +440,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 }
 
 
-static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
+static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_ie_data ie;
 	int pmksa_set = -1;
@@ -465,8 +465,7 @@ static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
 						    true);
 		if (pmksa_set == 0) {
 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
-			if (authorized)
-				wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
+			wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
 			break;
 		}
 	}
@@ -3564,8 +3563,7 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
 				break;
 			found = 1;
-			wpa_find_assoc_pmkid(wpa_s,
-					     data->assoc_info.authorized);
+			wpa_find_assoc_pmkid(wpa_s);
 		}
 		if (!found_x && p[0] == WLAN_EID_RSNX) {
 			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
@@ -4048,7 +4046,7 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
 	}
 
 	common_info = (struct eht_ml_basic_common_info *) ml->variable;
-	if (common_info->len != expected_common_info_len) {
+	if (common_info->len < expected_common_info_len) {
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Invalid common info len=%u. expected=%u",
 			   common_info->len, expected_common_info_len);
@@ -4189,12 +4187,13 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
 		sta_info_len = 1 + ETH_ALEN + 8 + 2 + 2 + 1 + nstr_bitmap_len;
 		if (sta_info_len > ml_len || sta_info_len > end - pos ||
 		    sta_info_len + 2 > sub_elem_len ||
-		    sta_info_len != *pos) {
+		    sta_info_len > *pos) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Invalid STA info len=%u, len=%u",
 				   sta_info_len, *pos);
 			goto out;
 		}
+		sta_info_len = *pos;
 
 		/* Get the link address */
 		wpa_printf(MSG_DEBUG,
