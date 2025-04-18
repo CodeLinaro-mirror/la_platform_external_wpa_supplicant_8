@@ -6314,7 +6314,7 @@ int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 					arg);
 
 	/* if error occurred and interface exists already */
-	if (ret < 0 && if_nametoindex(ifname)) {
+	if (ret == -ENFILE && if_nametoindex(ifname)) {
 		if (use_existing) {
 			wpa_printf(MSG_DEBUG, "nl80211: Continue using existing interface %s",
 				   ifname);
@@ -7583,26 +7583,27 @@ fail:
 }
 
 
-static int nl80211_set_mode(struct i802_bss *bss, enum nl80211_iftype mode)
+static int nl80211_set_mode(struct wpa_driver_nl80211_data *drv,
+			    int ifindex, enum nl80211_iftype mode)
 {
 	struct nl_msg *msg;
 	int ret = -ENOBUFS;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Set mode ifindex %d iftype %d (%s)",
-		   bss->ifindex, mode, nl80211_iftype_str(mode));
+		   ifindex, mode, nl80211_iftype_str(mode));
 
-	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_SET_INTERFACE);
+	msg = nl80211_cmd_msg(drv->first_bss, 0, NL80211_CMD_SET_INTERFACE);
 	if (!msg || nla_put_u32(msg, NL80211_ATTR_IFTYPE, mode))
 		goto fail;
 
-	ret = send_and_recv_cmd(bss->drv, msg);
+	ret = send_and_recv_cmd(drv, msg);
 	msg = NULL;
 	if (!ret)
 		return 0;
 fail:
 	nlmsg_free(msg);
 	wpa_printf(MSG_DEBUG, "nl80211: Failed to set interface %d to mode %d:"
-		   " %d (%s)", bss->ifindex, mode, ret, strerror(-ret));
+		   " %d (%s)", ifindex, mode, ret, strerror(-ret));
 	return ret;
 }
 
@@ -7622,7 +7623,7 @@ static int wpa_driver_nl80211_set_mode_impl(
 	if (TEST_FAIL())
 		return -1;
 
-	mode_switch_res = nl80211_set_mode(bss, nlmode);
+	mode_switch_res = nl80211_set_mode(drv, drv->ifindex, nlmode);
 	if (mode_switch_res && nlmode == nl80211_get_ifmode(bss))
 		mode_switch_res = 0;
 
@@ -7686,7 +7687,7 @@ static int wpa_driver_nl80211_set_mode_impl(
 		}
 
 		/* Try to set the mode again while the interface is down */
-		mode_switch_res = nl80211_set_mode(bss, nlmode);
+		mode_switch_res = nl80211_set_mode(drv, drv->ifindex, nlmode);
 		if (mode_switch_res == -EBUSY) {
 			wpa_printf(MSG_DEBUG,
 				   "nl80211: Delaying mode set while interface going down");
@@ -8753,7 +8754,6 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
 static void handle_eapol(int sock, void *eloop_ctx, void *sock_ctx)
 {
 	struct wpa_driver_nl80211_data *drv = eloop_ctx;
-	struct i802_bss *bss;
 	struct sockaddr_ll lladdr;
 	unsigned char buf[3000];
 	int len;
@@ -8767,10 +8767,8 @@ static void handle_eapol(int sock, void *eloop_ctx, void *sock_ctx)
 		return;
 	}
 
-	if (have_ifidx(drv, lladdr.sll_ifindex, IFIDX_ANY)) {
-		for (bss = drv->first_bss; bss; bss = bss->next)
-			drv_event_eapol_rx(bss->ctx, lladdr.sll_addr, buf, len);
-	}
+	if (have_ifidx(drv, lladdr.sll_ifindex, IFIDX_ANY))
+		drv_event_eapol_rx(drv->ctx, lladdr.sll_addr, buf, len);
 }
 
 
@@ -9186,10 +9184,6 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 		if (drv_priv)
 			*drv_priv = new_bss;
 		nl80211_init_bss(new_bss);
-
-		/* Set interface mode to NL80211_IFTYPE_AP */
-		if (nl80211_set_mode(new_bss, nlmode))
-			return -1;
 
 		/* Subscribe management frames for this WPA_IF_AP_BSS */
 		if (nl80211_setup_ap(new_bss))
@@ -12911,20 +12905,19 @@ static int add_freq_list(struct nl_msg *msg, int attr, const int *freq_list)
 }
 
 
-static int nl80211_qca_do_acs(struct i802_bss *bss,
+static int nl80211_qca_do_acs(struct wpa_driver_nl80211_data *drv,
 			      struct drv_acs_params *params)
 {
 	struct nl_msg *msg;
 	struct nlattr *data;
 	int ret;
 	int mode;
-	struct wpa_driver_nl80211_data *drv = bss->drv;
 
 	mode = hw_mode_to_qca_acs(params->hw_mode);
 	if (mode < 0)
 		return -1;
 
-	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR)) ||
+	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
 			QCA_NL80211_VENDOR_SUBCMD_DO_ACS) ||
@@ -14194,7 +14187,7 @@ static int nl80211_do_acs(void *priv, struct drv_acs_params *params)
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	if (drv->qca_do_acs)
-		return nl80211_qca_do_acs(bss, params);
+		return nl80211_qca_do_acs(drv, params);
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
