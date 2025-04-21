@@ -68,6 +68,7 @@
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
 #endif /* CONFIG_MESH */
+#include "aidl/aidl.h"
 
 const char *const wpa_supplicant_version =
 "wpa_supplicant v" VERSION_STR "\n"
@@ -7623,6 +7624,15 @@ int wpa_supplicant_run(struct wpa_global *global)
 	if (wpa_supplicant_match_existing(global))
 		return -1;
 #endif
+
+#ifdef CONFIG_AIDL
+	// If daemonize is enabled, initialize AIDL here.
+	if (global->params.daemonize) {
+		global->aidl = wpas_aidl_init(global);
+		if (!global->aidl)
+			return -1;
+	}
+#endif /* CONFIG_AIDL */
 
 	if (global->params.wait_for_monitor) {
 		for (wpa_s = global->ifaces; wpa_s; wpa_s = wpa_s->next)
