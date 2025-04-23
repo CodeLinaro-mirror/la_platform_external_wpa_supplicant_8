@@ -25,12 +25,14 @@
 #include "p2p_supplicant.h"
 
 #if defined(CONFIG_SOMEIP_SUPPORT) || defined(WPA_QRPC_LOG)
-#include "supplicant_someip_server.h"
 #include <rpc/util/properties.h>
 #include <rpc/util/log_common.h>
+#include <getopt.h>
 
+#include "supplicant_someip_server.h"
 #define APP_NAME  "wpa_supplicant"
 #define LOG_TAG   "QRPC"
+int sta_remote_mode = 1;
 #endif
 
 static void usage(void)
@@ -211,6 +213,11 @@ int main(int argc, char *argv[])
 	property_init();
 	InitLogExt(APP_NAME, 10);
 	setLogTag(LOG_TAG);
+	int opt = 0;
+	static struct option long_opt[] = {
+		{"standalone", no_argument, &sta_remote_mode, 0},
+		{0, 0, 0, 0}
+	};
 #endif
 
 	os_memset(&params, 0, sizeof(params));
@@ -224,11 +231,21 @@ int main(int argc, char *argv[])
 	wpa_supplicant_fd_workaround(1);
 
 	for (;;) {
+#if defined(CONFIG_SOMEIP_SUPPORT) || defined(WPA_QRPC_LOG)
+		c = getopt_long(argc, argv,
+			   "b:Bc:C:D:de:f:g:G:hi:I:KLMm:No:O:p:P:qsS:TtuvW", long_opt, &opt);
+#else
 		c = getopt(argc, argv,
 			   "b:Bc:C:D:de:f:g:G:hi:I:KLMm:No:O:p:P:qsS:TtuvW");
+#endif
 		if (c < 0)
 			break;
 		switch (c) {
+#if defined(CONFIG_SOMEIP_SUPPORT) || defined(WPA_QRPC_LOG)
+		case 0:
+			ALOGI("Supplicant starts in %s mode", sta_remote_mode?"REMOTE":"STANDALONE");
+			break;
+#endif
 		case 'b':
 			iface->bridge_ifname = optarg;
 			break;
@@ -389,13 +406,15 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-	if (!SupplicantSomeIPServerInit()){
-		wpa_printf(MSG_ERROR, "Failed to initialize wpas someip server");		
-		goto out;
-	}
-	if (!SupplicantSomeIPServerStart()){
-		wpa_printf(MSG_ERROR, "Failed to start wpas someip server");		
-		goto out;
+	if(sta_remote_mode){
+		if (!SupplicantSomeIPServerInit()){
+			wpa_printf(MSG_ERROR, "Failed to initialize wpas someip server");		
+			goto out;
+		}
+		if (!SupplicantSomeIPServerStart()){
+			wpa_printf(MSG_ERROR, "Failed to start wpas someip server");		
+			goto out;
+		}
 	}
 #endif
 
@@ -443,11 +462,13 @@ int main(int argc, char *argv[])
 	fst_global_deinit();
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-	SupplicantSomeIPServerStop();
+	if(sta_remote_mode)
+		SupplicantSomeIPServerStop();
 #endif
 out:
 #ifdef CONFIG_SOMEIP_SUPPORT
-	SupplicantSomeIPServerDeinit();
+	if(sta_remote_mode)
+		SupplicantSomeIPServerDeinit();
 #endif
 	wpa_supplicant_fd_workaround(0);
 	os_free(ifaces);

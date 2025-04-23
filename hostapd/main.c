@@ -41,6 +41,10 @@
 #endif /* CONFIG_CTRL_IFACE_AIDL */
 
 #ifdef CONFIG_SOMEIP_SUPPORT
+#include <rpc/util/properties.h>
+#include <rpc/util/log_common.h>
+#include <getopt.h>
+
 #include "hostapd_someip_server.h"
 #endif /* CONFIG_SOMEIP_SUPPORT */
 
@@ -811,8 +815,13 @@ int main(int argc, char *argv[])
 		return -1;
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-		property_init();
-		InitLogExt(APP_NAME, 10);
+	property_init();
+	InitLogExt(APP_NAME, 10);
+	int opt = 0;
+	static struct option long_opt[] = {
+		{"standalone", no_argument, &ap_remote_mode, 0},
+		{0, 0, 0, 0}
+	};
 #endif
 
 	os_memset(&interfaces, 0, sizeof(interfaces));
@@ -841,10 +850,19 @@ int main(int argc, char *argv[])
 #endif /* CONFIG_DPP */
 
 	for (;;) {
+#ifdef CONFIG_SOMEIP_SUPPORT
+		c = getopt_long(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:j:q", long_opt, &opt);
+#else
 		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:j:q");
+#endif
 		if (c < 0)
 			break;
 		switch (c) {
+#ifdef CONFIG_SOMEIP_SUPPORT
+		case 0:
+			ALOGI("Hostapd starts in %s mode", ap_remote_mode?"REMOTE":"STANDALONE");
+			break;
+#endif
 		case 'h':
 			usage();
 			break;
@@ -1066,13 +1084,15 @@ int main(int argc, char *argv[])
 
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-	HostapdSomeIPServerStop();
+	if(ap_remote_mode)
+		HostapdSomeIPServerStop();
 #endif
 
   out:
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-	HostapdSomeIPServerDeinit();
+	if(ap_remote_mode)
+		HostapdSomeIPServerDeinit();
 #endif
 
 #ifdef CONFIG_CTRL_IFACE_AIDL

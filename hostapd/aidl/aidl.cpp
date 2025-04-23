@@ -22,6 +22,15 @@
 
 #ifdef CONFIG_SOMEIP_SUPPORT
 #include "hostapd_someip_server.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int ap_remote_mode = 1;
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* CONFIG_SOMEIP_SUPPORT */
 
 #ifdef CONFIG_USE_VENDOR_AIDL
@@ -95,20 +104,23 @@ int hostapd_aidl_init(struct hapd_interfaces *interfaces)
 #endif
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-	if (!HostapdSomeIPServerInit()){
-		wpa_printf(MSG_ERROR, "Failed to initialize hostapd someip server");		
-		goto err;
-	}
-	if (!HostapdSomeIPServerStart()){
-		wpa_printf(MSG_ERROR, "Failed to start hostapd someip server");	 
-		goto err;
+	if(ap_remote_mode){
+		if (!HostapdSomeIPServerInit()){
+			wpa_printf(MSG_ERROR, "Failed to initialize hostapd someip server");		
+			goto err;
+		}
+		if (!HostapdSomeIPServerStart()){
+			wpa_printf(MSG_ERROR, "Failed to start hostapd someip server");	 
+			goto err;
+		}
 	}
 #endif
 	return 0;
 err:
 
 #ifdef CONFIG_SOMEIP_SUPPORT
-	HostapdSomeIPServerDeinit();
+	if(ap_remote_mode)
+		HostapdSomeIPServerDeinit();
 #endif
 	hostapd_aidl_deinit(interfaces);
 	return -1;

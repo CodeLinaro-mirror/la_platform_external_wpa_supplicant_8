@@ -15,6 +15,10 @@ extern "C"
 #endif  // _cplusplus
 #include "ap/hostapd.h"
 
+#ifdef CONFIG_SOMEIP_SUPPORT
+extern int ap_remote_mode;
+#endif
+
 /**
  * This is the aidl RPC interface entry point to the hostapd core.
  * This initializes the aidl driver & IHostapd instance.
