@@ -244,6 +244,9 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 	if (pmk_len > PMK_LEN_MAX)
 		return NULL;
 
+	if (kck_len > WPA_KCK_MAX_LEN)
+		return NULL;
+
 	if (wpa_key_mgmt_suite_b(akmp) && !kck)
 		return NULL;
 
@@ -252,6 +255,9 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 		return NULL;
 	os_memcpy(entry->pmk, pmk, pmk_len);
 	entry->pmk_len = pmk_len;
+	if (kck_len > 0)
+		os_memcpy(entry->kck, kck, kck_len);
+	entry->kck_len = kck_len;
 	if (pmkid)
 		os_memcpy(entry->pmkid, pmkid, PMKID_LEN);
 	else if (akmp == WPA_KEY_MGMT_IEEE8021X_SUITE_B_192)
@@ -293,8 +299,8 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 	pos = pmksa->pmksa;
 	prev = NULL;
 	while (pos) {
-		if (os_memcmp(entry->aa, pos->aa, ETH_ALEN) == 0 &&
-		    os_memcmp(entry->spa, pos->spa, ETH_ALEN) == 0) {
+		if (ether_addr_equal(entry->aa, pos->aa) &&
+		    ether_addr_equal(entry->spa, pos->spa)) {
 			if (pos->pmk_len == entry->pmk_len &&
 			    os_memcmp_const(pos->pmk, entry->pmk,
 					    entry->pmk_len) == 0 &&
@@ -480,8 +486,8 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 {
 	struct rsn_pmksa_cache_entry *entry = pmksa->pmksa;
 	while (entry) {
-		if ((aa == NULL || os_memcmp(entry->aa, aa, ETH_ALEN) == 0) &&
-		    (!spa || os_memcmp(entry->spa, spa, ETH_ALEN) == 0) &&
+		if ((aa == NULL || ether_addr_equal(entry->aa, aa)) &&
+		    (!spa || ether_addr_equal(entry->spa, spa)) &&
 		    (pmkid == NULL ||
 		     os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0) &&
 		    (!akmp || akmp == entry->akmp) &&
@@ -510,7 +516,7 @@ pmksa_cache_clone_entry(struct rsn_pmksa_cache *pmksa,
 	    wpa_key_mgmt_fils(old_entry->akmp))
 		pmkid = old_entry->pmkid;
 	new_entry = pmksa_cache_add(pmksa, old_entry->pmk, old_entry->pmk_len,
-				    pmkid, NULL, 0,
+				    pmkid, old_entry->kck, old_entry->kck_len,
 				    aa, pmksa->sm->own_addr,
 				    old_entry->network_ctx, old_entry->akmp,
 				    old_entry->fils_cache_id_set ?
@@ -846,6 +852,101 @@ void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa)
 				 entry->pmk, entry->pmk_len, life_time,
 				 reauth_threshold, entry->akmp);
 	}
+}
+
+#else /* IEEE8021X_EAPOL */
+
+struct rsn_pmksa_cache *
+pmksa_cache_init(void (*free_cb)(struct rsn_pmksa_cache_entry *entry,
+				 void *ctx, enum pmksa_free_reason reason),
+		 bool (*is_current_cb)(struct rsn_pmksa_cache_entry *entry,
+				       void *ctx),
+		 void (*notify_cb)(struct rsn_pmksa_cache_entry *entry,
+				   void *ctx),
+		 void *ctx, struct wpa_sm *sm)
+{
+	return (void *) -1;
+}
+
+
+void pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
+{
+}
+
+
+struct rsn_pmksa_cache_entry *
+pmksa_cache_get(struct rsn_pmksa_cache *pmksa, const u8 *aa, const u8 *spa,
+		const u8 *pmkid, const void *network_ctx, int akmp)
+{
+	return NULL;
+}
+
+
+struct rsn_pmksa_cache_entry *
+pmksa_cache_get_current(struct wpa_sm *sm)
+{
+	return NULL;
+}
+
+
+int pmksa_cache_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len)
+{
+	return -1;
+}
+
+
+struct rsn_pmksa_cache_entry *
+pmksa_cache_head(struct rsn_pmksa_cache *pmksa)
+{
+	return NULL;
+}
+
+
+struct rsn_pmksa_cache_entry *
+pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
+		      struct rsn_pmksa_cache_entry *entry)
+{
+	return NULL;
+}
+
+
+struct rsn_pmksa_cache_entry *
+pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
+		const u8 *pmkid, const u8 *kck, size_t kck_len,
+		const u8 *aa, const u8 *spa, void *network_ctx, int akmp,
+		const u8 *cache_id)
+{
+	return NULL;
+}
+
+
+void pmksa_cache_clear_current(struct wpa_sm *sm)
+{
+}
+
+
+int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid, const u8 *bssid,
+			    void *network_ctx, int try_opportunistic,
+			    const u8 *fils_cache_id, int akmp, bool associated)
+{
+	return -1;
+}
+
+
+void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
+		       const u8 *pmk, size_t pmk_len, bool external_only)
+{
+}
+
+
+void pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
+			struct rsn_pmksa_cache_entry *entry)
+{
+}
+
+
+void pmksa_cache_reconfig(struct rsn_pmksa_cache *pmksa)
+{
 }
 
 #endif /* IEEE8021X_EAPOL */

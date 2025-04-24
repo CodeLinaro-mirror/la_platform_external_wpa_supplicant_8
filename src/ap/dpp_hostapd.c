@@ -539,8 +539,15 @@ void hostapd_dpp_tx_status(struct hostapd_data *hapd, const u8 *dst,
 		return;
 	}
 
-	if (hapd->dpp_auth_ok_on_ack)
+	if (hapd->dpp_auth_ok_on_ack) {
 		hostapd_dpp_auth_success(hapd, 1);
+		if (!hapd->dpp_auth) {
+			/* The authentication session could have been removed in
+			 * some error cases, e.g., when starting GAS client and
+			 * failing to send the initial request. */
+			return;
+		}
+	}
 
 	if (!is_broadcast_ether_addr(dst) && !ok) {
 		wpa_printf(MSG_DEBUG,
@@ -1375,6 +1382,21 @@ static void hostapd_dpp_start_gas_client(struct hostapd_data *hapd)
 }
 
 
+static void hostapd_gas_req_wait(void *eloop_ctx, void *timeout_ctx)
+{
+	struct hostapd_data *hapd = eloop_ctx;
+	struct dpp_authentication *auth = hapd->dpp_auth;
+
+	if (!auth)
+		return;
+
+	wpa_printf(MSG_DEBUG, "DPP: Timeout while waiting for Config Request");
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_CONF_FAILED);
+	dpp_auth_deinit(auth);
+	hapd->dpp_auth = NULL;
+}
+
+
 static void hostapd_dpp_auth_success(struct hostapd_data *hapd, int initiator)
 {
 	wpa_printf(MSG_DEBUG, "DPP: Authentication succeeded");
@@ -1393,6 +1415,9 @@ static void hostapd_dpp_auth_success(struct hostapd_data *hapd, int initiator)
 
 	if (!hapd->dpp_auth->configurator)
 		hostapd_dpp_start_gas_client(hapd);
+	else
+		eloop_register_timeout(10, 0, hostapd_gas_req_wait,
+				       hapd, NULL);
 }
 
 
@@ -1413,7 +1438,7 @@ static void hostapd_dpp_rx_auth_resp(struct hostapd_data *hapd, const u8 *src,
 	}
 
 	if (!is_zero_ether_addr(auth->peer_mac_addr) &&
-	    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -1463,7 +1488,7 @@ static void hostapd_dpp_rx_auth_conf(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -1572,7 +1597,7 @@ static void hostapd_dpp_rx_conf_result(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -1858,7 +1883,7 @@ hostapd_dpp_rx_reconfig_auth_resp(struct hostapd_data *hapd, const u8 *src,
 		return;
 	}
 
-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
 		return;
@@ -2133,7 +2158,7 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
 	else
 		expiration = 0;
 
-	if (wpa_auth_pmksa_add3(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
 				intro.pmkid, expiration,
 				WPA_KEY_MGMT_DPP, pkhash) < 0) {
 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
@@ -2406,7 +2431,9 @@ static void hostapd_dpp_pb_pkex_init(struct hostapd_data *hapd,
 	char ssid_hex[2 * SSID_MAX_LEN + 1], *pass_hex = NULL;
 	char cmd[300];
 	const char *password = NULL;
+#ifdef CONFIG_SAE
 	struct sae_password_entry *e;
+#endif /* CONFIG_SAE */
 	int conf_id = -1;
 	bool sae = false, psk = false;
 	size_t len;
@@ -2905,7 +2932,7 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
 	else
 		expiration = 0;
 
-	if (wpa_auth_pmksa_add3(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
 				intro.pmkid, expiration,
 				WPA_KEY_MGMT_DPP, pkhash) < 0) {
 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
@@ -2930,6 +2957,10 @@ void hostapd_dpp_rx_action(struct hostapd_data *hapd, const u8 *src,
 	enum dpp_public_action_frame_type type;
 	const u8 *hdr;
 	unsigned int pkex_t;
+
+	/* Discard DPP Action frames if there is no global DPP context */
+	if (!hapd->iface->interfaces || !hapd->iface->interfaces->dpp)
+		return;
 
 	if (len < DPP_HDR_LEN)
 		return;
@@ -3070,8 +3101,9 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 	struct wpabuf *resp;
 
 	wpa_printf(MSG_DEBUG, "DPP: GAS request from " MACSTR, MAC2STR(sa));
+	eloop_cancel_timeout(hostapd_gas_req_wait, hapd, NULL);
 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
-	    os_memcmp(sa, auth->peer_mac_addr, ETH_ALEN) != 0) {
+	    !ether_addr_equal(sa, auth->peer_mac_addr)) {
 #ifdef CONFIG_DPP2
 		if (dpp_relay_rx_gas_req(hapd->iface->interfaces->dpp, sa, data,
 				     data_len) == 0) {
@@ -3092,6 +3124,13 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
 		 * exchange. */
 		dpp_notify_auth_success(hapd->dpp_auth, 1);
 		hapd->dpp_auth_ok_on_ack = 0;
+#ifdef CONFIG_TESTING_OPTIONS
+		if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
+			wpa_printf(MSG_INFO,
+				   "DPP: TESTING - stop at Authentication Confirm");
+			return NULL;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 	}
 
 	wpa_hexdump(MSG_DEBUG,
@@ -3343,6 +3382,7 @@ void hostapd_dpp_stop(struct hostapd_data *hapd)
 #ifdef CONFIG_DPP3
 	hostapd_dpp_push_button_stop(hapd);
 #endif /* CONFIG_DPP3 */
+	eloop_cancel_timeout(hostapd_gas_req_wait, hapd, NULL);
 }
 
 
@@ -3496,6 +3536,7 @@ void hostapd_dpp_deinit(struct hostapd_data *hapd)
 	eloop_cancel_timeout(hostapd_dpp_auth_conf_wait_timeout, hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_init_timeout, hapd, NULL);
 	eloop_cancel_timeout(hostapd_dpp_auth_resp_retry_timeout, hapd, NULL);
+	eloop_cancel_timeout(hostapd_gas_req_wait, hapd, NULL);
 #ifdef CONFIG_DPP2
 	eloop_cancel_timeout(hostapd_dpp_reconfig_reply_wait_timeout,
 			     hapd, NULL);
@@ -3925,6 +3966,7 @@ int hostapd_dpp_push_button(struct hostapd_data *hapd, const char *cmd)
 	eloop_register_timeout(100, 0, hostapd_dpp_push_button_expire,
 			       hapd, NULL);
 
+	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_PB_STATUS "started");
 	return 0;
 }
 
@@ -3946,11 +3988,25 @@ void hostapd_dpp_push_button_stop(struct hostapd_data *hapd)
 	ifaces->dpp_pb_time.usec = 0;
 	dpp_pkex_free(hapd->dpp_pkex);
 	hapd->dpp_pkex = NULL;
+	hapd->dpp_pkex_bi = NULL;
 	os_free(hapd->dpp_pkex_auth_cmd);
 	hapd->dpp_pkex_auth_cmd = NULL;
 
 	if (ifaces->dpp_pb_bi) {
 		char id[20];
+		size_t i;
+
+		for (i = 0; i < ifaces->count; i++) {
+			struct hostapd_iface *iface = ifaces->iface[i];
+			size_t j;
+
+			for (j = 0; iface && j < iface->num_bss; j++) {
+				struct hostapd_data *h = iface->bss[j];
+
+				if (h->dpp_pkex_bi == ifaces->dpp_pb_bi)
+					h->dpp_pkex_bi = NULL;
+			}
+		}
 
 		os_snprintf(id, sizeof(id), "%u", ifaces->dpp_pb_bi->id);
 		dpp_bootstrap_remove(ifaces->dpp, id);

@@ -80,9 +80,15 @@ union tls_event_data {
 };
 
 struct tls_config {
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	const char *opensc_engine_path;
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	const char *pkcs11_engine_path;
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	const char *pkcs11_module_path;
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	int fips_mode;
 	int cert_in_cb;
 	const char *openssl_ciphers;
@@ -692,5 +698,15 @@ typedef ssize_t (*tls_get_certificate_cb)
 (void* ctx, const char* alias, uint8_t** value);
 
 void tls_register_cert_callback(tls_get_certificate_cb cb);
+
+/**
+ * tls_register_openssl_failure_callback - Register a callback to indicate
+ * that an OpenSSL failure has occurred
+ * @cb: Callback object to register
+ */
+typedef void (*tls_openssl_failure_cb)
+(void* ctx, const char* msg);
+
+void tls_register_openssl_failure_callback(tls_openssl_failure_cb cb);
 
 #endif /* TLS_H */

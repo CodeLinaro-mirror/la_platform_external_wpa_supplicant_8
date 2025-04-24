@@ -17,6 +17,7 @@
 #include "crypto/aes_wrap.h"
 #include "crypto/crypto.h"
 #include "ieee802_11_defs.h"
+#include "ieee802_11_common.h"
 #include "defs.h"
 #include "wpa_common.h"
 
@@ -25,6 +26,7 @@ static unsigned int wpa_kck_len(int akmp, size_t pmk_len)
 {
 	switch (akmp) {
 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
+	case WPA_KEY_MGMT_IEEE8021X_SHA384:
 	case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
 		return 24;
 	case WPA_KEY_MGMT_FILS_SHA256:
@@ -70,6 +72,7 @@ static unsigned int wpa_kek_len(int akmp, size_t pmk_len)
 	case WPA_KEY_MGMT_FILS_SHA256:
 	case WPA_KEY_MGMT_FT_FILS_SHA256:
 	case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
+	case WPA_KEY_MGMT_IEEE8021X_SHA384:
 		return 32;
 	case WPA_KEY_MGMT_DPP:
 		return pmk_len <= 32 ? 16 : 32;
@@ -104,6 +107,7 @@ unsigned int wpa_mic_len(int akmp, size_t pmk_len)
 	switch (akmp) {
 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
 	case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
+	case WPA_KEY_MGMT_IEEE8021X_SHA384:
 		return 24;
 	case WPA_KEY_MGMT_FILS_SHA256:
 	case WPA_KEY_MGMT_FILS_SHA384:
@@ -134,6 +138,7 @@ int wpa_use_akm_defined(int akmp)
 		akmp == WPA_KEY_MGMT_OWE ||
 		akmp == WPA_KEY_MGMT_DPP ||
 		akmp == WPA_KEY_MGMT_FT_IEEE8021X_SHA384 ||
+		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
 		wpa_key_mgmt_sae(akmp) ||
 		wpa_key_mgmt_suite_b(akmp) ||
 		wpa_key_mgmt_fils(akmp);
@@ -172,6 +177,7 @@ int wpa_use_aes_key_wrap(int akmp)
 	return akmp == WPA_KEY_MGMT_OSEN ||
 		akmp == WPA_KEY_MGMT_OWE ||
 		akmp == WPA_KEY_MGMT_DPP ||
+		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
 		wpa_key_mgmt_ft(akmp) ||
 		wpa_key_mgmt_sha256(akmp) ||
 		wpa_key_mgmt_sae(akmp) ||
@@ -330,15 +336,18 @@ int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp, int ver,
 			os_memcpy(mic, hash, key_len);
 			break;
 #endif /* CONFIG_DPP */
-#if defined(CONFIG_IEEE80211R) && defined(CONFIG_SHA384)
+#ifdef CONFIG_SHA384
+		case WPA_KEY_MGMT_IEEE8021X_SHA384:
+#ifdef CONFIG_IEEE80211R
 		case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
+#endif /* CONFIG_IEEE80211R */
 			wpa_printf(MSG_DEBUG,
-				   "WPA: EAPOL-Key MIC using HMAC-SHA384 (AKM-defined - FT 802.1X SHA384)");
+				   "WPA: EAPOL-Key MIC using HMAC-SHA384 (AKM-defined - 802.1X SHA384)");
 			if (hmac_sha384(key, key_len, buf, len, hash))
 				return -1;
 			os_memcpy(mic, hash, 24);
 			break;
-#endif /* CONFIG_IEEE80211R && CONFIG_SHA384 */
+#endif /* CONFIG_SHA384 */
 		default:
 			wpa_printf(MSG_DEBUG,
 				   "WPA: EAPOL-Key MIC algorithm not known (AKM-defined - akmp=0x%x)",
@@ -453,14 +462,14 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 	ptk_len = ptk->kck_len + ptk->kek_len + ptk->tk_len + ptk->kdk_len;
 
 	if (wpa_key_mgmt_sha384(akmp)) {
-#if defined(CONFIG_SUITEB192) || defined(CONFIG_FILS)
+#ifdef CONFIG_SHA384
 		wpa_printf(MSG_DEBUG, "WPA: PTK derivation using PRF(SHA384)");
 		if (sha384_prf(pmk, pmk_len, label, data, data_len,
 			       tmp, ptk_len) < 0)
 			return -1;
-#else /* CONFIG_SUITEB192 || CONFIG_FILS */
+#else /* CONFIG_SHA384 */
 		return -1;
-#endif /* CONFIG_SUITEB192 || CONFIG_FILS */
+#endif /* CONFIG_SHA384 */
 	} else if (wpa_key_mgmt_sha256(akmp)) {
 		wpa_printf(MSG_DEBUG, "WPA: PTK derivation using PRF(SHA256)");
 		if (sha256_prf(pmk, pmk_len, label, data, data_len,
@@ -573,6 +582,7 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 	ptk->kek2_len = 0;
 	ptk->kck2_len = 0;
 
+	ptk->ptk_len = ptk_len;
 	os_memset(tmp, 0, sizeof(tmp));
 	os_memset(data, 0, data_len);
 	return 0;
@@ -889,10 +899,11 @@ int wpa_ft_mic(int key_mgmt, const u8 *kck, size_t kck_len, const u8 *sta_addr,
 	       const u8 *rsnie, size_t rsnie_len,
 	       const u8 *ric, size_t ric_len,
 	       const u8 *rsnxe, size_t rsnxe_len,
+	       const struct wpabuf *extra,
 	       u8 *mic)
 {
-	const u8 *addr[10];
-	size_t len[10];
+	const u8 *addr[11];
+	size_t len[11];
 	size_t i, num_elem = 0;
 	u8 zero_mic[32];
 	size_t mic_len, fte_fixed_len;
@@ -970,6 +981,12 @@ int wpa_ft_mic(int key_mgmt, const u8 *kck, size_t kck_len, const u8 *sta_addr,
 		num_elem++;
 	}
 
+	if (extra) {
+		addr[num_elem] = wpabuf_head(extra);
+		len[num_elem] = wpabuf_len(extra);
+		num_elem++;
+	}
+
 	for (i = 0; i < num_elem; i++)
 		wpa_hexdump(MSG_MSGDUMP, "FT: MIC data", addr[i], len[i]);
 	res = -1;
@@ -1013,9 +1030,7 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
 			     struct wpa_ft_ies *parse, const u8 *opt)
 {
 	const u8 *end, *pos;
-
-	parse->ftie = ie;
-	parse->ftie_len = ie_len;
+	u8 link_id;
 
 	pos = opt;
 	end = ie + ie_len;
@@ -1077,6 +1092,51 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
 			wpa_printf(MSG_DEBUG, "FT: BIGTK");
 			parse->bigtk = pos;
 			parse->bigtk_len = len;
+			break;
+		case FTIE_SUBELEM_MLO_GTK:
+			if (len < 2 + 1 + 1 + 8) {
+				wpa_printf(MSG_DEBUG,
+					   "FT: Too short MLO GTK in FTE");
+				return -1;
+			}
+			link_id = pos[2] & 0x0f;
+			wpa_printf(MSG_DEBUG, "FT: MLO GTK (Link ID %u)",
+				   link_id);
+			if (link_id >= MAX_NUM_MLD_LINKS)
+				break;
+			parse->valid_mlo_gtks |= BIT(link_id);
+			parse->mlo_gtk[link_id] = pos;
+			parse->mlo_gtk_len[link_id] = len;
+			break;
+		case FTIE_SUBELEM_MLO_IGTK:
+			if (len < 2 + 6 + 1 + 1) {
+				wpa_printf(MSG_DEBUG,
+					   "FT: Too short MLO IGTK in FTE");
+				return -1;
+			}
+			link_id = pos[2 + 6] & 0x0f;
+			wpa_printf(MSG_DEBUG, "FT: MLO IGTK (Link ID %u)",
+				   link_id);
+			if (link_id >= MAX_NUM_MLD_LINKS)
+				break;
+			parse->valid_mlo_igtks |= BIT(link_id);
+			parse->mlo_igtk[link_id] = pos;
+			parse->mlo_igtk_len[link_id] = len;
+			break;
+		case FTIE_SUBELEM_MLO_BIGTK:
+			if (len < 2 + 6 + 1 + 1) {
+				wpa_printf(MSG_DEBUG,
+					   "FT: Too short MLO BIGTK in FTE");
+				return -1;
+			}
+			link_id = pos[2 + 6] & 0x0f;
+			wpa_printf(MSG_DEBUG, "FT: MLO BIGTK (Link ID %u)",
+				   link_id);
+			if (link_id >= MAX_NUM_MLD_LINKS)
+				break;
+			parse->valid_mlo_bigtks |= BIT(link_id);
+			parse->mlo_bigtk[link_id] = pos;
+			parse->mlo_bigtk_len[link_id] = len;
 			break;
 		default:
 			wpa_printf(MSG_DEBUG, "FT: Unknown subelem id %u", id);
@@ -1151,16 +1211,25 @@ static int wpa_ft_parse_fte(int key_mgmt, const u8 *ie, size_t len,
 
 
 int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
-		     int key_mgmt)
+		     int key_mgmt, bool reassoc_resp)
 {
 	const u8 *end, *pos;
 	struct wpa_ie_data data;
 	int ret;
 	int prot_ie_count = 0;
+	const u8 *fte = NULL;
+	size_t fte_len = 0;
+	bool is_fte = false;
+	struct ieee802_11_elems elems;
 
 	os_memset(parse, 0, sizeof(*parse));
 	if (ies == NULL)
 		return 0;
+
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 0) == ParseFailed) {
+		wpa_printf(MSG_DEBUG, "FT: Failed to parse elements");
+		goto fail;
+	}
 
 	pos = ies;
 	end = ies + ies_len;
@@ -1171,6 +1240,10 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 		len = *pos++;
 		if (len > end - pos)
 			break;
+
+		if (id != WLAN_EID_FAST_BSS_TRANSITION &&
+		    id != WLAN_EID_FRAGMENT)
+			is_fte = false;
 
 		switch (id) {
 		case WLAN_EID_RSN:
@@ -1183,7 +1256,7 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 			if (ret < 0) {
 				wpa_printf(MSG_DEBUG, "FT: Failed to parse "
 					   "RSN IE: %d", ret);
-				return -1;
+				goto fail;
 			}
 			parse->rsn_capab = data.capabilities;
 			if (data.num_pmkid == 1 && data.pmkid)
@@ -1203,7 +1276,7 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 		case WLAN_EID_MOBILITY_DOMAIN:
 			wpa_hexdump(MSG_DEBUG, "FT: MDE", pos, len);
 			if (len < sizeof(struct rsn_mdie))
-				return -1;
+				goto fail;
 			parse->mdie = pos;
 			parse->mdie_len = len;
 			break;
@@ -1217,12 +1290,19 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 			 * using the struct rsn_ftie* definitions. */
 
 			if (len < 2)
-				return -1;
+				goto fail;
 			prot_ie_count = pos[1]; /* Element Count field in
 						 * MIC Control */
-
-			if (wpa_ft_parse_fte(key_mgmt, pos, len, parse) < 0)
-				return -1;
+			is_fte = true;
+			fte = pos;
+			fte_len = len;
+			break;
+		case WLAN_EID_FRAGMENT:
+			if (is_fte) {
+				wpa_hexdump(MSG_DEBUG, "FT: FTE fragment",
+					    pos, len);
+				fte_len += 2 + len;
+			}
 			break;
 		case WLAN_EID_TIMEOUT_INTERVAL:
 			wpa_hexdump(MSG_DEBUG, "FT: Timeout Interval",
@@ -1241,6 +1321,29 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 		pos += len;
 	}
 
+	if (fte) {
+		int res;
+
+		if (fte_len < 255) {
+			res = wpa_ft_parse_fte(key_mgmt, fte, fte_len, parse);
+		} else {
+			parse->fte_buf = ieee802_11_defrag(fte, fte_len, false);
+			if (!parse->fte_buf)
+				goto fail;
+			res = wpa_ft_parse_fte(key_mgmt,
+					       wpabuf_head(parse->fte_buf),
+					       wpabuf_len(parse->fte_buf),
+					       parse);
+		}
+		if (res < 0)
+			goto fail;
+
+		/* FTE might be fragmented. If it is, the separate Fragment
+		 * elements are included in MIC calculation as full elements. */
+		parse->ftie = fte;
+		parse->ftie_len = fte_len;
+	}
+
 	if (prot_ie_count == 0)
 		return 0; /* no MIC */
 
@@ -1248,24 +1351,39 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 	 * Check that the protected IE count matches with IEs included in the
 	 * frame.
 	 */
-	if (parse->rsn)
-		prot_ie_count--;
+	if (reassoc_resp && elems.basic_mle) {
+		unsigned int link_id;
+
+		/* TODO: This count should be done based on all _requested_,
+		 * not _accepted_ links. */
+		for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+			if (parse->mlo_gtk[link_id]) {
+				if (parse->rsn)
+					prot_ie_count--;
+				if (parse->rsnxe)
+					prot_ie_count--;
+			}
+		}
+	} else {
+		if (parse->rsn)
+			prot_ie_count--;
+		if (parse->rsnxe)
+			prot_ie_count--;
+	}
 	if (parse->mdie)
 		prot_ie_count--;
 	if (parse->ftie)
 		prot_ie_count--;
-	if (parse->rsnxe)
-		prot_ie_count--;
 	if (prot_ie_count < 0) {
 		wpa_printf(MSG_DEBUG, "FT: Some required IEs not included in "
 			   "the protected IE count");
-		return -1;
+		goto fail;
 	}
 
 	if (prot_ie_count == 0 && parse->ric) {
 		wpa_printf(MSG_DEBUG, "FT: RIC IE(s) in the frame, but not "
 			   "included in protected IE count");
-		return -1;
+		goto fail;
 	}
 
 	/* Determine the end of the RIC IE(s) */
@@ -1281,11 +1399,25 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
 	if (prot_ie_count) {
 		wpa_printf(MSG_DEBUG, "FT: %d protected IEs missing from "
 			   "frame", (int) prot_ie_count);
-		return -1;
+		goto fail;
 	}
 
 	return 0;
+
+fail:
+	wpa_ft_parse_ies_free(parse);
+	return -1;
 }
+
+
+void wpa_ft_parse_ies_free(struct wpa_ft_ies *parse)
+{
+	if (!parse)
+		return;
+	wpabuf_free(parse->fte_buf);
+	parse->fte_buf = NULL;
+}
+
 #endif /* CONFIG_IEEE80211R */
 
 
@@ -1325,15 +1457,18 @@ bool pasn_use_sha384(int akmp, int cipher)
  * @akmp: Negotiated AKM
  * @cipher: Negotiated pairwise cipher
  * @kdk_len: the length in octets that should be derived for HTLK. Can be zero.
+ * @kek_len: The length in octets that should be derived for KEK. Can be zero.
  * Returns: 0 on success, -1 on failure
  */
 int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 		    const u8 *spa, const u8 *bssid,
 		    const u8 *dhss, size_t dhss_len,
 		    struct wpa_ptk *ptk, int akmp, int cipher,
-		    size_t kdk_len)
+		    size_t kdk_len, size_t kek_len)
 {
-	u8 tmp[WPA_KCK_MAX_LEN + WPA_TK_MAX_LEN + WPA_KDK_MAX_LEN];
+	u8 tmp[WPA_KCK_MAX_LEN + WPA_KEK_MAX_LEN + WPA_TK_MAX_LEN +
+	       WPA_KDK_MAX_LEN];
+	const u8 *pos;
 	u8 *data;
 	size_t data_len, ptk_len;
 	int ret = -1;
@@ -1368,7 +1503,7 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 	ptk->kck_len = WPA_PASN_KCK_LEN;
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	ptk->kdk_len = kdk_len;
-	ptk->kek_len = 0;
+	ptk->kek_len = kek_len;
 	ptk->kek2_len = 0;
 	ptk->kck2_len = 0;
 
@@ -1379,7 +1514,7 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 		goto err;
 	}
 
-	ptk_len = ptk->kck_len + ptk->tk_len + ptk->kdk_len;
+	ptk_len = ptk->kck_len + ptk->tk_len + ptk->kdk_len + ptk->kek_len;
 	if (ptk_len > sizeof(tmp))
 		goto err;
 
@@ -1407,17 +1542,26 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 
 	os_memcpy(ptk->kck, tmp, WPA_PASN_KCK_LEN);
 	wpa_hexdump_key(MSG_DEBUG, "PASN: KCK:", ptk->kck, WPA_PASN_KCK_LEN);
+	pos = &tmp[WPA_PASN_KCK_LEN];
 
-	os_memcpy(ptk->tk, tmp + WPA_PASN_KCK_LEN, ptk->tk_len);
+	if (kek_len) {
+		os_memcpy(ptk->kek, pos, kek_len);
+		wpa_hexdump_key(MSG_DEBUG, "PASN: KEK:",
+				ptk->kek, ptk->kek_len);
+		pos += kek_len;
+	}
+
+	os_memcpy(ptk->tk, pos, ptk->tk_len);
 	wpa_hexdump_key(MSG_DEBUG, "PASN: TK:", ptk->tk, ptk->tk_len);
+	pos += ptk->tk_len;
 
 	if (kdk_len) {
-		os_memcpy(ptk->kdk, tmp + WPA_PASN_KCK_LEN + ptk->tk_len,
-			  ptk->kdk_len);
+		os_memcpy(ptk->kdk, pos, ptk->kdk_len);
 		wpa_hexdump_key(MSG_DEBUG, "PASN: KDK:",
 				ptk->kdk, ptk->kdk_len);
 	}
 
+	ptk->ptk_len = ptk_len;
 	forced_memzero(tmp, sizeof(tmp));
 	ret = 0;
 err:
@@ -1649,6 +1793,10 @@ static int rsn_key_mgmt_to_bitfield(const u8 *s)
 		return WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
 #endif /* CONFIG_SHA384 */
 #endif /* CONFIG_IEEE80211R */
+#ifdef CONFIG_SHA384
+	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_802_1X_SHA384)
+		return WPA_KEY_MGMT_IEEE8021X_SHA384;
+#endif /* CONFIG_SHA384 */
 	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_802_1X_SHA256)
 		return WPA_KEY_MGMT_IEEE8021X_SHA256;
 	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_PSK_SHA256)
@@ -1755,6 +1903,14 @@ int wpa_parse_wpa_ie_rsn(const u8 *rsn_ie, size_t rsn_ie_len,
 		data->has_group = 1;
 		data->key_mgmt = WPA_KEY_MGMT_OSEN;
 		data->proto = WPA_PROTO_OSEN;
+	} else if (rsn_ie_len >= 2 + 4 + 2 && rsn_ie[1] >= 4 + 2 &&
+		   rsn_ie[1] == rsn_ie_len - 2 &&
+		   (WPA_GET_BE32(&rsn_ie[2]) == RSNE_OVERRIDE_IE_VENDOR_TYPE ||
+		    WPA_GET_BE32(&rsn_ie[2]) ==
+		    RSNE_OVERRIDE_2_IE_VENDOR_TYPE) &&
+		   WPA_GET_LE16(&rsn_ie[2 + 4]) == RSN_VERSION) {
+		pos = rsn_ie + 2 + 4 + 2;
+		left = rsn_ie_len - 2 - 4 - 2;
 	} else {
 		const struct rsn_ie_hdr *hdr;
 
@@ -2665,6 +2821,8 @@ const char * wpa_key_mgmt_txt(int key_mgmt, int proto)
 		return "DPP";
 	case WPA_KEY_MGMT_PASN:
 		return "PASN";
+	case WPA_KEY_MGMT_IEEE8021X_SHA384:
+		return "WPA2-EAP-SHA384";
 	default:
 		return "UNKNOWN";
 	}
@@ -2679,6 +2837,8 @@ u32 wpa_akm_to_suite(int akm)
 		return RSN_AUTH_KEY_MGMT_FT_802_1X;
 	if (akm & WPA_KEY_MGMT_FT_PSK)
 		return RSN_AUTH_KEY_MGMT_FT_PSK;
+	if (akm & WPA_KEY_MGMT_IEEE8021X_SHA384)
+		return RSN_AUTH_KEY_MGMT_802_1X_SHA384;
 	if (akm & WPA_KEY_MGMT_IEEE8021X_SHA256)
 		return RSN_AUTH_KEY_MGMT_802_1X_SHA256;
 	if (akm & WPA_KEY_MGMT_IEEE8021X)
@@ -2756,7 +2916,7 @@ int wpa_compare_rsn_ie(int ft_initial_assoc,
 }
 
 
-int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid)
+int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid, bool replace)
 {
 	u8 *start, *end, *rpos, *rend;
 	int added = 0;
@@ -2819,12 +2979,12 @@ int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid)
 		if (rend - rpos < 2)
 			return -1;
 		num_pmkid = WPA_GET_LE16(rpos);
+		if (num_pmkid * PMKID_LEN > rend - rpos - 2)
+			return -1;
 		/* PMKID-Count was included; use it */
-		if (num_pmkid != 0) {
+		if (replace && num_pmkid != 0) {
 			u8 *after;
 
-			if (num_pmkid * PMKID_LEN > rend - rpos - 2)
-				return -1;
 			/*
 			 * PMKID may have been included in RSN IE in
 			 * (Re)Association Request frame, so remove the old
@@ -2837,8 +2997,9 @@ int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid)
 			os_memmove(rpos + 2, after, end - after);
 			start[1] -= num_pmkid * PMKID_LEN;
 			added -= num_pmkid * PMKID_LEN;
+			num_pmkid = 0;
 		}
-		WPA_PUT_LE16(rpos, 1);
+		WPA_PUT_LE16(rpos, num_pmkid + 1);
 		rpos += 2;
 		os_memmove(rpos + PMKID_LEN, rpos, end + added - rpos);
 		os_memcpy(rpos, pmkid, PMKID_LEN);
@@ -3300,7 +3461,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 	const u8 *p;
 	size_t left;
 	u8 link_id;
-	char title[50];
+	char title[100];
 	int ret;
 
 	if (len == 0)
@@ -3413,7 +3574,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 	    selector == RSN_KEY_DATA_MLO_GTK) {
 		link_id = (p[0] & RSN_MLO_GTK_KDE_PREFIX0_LINK_ID_MASK) >>
 			RSN_MLO_GTK_KDE_PREFIX0_LINK_ID_SHIFT;
-		if (link_id >= MAX_NUM_MLO_LINKS)
+		if (link_id >= MAX_NUM_MLD_LINKS)
 			return 2;
 
 		ie->valid_mlo_gtks |= BIT(link_id);
@@ -3431,7 +3592,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 	    selector == RSN_KEY_DATA_MLO_IGTK) {
 		link_id = (p[8] & RSN_MLO_IGTK_KDE_PREFIX8_LINK_ID_MASK) >>
 			  RSN_MLO_IGTK_KDE_PREFIX8_LINK_ID_SHIFT;
-		if (link_id >= MAX_NUM_MLO_LINKS)
+		if (link_id >= MAX_NUM_MLD_LINKS)
 			return 2;
 
 		ie->valid_mlo_igtks |= BIT(link_id);
@@ -3449,7 +3610,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 	    selector == RSN_KEY_DATA_MLO_BIGTK) {
 		link_id = (p[8] & RSN_MLO_BIGTK_KDE_PREFIX8_LINK_ID_MASK) >>
 			  RSN_MLO_BIGTK_KDE_PREFIX8_LINK_ID_SHIFT;
-		if (link_id >= MAX_NUM_MLO_LINKS)
+		if (link_id >= MAX_NUM_MLD_LINKS)
 			return 2;
 
 		ie->valid_mlo_bigtks |= BIT(link_id);
@@ -3467,7 +3628,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 	    selector == RSN_KEY_DATA_MLO_LINK) {
 		link_id = (p[0] & RSN_MLO_LINK_KDE_LI_LINK_ID_MASK) >>
 			  RSN_MLO_LINK_KDE_LI_LINK_ID_SHIFT;
-		if (link_id >= MAX_NUM_MLO_LINKS)
+		if (link_id >= MAX_NUM_MLD_LINKS)
 			return 2;
 
 		ie->valid_mlo_links |= BIT(link_id);
@@ -3478,6 +3639,57 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 				  link_id);
 		if (!os_snprintf_error(sizeof(title), ret))
 			wpa_hexdump(MSG_DEBUG, title, pos, dlen);
+		return 0;
+	}
+
+	if (left >= 1 && selector == WFA_KEY_DATA_RSN_OVERRIDE_LINK) {
+		link_id = p[0];
+		if (link_id >= MAX_NUM_MLD_LINKS)
+			return 2;
+
+		ie->rsn_override_link[link_id] = p;
+		ie->rsn_override_link_len[link_id] = left;
+		ret = os_snprintf(title, sizeof(title),
+				  "RSN: Link ID %u - RSN Override Link KDE in EAPOL-Key",
+				  link_id);
+		if (!os_snprintf_error(sizeof(title), ret))
+			wpa_hexdump(MSG_DEBUG, title, pos, dlen);
+		return 0;
+	}
+
+	if (selector == RSNE_OVERRIDE_IE_VENDOR_TYPE) {
+		ie->rsne_override = pos;
+		ie->rsne_override_len = dlen;
+		wpa_hexdump(MSG_DEBUG,
+			    "RSN: RSNE Override element in EAPOL-Key",
+			    ie->rsne_override, ie->rsne_override_len);
+		return 0;
+	}
+
+	if (selector == RSNE_OVERRIDE_2_IE_VENDOR_TYPE) {
+		ie->rsne_override_2 = pos;
+		ie->rsne_override_2_len = dlen;
+		wpa_hexdump(MSG_DEBUG,
+			    "RSN: RSNE Override 2 element in EAPOL-Key",
+			    ie->rsne_override_2, ie->rsne_override_2_len);
+		return 0;
+	}
+
+	if (selector == RSNXE_OVERRIDE_IE_VENDOR_TYPE) {
+		ie->rsnxe_override = pos;
+		ie->rsnxe_override_len = dlen;
+		wpa_hexdump(MSG_DEBUG,
+			    "RSN: RSNXE Override element in EAPOL-Key",
+			    ie->rsnxe_override, ie->rsnxe_override_len);
+		return 0;
+	}
+
+	if (selector == RSN_SELECTION_IE_VENDOR_TYPE) {
+		ie->rsn_selection = p;
+		ie->rsn_selection_len = left;
+		wpa_hexdump(MSG_DEBUG,
+			    "RSN: RSN Selection element in EAPOL-Key",
+			    ie->rsn_selection, ie->rsn_selection_len);
 		return 0;
 	}
 
@@ -3605,6 +3817,11 @@ int wpa_parse_kde_ies(const u8 *buf, size_t len, struct wpa_eapol_ie_parse *ie)
 				ie->supp_oper_classes = pos + 2;
 				ie->supp_oper_classes_len = pos[1];
 			}
+		} else if (*pos == WLAN_EID_SSID) {
+			ie->ssid = pos + 2;
+			ie->ssid_len = pos[1];
+			wpa_hexdump_ascii(MSG_DEBUG, "RSN: SSID in EAPOL-Key",
+					  ie->ssid, ie->ssid_len);
 		} else if (*pos == WLAN_EID_VENDOR_SPECIFIC) {
 			ret = wpa_parse_generic(pos, ie);
 			if (ret == 1) {
@@ -4115,3 +4332,24 @@ int wpa_pasn_add_extra_ies(struct wpabuf *buf, const u8 *extra_ies, size_t len)
 }
 
 #endif /* CONFIG_PASN */
+
+
+void rsn_set_snonce_cookie(u8 *snonce)
+{
+	u8 *pos;
+
+	pos = snonce + WPA_NONCE_LEN - 6;
+	WPA_PUT_BE24(pos, OUI_WFA);
+	pos += 3;
+	WPA_PUT_BE24(pos, 0x000029);
+}
+
+
+bool rsn_is_snonce_cookie(const u8 *snonce)
+{
+	const u8 *pos;
+
+	pos = snonce + WPA_NONCE_LEN - 6;
+	return WPA_GET_BE24(pos) == OUI_WFA &&
+		WPA_GET_BE24(pos + 3) == 0x000029;
+}

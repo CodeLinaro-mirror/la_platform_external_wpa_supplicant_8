@@ -197,9 +197,10 @@ static char * wpa_config_write_str(const struct parse_data *data,
 #endif /* NO_CONFIG_WRITE */
 
 
-static int wpa_config_parse_int(const struct parse_data *data,
-				struct wpa_ssid *ssid,
-				int line, const char *value)
+static int wpa_config_parse_int_impl(const struct parse_data *data,
+				     struct wpa_ssid *ssid,
+				     int line, const char *value,
+				     bool check_range)
 {
 	int val, *dst;
 	char *end;
@@ -212,28 +213,43 @@ static int wpa_config_parse_int(const struct parse_data *data,
 		return -1;
 	}
 
+	if (check_range && val < (long) data->param3) {
+		wpa_printf(MSG_ERROR, "Line %d: too small %s (value=%d "
+			   "min_value=%ld)", line, data->name, val,
+			   (long) data->param3);
+		return -1;
+	}
+
+	if (check_range && val > (long) data->param4) {
+		wpa_printf(MSG_ERROR, "Line %d: too large %s (value=%d "
+			   "max_value=%ld)", line, data->name, val,
+			   (long) data->param4);
+		return -1;
+	}
+
 	if (*dst == val)
 		return 1;
+
 	*dst = val;
 	wpa_printf(MSG_MSGDUMP, "%s=%d (0x%x)", data->name, *dst, *dst);
 
-	if (data->param3 && *dst < (long) data->param3) {
-		wpa_printf(MSG_ERROR, "Line %d: too small %s (value=%d "
-			   "min_value=%ld)", line, data->name, *dst,
-			   (long) data->param3);
-		*dst = (long) data->param3;
-		return -1;
-	}
-
-	if (data->param4 && *dst > (long) data->param4) {
-		wpa_printf(MSG_ERROR, "Line %d: too large %s (value=%d "
-			   "max_value=%ld)", line, data->name, *dst,
-			   (long) data->param4);
-		*dst = (long) data->param4;
-		return -1;
-	}
-
 	return 0;
+}
+
+
+static int wpa_config_parse_int(const struct parse_data *data,
+				struct wpa_ssid *ssid,
+				int line, const char *value)
+{
+	return wpa_config_parse_int_impl(data, ssid, line, value, false);
+}
+
+
+static int wpa_config_parse_int_range(const struct parse_data *data,
+				      struct wpa_ssid *ssid,
+				      int line, const char *value)
+{
+	return wpa_config_parse_int_impl(data, ssid, line, value, true);
 }
 
 
@@ -793,6 +809,10 @@ static int wpa_config_parse_key_mgmt(const struct parse_data *data,
 			val |= WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
 #endif /* CONFIG_SHA384 */
 #endif /* CONFIG_IEEE80211R */
+#ifdef CONFIG_SHA384
+		else if (os_strcmp(start, "WPA-EAP-SHA384") == 0)
+			val |= WPA_KEY_MGMT_IEEE8021X_SHA384;
+#endif /* CONFIG_SHA384 */
 		else if (os_strcmp(start, "WPA-PSK-SHA256") == 0)
 			val |= WPA_KEY_MGMT_PSK_SHA256;
 		else if (os_strcmp(start, "WPA-EAP-SHA256") == 0)
@@ -964,6 +984,18 @@ static char * wpa_config_write_key_mgmt(const struct parse_data *data,
 	}
 #endif /* CONFIG_SHA384 */
 #endif /* CONFIG_IEEE80211R */
+
+#ifdef CONFIG_SHA384
+	if (ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA384) {
+		ret = os_snprintf(pos, end - pos, "%sWPA-EAP-SHA384",
+				  pos == buf ? "" : " ");
+		if (os_snprintf_error(end - pos, ret)) {
+			end[-1] = '\0';
+			return buf;
+		}
+		pos += ret;
+	}
+#endif /* CONFIG_SHA384 */
 
 	if (ssid->key_mgmt & WPA_KEY_MGMT_PSK_SHA256) {
 		ret = os_snprintf(pos, end - pos, "%sWPA-PSK-SHA256",
@@ -2106,7 +2138,27 @@ static int wpa_config_parse_p2p_client_list(const struct parse_data *data,
 }
 
 
+static int wpa_config_parse_p2p2_client_list(const struct parse_data *data,
+					     struct wpa_ssid *ssid, int line,
+					     const char *value)
+{
+	int *ids = wpa_config_parse_int_array(value);
+
+	if (!ids) {
+		wpa_printf(MSG_ERROR, "Line %d: Invalid p2p2_client_list '%s'",
+			   line, value);
+		return -1;
+	}
+
+	os_free(ssid->p2p2_client_list);
+	ssid->p2p2_client_list = ids;
+
+	return 0;
+}
+
+
 #ifndef NO_CONFIG_WRITE
+
 static char * wpa_config_write_p2p_client_list(const struct parse_data *data,
 					       struct wpa_ssid *ssid)
 {
@@ -2114,6 +2166,14 @@ static char * wpa_config_write_p2p_client_list(const struct parse_data *data,
 					  ssid->num_p2p_clients,
 					  "p2p_client_list");
 }
+
+
+static char * wpa_config_write_p2p2_client_list(const struct parse_data *data,
+						struct wpa_ssid *ssid)
+{
+	return wpa_config_write_freqs(data, ssid->p2p2_client_list);
+}
+
 #endif /* NO_CONFIG_WRITE */
 
 
@@ -2352,7 +2412,7 @@ static int wpa_config_parse_mac_value(const struct parse_data *data,
 	u8 mac_value[ETH_ALEN];
 
 	if (hwaddr_aton(value, mac_value) == 0) {
-		if (os_memcmp(mac_value, ssid->mac_value, ETH_ALEN) == 0)
+		if (ether_addr_equal(mac_value, ssid->mac_value))
 			return 1;
 		os_memcpy(ssid->mac_value, mac_value, ETH_ALEN);
 		return 0;
@@ -2441,7 +2501,14 @@ static char * wpa_config_write_mac_value(const struct parse_data *data,
 #define INTe(f, m) _INTe(f, m), NULL, NULL, 0
 
 /* INT_RANGE: Define an integer variable with allowed value range */
-#define INT_RANGE(f, min, max) _INT(f), (void *) (min), (void *) (max), 0
+#ifdef NO_CONFIG_WRITE
+#define INT_RANGE(f, min, max) #f, wpa_config_parse_int_range, OFFSET(f), \
+	(void *) 0, (void *) (min), (void *) (max), 0
+#else /* NO_CONFIG_WRITE */
+#define INT_RANGE(f, min, max) #f, wpa_config_parse_int_range, \
+	wpa_config_write_int, OFFSET(f),	       \
+	(void *) 0, (void *) (min), (void *) (max), 0
+#endif /* NO_CONFIG_WRITE */
 
 /* FUNC: Define a configuration variable that uses a custom function for
  * parsing and writing the value. */
@@ -2490,6 +2557,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT(mem_only_psk) },
 	{ STR_KEY(sae_password) },
 	{ STR(sae_password_id) },
+	{ INT(sae_pwe) },
 	{ FUNC(proto) },
 	{ FUNC(key_mgmt) },
 	{ INT(bg_scan_period) },
@@ -2504,7 +2572,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(he, 0, 1) },
 	{ INT_RANGE(ht40, -1, 1) },
 	{ INT_RANGE(max_oper_chwidth, CONF_OPER_CHWIDTH_USE_HT,
-		    CONF_OPER_CHWIDTH_80P80MHZ) },
+		    CONF_OPER_CHWIDTH_320MHZ) },
 	{ INT(vht_center_freq1) },
 	{ INT(vht_center_freq2) },
 #ifdef IEEE8021X_EAPOL
@@ -2632,11 +2700,13 @@ static const struct parse_data ssid_fields[] = {
 #ifdef CONFIG_P2P
 	{ FUNC(go_p2p_dev_addr) },
 	{ FUNC(p2p_client_list) },
+	{ FUNC(p2p2_client_list) },
 	{ FUNC(psk_list) },
+	{ INT(go_dik_id) },
 #endif /* CONFIG_P2P */
 #ifdef CONFIG_HT_OVERRIDES
 	{ INT_RANGE(disable_ht, 0, 1) },
-	{ INT_RANGE(disable_ht40, -1, 1) },
+	{ INT_RANGE(disable_ht40, 0, 1) },
 	{ INT_RANGE(disable_sgi, 0, 1) },
 	{ INT_RANGE(disable_ldpc, 0, 1) },
 	{ INT_RANGE(ht40_intolerant, 0, 1) },
@@ -2709,11 +2779,16 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(owe_ptk_workaround, 0, 1) },
 	{ INT_RANGE(multi_ap_backhaul_sta, 0, 1) },
 	{ INT_RANGE(ft_eap_pmksa_caching, 0, 1) },
+	{ INT_RANGE(multi_ap_profile, MULTI_AP_PROFILE_1,
+		    MULTI_AP_PROFILE_MAX) },
 	{ INT_RANGE(beacon_prot, 0, 1) },
 	{ INT_RANGE(transition_disable, 0, 255) },
 	{ INT_RANGE(sae_pk, 0, 2) },
 	{ INT_RANGE(disable_eht, 0, 1)},
 	{ INT_RANGE(enable_4addr_mode, 0, 1)},
+	{ INT_RANGE(max_idle, 0, 65535)},
+	{ INT_RANGE(ssid_protection, 0, 1)},
+	{ INT_RANGE(rsn_overriding, 0, 2)},
 };
 
 #undef OFFSET
@@ -2894,6 +2969,7 @@ void wpa_config_free_ssid(struct wpa_ssid *ssid)
 	os_free(ssid->freq_list);
 	os_free(ssid->bgscan);
 	os_free(ssid->p2p_client_list);
+	os_free(ssid->p2p2_client_list);
 	os_free(ssid->bssid_ignore);
 	os_free(ssid->bssid_accept);
 #ifdef CONFIG_HT_OVERRIDES
@@ -2985,6 +3061,7 @@ void wpa_config_free(struct wpa_config *config)
 {
 	struct wpa_ssid *ssid, *prev = NULL;
 	struct wpa_cred *cred, *cprev;
+	struct wpa_dev_ik *identity, *iprev;
 	int i;
 
 	ssid = config->ssid;
@@ -3001,6 +3078,13 @@ void wpa_config_free(struct wpa_config *config)
 		wpa_config_free_cred(cprev);
 	}
 
+	identity = config->identity;
+	while (identity) {
+		iprev = identity;
+		identity = identity->next;
+		wpa_config_free_identity(iprev);
+	}
+
 	wpa_config_flush_blobs(config);
 
 	wpabuf_free(config->wps_vendor_ext_m1);
@@ -3008,9 +3092,15 @@ void wpa_config_free(struct wpa_config *config)
 		wpabuf_free(config->wps_vendor_ext[i]);
 	os_free(config->ctrl_interface);
 	os_free(config->ctrl_interface_group);
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	os_free(config->opensc_engine_path);
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	os_free(config->pkcs11_engine_path);
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	os_free(config->pkcs11_module_path);
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	os_free(config->openssl_ciphers);
 	os_free(config->pcsc_reader);
 	str_clear_free(config->pcsc_pin);
@@ -3047,6 +3137,9 @@ void wpa_config_free(struct wpa_config *config)
 	os_free(config->dpp_mud_url);
 	os_free(config->dpp_extra_conf_req_name);
 	os_free(config->dpp_extra_conf_req_value);
+	wpabuf_free(config->dik);
+	wpabuf_free(config->wfa_gen_capa_supp);
+	wpabuf_free(config->wfa_gen_capa_cert);
 
 	os_free(config);
 }
@@ -3096,6 +3189,35 @@ struct wpa_ssid * wpa_config_get_network(struct wpa_config *config, int id)
 
 	return ssid;
 }
+
+
+#ifdef CONFIG_P2P
+/**
+ * wpa_config_get_network_with_dik_id - Get configured network based on ID of
+ *	device identity block
+ * @config: Configuration data from wpa_config_read()
+ * @dik_id: DIK ID to search for
+ * Returns: Network configuration or %NULL if not found
+ */
+struct wpa_ssid * wpa_config_get_network_with_dik_id(struct wpa_config *config,
+						     int dik_id)
+{
+	struct wpa_ssid *ssid;
+
+	for (ssid = config->ssid; ssid; ssid = ssid->next) {
+		if (ssid->disabled != 2)
+			continue;
+
+		if (ssid->go_dik_id == dik_id)
+			return ssid;
+
+		if (int_array_includes(ssid->p2p2_client_list, dik_id))
+			return ssid;
+	}
+
+	return NULL;
+}
+#endif /* CONFIG_P2P */
 
 
 /**
@@ -3232,6 +3354,7 @@ void wpa_config_set_network_defaults(struct wpa_ssid *ssid)
 #endif /* CONFIG_MACSEC */
 	ssid->mac_addr = WPAS_MAC_ADDR_STYLE_NOT_SET;
 	ssid->max_oper_chwidth = DEFAULT_MAX_OPER_CHWIDTH;
+	ssid->rsn_overriding = RSN_OVERRIDING_NOT_SET;
 }
 
 
@@ -4659,6 +4782,10 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 		config->driver_param = os_strdup(driver_param);
 	config->gas_rand_addr_lifetime = DEFAULT_RAND_ADDR_LIFETIME;
 
+#ifdef CONFIG_TESTING_OPTIONS
+	config->mld_connect_band_pref = DEFAULT_MLD_CONNECT_BAND_PREF;
+#endif /* CONFIG_TESTING_OPTIONS */
+
 	return config;
 }
 
@@ -4717,9 +4844,10 @@ struct global_parse_data {
 };
 
 
-static int wpa_global_config_parse_int(const struct global_parse_data *data,
-				       struct wpa_config *config, int line,
-				       const char *pos)
+static int
+wpa_global_config_parse_int_impl(const struct global_parse_data *data,
+				 struct wpa_config *config, int line,
+				 const char *pos, bool check_range)
 {
 	int val, *dst;
 	char *end;
@@ -4732,28 +4860,44 @@ static int wpa_global_config_parse_int(const struct global_parse_data *data,
 			   line, pos);
 		return -1;
 	}
+
+	if (check_range && val < (long) data->param2) {
+		wpa_printf(MSG_ERROR, "Line %d: too small %s (value=%d "
+			   "min_value=%ld)", line, data->name, val,
+			   (long) data->param2);
+		return -1;
+	}
+
+	if (check_range && val > (long) data->param3) {
+		wpa_printf(MSG_ERROR, "Line %d: too large %s (value=%d "
+			   "max_value=%ld)", line, data->name, val,
+			   (long) data->param3);
+		return -1;
+	}
+
 	same = *dst == val;
 	*dst = val;
 
 	wpa_printf(MSG_DEBUG, "%s=%d", data->name, *dst);
 
-	if (data->param2 && *dst < (long) data->param2) {
-		wpa_printf(MSG_ERROR, "Line %d: too small %s (value=%d "
-			   "min_value=%ld)", line, data->name, *dst,
-			   (long) data->param2);
-		*dst = (long) data->param2;
-		return -1;
-	}
-
-	if (data->param3 && *dst > (long) data->param3) {
-		wpa_printf(MSG_ERROR, "Line %d: too large %s (value=%d "
-			   "max_value=%ld)", line, data->name, *dst,
-			   (long) data->param3);
-		*dst = (long) data->param3;
-		return -1;
-	}
-
 	return same;
+}
+
+
+static int wpa_global_config_parse_int(const struct global_parse_data *data,
+				       struct wpa_config *config, int line,
+				       const char *pos)
+{
+	return wpa_global_config_parse_int_impl(data, config, line, pos, false);
+}
+
+
+static int
+wpa_global_config_parse_int_range(const struct global_parse_data *data,
+				  struct wpa_config *config, int line,
+				  const char *pos)
+{
+	return wpa_global_config_parse_int_impl(data, config, line, pos, true);
 }
 
 
@@ -4933,6 +5077,7 @@ static int wpa_config_process_country(const struct global_parse_data *data,
 }
 
 
+#ifndef CONFIG_NO_LOAD_DYNAMIC_EAP
 static int wpa_config_process_load_dynamic_eap(
 	const struct global_parse_data *data, struct wpa_config *config,
 	int line, const char *so)
@@ -4951,6 +5096,7 @@ static int wpa_config_process_load_dynamic_eap(
 
 	return 0;
 }
+#endif /* CONFIG_NO_LOAD_DYNAMIC_EAP */
 
 
 #ifdef CONFIG_WPS
@@ -5120,6 +5266,7 @@ static int wpa_config_process_p2p_no_go_freq(
 
 	return 0;
 }
+
 
 static int wpa_config_process_p2p_device_persistent_mac_addr(
 	const struct global_parse_data *data,
@@ -5291,6 +5438,23 @@ static int wpa_config_get_ipv4(const char *name, struct wpa_config *config,
 #endif /* CONFIG_P2P */
 
 
+#ifdef CONFIG_TESTING_OPTIONS
+static int wpa_config_process_mld_connect_bssid_pref(
+	const struct global_parse_data *data,
+	struct wpa_config *config, int line, const char *pos)
+{
+	if (hwaddr_aton2(pos, config->mld_connect_bssid_pref) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: Invalid mld_connect_bssid_pref '%s'",
+			   line, pos);
+		return -1;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+
 #ifdef OFFSET
 #undef OFFSET
 #endif /* OFFSET */
@@ -5301,7 +5465,8 @@ static int wpa_config_get_ipv4(const char *name, struct wpa_config *config,
 #define FUNC_NO_VAR(f) #f, wpa_config_process_ ## f, NULL, NULL, NULL, NULL
 #define _INT(f) #f, wpa_global_config_parse_int, wpa_config_get_int, OFFSET(f)
 #define INT(f) _INT(f), NULL, NULL
-#define INT_RANGE(f, min, max) _INT(f), (void *) min, (void *) max
+#define INT_RANGE(f, min, max) #f, wpa_global_config_parse_int_range, \
+	wpa_config_get_int, OFFSET(f), (void *) min, (void *) max
 #define _STR(f) #f, wpa_global_config_parse_str, wpa_config_get_str, OFFSET(f)
 #define STR(f) _STR(f), NULL, NULL
 #define STR_RANGE(f, min, max) _STR(f), (void *) min, (void *) max
@@ -5331,9 +5496,15 @@ static const struct global_parse_data global_fields[] = {
 #endif /* CONFIG_MESH */
 	{ INT(disable_scan_offload), 0 },
 	{ INT(fast_reauth), 0 },
+#ifndef CONFIG_OPENSC_ENGINE_PATH
 	{ STR(opensc_engine_path), 0 },
+#endif /* CONFIG_OPENSC_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_ENGINE_PATH
 	{ STR(pkcs11_engine_path), 0 },
+#endif /* CONFIG_PKCS11_ENGINE_PATH */
+#ifndef CONFIG_PKCS11_MODULE_PATH
 	{ STR(pkcs11_module_path), 0 },
+#endif /* CONFIG_PKCS11_MODULE_PATH */
 	{ STR(openssl_ciphers), 0 },
 	{ STR(pcsc_reader), 0 },
 	{ STR(pcsc_pin), 0 },
@@ -5345,7 +5516,9 @@ static const struct global_parse_data global_fields[] = {
 #ifndef CONFIG_NO_CONFIG_WRITE
 	{ INT(update_config), 0 },
 #endif /* CONFIG_NO_CONFIG_WRITE */
+#ifndef CONFIG_NO_LOAD_DYNAMIC_EAP
 	{ FUNC_NO_VAR(load_dynamic_eap), 0 },
+#endif /* CONFIG_NO_LOAD_DYNAMIC_EAP */
 #ifdef CONFIG_WPS
 	{ FUNC(uuid), CFG_CHANGED_UUID },
 	{ INT_RANGE(auto_uuid, 0, 1), 0 },
@@ -5397,7 +5570,16 @@ static const struct global_parse_data global_fields[] = {
 	{ FUNC(p2p_device_persistent_mac_addr), 0 },
 	{ INT(p2p_interface_random_mac_addr), 0 },
 	{ INT(p2p_6ghz_disable), 0 },
-	{ INT(p2p_dfs_chan_enable), 0 },
+	{ INT_RANGE(p2p_pairing_setup, 0, 1), 0 },
+	{ INT_RANGE(p2p_pairing_cache, 0, 1), 0 },
+	{ INT(p2p_bootstrap_methods), 0 },
+	{ INT(p2p_pasn_type), 0 },
+	{ INT(p2p_comeback_after), 0 },
+	{ INT_RANGE(p2p_twt_power_mgmt, 0, 1), 0 },
+	{ INT_RANGE(p2p_chan_switch_req_enable, 0, 1), 0 },
+	{ INT(p2p_reg_info), 0 },
+	{ INT(dik_cipher), 0},
+	{ BIN(dik), 0 },
 #endif /* CONFIG_P2P */
 	{ FUNC(country), CFG_CHANGED_COUNTRY },
 	{ INT(bss_max_count), 0 },
@@ -5472,10 +5654,10 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(disassoc_imminent_rssi_threshold, -120, 0), 0 },
 	{ INT_RANGE(oce, 0, 3), 0 },
 #endif /* CONFIG_MBO */
-	{ INT_RANGE(btm_offload, 0, 1), CFG_CHANGED_DISABLE_BTM_NOTIFY },
 	{ INT(gas_address3), 0 },
 	{ INT_RANGE(ftm_responder, 0, 1), 0 },
 	{ INT_RANGE(ftm_initiator, 0, 1), 0 },
+	{ INT_RANGE(twt_requester, 0, 1), 0 },
 	{ INT(gas_rand_addr_lifetime), 0 },
 	{ INT_RANGE(gas_rand_mac_addr, 0, 2), 0 },
 #ifdef CONFIG_DPP
@@ -5493,12 +5675,25 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(extended_key_id, 0, 1), 0 },
 #endif /* CONFIG_WNM */
 	{ INT_RANGE(wowlan_disconnect_on_deinit, 0, 1), 0},
+	{ INT_RANGE(rsn_overriding, 0, 2), 0},
 #ifdef CONFIG_PASN
 #ifdef CONFIG_TESTING_OPTIONS
 	{ INT_RANGE(force_kdk_derivation, 0, 1), 0 },
 	{ INT_RANGE(pasn_corrupt_mic, 0, 1), 0 },
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN */
+#ifdef CONFIG_TESTING_OPTIONS
+	{ INT_RANGE(mld_force_single_link, 0, 1), 0 },
+	{ INT_RANGE(mld_connect_band_pref, 0, MLD_CONNECT_BAND_PREF_MAX), 0 },
+	{ FUNC(mld_connect_bssid_pref), 0 },
+#endif /* CONFIG_TESTING_OPTIONS */
+	{ INT_RANGE(ft_prepend_pmkid, 0, 1), CFG_CHANGED_FT_PREPEND_PMKID },
+	{ INT_RANGE(wfa_gen_capa, 0, 2), 0},
+	{ BIN(wfa_gen_capa_supp), 0 },
+	{ BIN(wfa_gen_capa_cert), 0 },
+	/* NOTE: When adding new parameters here, add_interface() in
+	 * wpa_supplicant/dbus_new_introspect.c may need to be modified to
+	 * increase the size of the iface->xml buffer. */
 };
 
 #undef FUNC
@@ -5632,6 +5827,7 @@ int wpa_config_process_global(struct wpa_config *config, char *pos, int line)
 					   line);
 				return -1;
 			}
+			return ret;
 		}
 
 		if (os_strncmp(pos, "wmm_ac_", 7) == 0) {
@@ -5661,4 +5857,130 @@ int wpa_config_process_global(struct wpa_config *config, char *pos, int line)
 	}
 
 	return ret;
+}
+
+
+int wpa_config_set_identity(struct wpa_dev_ik *identity, const char *var,
+			    const char *value, int line)
+{
+	char *val;
+	size_t len;
+	int ret = 0;
+
+	if (os_strcmp(var, "dik_cipher") == 0) {
+		identity->dik_cipher = atoi(value);
+		return 0;
+	}
+
+	val = wpa_config_parse_string(value, &len);
+	if (!val) {
+		wpa_printf(MSG_ERROR,
+			   "Line %d: invalid field '%s' string value '%s'.",
+			   line, var, value);
+		return -1;
+	}
+
+	if (os_strcmp(var, "dik") == 0) {
+		wpabuf_free(identity->dik);
+		identity->dik = wpabuf_alloc_copy(val, len);
+		if (!identity->dik)
+			ret = -1;
+	} else if (os_strcmp(var, "pmk") == 0) {
+		wpabuf_free(identity->pmk);
+		identity->pmk = wpabuf_alloc_copy(val, len);
+		if (!identity->pmk)
+			ret = -1;
+	} else if (os_strcmp(var, "pmkid") == 0) {
+		if (len == PMKID_LEN) {
+			wpabuf_free(identity->pmkid);
+			identity->pmkid = wpabuf_alloc_copy(val, len);
+			if (!identity->pmkid)
+				ret = -1;
+		} else {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: invalid field '%s' string value '%s'.",
+				   line, var, value);
+			ret = -1;
+		}
+	} else if (line) {
+		wpa_printf(MSG_ERROR, "Line %d: unknown identity field '%s'.",
+			   line, var);
+		ret = -1;
+	}
+
+	os_free(val);
+	return ret;
+}
+
+
+void wpa_config_free_identity(struct wpa_dev_ik *identity)
+{
+	wpabuf_clear_free(identity->dik);
+	wpabuf_clear_free(identity->pmk);
+	wpabuf_free(identity->pmkid);
+	os_free(identity);
+}
+
+
+/**
+ * wpa_config_add_identity - Add a new device identity with empty configuration
+ * @config: Configuration data from wpa_config_read()
+ * Returns: The new device identity or %NULL if operation failed
+ */
+struct wpa_dev_ik * wpa_config_add_identity(struct wpa_config *config)
+{
+	int id;
+	struct wpa_dev_ik *identity, *last = NULL;
+
+	id = 0;
+	identity = config->identity;
+	while (identity) {
+		if (identity->id > id)
+			id = identity->id;
+		last = identity;
+		identity = identity->next;
+	}
+	id++;
+
+	identity = os_zalloc(sizeof(*identity));
+	if (!identity)
+		return NULL;
+	identity->id = id;
+	if (last)
+		last->next = identity;
+	else
+		config->identity = identity;
+
+	return identity;
+}
+
+
+/**
+ * wpa_config_remove_identity - Remove a configured identity based on id
+ * @config: Configuration data from wpa_config_read()
+ * @id: Unique network id to search for
+ * Returns: 0 on success, or -1 if the network was not found
+ */
+int wpa_config_remove_identity(struct wpa_config *config, int id)
+{
+	struct wpa_dev_ik *identity, *prev = NULL;
+
+	identity = config->identity;
+	while (identity) {
+		if (id == identity->id)
+			break;
+		prev = identity;
+		identity = identity->next;
+	}
+
+	if (!identity)
+		return -1;
+
+	if (prev)
+		prev->next = identity->next;
+	else
+		config->identity = identity->next;
+
+	wpa_config_free_identity(identity);
+	return 0;
 }

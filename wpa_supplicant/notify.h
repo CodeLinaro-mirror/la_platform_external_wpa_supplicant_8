@@ -20,6 +20,8 @@ struct wps_event_fail;
 struct tls_cert_data;
 struct wpa_cred;
 struct rsn_pmksa_cache_entry;
+enum nan_de_reason;
+enum nan_service_protocol_type;
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global);
 void wpas_notify_supplicant_deinitialized(struct wpa_global *global);
@@ -30,11 +32,11 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 			       enum wpa_states old_state);
 void wpas_notify_disconnect_reason(struct wpa_supplicant *wpa_s);
 void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s);
-void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s, const u8 *bssid, u8 timed_out,
-				   const u8 *assoc_resp_ie, size_t assoc_resp_ie_len);
+void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s);
 void wpas_notify_auth_timeout(struct wpa_supplicant *wpa_s);
 void wpas_notify_roam_time(struct wpa_supplicant *wpa_s);
 void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s);
+void wpas_notify_scan_in_progress_6ghz(struct wpa_supplicant *wpa_s);
 void wpas_notify_session_length(struct wpa_supplicant *wpa_s);
 void wpas_notify_bss_tm_status(struct wpa_supplicant *wpa_s);
 void wpas_notify_network_changed(struct wpa_supplicant *wpa_s);
@@ -89,6 +91,8 @@ void wpas_notify_bss_ies_changed(struct wpa_supplicant *wpa_s,
 void wpas_notify_bss_rates_changed(struct wpa_supplicant *wpa_s,
 				   unsigned int id);
 void wpas_notify_bss_seen(struct wpa_supplicant *wpa_s, unsigned int id);
+void wpas_notify_bss_anqp_changed(struct wpa_supplicant *wpa_s,
+				  unsigned int id);
 void wpas_notify_blob_added(struct wpa_supplicant *wpa_s, const char *name);
 void wpas_notify_blob_removed(struct wpa_supplicant *wpa_s, const char *name);
 
@@ -100,13 +104,10 @@ void wpas_notify_resume(struct wpa_global *global);
 
 void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
 				const u8 *mac_addr, int authorized,
-				const u8 *p2p_dev_addr);
+				const u8 *p2p_dev_addr, const u8 *ip);
 void wpas_notify_p2p_find_stopped(struct wpa_supplicant *wpa_s);
 void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
-				 const u8 *addr, const struct p2p_peer_info *info,
-				 const u8* peer_wfd_device_info, u8 peer_wfd_device_info_len,
-				 const u8* peer_wfd_r2_device_info, u8 peer_wfd_r2_device_info_len,
-				 int new_device);
+				  const u8 *dev_addr, int new_device);
 void wpas_notify_p2p_device_lost(struct wpa_supplicant *wpa_s,
 				 const u8 *dev_addr);
 void wpas_notify_p2p_group_removed(struct wpa_supplicant *wpa_s,
@@ -160,6 +161,10 @@ void wpas_notify_network_type_changed(struct wpa_supplicant *wpa_s,
 void wpas_notify_p2p_invitation_received(struct wpa_supplicant *wpa_s,
 					 const u8 *sa, const u8 *go_dev_addr,
 					 const u8 *bssid, int id, int op_freq);
+void wpas_notify_p2p_bootstrap_req(struct wpa_supplicant *wpa_s,
+				   const u8 *src, u16 bootstrap_method);
+void wpas_notify_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+					 const u8 *src, int status);
 void wpas_notify_mesh_group_started(struct wpa_supplicant *wpa_s,
 				    struct wpa_ssid *ssid);
 void wpas_notify_mesh_group_removed(struct wpa_supplicant *wpa_s,
@@ -169,9 +174,6 @@ void wpas_notify_mesh_peer_connected(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_addr);
 void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
 					const u8 *peer_addr, u16 reason_code);
-void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
-				 const char* result,
-				 const struct wpa_bss_anqp *anqp);
 void wpas_notify_hs20_icon_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
 				      const char* file_name, const u8* image,
 				      u32 image_length);
@@ -213,28 +215,47 @@ void wpas_notify_interworking_ap_added(struct wpa_supplicant *wpa_s,
 				       int conn_capab);
 void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s);
 void wpas_notify_eap_method_selected(struct wpa_supplicant *wpa_s,
-		const char* reason_string);
+                const char* reason_string);
 void wpas_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
 		const char *reason_string);
 void wpas_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
-		const char *reason_string);
-void wpas_notify_qos_policy_reset(struct wpa_supplicant *wpa_s);
-void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
-		struct dscp_policy_data *policies, int num_policies);
+                const char *reason_string);
+void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s,
+				 const u8 *dst, const char *result);
 void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency);
 ssize_t wpas_get_certificate(const char *alias, uint8_t** value);
-ssize_t wpas_list_aliases(const char *prefix, char ***aliases);
 void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
 				 struct rsn_pmksa_cache_entry *entry);
 void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
 void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 		unsigned int num_scs_resp, int **scs_resp);
-void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
-					enum mlo_info_change_reason reason);
+void wpas_notify_hs20_t_c_acceptance(struct wpa_supplicant *wpa_s,
+				     const char *url);
+void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
+				      enum nan_service_protocol_type
+				      srv_proto_type,
+				      int subscribe_id, int peer_publish_id,
+				      const u8 *peer_addr,
+				      bool fsd, bool fsd_gas,
+				      const u8 *ssi, size_t ssi_len);
+void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
+			     enum nan_service_protocol_type srv_proto_type,
+			     int publish_id, int peer_subscribe_id,
+			     const u8 *peer_addr,
+			     const u8 *ssi, size_t ssi_len);
+void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
+			     int peer_instance_id, const u8 *peer_addr,
+			     const u8 *ssi, size_t ssi_len);
+void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
+					int publish_id,
+					enum nan_de_reason reason);
+void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
+					  int subscribe_id,
+					  enum nan_de_reason reason);
 #ifdef CONFIG_USE_VENDOR_AIDL
 void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
 #endif
 void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
 					enum mlo_info_change_reason reason);
-
+void wpas_notify_qos_policy_reset(struct wpa_supplicant *wpa_s);
 #endif /* NOTIFY_H */

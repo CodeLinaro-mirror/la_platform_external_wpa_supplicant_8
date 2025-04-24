@@ -13,6 +13,7 @@
 #include "utils/list.h"
 #include "eap_peer/eap_config.h"
 
+
 #define DEFAULT_EAP_WORKAROUND ((unsigned int) -1)
 #define DEFAULT_EAPOL_FLAGS (EAPOL_FLAG_REQUIRE_KEY_UNICAST | \
 			     EAPOL_FLAG_REQUIRE_KEY_BROADCAST)
@@ -76,6 +77,20 @@ enum wpas_mac_addr_style {
 	WPAS_MAC_ADDR_STYLE_RANDOM = 1,
 	WPAS_MAC_ADDR_STYLE_RANDOM_SAME_OUI = 2,
 	WPAS_MAC_ADDR_STYLE_DEDICATED_PER_ESS = 3,
+};
+
+/**
+ * rsn_overriding - RSN overriding
+ *
+ * 0 = Disabled
+ * 1 = Enabled automatically if the driver indicates support
+ * 2 = Forced to be enabled even without driver capability indication
+ */
+enum wpas_rsn_overriding {
+	RSN_OVERRIDING_NOT_SET = -1,
+	RSN_OVERRIDING_DISABLED = 0,
+	RSN_OVERRIDING_AUTO = 1,
+	RSN_OVERRIDING_ENABLED = 2,
 };
 
 /**
@@ -230,6 +245,11 @@ struct wpa_ssid {
 	 * 63 characters (inclusive).
 	 */
 	char *passphrase;
+
+	/**
+	 * pmk_valid - Whether PMK is valid in case of P2P2 derived from PASN
+	 */
+	bool pmk_valid;
 
 	/**
 	 * sae_password - SAE password
@@ -675,6 +695,15 @@ struct wpa_ssid {
 	 * num_p2p_clients - Number of entries in p2p_client_list
 	 */
 	size_t num_p2p_clients;
+
+	/**
+	 * p2p2_client_list - Array of P2P2 Clients in a persistent group (GO)
+	 *
+	 * This is an int_array of P2P2 Clients (ID of device Identity block)
+	 * that have joined the persistent group. This is maintained on the GO
+	 *for persistent group entries (disabled == 2).
+	 */
+	int *p2p2_client_list;
 
 #ifndef P2P_MAX_STORED_CLIENTS
 #define P2P_MAX_STORED_CLIENTS 100
@@ -1187,6 +1216,11 @@ struct wpa_ssid {
 	int ft_eap_pmksa_caching;
 
 	/**
+	 * multi_ap_profile - Supported Multi-AP profile
+	 */
+	int multi_ap_profile;
+
+	/**
 	 * beacon_prot - Whether Beacon protection is enabled
 	 *
 	 * This depends on management frame protection (ieee80211w) being
@@ -1264,6 +1298,36 @@ struct wpa_ssid {
 	 * to use the interface in a bridge.
 	 */
 	int enable_4addr_mode;
+
+	/**
+	 * max_idle - BSS max idle period to request
+	 *
+	 * If nonzero, request the specified number of 1000 TU (i.e., 1.024 s)
+	 * as the maximum idle period for the STA during association.
+	 */
+	int max_idle;
+
+	/**
+	 * ssid_protection - Whether to use SSID protection in 4-way handshake
+	 */
+	bool ssid_protection;
+
+	/**
+	 * rsn_overriding - RSN overriding (per-network override for the global
+	 *	parameter with the same name)
+	 */
+	enum wpas_rsn_overriding rsn_overriding;
+
+	/**
+	 * p2p_mode - P2P R1 only, P2P R2 only, or PCC mode
+	 */
+	enum wpa_p2p_mode p2p_mode;
+
+	/**
+	 * go_dik_id - ID of Device Identity block of group owner
+	 */
+	int go_dik_id;
+
 };
 
 #endif /* CONFIG_SSID_H */

@@ -415,10 +415,15 @@ static int eap_aka_learn_ids(struct eap_sm *sm, struct eap_aka_data *data,
 				  attr->next_pseudonym,
 				  attr->next_pseudonym_len);
 		os_free(data->pseudonym);
-
-		/* Get realm from identities to decorate pseudonym. */
-		realm = eap_get_config_realm(sm, &realm_len);
-
+		/* Look for the realm of the permanent identity */
+		identity = eap_get_config_identity(sm, &identity_len);
+		if (identity) {
+			for (realm = identity, realm_len = identity_len;
+			     realm_len > 0; realm_len--, realm++) {
+				if (*realm == '@')
+					break;
+			}
+		}
 		data->pseudonym = os_malloc(attr->next_pseudonym_len +
 					    realm_len);
 		if (data->pseudonym == NULL) {

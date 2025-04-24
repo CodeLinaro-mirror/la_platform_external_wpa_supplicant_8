@@ -30,6 +30,12 @@ struct mb_ies_info {
 	u8 nof_ies;
 };
 
+struct multi_ap_params {
+	u8 capability;
+	u8 profile;
+	u16 vlanid;
+};
+
 /* Parsed Information Elements */
 struct ieee802_11_elems {
 	const u8 *ssid;
@@ -59,6 +65,8 @@ struct ieee802_11_elems {
 	const u8 *vendor_ht_cap;
 	const u8 *vendor_vht;
 	const u8 *p2p;
+	const u8 *p2p2_ie;
+	const u8 *pasn_encrypted_data;
 	const u8 *wfd;
 	const u8 *link_id;
 	const u8 *interworking;
@@ -109,6 +117,12 @@ struct ieee802_11_elems {
 	const u8 *tdls_mle;
 	const u8 *prior_access_mle;
 	const u8 *mbssid_known_bss;
+	const u8 *mbssid;
+	const u8 *rsne_override;
+	const u8 *rsne_override_2;
+	const u8 *rsnxe_override;
+	const u8 *rsn_selection;
+	const u8 *wfa_capab;
 
 	u8 ssid_len;
 	u8 supp_rates_len;
@@ -129,6 +143,8 @@ struct ieee802_11_elems {
 	u8 vendor_ht_cap_len;
 	u8 vendor_vht_len;
 	u8 p2p_len;
+	u8 p2p2_ie_len;
+	u8 pasn_encrypted_data_len;
 	u8 wfd_len;
 	u8 interworking_len;
 	u8 qos_map_set_len;
@@ -171,8 +187,16 @@ struct ieee802_11_elems {
 	size_t tdls_mle_len;
 	size_t prior_access_mle_len;
 	u8 mbssid_known_bss_len;
+	u8 mbssid_len;
+	size_t rsne_override_len;
+	size_t rsne_override_2_len;
+	size_t rsnxe_override_len;
+	size_t rsn_selection_len;
+	u8 wfa_capab_len;
 
 	struct mb_ies_info mb_ies;
+
+	size_t fte_defrag_len;
 
 	/*
 	 * The number of fragment elements to be skipped after a known
@@ -190,8 +214,7 @@ void ieee802_11_elems_clear_ids(struct ieee802_11_elems *elems,
 				const u8 *ids, size_t num);
 void ieee802_11_elems_clear_ext_ids(struct ieee802_11_elems *elems,
 				    const u8 *ids, size_t num);
-ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
-					 struct ieee802_11_elems *elems,
+ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
 					 struct wpabuf *mlbuf,
 					 u8 link_id, bool show_errors);
 int ieee802_11_ie_count(const u8 *ies, size_t ies_len);
@@ -265,7 +288,10 @@ const u8 * get_vendor_ie(const u8 *ies, size_t len, u32 vendor_type);
 
 size_t mbo_add_ie(u8 *buf, size_t len, const u8 *attr, size_t attr_len);
 
-size_t add_multi_ap_ie(u8 *buf, size_t len, u8 value);
+u16 check_multi_ap_ie(const u8 *multi_ap_ie, size_t multi_ap_len,
+		      struct multi_ap_params *multi_ap);
+size_t add_multi_ap_ie(u8 *buf, size_t len,
+		       const struct multi_ap_params *multi_ap);
 
 struct country_op_class {
 	u8 country_op_class;
@@ -295,6 +321,7 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
 bool ieee802_11_rsnx_capab(const u8 *rsnxe, unsigned int capab);
 int op_class_to_bandwidth(u8 op_class);
 enum oper_chan_width op_class_to_ch_width(u8 op_class);
+int chwidth_freq2_to_ch_width(int chwidth, int freq2);
 
 /* element iteration helpers */
 #define for_each_element(_elem, _data, _datalen)			\
@@ -352,28 +379,8 @@ void hostapd_encode_edmg_chan(int edmg_enable, u8 edmg_channel,
 int ieee802_edmg_is_allowed(struct ieee80211_edmg_config allowed,
 			    struct ieee80211_edmg_config requested);
 
-struct wpabuf * ieee802_11_defrag_data(const u8 *data, size_t len,
-				       bool ext_elem);
-struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
-				  u8 eid, u8 eid_ext);
-struct wpabuf * ieee802_11_defrag_mle(struct ieee802_11_elems *elems, u8 type);
+struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem);
 const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type);
 const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len);
 
-int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx);
-
-struct supported_chan_width {
-	u8 is_160_supported;
-	u8 is_80p80_supported;
-	u8 is_320_supported;
-};
-
-struct supported_chan_width get_supported_channel_width(struct ieee802_11_elems *elems);
-
-enum chan_width get_operation_channel_width(struct ieee802_11_elems *elems);
-
-enum chan_width get_sta_operation_chan_width(enum chan_width ap_operation_chan_width,
-					     struct supported_chan_width sta_supported_width);
-
-unsigned int is_ap_t2lm_negotiation_supported(const u8 *mle, size_t mle_len);
 #endif /* IEEE802_11_COMMON_H */

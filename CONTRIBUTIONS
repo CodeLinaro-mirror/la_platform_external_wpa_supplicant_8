@@ -56,6 +56,9 @@ In general, the best way of generating a suitable formatted patch file
 is by committing the changes to a cloned git repository and using git
 format-patch. The patch can then be sent, e.g., with git send-email.
 
+A list of pending patches waiting for review is available in
+Patchwork: https://patchwork.ozlabs.org/project/hostap/list/
+
 
 History of license and contributions terms
 ------------------------------------------
