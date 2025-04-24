@@ -69,6 +69,7 @@ cc_defaults {
     shared_libs: [
         "android.hardware.wifi.supplicant-V2-ndk",
         "android.system.keystore2-V1-ndk",
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbase",
         "libbinder_ndk",
         "libc",
@@ -134,6 +135,7 @@ wpa_supplicant_cflags_cc_defaults {
         "-DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"",
         "-DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"",
         "-DCONFIG_CTRL_IFACE_AIDL",
+        "-DCONFIG_USE_VENDOR_AIDL",
         "-DCONFIG_CTRL_IFACE_UNIX",
         "-DCONFIG_DPP",
         "-DCONFIG_DPP2",

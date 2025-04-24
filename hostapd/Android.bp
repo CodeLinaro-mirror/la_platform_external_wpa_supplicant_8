@@ -46,6 +46,7 @@ cc_defaults {
     srcs: [":hostapd_srcs"],
     shared_libs: [
         "android.hardware.wifi.hostapd-V1-ndk",
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
         "libbase",
         "libutils",
         "libbinder_ndk",
@@ -162,6 +163,7 @@ hostapd_cflags_cc_defaults {
         "-DCONFIG_ACS",
         "-DCONFIG_ANDROID_LOG",
         "-DCONFIG_CTRL_IFACE_AIDL",
+        "-DCONFIG_USE_VENDOR_AIDL",
         "-Wall",
         "-Werror",
         "-Wno-unused-parameter",

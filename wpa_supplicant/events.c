@@ -5504,6 +5504,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
+	char event_msg[1024] = {0};
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED &&
 	    event != EVENT_INTERFACE_ENABLED &&
@@ -6407,6 +6408,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		wpas_dpp_tx_wait_expire(wpa_s);
 #endif /* CONFIG_DPP */
 		break;
+	case EVENT_THERMAL_CHANGED:
+		snprintf(event_msg, sizeof(event_msg),
+			WPA_EVENT_THERMAL_CHANGE "level=%d", data->thermal_info.level);
+		wpa_msg(wpa_s, MSG_INFO, "%s", event_msg);
+		wpas_notify_vendor_ctrl_event(wpa_s, event_msg);
 	case EVENT_TID_LINK_MAP:
 		if (data)
 			wpas_tid_link_map(wpa_s, &data->t2l_map_info);

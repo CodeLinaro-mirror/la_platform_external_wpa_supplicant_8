@@ -16,6 +16,9 @@
 #include <android/binder_process.h>
 #include <android/binder_manager.h>
 #include <aidl/android/hardware/wifi/supplicant/IpVersion.h>
+#ifdef CONFIG_USE_VENDOR_AIDL
+#include "vendorsta_iface.h"
+#endif
 
 extern "C" {
 #include "scan.h"
@@ -387,6 +390,12 @@ namespace hardware {
 namespace wifi {
 namespace supplicant {
 
+#ifdef CONFIG_USE_VENDOR_AIDL
+using ::aidl::vendor::qti::hardware::wifi::supplicant::VendorStaIface;
+using ::aidl::vendor::qti::hardware::wifi::supplicant::SupplicantVendor;
+using ::aidl::vendor::qti::hardware::wifi::supplicant::ISupplicantVendorStaIfaceCallback;
+#endif
+
 AidlManager *AidlManager::instance_ = NULL;
 
 AidlManager *AidlManager::getInstance()
@@ -421,6 +430,26 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
 	return 0;
 }
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+int AidlManager::registerVendorAidlService(struct wpa_global *global)
+{
+	// Create the main aidl service object and register it.
+	wpa_printf(MSG_INFO, "Starting vendor AIDL supplicant");
+	supplicantvendor_object_ = ndk::SharedRefBase::make<SupplicantVendor>(global);
+	wpa_global_ = global;
+	std::string instance = std::string() + SupplicantVendor::descriptor + "/default";
+	if (AServiceManager_addService(supplicantvendor_object_->asBinder().get(),
+			instance.c_str()) != STATUS_OK)
+	{
+		return 1;
+	}
+
+	// Initialize the death notifier.
+	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
+	return 0;
+}
+#endif
 
 /**
  * Register an interface to aidl manager.
@@ -462,6 +491,21 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		}
 		sta_iface_callbacks_map_[wpa_s->ifname] =
 			std::vector<std::shared_ptr<ISupplicantStaIfaceCallback>>();
+#ifdef CONFIG_USE_VENDOR_AIDL
+		if (addAidlObjectToMap<VendorStaIface>(
+			wpa_s->ifname,
+			ndk::SharedRefBase::make<VendorStaIface>(wpa_s->global, wpa_s->ifname),
+			vendor_sta_iface_object_map_)) {
+			wpa_printf(
+				MSG_ERROR,
+				"Failed to register vendor STA interface with AIDL "
+				"control: %s",
+				wpa_s->ifname);
+			return 1;
+		}
+		vendor_sta_iface_callbacks_map_[wpa_s->ifname] =
+			std::vector<std::shared_ptr<ISupplicantVendorStaIfaceCallback>>();
+#endif
 		// Turn on Android specific customizations for STA interfaces
 		// here!
 		//
@@ -518,6 +562,14 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 			success = !removeAllIfaceCallbackAidlObjectsFromMap(
 				death_notifier_, wpa_s->ifname, sta_iface_callbacks_map_);
 		}
+#ifdef CONFIG_USE_VENDOR_AIDL
+		success = !removeAidlObjectFromMap(
+			wpa_s->ifname, vendor_sta_iface_object_map_);
+		if (success) {
+			success = !removeAllIfaceCallbackAidlObjectsFromMap(
+				death_notifier_, wpa_s->ifname, vendor_sta_iface_callbacks_map_);
+		}
+#endif
 	}
 	if (!success) {
 		wpa_printf(
@@ -2166,6 +2218,30 @@ void AidlManager::notifyAuxiliaryEvent(struct wpa_supplicant *wpa_s,
 		misc_utils::charBufToString(wpa_s->ifname), func);
 }
 
+#ifdef CONFIG_USE_VENDOR_AIDL
+/**
+  * Notify listener about the vendor control event from supplicant.
+  *
+  * @param wpa_s |wpa_supplicant| struct corresponding to the interface on which
+  * the network is present.
+  * @param msg vendor message
+  */
+void AidlManager::notifyVendorCtrlEvent(struct wpa_supplicant *wpa_s, const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+
+	if (checkForVendorStaIfaceCallback(wpa_s->ifname) == true) {
+		const std::string ifname(wpa_s->ifname);
+		const std::string event_str(msg);
+		callWithEachVendorStaIfaceCallback(
+			wpa_s->ifname, std::bind(
+			&ISupplicantVendorStaIfaceCallback::onCtrlEvent,
+			std::placeholders::_1, ifname, event_str));
+	}
+}
+#endif
+
 /**
  * Retrieve the |ISupplicantP2pIface| aidl object reference using the provided
  * ifname.
@@ -2211,6 +2287,31 @@ int AidlManager::getStaIfaceAidlObjectByIfname(
 	*iface_object = iface_object_iter->second;
 	return 0;
 }
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+/**
+ * Retrieve the |ISupplicantVendorStaIface| aidl object reference using the provided
+ * ifname.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param iface_object Aidl reference corresponding to the iface.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::getVendorStaIfaceAidlObjectByIfname(
+	const std::string &ifname, std::shared_ptr<ISupplicantVendorStaIface> *iface_object)
+{
+	if (ifname.empty() || !iface_object)
+		return 1;
+
+	auto iface_object_iter = vendor_sta_iface_object_map_.find(ifname);
+	if (iface_object_iter == vendor_sta_iface_object_map_.end())
+		return 1;
+
+	*iface_object = iface_object_iter->second;
+	return 0;
+}
+#endif
 
 /**
  * Retrieve the |ISupplicantP2pNetwork| aidl object reference using the provided
@@ -2335,6 +2436,25 @@ int AidlManager::addStaIfaceCallbackAidlObject(
 		death_notifier_, ifname, callback, sta_iface_callbacks_map_);
 }
 
+#ifdef CONFIG_USE_VENDOR_AIDL
+/**
+ * Add a new vendor iface callback aidl object reference to our
+ * interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param callback Aidl reference of the vendor callback object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::addVendorStaIfaceCallbackAidlObject(
+	const std::string &ifname,
+	const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback)
+{
+	return addIfaceCallbackAidlObjectToMap(
+		death_notifier_, ifname, callback, vendor_sta_iface_callbacks_map_);
+}
+#endif
+
 /**
  * Add a new network callback aidl object reference to our network callback
  * list.
@@ -2437,6 +2557,48 @@ void AidlManager::removeStaIfaceCallbackAidlObject(
 		ifname, callback, sta_iface_callbacks_map_);
 }
 
+#ifdef CONFIG_USE_VENDOR_AIDL
+/**
+ * Removes the provided vendor iface callback aidl object reference from
+ * our interface vendor callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param callback Aidl reference of the vendor callback object.
+ */
+void AidlManager::removeVendorStaIfaceCallbackAidlObject(
+	const std::string &ifname,
+	const std::shared_ptr<ISupplicantVendorStaIfaceCallback> &callback)
+{
+	return removeIfaceCallbackAidlObjectFromMap(
+		ifname, callback, vendor_sta_iface_callbacks_map_);
+}
+
+/**
+ * Helper function to check if there is any callback of type
+ * ISupplicantVendorStaIfaceCallback is registered for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ **/
+bool AidlManager::checkForVendorStaIfaceCallback(const std::string &ifname)
+{
+	if (ifname.empty())
+		return false;
+
+	auto iface_callback_map_iter = vendor_sta_iface_callbacks_map_.find(ifname);
+	if (iface_callback_map_iter == vendor_sta_iface_callbacks_map_.end())
+		return false;
+	const auto &iface_callback_list = iface_callback_map_iter->second;
+	for (const auto &callback : iface_callback_list) {
+		auto vendorCallback = callback;
+		if (vendorCallback != nullptr)
+			return true;
+	}
+	wpa_printf(MSG_ERROR, "No VendorStaIfaceCallback is register");
+	return false;
+}
+#endif
+
 /**
  * Removes the provided network callback aidl object reference from
  * our network callback list.
@@ -2503,6 +2665,25 @@ void AidlManager::callWithEachStaIfaceCallback(
 {
 	callWithEachIfaceCallback(ifname, method, sta_iface_callbacks_map_);
 }
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+/**
+ * Helper function to invoke the provided vendor callback method on all the
+ * registered interface vendor callback aidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required aidl method from
+ * |ISupplicantVendorIfaceCallback|.
+ */
+void AidlManager::callWithEachVendorStaIfaceCallback(
+	const std::string &ifname,
+	const std::function<ndk::ScopedAStatus(std::shared_ptr<ISupplicantVendorStaIfaceCallback>)>
+	&method)
+{
+	callWithEachIfaceCallback(ifname, method, vendor_sta_iface_callbacks_map_);
+}
+#endif
 
 /**
  * Helper function to invoke the provided callback method on all the

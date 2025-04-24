@@ -145,6 +145,8 @@ extern "C" {
 #define WPA_EVENT_NETWORK_REMOVED "CTRL-EVENT-NETWORK-REMOVED "
 /** Result of MSCS setup */
 #define WPA_EVENT_MSCS_RESULT "CTRL-EVENT-MSCS-RESULT "
+/** Thermal state changed */
+#define WPA_EVENT_THERMAL_CHANGE "CTRL-EVENT-THERMAL-CHANGED "
 /** WPS overlap detected in PBC mode */
 #define WPS_EVENT_OVERLAP "WPS-OVERLAP-DETECTED "
 /** Available WPS AP with active PBC found in scan results */

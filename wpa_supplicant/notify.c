@@ -1411,3 +1411,13 @@ void wpas_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_qos_policy_scs_response(wpa_s, num_scs_resp, scs_resp);
 }
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
+				    const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+	wpas_aidl_notify_vendor_ctrl_event(wpa_s, msg);
+}
+#endif

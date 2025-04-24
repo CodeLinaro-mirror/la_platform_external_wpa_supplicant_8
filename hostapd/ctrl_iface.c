@@ -1685,6 +1685,42 @@ static int hostapd_ctrl_iface_mgmt_rx_process(struct hostapd_data *hapd,
 	return 0;
 }
 
+static int hostapd_ctrl_iface_driver_event(struct hostapd_data *hapd, char *cmd)
+{
+	char *pos, *param;
+	union wpa_event_data event;
+	enum wpa_event_type ev;
+
+	/* <event name> [parameters..] */
+
+	wpa_printf(MSG_DEBUG, "Testing - external driver event: %s", cmd);
+
+	pos = cmd;
+	param = os_strchr(pos, ' ');
+	if (param)
+		*param++ = '\0';
+
+	os_memset(&event, 0, sizeof(event));
+
+	if (os_strcmp(cmd, "THERMAL_CHANGED") == 0) {
+		// "THERMAL_CHANGED level=<level>"
+		ev = EVENT_THERMAL_CHANGED;
+		if (param == NULL)
+			return -1;
+		pos = os_strstr(param, "level=");
+		if (!pos)
+			return -1;
+		event.thermal_info.level = atoi(pos + 6);
+	} else {
+		wpa_printf(MSG_DEBUG, "Testing - unknown driver event: %s",
+			cmd);
+		return -1;
+	}
+
+	wpa_supplicant_event(hapd, ev, &event);
+
+	return 0;
+}
 
 static int hostapd_ctrl_iface_eapol_rx(struct hostapd_data *hapd, char *cmd)
 {
@@ -3287,7 +3323,7 @@ static int hostapd_ctrl_iface_driver_cmd(struct hostapd_data *hapd, char *cmd,
 #endif /* ANDROID */
 
 
-static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 					      char *buf, char *reply,
 					      int reply_size,
 					      struct sockaddr_storage *from,
@@ -3502,6 +3538,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 			reply_len = -1;
 	} else if (os_strncmp(buf, "MGMT_RX_PROCESS ", 16) == 0) {
 		if (hostapd_ctrl_iface_mgmt_rx_process(hapd, buf + 16) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "DRIVER_EVENT ", 13) == 0) {
+		if (hostapd_ctrl_iface_driver_event(hapd, buf + 13) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "EAPOL_RX ", 9) == 0) {
 		if (hostapd_ctrl_iface_eapol_rx(hapd, buf + 9) < 0)

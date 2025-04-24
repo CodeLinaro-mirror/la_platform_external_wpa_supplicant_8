@@ -153,6 +153,10 @@ extern "C"
 	ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases);
 	void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 		unsigned int count, int **scs_resp);
+#ifdef CONFIG_USE_VENDOR_AIDL
+	void wpas_aidl_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
+		const char* msg);
+#endif
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -200,6 +204,9 @@ static void wpas_aidl_notify_hs20_rx_deauth_imminent_notice(
 {}
 static void wpas_aidl_notify_hs20_rx_terms_and_conditions_acceptance(
 		struct wpa_supplicant *wpa_s, const char *url)
+{}
+static void wpas_aidl_notify_mlo_info_change_reason(
+	struct wpa_supplicant *wpa_s, enum mlo_info_change_reason reason)
 {}
 static void wpas_aidl_notify_disconnect_reason(struct wpa_supplicant *wpa_s) {}
 static void wpas_aidl_notify_mlo_info_change_reason(
@@ -348,6 +355,10 @@ static ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases)
 }
 static void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 	unsigned int count, int **scs_resp) {}
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_aidl_notify_vendor_ctrl_evet(struct wpa_supplicant *wpas, const char *msg)
+{}
+#endif
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus
