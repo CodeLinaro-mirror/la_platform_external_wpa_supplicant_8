@@ -1388,6 +1388,7 @@ void AidlManager::notifyP2pDeviceFound(
 
 	if (areAidlServiceAndClientAtLeastVersion(3)) {
 		P2pDeviceFoundEventParams params;
+		P2pDirInfo dirInfo;
 		params.srcAddress = macAddrToArray(addr);
 		params.p2pDeviceAddress = macAddrToArray(info->p2p_device_addr);
 		params.primaryDeviceType = byteArrToVec(info->pri_dev_type, 8);
@@ -1402,11 +1403,12 @@ void AidlManager::notifyP2pDeviceFound(
 			params.pairingBootstrappingMethods = convertP2pPairingBootstrappingMethodsToAidl(
 				info->pairing_config.bootstrap_methods);
 			if (info->nonce_tag_valid) {
-				params.dirInfo->cipherVersion =
+				dirInfo.cipherVersion =
 					P2pDirInfo::CipherVersion::DIRA_CIPHER_VERSION_128_BIT;
-				params.dirInfo->deviceInterfaceMacAddress = macAddrToArray(info->p2p_device_addr);
-				params.dirInfo->nonce = byteArrToVec(info->nonce, DEVICE_IDENTITY_NONCE_LEN);
-				params.dirInfo->dirTag = byteArrToVec(info->tag, DEVICE_IDENTITY_TAG_LEN);
+				dirInfo.deviceInterfaceMacAddress = macAddrToArray(info->p2p_device_addr);
+				dirInfo.nonce = byteArrToVec(info->nonce, DEVICE_IDENTITY_NONCE_LEN);
+				dirInfo.dirTag = byteArrToVec(info->tag, DEVICE_IDENTITY_TAG_LEN);
+				params.dirInfo = dirInfo;
 			}
 		}
 		callWithEachP2pIfaceCallback(
