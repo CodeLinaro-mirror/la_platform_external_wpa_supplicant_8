@@ -3232,11 +3232,13 @@ static void qca_nl80211_hang_event(struct i802_bss *bss, u8 *data, size_t len)
 	}
 	size_t hex_len = 2 * data_len + 1;
 	char *hex = os_malloc(hex_len);
+	if (!hex)
+		return;
+
 	size_t hex1_len = 2 * data_len + 1 + 12 + 16;
 	char *hex1 = os_malloc(hex1_len);
-
-	if((hex == NULL)||(hex1 == NULL))
-		return;
+	if(!hex1)
+		goto free;
 
 	os_memset(hex, 0, hex_len);
 	os_memset(hex1, 0, hex1_len);
@@ -3248,8 +3250,9 @@ static void qca_nl80211_hang_event(struct i802_bss *bss, u8 *data, size_t len)
 
 	wpa_printf(MSG_ERROR, "nl80211: hex1 data = %s ", hex1);
 
-	os_free(hex);
 	os_free(hex1);
+free:
+	os_free(hex);
 }
 
 #ifdef CONFIG_PASN
