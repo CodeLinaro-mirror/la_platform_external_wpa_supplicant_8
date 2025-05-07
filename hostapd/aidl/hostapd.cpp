@@ -497,6 +497,7 @@ std::string CreateHostapdConfig(
 			"rsn_pairwise=%s\n"
 			"wpa_key_mgmt=%s\n"
 			"ieee80211w=1\n"
+			"transition_disable=1\n"
 			"sae_require_mfp=1\n"
 			"wpa_passphrase=%s\n"
 			"sae_password=%s\n"
@@ -520,6 +521,7 @@ std::string CreateHostapdConfig(
 			"rsn_pairwise=%s\n"
 			"wpa_key_mgmt=%s\n"
 			"ieee80211w=2\n"
+			"transition_disable=1\n"
 			"sae_require_mfp=2\n"
 			"sae_pwe=%d\n"
 			"sae_password=%s",
@@ -538,7 +540,8 @@ std::string CreateHostapdConfig(
 			"wpa=2\n"
 			"rsn_pairwise=%s\n"
 			"wpa_key_mgmt=OWE\n"
-			"ieee80211w=2",
+			"ieee80211w=2"
+			"transition_disable=8\n",
 			is_60Ghz_band_only ? "GCMP" : "CCMP");
 		break;
 	case EncryptionType::WPA3_OWE:
@@ -546,7 +549,8 @@ std::string CreateHostapdConfig(
 			"wpa=2\n"
 			"rsn_pairwise=%s\n"
 			"wpa_key_mgmt=OWE\n"
-			"ieee80211w=2",
+			"ieee80211w=2"
+			"transition_disable=8\n",
 			is_60Ghz_band_only ? "GCMP" : "CCMP");
 		break;
 	default:
@@ -767,7 +771,7 @@ std::string CreateHostapdConfig(
 			}
 #endif
 		} else if (is_2Ghz_band_only) {
-			ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = "ht_capab=[HT40+][HT40-]";
+			ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = "";
 		}
 		break;
 	}
