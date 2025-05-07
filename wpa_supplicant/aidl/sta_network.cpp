@@ -64,6 +64,10 @@ constexpr uint32_t kAllowedAuthAlgMask =
 	 static_cast<uint32_t>(AuthAlgMask::SHARED) |
 	 static_cast<uint32_t>(AuthAlgMask::LEAP) |
 	 static_cast<uint32_t>(AuthAlgMask::SAE));
+constexpr uint32_t kStripObsoleteGroupCipher =
+	(static_cast<uint32_t>(GroupCipherMask::WEP40) |
+	 static_cast<uint32_t>(GroupCipherMask::WEP104) |
+	 static_cast<uint32_t>(GroupCipherMask::TKIP));
 constexpr uint32_t kAllowedGroupCipherMask =
 	(static_cast<uint32_t>(GroupCipherMask::WEP40) |
 	 static_cast<uint32_t>(GroupCipherMask::WEP104) |
@@ -74,6 +78,8 @@ constexpr uint32_t kAllowedGroupCipherMask =
 	 static_cast<uint32_t>(GroupCipherMask::GCMP_256) |
 	 static_cast<uint32_t>(GroupCipherMask::SMS4) |
 	 static_cast<uint32_t>(GroupCipherMask::GCMP_128));
+constexpr uint32_t kStripObsoletePairwisewCipher =
+	 static_cast<uint32_t>(PairwiseCipherMask::TKIP);
 constexpr uint32_t kAllowedPairwisewCipherMask =
 	(static_cast<uint32_t>(PairwiseCipherMask::NONE) |
 	 static_cast<uint32_t>(PairwiseCipherMask::TKIP) |
@@ -2283,6 +2289,7 @@ ndk::ScopedAStatus StaNetwork::setGroupCipherInternal(
 {
 	uint32_t group_cipher_mask = static_cast<uint32_t>(mask);
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	group_cipher_mask &= ~kStripObsoleteGroupCipher;
 	if (group_cipher_mask & ~kAllowedGroupCipherMask) {
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
@@ -2306,6 +2313,7 @@ ndk::ScopedAStatus StaNetwork::setPairwiseCipherInternal(
 {
 	uint32_t pairwise_cipher_mask = static_cast<uint32_t>(mask);
 	struct wpa_ssid *wpa_ssid = retrieveNetworkPtr();
+	pairwise_cipher_mask &= ~kStripObsoletePairwisewCipher;
 	if (pairwise_cipher_mask & ~kAllowedPairwisewCipherMask) {
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
