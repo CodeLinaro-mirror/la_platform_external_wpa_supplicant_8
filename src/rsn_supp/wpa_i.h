@@ -188,12 +188,15 @@ struct wpa_sm {
 	struct wpabuf *test_assoc_ie;
 	struct wpabuf *test_eapol_m2_elems;
 	struct wpabuf *test_eapol_m4_elems;
+	struct wpabuf *test_rsnxe_data;
+	struct wpabuf *test_rsnxe_mask;
 	int ft_rsnxe_used;
 	unsigned int oci_freq_override_eapol;
 	unsigned int oci_freq_override_eapol_g2;
 	unsigned int oci_freq_override_ft_assoc;
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int disable_eapol_g2_tx;
+	unsigned int eapol_2_key_info_set_mask;
 	bool encrypt_eapol_m2;
 	bool encrypt_eapol_m4;
 #endif /* CONFIG_TESTING_OPTIONS */

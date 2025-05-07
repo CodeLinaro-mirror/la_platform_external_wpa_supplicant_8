@@ -284,13 +284,28 @@ struct nl_msg * nl80211_drv_msg(struct wpa_driver_nl80211_data *drv, int flags,
 				uint8_t cmd);
 struct nl_msg * nl80211_bss_msg(struct i802_bss *bss, int flags, uint8_t cmd);
 
-int send_and_recv(struct nl80211_global *global,
-		  struct nl_sock *nl_handle, struct nl_msg *msg,
-		  int (*valid_handler)(struct nl_msg *, void *),
-		  void *valid_data,
-		  int (*ack_handler_custom)(struct nl_msg *, void *),
-		  void *ack_data,
-		  struct nl80211_err_info *err_info);
+int send_and_recv_glb(struct nl80211_global *global,
+		      struct wpa_driver_nl80211_data *drv, /* may be NULL */
+		      struct nl_sock *nl_handle, struct nl_msg *msg,
+		      int (*valid_handler)(struct nl_msg *, void *),
+		      void *valid_data,
+		      int (*ack_handler_custom)(struct nl_msg *, void *),
+		      void *ack_data,
+		      struct nl80211_err_info *err_info);
+
+static inline int
+send_and_recv(struct wpa_driver_nl80211_data *drv,
+	      struct nl_sock *nl_handle, struct nl_msg *msg,
+	      int (*valid_handler)(struct nl_msg *, void *),
+	      void *valid_data,
+	      int (*ack_handler_custom)(struct nl_msg *, void *),
+	      void *ack_data,
+	      struct nl80211_err_info *err_info)
+{
+	return send_and_recv_glb(drv->global, drv, nl_handle, msg,
+				 valid_handler, valid_data,
+				 ack_handler_custom, ack_data, err_info);
+}
 
 // This function is not used in supplicant anymore. But keeping this wrapper
 // functions for libraries outside wpa_supplicant to build (For eg: lib_driver_cmd_XX)
@@ -302,7 +317,7 @@ send_and_recv_msgs(struct wpa_driver_nl80211_data *drv,
 		   int (*ack_handler_custom)(struct nl_msg *, void *),
 		   void *ack_data)
 {
-	return send_and_recv(drv->global, drv->global->nl, msg,
+	return send_and_recv(drv, drv->global->nl, msg,
 			     valid_handler, valid_data,
 			     ack_handler_custom, ack_data, NULL);
 }
@@ -311,7 +326,7 @@ static inline int
 send_and_recv_cmd(struct wpa_driver_nl80211_data *drv,
 		  struct nl_msg *msg)
 {
-	return send_and_recv(drv->global, drv->global->nl, msg,
+	return send_and_recv(drv, drv->global->nl, msg,
 			     NULL, NULL, NULL, NULL, NULL);
 }
 
@@ -321,7 +336,7 @@ send_and_recv_resp(struct wpa_driver_nl80211_data *drv,
 		   int (*valid_handler)(struct nl_msg *, void *),
 		   void *valid_data)
 {
-	return send_and_recv(drv->global, drv->global->nl, msg,
+	return send_and_recv(drv, drv->global->nl, msg,
 			     valid_handler, valid_data, NULL, NULL, NULL);
 }
 
@@ -432,5 +447,6 @@ int wpa_driver_nl80211_vendor_scan(struct i802_bss *bss,
 int nl80211_set_default_scan_ies(void *priv, const u8 *ies, size_t ies_len);
 struct hostapd_multi_hw_info *
 nl80211_get_multi_hw_info(struct i802_bss *bss, unsigned int *num_multi_hws);
+u32 get_nl80211_protocol_features(struct wpa_driver_nl80211_data *drv);
 
 #endif /* DRIVER_NL80211_H */

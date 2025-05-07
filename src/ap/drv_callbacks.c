@@ -18,6 +18,7 @@
 #include "common/dpp.h"
 #include "common/sae.h"
 #include "common/hw_features_common.h"
+#include "common/nan_de.h"
 #include "crypto/random.h"
 #include "p2p/p2p.h"
 #include "wps/wps.h"
@@ -677,6 +678,13 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			goto fail;
 		}
 #endif /* CONFIG_SAE */
+
+		wpa_auth_set_ssid_protection(
+			sta->wpa_sm,
+			hapd->conf->ssid_protection &&
+			ieee802_11_rsnx_capab_len(
+				elems.rsnxe, elems.rsnxe_len,
+				WLAN_RSNX_CAPAB_SSID_PROTECTION));
 	} else if (hapd->conf->wps_state) {
 #ifdef CONFIG_WPS
 		struct wpabuf *wps;
@@ -949,6 +957,10 @@ skip_wpa_check:
 				      req_ies, req_ies_len);
 	}
 #endif /* CONFIG_P2P */
+
+	if (elems.wfa_capab)
+		hostapd_wfa_capab(hapd, sta, elems.wfa_capab,
+				  elems.wfa_capab + elems.wfa_capab_len);
 
 	return 0;
 
@@ -1787,8 +1799,8 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
 		pos = mgmt->u.action.u.vs_public_action.variable;
 		end = drv_mgmt->frame + drv_mgmt->frame_len;
 		pos++;
-		hostapd_nan_usd_rx_sdf(hapd, mgmt->sa, drv_mgmt->freq,
-				       pos, end - pos);
+		hostapd_nan_usd_rx_sdf(hapd, mgmt->sa, mgmt->bssid,
+				       drv_mgmt->freq, pos, end - pos);
 		return;
 	}
 #endif /* CONFIG_NAN_USD */
@@ -1855,6 +1867,11 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
 	if (bssid[0] == 0xff && bssid[1] == 0xff && bssid[2] == 0xff &&
 	    bssid[3] == 0xff && bssid[4] == 0xff && bssid[5] == 0xff)
 		return HAPD_BROADCAST;
+#ifdef CONFIG_NAN_USD
+	if (nan_de_is_nan_network_id(bssid))
+		return HAPD_BROADCAST; /* Process NAN Network ID like broadcast
+					*/
+#endif /* CONFIG_NAN_USD */
 
 	for (i = 0; i < iface->num_bss; i++) {
 		struct hostapd_data *hapd;
@@ -1988,18 +2005,19 @@ static void hostapd_mgmt_tx_cb(struct hostapd_data *hapd, const u8 *buf,
 {
 	struct ieee80211_hdr *hdr;
 	struct hostapd_data *orig_hapd, *tmp_hapd;
+	const u8 *bssid;
 
 	orig_hapd = hapd;
 
 	hdr = (struct ieee80211_hdr *) buf;
 	hapd = switch_link_hapd(hapd, link_id);
-	tmp_hapd = get_hapd_bssid(hapd->iface, get_hdr_bssid(hdr, len), link_id);
+	bssid = get_hdr_bssid(hdr, len);
+	tmp_hapd = get_hapd_bssid(hapd->iface, bssid, link_id);
 	if (tmp_hapd) {
 		hapd = tmp_hapd;
 #ifdef CONFIG_IEEE80211BE
-	} else if (hapd->conf->mld_ap &&
-		   ether_addr_equal(hapd->mld->mld_addr,
-				    get_hdr_bssid(hdr, len))) {
+	} else if (hapd->conf->mld_ap && bssid &&
+		   ether_addr_equal(hapd->mld->mld_addr, bssid)) {
 		/* AP MLD address match - use hapd pointer as-is */
 #endif /* CONFIG_IEEE80211BE */
 	} else {

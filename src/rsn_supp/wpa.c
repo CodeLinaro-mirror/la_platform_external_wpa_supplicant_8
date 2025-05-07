@@ -650,6 +650,8 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
 #ifdef CONFIG_TESTING_OPTIONS
 	if (sm->encrypt_eapol_m2)
 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
+	if (sm->eapol_2_key_info_set_mask)
+		key_info |= sm->eapol_2_key_info_set_mask;
 #endif /* CONFIG_TESTING_OPTIONS */
 	WPA_PUT_BE16(reply->key_info, key_info);
 	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
@@ -3816,7 +3818,8 @@ static int wpa_sm_rx_eapol_wpa(struct wpa_sm *sm, const u8 *src_addr,
  * @buf: Pointer to the beginning of the EAPOL data (EAPOL header)
  * @len: Length of the EAPOL frame
  * @encrypted: Whether the frame was encrypted
- * Returns: 1 = WPA EAPOL-Key processed, 0 = not a WPA EAPOL-Key, -1 failure
+ * Returns: 1 = WPA EAPOL-Key processed, 0 = not a WPA EAPOL-Key, -1 failure,
+ *	    -2 = reply counter did not increase.
  *
  * This function is called for each received EAPOL frame. Other than EAPOL-Key
  * frames can be skipped if filtering is done elsewhere. wpa_sm_rx_eapol() is
@@ -3925,6 +3928,7 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 		      WPA_REPLAY_COUNTER_LEN) <= 0) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
 			"WPA: EAPOL-Key Replay Counter did not increase - dropping packet");
+		ret = -2;
 		goto out;
 	}
 
@@ -4374,6 +4378,8 @@ void wpa_sm_deinit(struct wpa_sm *sm)
 	wpabuf_free(sm->test_assoc_ie);
 	wpabuf_free(sm->test_eapol_m2_elems);
 	wpabuf_free(sm->test_eapol_m4_elems);
+	wpabuf_free(sm->test_rsnxe_data);
+	wpabuf_free(sm->test_rsnxe_mask);
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_FILS_SK_PFS
 	crypto_ecdh_deinit(sm->fils_ecdh);
@@ -4973,6 +4979,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
 	case WPA_PARAM_ENCRYPT_EAPOL_M4:
 		sm->encrypt_eapol_m4 = value;
 		break;
+	case WPA_PARAM_EAPOL_2_KEY_INFO_SET_MASK:
+		sm->eapol_2_key_info_set_mask = value;
+		break;
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifdef CONFIG_DPP2
 	case WPA_PARAM_DPP_PFS:
@@ -5230,6 +5239,76 @@ int wpa_sm_set_assoc_wpa_ie(struct wpa_sm *sm, const u8 *ie, size_t len)
 }
 
 
+#ifdef CONFIG_TESTING_OPTIONS
+
+int wpa_sm_set_test_rsnxe_data(struct wpa_sm *sm, struct wpabuf *data,
+			       struct wpabuf *mask)
+{
+	size_t data_len = 0, mask_len = 0;
+
+	wpabuf_free(sm->test_rsnxe_data);
+	sm->test_rsnxe_data = NULL;
+	wpabuf_free(sm->test_rsnxe_mask);
+	sm->test_rsnxe_mask = NULL;
+
+	if (!data && !mask)
+		return 0;
+
+	if (data)
+		data_len = wpabuf_len(data);
+	if (mask)
+		mask_len = wpabuf_len(mask);
+
+	if (data_len != mask_len || data_len > 255)
+		return -1;
+
+	sm->test_rsnxe_data = data;
+	sm->test_rsnxe_mask = mask;
+
+	return 0;
+}
+
+
+static int wpa_set_test_rsnxe_data(struct wpa_sm *sm, u8 *rsnxe,
+				   size_t orig_len, size_t max_len)
+{
+	const u8 *data, *mask;
+	size_t i, data_len;
+
+	if (!sm->test_rsnxe_data || !sm->test_rsnxe_mask)
+		return orig_len;
+
+	mask = wpabuf_head(sm->test_rsnxe_mask);
+	data = wpabuf_head(sm->test_rsnxe_data);
+	data_len = wpabuf_len(sm->test_rsnxe_data);
+	if (max_len < data_len + 2) {
+		wpa_printf(MSG_ERROR, "Couldn't fit RSNXE test data");
+		return -1;
+	}
+
+	/* Set data after original RSNXE to zero */
+	if (orig_len < data_len + 2)
+		os_memset(&rsnxe[orig_len], 0, data_len + 2 - orig_len);
+
+	/* Set EID and length fields */
+	*rsnxe++ = WLAN_EID_RSNX;
+	*rsnxe++ = data_len;
+
+	/* Preserve original RSNXE bit value when mask bit is zero */
+	for (i = 0; i < data_len; i++) {
+		if (!mask[i])
+			continue;
+
+		rsnxe[i] &= ~mask[i];
+		rsnxe[i] |= data[i] & mask[i];
+	}
+
+	return data_len + 2;
+}
+
+#endif /* CONFIG_TESTING_OPTIONS */
+
+
 /**
  * wpa_sm_set_assoc_rsnxe_default - Generate own RSNXE from configuration
  * @sm: Pointer to WPA state machine data from wpa_sm_init()
@@ -5248,6 +5327,11 @@ int wpa_sm_set_assoc_rsnxe_default(struct wpa_sm *sm, u8 *rsnxe,
 	res = wpa_gen_rsnxe(sm, rsnxe, *rsnxe_len);
 	if (res < 0)
 		return -1;
+#ifdef CONFIG_TESTING_OPTIONS
+	res = wpa_set_test_rsnxe_data(sm, rsnxe, res, *rsnxe_len);
+	if (res < 0)
+		return -1;
+#endif /* CONFIG_TESTING_OPTIONS */
 	*rsnxe_len = res;
 
 	wpa_hexdump(MSG_DEBUG, "RSN: Set own RSNXE default", rsnxe, *rsnxe_len);
@@ -5562,6 +5646,25 @@ struct rsn_pmksa_cache_entry * wpa_sm_pmksa_cache_get(struct wpa_sm *sm,
 {
 	return pmksa_cache_get(sm->pmksa, aa, sm->own_addr, pmkid, network_ctx,
 			       akmp);
+}
+
+
+int wpa_sm_pmksa_get_pmk(struct wpa_sm *sm, const u8 *aa, const u8 **pmk,
+			 size_t *pmk_len, const u8 **pmkid)
+{
+	struct rsn_pmksa_cache_entry *pmksa;
+
+	pmksa = wpa_sm_pmksa_cache_get(sm, aa, NULL, NULL, 0);
+	if (!pmksa) {
+		wpa_printf(MSG_DEBUG, "RSN: Failed to get PMKSA for " MACSTR,
+			   MAC2STR(aa));
+		return -1;
+	}
+
+	*pmk = pmksa->pmk;
+	*pmk_len = pmksa->pmk_len;
+	*pmkid = pmksa->pmkid;
+	return 0;
 }
 
 
@@ -6668,6 +6771,29 @@ int fils_process_assoc_resp(struct wpa_sm *sm, const u8 *resp, size_t len)
 		wpa_hexdump(MSG_DEBUG, "FILS: RSNE in (Re)Association Response",
 			    elems.rsn_ie, elems.rsn_ie_len);
 		goto fail;
+	}
+
+	if ((sm->ap_rsnxe && !elems.rsnxe) ||
+	    (!sm->ap_rsnxe && elems.rsnxe) ||
+	    (sm->ap_rsnxe && elems.rsnxe && sm->ap_rsnxe_len >= 2 &&
+	     (sm->ap_rsnxe_len != 2U + elems.rsnxe_len ||
+	      os_memcmp(sm->ap_rsnxe + 2, elems.rsnxe, sm->ap_rsnxe_len - 2) !=
+	      0))) {
+		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+			"FILS: RSNXE mismatch between Beacon/Probe Response and (Re)Association Response");
+		wpa_hexdump(MSG_INFO, "FILS: RSNXE in Beacon/Probe Response",
+			    sm->ap_rsnxe, sm->ap_rsnxe_len);
+		wpa_hexdump(MSG_INFO, "RSNXE in (Re)Association Response",
+			    elems.rsnxe, elems.rsnxe_len);
+		/* As an interop workaround, allow this for now if we did not
+		 * include the RSNXE in (Re)Association Request frame since
+		 * IEEE Std 802.11-2020 does not say anything about verifying
+		 * the RSNXE in FILS cases and there have been hostapd releases
+		 * that might omit the RSNXE in cases where the STA did not
+		 * include it in the Association Request frame. This workaround
+		 * might eventually be removed. */
+		if (sm->assoc_rsnxe && sm->assoc_rsnxe_len)
+			goto fail;
 	}
 
 	/* TODO: FILS Public Key */

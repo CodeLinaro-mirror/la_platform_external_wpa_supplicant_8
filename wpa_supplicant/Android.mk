@@ -329,6 +329,7 @@ endif
 ifdef CONFIG_NAN_USD
 OBJS += src/common/nan_de.c
 OBJS += nan_usd.c
+NEED_OFFCHANNEL=y
 L_CFLAGS += -DCONFIG_NAN_USD
 endif
 
@@ -763,7 +764,7 @@ EAPDYN += src/eap_peer/eap_teap.so
 EAPDYN += src/eap_common/eap_teap_common.c
 else
 L_CFLAGS += -DEAP_TEAP
-OBJS += src/eap_peer/eap_teap.c src/eap_peer/eap_teap_pac.c
+OBJS += src/eap_peer/eap_teap.c
 OBJS += src/eap_common/eap_teap_common.c
 endif
 TLS_FUNCS=y

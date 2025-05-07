@@ -619,6 +619,7 @@
 #define WLAN_RSNX_CAPAB_SECURE_RTT 9
 #define WLAN_RSNX_CAPAB_URNM_MFPR_X20 10
 #define WLAN_RSNX_CAPAB_URNM_MFPR 15
+#define WLAN_RSNX_CAPAB_KEK_IN_PASN 18
 #define WLAN_RSNX_CAPAB_SSID_PROTECTION 21
 
 /* Multiple BSSID element subelements */
@@ -2865,6 +2866,7 @@ struct eht_ml_basic_common_info {
 #define EHT_ML_MLD_CAPA_TID_TO_LINK_MAP_ALL_TO_ALL    0x0020
 #define EHT_ML_MLD_CAPA_TID_TO_LINK_MAP_ALL_TO_ONE    0x0040
 #define EHT_ML_MLD_CAPA_TID_TO_LINK_MAP_NEG_SUPP_MSK  0x0060
+#define EHT_ML_MLD_CAPA_AP_MLD_TYPE_IND_MASK          0x0080
 #define EHT_ML_MLD_CAPA_FREQ_SEP_FOR_STR_MASK         0x0f80
 #define EHT_ML_MLD_CAPA_AAR_SUPP                      0x1000
 
@@ -3155,6 +3157,15 @@ enum dscp_policy_request_type {
 	((key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) == WPA_KEY_MGMT_CROSS_AKM_ROAM)
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) ||
 	* CONFIG_DRIVER_NL80211_SYNA */
+
+/* Wi-Fi Alliance Capabilities attributes */
+enum wfa_capa_attr_id {
+	WFA_CAPA_ATTR_GENERATIONAL_CAPAB = 1,
+	WFA_CAPA_ATTR_VENDOR_SPECIFIC = 221,
+};
+
+/* Wi-Fi Alliance Capabilities frame */
+#define WFA_CAPAB_VENDOR_TYPE 0x506f9a1b
 
 struct ieee80211_neighbor_ap_info {
 	u8 tbtt_info_hdr;
