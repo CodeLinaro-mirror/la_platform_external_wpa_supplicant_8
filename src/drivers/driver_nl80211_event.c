@@ -186,6 +186,8 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_SET_HW_TIMESTAMP)
 	C2S(NL80211_CMD_LINKS_REMOVED)
 	C2S(NL80211_CMD_SET_TID_TO_LINK_MAPPING)
+	C2S(NL80211_CMD_ASSOC_MLO_RECONF)
+	C2S(NL80211_CMD_EPCS_CFG)
 	C2S(__NL80211_CMD_AFTER_LAST)
 	}
 #undef C2S
@@ -1250,6 +1252,8 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 
 	os_memset(&data, 0, sizeof(data));
 	data.ch_switch.freq = nla_get_u32(freq);
+	if (is_6ghz_freq(data.ch_switch.freq))
+		ht_enabled = 0;
 	data.ch_switch.ht_enabled = ht_enabled;
 	data.ch_switch.ch_offset = chan_offset;
 	if (punct_bitmap)
@@ -1719,7 +1723,7 @@ static void mlme_event(struct i802_bss *bss,
 	}
 
 	if (cmd == NL80211_CMD_FRAME && stype == WLAN_FC_STYPE_AUTH &&
-	    auth_type == host_to_le16(WLAN_AUTH_PASN)) {
+	    auth_type == WLAN_AUTH_PASN) {
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: %s: Allow PASN frame for foreign address",
 			   bss->ifname);

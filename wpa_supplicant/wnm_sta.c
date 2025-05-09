@@ -847,7 +847,7 @@ static void wnm_add_cand_list(struct wpa_supplicant *wpa_s, struct wpabuf **buf)
 		struct wpa_bss *bss = wpa_s->last_scan_res[i];
 		int res;
 
-		if (wpa_scan_res_match(wpa_s, i, bss, ssid, 1, 0)) {
+		if (wpa_scan_res_match(wpa_s, i, bss, ssid, 1, 0, false)) {
 			res = wnm_nei_rep_add_bss(wpa_s, bss, buf, pref--);
 			if (res == -2)
 				continue; /* could not build entry for BSS */
@@ -1101,7 +1101,7 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
 	/* Apply normal roaming rules if we can stay with the current BSS */
 	if (current_bss && bss != current_bss &&
 	    wpa_scan_res_match(wpa_s, 0, current_bss, wpa_s->current_ssid,
-			       1, 0) &&
+			       1, 0, false) &&
 	    !wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss, bss,
 						    true))
 		bss = current_bss;
@@ -1700,45 +1700,6 @@ static void ieee802_11_rx_wnm_notif_req_wfa(struct wpa_supplicant *wpa_s,
 			   WPA_GET_BE24(pos), pos[3]);
 
 #ifdef CONFIG_HS20
-		if (ie == WLAN_EID_VENDOR_SPECIFIC && ie_len >= 5 &&
-		    WPA_GET_BE24(pos) == OUI_WFA &&
-		    pos[3] == HS20_WNM_SUB_REM_NEEDED) {
-			/* Subscription Remediation subelement */
-			const u8 *ie_end;
-			u8 url_len;
-			char *url;
-			u8 osu_method;
-
-			wpa_printf(MSG_DEBUG, "WNM: Subscription Remediation "
-				   "subelement");
-			ie_end = pos + ie_len;
-			pos += 4;
-			url_len = *pos++;
-			if (url_len == 0) {
-				wpa_printf(MSG_DEBUG, "WNM: No Server URL included");
-				url = NULL;
-				osu_method = 1;
-			} else {
-				if (url_len + 1 > ie_end - pos) {
-					wpa_printf(MSG_DEBUG, "WNM: Not enough room for Server URL (len=%u) and Server Method (left %d)",
-						   url_len,
-						   (int) (ie_end - pos));
-					break;
-				}
-				url = os_malloc(url_len + 1);
-				if (url == NULL)
-					break;
-				os_memcpy(url, pos, url_len);
-				url[url_len] = '\0';
-				osu_method = pos[url_len];
-			}
-			hs20_rx_subscription_remediation(wpa_s, url,
-							 osu_method);
-			os_free(url);
-			pos = next;
-			continue;
-		}
-
 		if (ie == WLAN_EID_VENDOR_SPECIFIC && ie_len >= 8 &&
 		    WPA_GET_BE24(pos) == OUI_WFA &&
 		    pos[3] == HS20_WNM_DEAUTH_IMMINENT_NOTICE) {

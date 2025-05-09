@@ -743,16 +743,3 @@ cc_library_static {
 }
 
 // End of non-cuttlefish section
-
-genrule {
-    name: "com.android.hardware.hostapd.rc-gen",
-    srcs: ["hostapd.android.rc"],
-    out: ["com.android.hardware.hostapd.rc"],
-    cmd: "sed -E 's@/vendor/bin@/apex/com.android.hardware.wpa_supplicant/bin@' $(in) > $(out)",
-}
-
-prebuilt_etc {
-    name: "com.android.hardware.hostapd.rc",
-    src: ":com.android.hardware.hostapd.rc-gen",
-    installable: false,
-}

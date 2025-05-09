@@ -116,7 +116,7 @@ HOBJS += ../src/utils/trace.o
 LDFLAGS += -rdynamic
 CFLAGS += -funwind-tables
 ifdef CONFIG_WPA_TRACE_BFD
-CFLAGS += -DPACKAGE="hostapd" -DWPA_TRACE_BFD
+CFLAGS += -DPACKAGE="hostapd" -DWPA_TRACE_BFD -fno-inline -fno-optimize-sibling-calls
 LIBS += -lbfd -ldl -liberty -lz
 LIBS_c += -lbfd -ldl -liberty -lz
 LIBS_h += -lbfd -ldl -liberty -lz
@@ -713,6 +713,7 @@ CFLAGS += -DCONFIG_TLSV12
 endif
 
 ifeq ($(CONFIG_TLS), wolfssl)
+CFLAGS += -DCRYPTO_RSA_OAEP_SHA256
 CONFIG_CRYPTO=wolfssl
 ifdef TLS_FUNCS
 OBJS += ../src/crypto/tls_wolfssl.o
