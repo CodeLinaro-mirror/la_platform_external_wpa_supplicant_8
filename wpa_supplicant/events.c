@@ -6356,9 +6356,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			wpa_printf(MSG_DEBUG,
 				   "FST: MB IEs updated from auth IE");
 #endif /* CONFIG_FST */
-		sme_event_auth(wpa_s, data);
 		wpa_s->auth_status_code = data->auth.status_code;
-		wpas_notify_auth_status_code(wpa_s);
+		wpas_notify_auth_status_code(wpa_s, data->auth.auth_type,
+			data->auth.auth_transaction, data->auth.status_code);
+		sme_event_auth(wpa_s, data);
 		break;
 	case EVENT_ASSOC:
 #ifdef CONFIG_TESTING_OPTIONS
