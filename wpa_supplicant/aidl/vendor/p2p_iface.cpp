@@ -2177,15 +2177,14 @@ P2pIface::startUsdBasedServiceDiscoveryInternal(
 	params.active = true;
 	params.ttl = serviceDiscoveryConfig.timeoutInSeconds;
 	params.query_period = DEFAULT_QUERY_PERIOD_MS;
+	params.freq = NAN_USD_DEFAULT_FREQ;
 	if (serviceDiscoveryConfig.bandMask != 0) {
 		// TODO convert band to channel instead of scanning all channel frequencies.
 		params.freq_list = wpas_nan_usd_all_freqs(wpa_s);
-	} else {
-		if (serviceDiscoveryConfig.frequencyListMhz.size() != 0) {
-			params.freq_list = serviceDiscoveryConfig.frequencyListMhz.data();
-		} else {
-			params.freq = NAN_USD_DEFAULT_FREQ;
-		}
+	} else if (serviceDiscoveryConfig.frequencyListMhz.size() != 0) {
+		params.freq = serviceDiscoveryConfig.frequencyListMhz.front();
+		if (serviceDiscoveryConfig.frequencyListMhz.size() > 1)
+			params.freq_list = serviceDiscoveryConfig.frequencyListMhz.data() + 1;
 	}
 	sessionId = wpas_nan_usd_subscribe(wpa_s, serviceDiscoveryConfig.serviceName.c_str(),
 					      (enum nan_service_protocol_type)
