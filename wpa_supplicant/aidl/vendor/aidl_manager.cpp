@@ -3175,6 +3175,32 @@ void AidlManager::notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
 	}
 }
 
+void AidlManager::notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
+		u16 auth_type, u16 auth_transaction, u16 status_code)
+{
+	if (!wpa_s) return;
+	std::string aidl_ifname = misc_utils::charBufToString(wpa_s->ifname);
+	AssociationRejectionData aidl_assoc_reject_data{};
+
+	// TODO If needed, expand for other authentication failures.
+	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME && auth_type == WLAN_AUTH_SAE
+			&& auth_transaction == 2 && status_code != WLAN_STATUS_SUCCESS) {
+		if (wpa_s->current_ssid) {
+			aidl_assoc_reject_data.ssid = std::vector<uint8_t>(
+				wpa_s->current_ssid->ssid,
+				wpa_s->current_ssid->ssid + wpa_s->current_ssid->ssid_len);
+		}
+		aidl_assoc_reject_data.bssid = macAddrToVec(wpa_s->pending_bssid);
+		aidl_assoc_reject_data.statusCode = static_cast<StaIfaceStatusCode>(status_code);
+		const std::function<
+			ndk::ScopedAStatus(std::shared_ptr<ISupplicantStaIfaceCallback>)>
+			func = std::bind(
+			&ISupplicantStaIfaceCallback::onAssociationRejected,
+			std::placeholders::_1, aidl_assoc_reject_data);
+			callWithEachStaIfaceCallback(aidl_ifname, func);
+	}
+}
+
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware
