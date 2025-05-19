@@ -629,7 +629,7 @@ void wpas_aidl_notify_p2p_provision_discovery(
 
 	aidl_manager->notifyP2pProvisionDiscovery(
 		wpa_s, dev_addr, request, status, config_methods,
-		generated_pin, group_ifname);
+		generated_pin, group_ifname, 0);
 }
 
 void wpas_aidl_notify_p2p_sd_response(
@@ -1193,4 +1193,57 @@ void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
 
 	wpa_printf(MSG_DEBUG, "Notifying USD subscribe terminated");
 	aidl_manager->notifyUsdSubscribeTerminated(wpa_s, subscribe_id, reason);
+}
+
+static enum p2p_prov_disc_status convert_p2p_status_code_to_p2p_prov_disc_status(int status) {
+	switch (status) {
+		case P2P_SC_SUCCESS:
+			return P2P_PROV_DISC_SUCCESS;
+		case P2P_SC_COMEBACK:
+			return P2P_PROV_DISC_INFO_UNAVAILABLE;
+		default:
+			return P2P_PROV_DISC_REJECTED;
+	}
+}
+
+void wpas_aidl_notify_p2p_bootstrap_request(
+	struct wpa_supplicant *wpa_s, const u8 *dev_addr,
+	int status, u16 bootstrap_method, const char *group_ifname)
+{
+	if (!wpa_s || !dev_addr)
+		return;
+
+	wpa_printf(
+		MSG_DEBUG,
+		"Notifying P2P P2P bootstrap request to aidl control " MACSTR,
+		MAC2STR(dev_addr));
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	aidl_manager->notifyP2pProvisionDiscovery(
+		wpa_s, dev_addr, true, convert_p2p_status_code_to_p2p_prov_disc_status(status),
+		WPS_NOT_READY, 0, group_ifname, bootstrap_method);
+}
+
+void wpas_aidl_notify_p2p_bootstrap_response(
+	struct wpa_supplicant *wpa_s, const u8 *dev_addr,
+	int status, u16 bootstrap_method, const char *group_ifname)
+{
+	if (!wpa_s || !dev_addr)
+		return;
+
+	wpa_printf(
+		MSG_DEBUG,
+		"Notifying P2P bootstrap response to aidl control " MACSTR,
+		MAC2STR(dev_addr));
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	aidl_manager->notifyP2pProvisionDiscovery(
+		wpa_s, dev_addr, false, convert_p2p_status_code_to_p2p_prov_disc_status(status),
+		WPS_NOT_READY, 0, group_ifname, bootstrap_method);
 }
