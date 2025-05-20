@@ -60,6 +60,7 @@ L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/vendor/wifi/hostapd\"
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
+L_CFLAGS += -DARCH_ARM_32
 endif
 
 INCLUDES = $(LOCAL_PATH)
@@ -243,7 +244,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-ifdef CONFIG_SUITEB192
+ifeq ($(CONFIG_SUITEB192),y)
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -267,7 +268,7 @@ L_CFLAGS += -DCONFIG_ETH_P_OUI
 OBJS += src/ap/eth_p_oui.c
 endif
 
-ifdef CONFIG_SAE
+ifeq ($(CONFIG_SAE),y)
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
@@ -280,7 +281,7 @@ NEED_HMAC_SHA256_KDF=y
 NEED_DRAGONFLY=y
 endif
 
-ifdef CONFIG_OWE
+ifeq ($(CONFIG_OWE),y)
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -568,7 +569,7 @@ endif
 
 endif
 
-ifdef CONFIG_DPP
+ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
 OBJS += src/common/dpp_auth.c
@@ -1055,6 +1056,8 @@ endif
 ifdef NEED_AP_MLME
 OBJS += src/ap/wmm.c
 OBJS += src/ap/ap_list.c
+OBJS += src/ap/comeback_token.c
+OBJS += src/pasn/pasn_responder.c
 OBJS += src/ap/ieee802_11.c
 OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c

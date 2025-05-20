@@ -670,7 +670,7 @@ struct hostapd_bss_config {
 	unsigned int sae_sync;
 	int sae_require_mfp;
 	int sae_confirm_immediate;
-	int sae_pwe;
+	enum sae_pwe sae_pwe;
 	int *sae_groups;
 	struct sae_password_entry *sae_passwords;
 
@@ -913,6 +913,19 @@ struct hostapd_bss_config {
 	u8 ext_capa[EXT_CAPA_MAX_LEN];
 
 	u8 rnr;
+	char *config_id;
+	bool xrates_supported;
+
+#ifdef CONFIG_IEEE80211BE
+	/* The AP is part of an AP MLD */
+	u8 mld_ap;
+
+	/* The MLD ID to which the AP MLD is affiliated with */
+	u8 mld_id;
+
+	/* The AP's MLD MAC address within the AP MLD */
+	u8 mld_addr[ETH_ALEN];
+#endif /* CONFIG_IEEE80211BE */
 };
 
 /**
@@ -1048,7 +1061,7 @@ struct hostapd_config {
 	u32 vht_capab;
 	int ieee80211ac;
 	int require_vht;
-	u8 vht_oper_chwidth;
+	enum oper_chan_width vht_oper_chwidth;
 	u8 vht_oper_centr_freq_seg0_idx;
 	u8 vht_oper_centr_freq_seg1_idx;
 	u8 ht40_plus_minus_allowed;
@@ -1094,7 +1107,7 @@ struct hostapd_config {
 	struct he_operation he_op;
 	struct ieee80211_he_mu_edca_parameter_set he_mu_edca;
 	struct spatial_reuse spr;
-	u8 he_oper_chwidth;
+	enum oper_chan_width he_oper_chwidth;
 	u8 he_oper_centr_freq_seg0_idx;
 	u8 he_oper_centr_freq_seg1_idx;
 	u8 he_6ghz_max_mpdu;
@@ -1132,19 +1145,28 @@ struct hostapd_config {
 
 	int ieee80211be;
 #ifdef CONFIG_IEEE80211BE
-	u8 eht_oper_chwidth;
+        enum oper_chan_width eht_oper_chwidth;
 	u8 eht_oper_centr_freq_seg0_idx;
 	struct eht_phy_capabilities_info eht_phy_capab;
+	u16 punct_bitmap; /* a bitmap of disabled 20 MHz channels */
+	u8 punct_acs_threshold;
 #endif /* CONFIG_IEEE80211BE */
 
 	/* EHT enable/disable config from CHAN_SWITCH */
 #define CH_SWITCH_EHT_ENABLED BIT(0)
 #define CH_SWITCH_EHT_DISABLED BIT(1)
 	unsigned int ch_switch_eht_config;
+
+	enum mbssid {
+		MBSSID_DISABLED = 0,
+		MBSSID_ENABLED = 1,
+		ENHANCED_MBSSID_ENABLED = 2,
+	} mbssid;
 };
 
 
-static inline u8 hostapd_get_oper_chwidth(struct hostapd_config *conf)
+static inline enum oper_chan_width
+hostapd_get_oper_chwidth(struct hostapd_config *conf)
 {
 #ifdef CONFIG_IEEE80211BE
 	if (conf->ieee80211be)
@@ -1158,11 +1180,14 @@ static inline u8 hostapd_get_oper_chwidth(struct hostapd_config *conf)
 }
 
 static inline void
-hostapd_set_oper_chwidth(struct hostapd_config *conf, u8 oper_chwidth)
+hostapd_set_oper_chwidth(struct hostapd_config *conf,
+			 enum oper_chan_width oper_chwidth)
 {
 #ifdef CONFIG_IEEE80211BE
 	if (conf->ieee80211be)
 		conf->eht_oper_chwidth = oper_chwidth;
+	if (oper_chwidth == CONF_OPER_CHWIDTH_320MHZ)
+		oper_chwidth = CONF_OPER_CHWIDTH_160MHZ;
 #endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 	if (conf->ieee80211ax)
@@ -1192,6 +1217,9 @@ hostapd_set_oper_centr_freq_seg0_idx(struct hostapd_config *conf,
 #ifdef CONFIG_IEEE80211BE
 	if (conf->ieee80211be)
 		conf->eht_oper_centr_freq_seg0_idx = oper_centr_freq_seg0_idx;
+	if (center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
+		oper_centr_freq_seg0_idx +=
+			conf->channel > oper_centr_freq_seg0_idx ? 16 : -16;
 #endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 	if (conf->ieee80211ax)

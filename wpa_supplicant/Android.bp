@@ -70,7 +70,6 @@ cc_defaults {
         "android.hardware.wifi.supplicant-V1-ndk",
         "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbase",
-        "libbinder_ndk",
         "libc",
         "libcrypto",
         "libcutils",

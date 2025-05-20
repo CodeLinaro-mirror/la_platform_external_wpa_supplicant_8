@@ -371,7 +371,7 @@ static void ieee80211n_check_scan(struct hostapd_iface *iface)
 		iface->conf->secondary_channel = 0;
 		hostapd_set_oper_centr_freq_seg0_idx(iface->conf, 0);
 		hostapd_set_oper_centr_freq_seg1_idx(iface->conf, 0);
-		hostapd_set_oper_chwidth(iface->conf, CHANWIDTH_USE_HT);
+		hostapd_set_oper_chwidth(iface->conf, CONF_OPER_CHWIDTH_USE_HT);
 		res = 1;
 		wpa_printf(MSG_INFO, "Fallback to 20 MHz");
 	}
@@ -517,8 +517,11 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
 	int ret;
 
 	/* Check that HT40 is used and PRI / SEC switch is allowed */
-	if (!iface->conf->secondary_channel || iface->conf->no_pri_sec_switch)
+	if (!iface->conf->secondary_channel || iface->conf->no_pri_sec_switch) {
+		if (iface->conf->ht_capab & HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET)
+			iface->conf->ht_capab &= ~HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
 		return 0;
+	}
 
 	hostapd_set_state(iface, HAPD_IFACE_HT_SCAN);
 	wpa_printf(MSG_DEBUG, "Scan for neighboring BSSes prior to enabling "
@@ -893,6 +896,55 @@ static int hostapd_is_usable_edmg(struct hostapd_iface *iface)
 }
 
 
+static bool hostapd_is_usable_punct_bitmap(struct hostapd_iface *iface)
+{
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_config *conf = iface->conf;
+	u8 bw, start_chan;
+
+	if (!conf->punct_bitmap)
+		return true;
+
+	if (!conf->ieee80211be) {
+		wpa_printf(MSG_ERROR,
+			   "Currently RU puncturing is supported only if ieee80211be is enabled");
+		return false;
+	}
+
+	if (iface->freq >= 2412 && iface->freq <= 2484) {
+		wpa_printf(MSG_ERROR,
+			   "RU puncturing not supported in 2.4 GHz");
+		return false;
+	}
+
+	switch (conf->eht_oper_chwidth) {
+	case 0:
+		wpa_printf(MSG_ERROR,
+			   "RU puncturing is supported only in 80 MHz and 160 MHz");
+		return false;
+	case 1:
+		bw = 80;
+		start_chan = conf->eht_oper_centr_freq_seg0_idx - 6;
+		break;
+	case 2:
+		bw = 160;
+		start_chan = conf->eht_oper_centr_freq_seg0_idx - 14;
+		break;
+	default:
+		return false;
+	}
+
+	if (!is_punct_bitmap_valid(bw, (conf->channel - start_chan) / 4,
+				   conf->punct_bitmap)) {
+		wpa_printf(MSG_ERROR, "Invalid puncturing bitmap");
+		return false;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	return true;
+}
+
+
 static int hostapd_is_usable_chans(struct hostapd_iface *iface)
 {
 	int secondary_freq;
@@ -913,6 +965,9 @@ static int hostapd_is_usable_chans(struct hostapd_iface *iface)
 		return 0;
 	}
 	if (!hostapd_is_usable_edmg(iface))
+		return 0;
+
+	if (!hostapd_is_usable_punct_bitmap(iface))
 		return 0;
 
 	if (!iface->conf->secondary_channel)
@@ -1087,13 +1142,14 @@ int hostapd_select_hw_mode(struct hostapd_iface *iface)
 
 	if ((iface->conf->hw_mode == HOSTAPD_MODE_IEEE80211G ||
 	     iface->conf->ieee80211n || iface->conf->ieee80211ac ||
-	     iface->conf->ieee80211ax) &&
+	     iface->conf->ieee80211ax || iface->conf->ieee80211be) &&
 	    iface->conf->channel == 14) {
-		wpa_printf(MSG_INFO, "Disable OFDM/HT/VHT/HE on channel 14");
+		wpa_printf(MSG_INFO, "Disable OFDM/HT/VHT/HE/EHT on channel 14");
 		iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211B;
 		iface->conf->ieee80211n = 0;
 		iface->conf->ieee80211ac = 0;
 		iface->conf->ieee80211ax = 0;
+		iface->conf->ieee80211be = 0;
 	}
 
 	iface->current_mode = NULL;

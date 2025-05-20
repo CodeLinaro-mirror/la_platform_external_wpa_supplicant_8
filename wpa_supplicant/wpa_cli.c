@@ -413,6 +413,18 @@ static int wpa_cli_cmd_quit(struct wpa_ctrl *ctrl, int argc, char *argv[])
 }
 
 
+static int wpa_cli_cmd_mlo_status(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "MLO_STATUS");
+}
+
+
+static int wpa_cli_cmd_mlo_signal_poll(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "MLO_SIGNAL_POLL");
+}
+
+
 static int wpa_cli_cmd_set(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	char cmd[256];
@@ -1467,6 +1479,7 @@ static const char *network_fields[] = {
 #ifdef CONFIG_HE_OVERRIDES
 	"disable_he",
 #endif /* CONFIG_HE_OVERRIDES */
+	"disable_eht",
 	"ap_max_inactivity", "dtim_period", "beacon_int",
 #ifdef CONFIG_MACSEC
 	"macsec_policy",
@@ -3246,18 +3259,17 @@ static int wpa_cli_cmd_all_bss(struct wpa_ctrl *ctrl, int argc, char *argv[])
 
 #ifdef CONFIG_PASN
 
-static int wpa_cli_cmd_pasn_auth_start(struct wpa_ctrl *ctrl, int argc,
-				       char *argv[])
+static int wpa_cli_cmd_pasn_start(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
-	return wpa_cli_cmd(ctrl, "PASN_AUTH_START", 4, argc, argv);
+	return wpa_cli_cmd(ctrl, "PASN_START", 4, argc, argv);
 }
 
 
-static int wpa_cli_cmd_pasn_auth_stop(struct wpa_ctrl *ctrl, int argc,
-				      char *argv[])
+static int wpa_cli_cmd_pasn_stop(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
-	return wpa_cli_cmd(ctrl, "PASN_AUTH_STOP", 0, argc, argv);
+	return wpa_cli_cmd(ctrl, "PASN_STOP", 0, argc, argv);
 }
+
 
 static int wpa_cli_cmd_ptksa_cache_list(struct wpa_ctrl *ctrl, int argc,
 					char *argv[])
@@ -4009,10 +4021,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "all_bss", wpa_cli_cmd_all_bss, NULL, cli_cmd_flag_none,
 	  "= list all BSS entries (scan results)" },
 #ifdef CONFIG_PASN
-	{ "pasn_auth_start", wpa_cli_cmd_pasn_auth_start, NULL,
+	{ "pasn_start", wpa_cli_cmd_pasn_start, NULL,
 	  cli_cmd_flag_none,
 	  "bssid=<BSSID> akmp=<WPA key mgmt> cipher=<WPA cipher> group=<group> nid=<network id> = Start PASN authentication" },
-	{ "pasn_auth_stop", wpa_cli_cmd_pasn_auth_stop, NULL,
+	{ "pasn_stop", wpa_cli_cmd_pasn_stop, NULL,
 	  cli_cmd_flag_none,
 	  "= Stop PASN authentication" },
 	{ "ptksa_cache_list", wpa_cli_cmd_ptksa_cache_list, NULL,
@@ -4034,6 +4046,12 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "dscp_query", wpa_cli_cmd_dscp_query, NULL,
 	  cli_cmd_flag_none,
 	  "wildcard/domain_name=<string> = Send DSCP Query" },
+	{ "mlo_status", wpa_cli_cmd_mlo_status, NULL,
+	  cli_cmd_flag_none,
+	  "= get MLO status" },
+	{ "mlo_signal_poll", wpa_cli_cmd_mlo_signal_poll, NULL,
+	  cli_cmd_flag_none,
+	  "= get mlo signal parameters" },
 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
 };
 

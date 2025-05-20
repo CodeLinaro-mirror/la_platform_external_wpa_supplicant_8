@@ -4,6 +4,12 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef WPA_SUPPLICANT_I_H
@@ -22,6 +28,7 @@
 #include "wmm_ac.h"
 #include <netinet/in.h>
 #include <netinet/in6.h>
+#include "pasn/pasn_common.h"
 
 extern const char *const wpa_supplicant_version;
 extern const char *const wpa_supplicant_license;
@@ -52,6 +59,7 @@ struct ctrl_iface_priv;
 struct ctrl_iface_global_priv;
 struct wpas_dbus_priv;
 struct wpas_aidl_priv;
+struct wpas_vendor_aidl_priv;
 
 /**
  * struct wpa_interface - Parameters for wpa_supplicant_add_iface()
@@ -259,6 +267,15 @@ struct wpa_params {
 	 */
 	int match_iface_count;
 #endif /* CONFIG_MATCH_IFACE */
+
+#ifdef CONFIG_AIDL
+	/**
+	 * aidl_service_name - Service name to use when registering
+	 * with AIDL. For supporting multiple instances of
+	 * wpa_supplicant over AIDL
+	 */
+	char *aidl_service_name;
+#endif /* CONFIG_AIDL */
 };
 
 struct p2p_srv_bonjour {
@@ -285,6 +302,7 @@ struct wpa_global {
 	struct ctrl_iface_global_priv *ctrl_iface;
 	struct wpas_dbus_priv *dbus;
 	struct wpas_aidl_priv *aidl;
+	struct wpas_vendor_aidl_priv *vendor_aidl;
 	void **drv_priv;
 	size_t drv_count;
 	struct os_time suspend_time;
@@ -542,59 +560,6 @@ struct dscp_resp_data {
 	int num_policies;
 };
 
-#ifdef CONFIG_PASN
-
-struct pasn_fils {
-	u8 nonce[FILS_NONCE_LEN];
-	u8 anonce[FILS_NONCE_LEN];
-	u8 session[FILS_SESSION_LEN];
-	u8 erp_pmkid[PMKID_LEN];
-	bool completed;
-};
-
-struct wpas_pasn {
-	int akmp;
-	int cipher;
-	u16 group;
-	int freq;
-	size_t kdk_len;
-
-	u8 trans_seq;
-	u8 status;
-
-	u8 bssid[ETH_ALEN];
-	size_t pmk_len;
-	u8 pmk[PMK_LEN_MAX];
-	bool using_pmksa;
-
-	u8 hash[SHA384_MAC_LEN];
-
-	struct wpabuf *beacon_rsne_rsnxe;
-	struct wpa_ptk ptk;
-	struct crypto_ecdh *ecdh;
-
-	struct wpabuf *comeback;
-	u16 comeback_after;
-
-#ifdef CONFIG_SAE
-	struct sae_data sae;
-#endif /* CONFIG_SAE */
-
-	struct wpa_ssid *ssid;
-
-#ifdef CONFIG_FILS
-	struct pasn_fils fils;
-#endif /* CONFIG_FILS */
-
-#ifdef CONFIG_IEEE80211R
-	u8 pmk_r1[PMK_LEN_MAX];
-	size_t pmk_r1_len;
-	u8 pmk_r1_name[WPA_PMK_NAME_LEN];
-#endif /* CONFIG_IEEE80211R */
-};
-#endif /* CONFIG_PASN */
-
-
 enum ip_version {
 	IPV4 = 4,
 	IPV6 = 6,
@@ -608,7 +573,6 @@ struct ipv4_params {
 	u16 dst_port;
 	u8 dscp;
 	u8 protocol;
-	u8 param_mask;
 };
 
 
@@ -620,7 +584,6 @@ struct ipv6_params {
 	u8 dscp;
 	u8 next_header;
 	u8 flow_label[3];
-	u8 param_mask;
 };
 
 
@@ -757,6 +720,15 @@ struct wpa_supplicant {
 	struct wpa_bss *current_bss;
 	int ap_ies_from_associnfo;
 	unsigned int assoc_freq;
+	u8 ap_mld_addr[ETH_ALEN];
+	u8 mlo_assoc_link_id;
+	u16 valid_links; /* bitmap of valid MLO link IDs */
+	struct ml_sta_link_info {
+		u8 addr[ETH_ALEN];
+		u8 bssid[ETH_ALEN];
+		unsigned int freq;
+		struct wpa_bss *bss;
+	} links[MAX_NUM_MLD_LINKS];
 	u8 *last_con_fail_realm;
 	size_t last_con_fail_realm_len;
 
@@ -972,6 +944,7 @@ struct wpa_supplicant {
 	struct wpabuf *pending_eapol_rx;
 	struct os_reltime pending_eapol_rx_time;
 	u8 pending_eapol_rx_src[ETH_ALEN];
+	enum frame_encryption pending_eapol_encrypted;
 	unsigned int last_eapol_matches_bssid:1;
 	unsigned int eapol_failed:1;
 	unsigned int eap_expected_failure:1;
@@ -991,6 +964,8 @@ struct wpa_supplicant {
 	unsigned int connection_channel_bandwidth:5;
 	unsigned int disable_mbo_oce:1;
 	unsigned int connection_11b_only:1;
+	unsigned int connection_vht_max_eight_spatial_streams:1;
+	unsigned int connection_twt:1;
 
 	struct os_reltime last_mac_addr_change;
 	int last_mac_addr_style;
@@ -1045,6 +1020,9 @@ struct wpa_supplicant {
 		struct wpa_ssid *ext_auth_wpa_ssid;
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
+		int ext_auth_key_mgmt;
+		u8 ext_auth_ap_mld_addr[ETH_ALEN];
+		bool ext_ml_auth;
 		int *sae_rejected_groups;
 #endif /* CONFIG_SAE */
 	} sme;
@@ -1546,8 +1524,10 @@ struct wpa_supplicant {
 	bool mscs_setup_done;
 
 #ifdef CONFIG_PASN
-	struct wpas_pasn pasn;
+	struct pasn_data pasn;
 	struct wpa_radio_work *pasn_auth_work;
+	unsigned int pasn_count;
+	struct pasn_auth *pasn_params;
 #endif /* CONFIG_PASN */
 	struct scs_robust_av_data scs_robust_av_req;
 	u8 scs_dialog_token;
@@ -1575,6 +1555,9 @@ void wpa_supplicant_apply_vht_overrides(
 void wpa_supplicant_apply_he_overrides(
 	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 	struct wpa_driver_associate_params *params);
+void wpa_supplicant_apply_eht_overrides(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+	struct wpa_driver_associate_params *params);
 
 int wpa_set_wep_keys(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int wpa_supplicant_set_wpa_none_key(struct wpa_supplicant *wpa_s,
@@ -1591,7 +1574,8 @@ void wpas_set_mgmt_group_cipher(struct wpa_supplicant *wpa_s,
 				struct wpa_ssid *ssid, struct wpa_ie_data *ie);
 int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss, struct wpa_ssid *ssid,
-			      u8 *wpa_ie, size_t *wpa_ie_len);
+			      u8 *wpa_ie, size_t *wpa_ie_len,
+			      bool skip_default_rsne);
 int wpas_restore_permanent_mac_addr(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			      struct wpa_bss *bss,
@@ -1659,8 +1643,9 @@ void wpa_supplicant_deinit(struct wpa_global *global);
 int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 			      struct wpa_ssid *ssid);
 void wpa_supplicant_terminate_proc(struct wpa_global *global);
-void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
-			     const u8 *buf, size_t len);
+void wpa_supplicant_rx_eapol(void *ctx, const u8 *own_addr,
+			     const u8 *buf, size_t len,
+			     enum frame_encryption encrypted);
 void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_clear_status(struct wpa_supplicant *wpa_s);
 void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid);
@@ -1810,6 +1795,7 @@ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
 int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 					   struct wpa_bss *current_bss,
 					   struct wpa_bss *seleceted);
+void wpas_reset_mlo_info(struct wpa_supplicant *wpa_s);
 
 /* eap_register.c */
 int eap_register_methods(void);
@@ -1898,7 +1884,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 int wpas_ctrl_iface_get_pref_freq_list_override(struct wpa_supplicant *wpa_s,
 						enum wpa_driver_if_type if_type,
 						unsigned int *num,
-						unsigned int *freq_list);
+						struct weighted_pcl *freq_list);
 
 int wpa_is_fils_supported(struct wpa_supplicant *wpa_s);
 int wpa_is_fils_sk_pfs_supported(struct wpa_supplicant *wpa_s);
@@ -1931,7 +1917,7 @@ void wpas_handle_assoc_resp_qos_mgmt(struct wpa_supplicant *wpa_s,
 int wpas_send_dscp_query(struct wpa_supplicant *wpa_s, const char *domain_name,
 			 size_t domain_name_length);
 
-int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
+int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 			 const u8 *bssid, int akmp, int cipher,
 			 u16 group, int network_id,
 			 const u8 *comeback, size_t comeback_len);
@@ -1942,6 +1928,10 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 		      const struct ieee80211_mgmt *mgmt, size_t len);
 int disabled_freq(struct wpa_supplicant *wpa_s, int freq);
 
-int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *bssid);
+int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
+			     const u8 *bssid);
+void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
+			    struct pasn_auth *pasn_auth);
+void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status);
 
 #endif /* WPA_SUPPLICANT_I_H */

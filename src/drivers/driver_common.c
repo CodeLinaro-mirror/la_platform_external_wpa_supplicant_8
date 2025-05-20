@@ -97,6 +97,11 @@ const char * event_to_string(enum wpa_event_type event)
 	E2S(CCA_STARTED_NOTIFY);
 	E2S(CCA_ABORTED_NOTIFY);
 	E2S(CCA_NOTIFY);
+	E2S(PASN_AUTH);
+	E2S(LINK_CH_SWITCH);
+	E2S(LINK_CH_SWITCH_STARTED);
+	E2S(TID_LINK_MAP);
+	E2S(LINK_RECONFIG);
 	}
 
 	return "UNKNOWN";
@@ -119,6 +124,8 @@ const char * channel_width_to_string(enum chan_width width)
 		return "80+80 MHz";
 	case CHAN_WIDTH_160:
 		return "160 MHz";
+	case CHAN_WIDTH_320:
+		return "320 MHz";
 	default:
 		return "unknown";
 	}
@@ -138,6 +145,8 @@ int channel_width_to_int(enum chan_width width)
 	case CHAN_WIDTH_80P80:
 	case CHAN_WIDTH_160:
 		return 160;
+	case CHAN_WIDTH_320:
+		return 320;
 	default:
 		return 0;
 	}

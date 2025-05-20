@@ -148,6 +148,7 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	u8 *msg, *dst, bssid[ETH_ALEN];
+	struct driver_sta_mlo_info drv_mlo;
 	size_t msglen;
 	int res;
 
@@ -197,11 +198,16 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
 	if (is_zero_ether_addr(wpa_s->bssid)) {
 		wpa_printf(MSG_DEBUG, "BSSID not set when trying to send an "
 			   "EAPOL frame");
+		os_memset(&drv_mlo, 0, sizeof(drv_mlo));
 		if (wpa_drv_get_bssid(wpa_s, bssid) == 0 &&
+		    (!wpa_s->valid_links ||
+		     wpas_drv_get_sta_mlo_info(wpa_s, &drv_mlo) == 0) &&
 		    !is_zero_ether_addr(bssid)) {
-			dst = bssid;
-			wpa_printf(MSG_DEBUG, "Using current BSSID " MACSTR
+			dst = drv_mlo.valid_links ? drv_mlo.ap_mld_addr : bssid;
+			wpa_printf(MSG_DEBUG, "Using current %s " MACSTR
 				   " from the driver as the EAPOL destination",
+				   drv_mlo.valid_links ? "AP MLD MAC address" :
+				   "BSSID",
 				   MAC2STR(dst));
 		} else {
 			dst = wpa_s->last_eapol_src;
@@ -211,9 +217,10 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
 				   MAC2STR(dst));
 		}
 	} else {
-		/* BSSID was already set (from (Re)Assoc event, so use it as
-		 * the EAPOL destination. */
-		dst = wpa_s->bssid;
+		/* BSSID was already set (from (Re)Assoc event, so use BSSID or
+		 * AP MLD MAC address (in the case of MLO connection) as the
+		 * EAPOL destination. */
+		dst = wpa_s->valid_links ? wpa_s->ap_mld_addr : wpa_s->bssid;
 	}
 
 	msg = wpa_alloc_eapol(wpa_s, type, buf, len, &msglen, NULL);
@@ -250,7 +257,7 @@ static int wpa_eapol_set_wep_key(void *ctx, int unicast, int keyidx,
 		else
 			wpa_s->group_cipher = cipher;
 	}
-	return wpa_drv_set_key(wpa_s, WPA_ALG_WEP,
+	return wpa_drv_set_key(wpa_s, -1, WPA_ALG_WEP,
 			       unicast ? wpa_s->bssid : NULL,
 			       keyidx, unicast, NULL, 0, key, keylen,
 			       unicast ? KEY_FLAG_PAIRWISE_RX_TX :
@@ -286,7 +293,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	int res, pmk_len;
-	u8 pmk[PMK_LEN];
+	u8 pmk[PMK_LEN_MAX];
 
 	wpa_printf(MSG_DEBUG, "EAPOL authentication completed - result=%s",
 		   result_str(result));
@@ -336,7 +343,11 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 	wpa_printf(MSG_DEBUG, "Configure PMK for driver-based RSN 4-way "
 		   "handshake");
 
-	pmk_len = PMK_LEN;
+	if (wpa_key_mgmt_sha384(wpa_s->key_mgmt))
+		pmk_len = PMK_LEN_SUITE_B_192;
+	else
+		pmk_len = PMK_LEN;
+
 	if (wpa_key_mgmt_ft(wpa_s->key_mgmt)) {
 #ifdef CONFIG_IEEE80211R
 		u8 buf[2 * PMK_LEN];
@@ -351,7 +362,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		res = -1;
 #endif /* CONFIG_IEEE80211R */
 	} else {
-		res = eapol_sm_get_key(eapol, pmk, PMK_LEN);
+		res = eapol_sm_get_key(eapol, pmk, pmk_len);
 		if (res) {
 			/*
 			 * EAP-LEAP is an exception from other EAP methods: it
@@ -371,7 +382,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 	wpa_hexdump_key(MSG_DEBUG, "RSN: Configure PMK for driver-based 4-way "
 			"handshake", pmk, pmk_len);
 
-	if (wpa_drv_set_key(wpa_s, 0, NULL, 0, 0, NULL, 0, pmk,
+	if (wpa_drv_set_key(wpa_s, -1, 0, NULL, 0, 0, NULL, 0, pmk,
 			    pmk_len, KEY_FLAG_PMK)) {
 		wpa_printf(MSG_DEBUG, "Failed to set PMK to the driver");
 	}
@@ -533,7 +544,7 @@ static int wpa_supplicant_get_bssid(void *ctx, u8 *bssid)
 }
 
 
-static int wpa_supplicant_set_key(void *_wpa_s, enum wpa_alg alg,
+static int wpa_supplicant_set_key(void *_wpa_s, int link_id, enum wpa_alg alg,
 				  const u8 *addr, int key_idx, int set_tx,
 				  const u8 *seq, size_t seq_len,
 				  const u8 *key, size_t key_len,
@@ -562,8 +573,8 @@ static int wpa_supplicant_set_key(void *_wpa_s, enum wpa_alg alg,
 		wpa_s->last_tk_len = key_len;
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
-	return wpa_drv_set_key(wpa_s, alg, addr, key_idx, set_tx, seq, seq_len,
-			       key, key_len, key_flag);
+	return wpa_drv_set_key(wpa_s, link_id, alg, addr, key_idx, set_tx, seq,
+			       seq_len, key, key_len, key_flag);
 }
 
 
@@ -1265,7 +1276,7 @@ static int wpa_supplicant_key_mgmt_set_pmk(void *ctx, const u8 *pmk,
 
 	if (wpa_s->conf->key_mgmt_offload &&
 	    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD))
-		return wpa_drv_set_key(wpa_s, 0, NULL, 0, 0,
+		return wpa_drv_set_key(wpa_s, -1, 0, NULL, 0, 0,
 				       NULL, 0, pmk, pmk_len, KEY_FLAG_PMK);
 	else
 		return 0;
@@ -1403,10 +1414,36 @@ static void wpa_supplicant_store_ptk(void *ctx, u8 *addr, int cipher,
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
-	ptksa_cache_add(wpa_s->ptksa, addr, cipher, life_time, ptk);
+	ptksa_cache_add(wpa_s->ptksa, wpa_s->own_addr, addr, cipher, life_time,
+			ptk, NULL, NULL, 0);
 }
 
 #endif /* CONFIG_NO_WPA */
+
+
+#ifdef CONFIG_PASN
+static int wpa_supplicant_set_ltf_keyseed(void *_wpa_s, const u8 *own_addr,
+					  const u8 *peer_addr,
+					  size_t ltf_keyseed_len,
+					  const u8 *ltf_keyseed)
+{
+	struct wpa_supplicant *wpa_s = _wpa_s;
+
+	return wpa_drv_set_secure_ranging_ctx(wpa_s, own_addr, peer_addr, 0, 0,
+					      NULL, ltf_keyseed_len,
+					      ltf_keyseed, 0);
+}
+#endif /* CONFIG_PASN */
+
+
+static void
+wpa_supplicant_notify_pmksa_cache_entry(void *_wpa_s,
+					struct rsn_pmksa_cache_entry *entry)
+{
+	struct wpa_supplicant *wpa_s = _wpa_s;
+
+	wpas_notify_pmk_cache_added(wpa_s, entry);
+}
 
 
 int wpa_supplicant_init_wpa(struct wpa_supplicant *wpa_s)
@@ -1471,6 +1508,10 @@ int wpa_supplicant_init_wpa(struct wpa_supplicant *wpa_s)
 	ctx->channel_info = wpa_supplicant_channel_info;
 	ctx->transition_disable = wpa_supplicant_transition_disable;
 	ctx->store_ptk = wpa_supplicant_store_ptk;
+#ifdef CONFIG_PASN
+	ctx->set_ltf_keyseed = wpa_supplicant_set_ltf_keyseed;
+#endif /* CONFIG_PASN */
+	ctx->notify_pmksa_cache_entry = wpa_supplicant_notify_pmksa_cache_entry;
 
 	wpa_s->wpa = wpa_sm_init(ctx);
 	if (wpa_s->wpa == NULL) {

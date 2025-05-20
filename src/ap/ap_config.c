@@ -480,18 +480,27 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
 #ifdef CONFIG_SAE
 	struct hostapd_ssid *ssid = &conf->ssid;
 	struct sae_password_entry *pw;
+	int *groups = conf->sae_groups;
+	int default_groups[] = { 19, 0, 0 };
 
-	if ((conf->sae_pwe == 0 && !hostapd_sae_pw_id_in_use(conf) &&
+	if ((conf->sae_pwe == SAE_PWE_HUNT_AND_PECK &&
+	     !hostapd_sae_pw_id_in_use(conf) &&
+	     !wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt) &&
 	     !hostapd_sae_pk_in_use(conf)) ||
-	    conf->sae_pwe == 3 ||
+	    conf->sae_pwe == SAE_PWE_FORCE_HUNT_AND_PECK ||
 	    !wpa_key_mgmt_sae(conf->wpa_key_mgmt))
 		return 0; /* PT not needed */
+
+	if (!groups) {
+		groups = default_groups;
+		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt))
+			default_groups[1] = 20;
+	}
 
 	sae_deinit_pt(ssid->pt);
 	ssid->pt = NULL;
 	if (ssid->wpa_passphrase) {
-		ssid->pt = sae_derive_pt(conf->sae_groups, ssid->ssid,
-					 ssid->ssid_len,
+		ssid->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
 					 (const u8 *) ssid->wpa_passphrase,
 					 os_strlen(ssid->wpa_passphrase),
 					 NULL);
@@ -501,8 +510,7 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
 
 	for (pw = conf->sae_passwords; pw; pw = pw->next) {
 		sae_deinit_pt(pw->pt);
-		pw->pt = sae_derive_pt(conf->sae_groups, ssid->ssid,
-				       ssid->ssid_len,
+		pw->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
 				       (const u8 *) pw->password,
 				       os_strlen(pw->password),
 				       pw->identifier);
@@ -797,6 +805,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 	os_free(conf->radius_req_attr_sqlite);
 	os_free(conf->rsn_preauth_interfaces);
 	os_free(conf->ctrl_interface);
+	os_free(conf->config_id);
 	os_free(conf->ca_cert);
 	os_free(conf->server_cert);
 	os_free(conf->server_cert2);
@@ -1449,6 +1458,12 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 	}
 #endif /* CONFIG_IEEE80211BE */
 
+	if (full_config && bss->ignore_broadcast_ssid && conf->mbssid) {
+		wpa_printf(MSG_ERROR,
+			   "Hidden SSID is not suppored when MBSSID is enabled");
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -1531,6 +1546,12 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
 		return -1;
 	}
 #endif /* CONFIG_IEEE80211BE */
+
+	if (full_config && conf->mbssid && !conf->ieee80211ax) {
+		wpa_printf(MSG_ERROR,
+			   "Cannot enable multiple BSSID support without ieee80211ax");
+		return -1;
+	}
 
 	for (i = 0; i < conf->num_bss; i++) {
 		if (hostapd_config_check_bss(conf->bss[i], conf, full_config))

@@ -2458,8 +2458,8 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(ht, 0, 1) },
 	{ INT_RANGE(vht, 0, 1) },
 	{ INT_RANGE(ht40, -1, 1) },
-	{ INT_RANGE(max_oper_chwidth, CHANWIDTH_USE_HT,
-		    CHANWIDTH_80P80MHZ) },
+	{ INT_RANGE(max_oper_chwidth, CONF_OPER_CHWIDTH_USE_HT,
+		    CONF_OPER_CHWIDTH_80P80MHZ) },
 	{ INT(vht_center_freq1) },
 	{ INT(vht_center_freq2) },
 #ifdef IEEE8021X_EAPOL
@@ -2527,7 +2527,8 @@ static const struct parse_data ssid_fields[] = {
 	{ INTe(machine_ocsp, machine_cert.ocsp) },
 	{ INT(eapol_flags) },
 	{ INTe(sim_num, sim_num) },
-	{ STRe(imsi_privacy_key, imsi_privacy_key) },
+	{ STRe(imsi_privacy_cert, imsi_privacy_cert) },
+	{ STRe(imsi_privacy_attr, imsi_privacy_attr) },
 	{ STRe(openssl_ciphers, openssl_ciphers) },
 	{ INTe(erp, erp) },
 #endif /* IEEE8021X_EAPOL */
@@ -2662,6 +2663,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT_RANGE(beacon_prot, 0, 1) },
 	{ INT_RANGE(transition_disable, 0, 255) },
 	{ INT_RANGE(sae_pk, 0, 2) },
+	{ INT_RANGE(disable_eht, 0, 1)},
 };
 
 #undef OFFSET
@@ -2795,7 +2797,8 @@ static void eap_peer_config_free(struct eap_peer_config *eap)
 	bin_clear_free(eap->identity, eap->identity_len);
 	os_free(eap->anonymous_identity);
 	os_free(eap->imsi_identity);
-	os_free(eap->imsi_privacy_key);
+	os_free(eap->imsi_privacy_cert);
+	os_free(eap->imsi_privacy_attr);
 	os_free(eap->machine_identity);
 	bin_clear_free(eap->password, eap->password_len);
 	bin_clear_free(eap->machine_password, eap->machine_password_len);
@@ -2899,7 +2902,8 @@ void wpa_config_free_cred(struct wpa_cred *cred)
 		os_free(cred->req_conn_capab_port[i]);
 	os_free(cred->req_conn_capab_port);
 	os_free(cred->req_conn_capab_proto);
-	os_free(cred->imsi_privacy_key);
+	os_free(cred->imsi_privacy_cert);
+	os_free(cred->imsi_privacy_attr);
 	os_free(cred);
 }
 
@@ -3935,9 +3939,15 @@ int wpa_config_set_cred(struct wpa_cred *cred, const char *var,
 		return 0;
 	}
 
-	if (os_strcmp(var, "imsi_privacy_key") == 0) {
-		os_free(cred->imsi_privacy_key);
-		cred->imsi_privacy_key = val;
+	if (os_strcmp(var, "imsi_privacy_cert") == 0) {
+		os_free(cred->imsi_privacy_cert);
+		cred->imsi_privacy_cert = val;
+		return 0;
+	}
+
+	if (os_strcmp(var, "imsi_privacy_attr") == 0) {
+		os_free(cred->imsi_privacy_attr);
+		cred->imsi_privacy_attr = val;
 		return 0;
 	}
 
@@ -4091,8 +4101,11 @@ char * wpa_config_get_cred_no_key(struct wpa_cred *cred, const char *var)
 	if (os_strcmp(var, "imsi") == 0)
 		return alloc_strdup(cred->imsi);
 
-	if (os_strcmp(var, "imsi_privacy_key") == 0)
-		return alloc_strdup(cred->imsi_privacy_key);
+	if (os_strcmp(var, "imsi_privacy_cert") == 0)
+		return alloc_strdup(cred->imsi_privacy_cert);
+
+	if (os_strcmp(var, "imsi_privacy_attr") == 0)
+		return alloc_strdup(cred->imsi_privacy_attr);
 
 	if (os_strcmp(var, "milenage") == 0) {
 		if (!(cred->milenage))

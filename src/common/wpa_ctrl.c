@@ -21,11 +21,11 @@
 
 #ifdef ANDROID
 #include <dirent.h>
+#include <sys/stat.h>
+#include <cutils/sockets.h>
 #include <grp.h>
 #include <pwd.h>
-#include <sys/stat.h>
 #include <sys/types.h>
-#include <cutils/sockets.h>
 #endif /* ANDROID */
 
 #ifdef CONFIG_CTRL_IFACE_UDP_IPV6

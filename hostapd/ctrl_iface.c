@@ -38,6 +38,7 @@
 #endif /* CONFIG_DPP */
 #include "common/wpa_ctrl.h"
 #include "common/ptksa_cache.h"
+#include "common/hw_features_common.h"
 #include "crypto/tls.h"
 #include "drivers/driver.h"
 #include "eapol_auth/eapol_auth_sm.h"
@@ -1743,7 +1744,7 @@ static int hostapd_ctrl_iface_eapol_rx(struct hostapd_data *hapd, char *cmd)
 		return -1;
 	}
 
-	ieee802_1x_receive(hapd, src, buf, len);
+	ieee802_1x_receive(hapd, src, buf, len, FRAME_ENCRYPTION_UNKNOWN);
 	os_free(buf);
 
 	return 0;
@@ -1866,6 +1867,7 @@ static int hostapd_ctrl_iface_data_test_config(struct hostapd_data *hapd,
 	int enabled = atoi(cmd);
 	char *pos;
 	const char *ifname;
+	const u8 *addr = hapd->own_addr;
 
 	if (!enabled) {
 		if (hapd->l2_test) {
@@ -1886,7 +1888,11 @@ static int hostapd_ctrl_iface_data_test_config(struct hostapd_data *hapd,
 	else
 		ifname = hapd->conf->iface;
 
-	hapd->l2_test = l2_packet_init(ifname, hapd->own_addr,
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap)
+		addr = hapd->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+	hapd->l2_test = l2_packet_init(ifname, addr,
 					ETHERTYPE_IP, hostapd_data_test_rx,
 					hapd, 1);
 	if (hapd->l2_test == NULL)
@@ -2462,8 +2468,11 @@ static int hostapd_ctrl_register_frame(struct hostapd_data *hapd,
 
 
 #ifdef NEED_AP_MLME
-static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
+static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
+					  u16 punct_bitmap)
 {
+	u32 start_freq;
+
 	switch (params->bandwidth) {
 	case 0:
 		/* bandwidth not specified: use 20 MHz by default */
@@ -2475,9 +2484,15 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
 
 		if (params->center_freq2 || params->sec_channel_offset)
 			return -1;
+
+		if (punct_bitmap)
+			return -1;
 		break;
 	case 40:
 		if (params->center_freq2 || !params->sec_channel_offset)
+			return -1;
+
+		if (punct_bitmap)
 			return -1;
 
 		if (!params->center_freq1)
@@ -2514,6 +2529,9 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
 			return -1;
 		}
 
+		if (params->center_freq2 && punct_bitmap)
+			return -1;
+
 		/* Adjacent and overlapped are not allowed for 80+80 */
 		if (params->center_freq2 &&
 		    params->center_freq1 - params->center_freq2 <= 80 &&
@@ -2548,6 +2566,29 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
 		return -1;
 	}
 
+	if (!punct_bitmap)
+		return 0;
+
+	if (!params->eht_enabled) {
+		wpa_printf(MSG_ERROR,
+			   "Preamble puncturing supported only in EHT");
+		return -1;
+	}
+
+	if (params->freq >= 2412 && params->freq <= 2484) {
+		wpa_printf(MSG_ERROR,
+			   "Preamble puncturing is not supported in 2.4 GHz");
+		return -1;
+	}
+
+	start_freq = params->center_freq1 - (params->bandwidth / 2);
+	if (!is_punct_bitmap_valid(params->bandwidth,
+				   (params->freq - start_freq) / 20,
+				   punct_bitmap)) {
+		wpa_printf(MSG_ERROR, "Invalid preamble puncturing bitmap");
+		return -1;
+	}
+
 	return 0;
 }
 #endif /* NEED_AP_MLME */
@@ -2568,7 +2609,14 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 	if (ret)
 		return ret;
 
-	ret = hostapd_ctrl_check_freq_params(&settings.freq_params);
+	settings.link_id = -1;
+#ifdef CONFIG_IEEE80211BE
+	if (iface->num_bss && iface->bss[0]->conf->mld_ap)
+		settings.link_id = iface->bss[0]->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
+
+	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
+					     settings.punct_bitmap);
 	if (ret) {
 		wpa_printf(MSG_INFO,
 			   "chanswitch: invalid frequency settings provided");
@@ -2587,6 +2635,9 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 		break;
 	case 160:
 		bandwidth = CHAN_WIDTH_160;
+		break;
+	case 320:
+		bandwidth = CHAN_WIDTH_320;
 		break;
 	default:
 		bandwidth = CHAN_WIDTH_20;
@@ -2662,7 +2713,6 @@ static int hostapd_ctrl_iface_mib(struct hostapd_data *hapd, char *reply,
 #endif /* RADIUS_SERVER */
 	return -1;
 }
-
 
 static int hostapd_ctrl_iface_vendor(struct hostapd_data *hapd, char *cmd,
 				     char *buf, size_t buflen)
@@ -3495,6 +3545,11 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "CHAN_SWITCH ", 12) == 0) {
 		if (hostapd_ctrl_iface_chan_switch(hapd->iface, buf + 12))
 			reply_len = -1;
+#ifdef ANDROID
+	} else if (os_strncmp(buf, "DRIVER ", 7) == 0) {
+		reply_len = hostapd_ctrl_iface_driver_cmd(hapd, buf + 7, reply,
+							  reply_size);
+#endif /* ANDROID */
 	} else if (os_strncmp(buf, "VENDOR ", 7) == 0) {
 		reply_len = hostapd_ctrl_iface_vendor(hapd, buf + 7, reply,
 						      reply_size);
