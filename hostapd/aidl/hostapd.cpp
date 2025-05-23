@@ -140,7 +140,6 @@ int band60Ghz = (int)BandMask::BAND_60_GHZ;
 
 int32_t aidl_client_version = 0;
 int32_t aidl_service_version = 0;
-int32_t ctrlInterfaceCount = 0;
 
 /**
  * Check that the AIDL service is running at least the expected version.
@@ -930,7 +929,7 @@ std::string CreateHostapdConfig(
 		"%s\n"
 		"interface=%s\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl_%s\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		// ssid2 signals to hostapd that the value is not a literal value
 		// for use as a SSID.  In this case, we're giving it a hex
 		// std::string and hostapd needs to expect that.
@@ -956,7 +955,6 @@ std::string CreateHostapdConfig(
 		"%s\n",
 		sanitized_overlay.c_str(),
 		iface_params.usesMlo ? br_name.c_str() : iface_params.name.c_str(),
-		iface_params.name.c_str(),
 		ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
@@ -1250,7 +1248,6 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	int channelParamsListSize = iface_params.channelParams.size();
 
 	for (std::size_t i = 0; i < channelParamsListSize; i++) {
-		ctrlInterfaceCount++;
 		const auto conf_params = CreateHostapdConfig(iface_params,
 				iface_params.channelParams[i], nw_params, "", "",
 				iface_params.hwModeParams.enable80211BE);
