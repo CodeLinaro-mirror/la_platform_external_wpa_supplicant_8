@@ -1205,7 +1205,7 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 		pre_selected_pin.length() > 0 ? pre_selected_pin.data() : nullptr;
 	int new_pin = wpas_p2p_connect(
 		wpa_s, peer_address.data(), pin, wps_method, persistent, auto_join,
-		join_existing_group, authorize, go_intent_signed, 0, 0, -1, false, ht40,
+		join_existing_group, authorize, go_intent_signed, frequency, 0, -1, false, ht40,
 		vht, CONF_OPER_CHWIDTH_USE_HT, he, edmg, nullptr, 0, is6GhzAllowed(wpa_s),
 		p2p2, bootstrap, pairing_password, skip_prov);
 	if (new_pin < 0) {
