@@ -24,6 +24,7 @@
 #include <sys/ioctl.h>
 
 #include <linux/if_bridge.h>
+#include <rpc/util/properties.h>
 
 #include <android-base/file.h>
 #include <android-base/stringprintf.h>
@@ -1302,7 +1303,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
     // Save bridge interface info
 	br_interfaces_[br_name] = managed_interfaces;
 	ap_isexist = true;
-	return configApInterfaceIP();
+	return configApInterfaceIP(iface_params.name);
 }
 
 ::ndk::ScopedAStatus Hostapd::addConcurrentAccessPoints(
@@ -1351,7 +1352,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	// Save bridge interface info
 	br_interfaces_[br_name] = managed_interfaces;
 	ap_isexist = true;
-	return ndk::ScopedAStatus::ok();
+	return configApInterfaceIP(iface_params.name);
 }
 
 ::ndk::ScopedAStatus Hostapd::addSingleAccessPoint(
@@ -1476,7 +1477,7 @@ std::vector<uint8_t>  generateRandomOweSsid()
 			iface_params.name.c_str());
 		return createStatus(HostapdStatusCode::FAILURE_UNKNOWN);
 	}
-	return configApInterfaceIP();
+	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus Hostapd::removeAccessPointInternal(const std::string& iface_name)
@@ -1502,10 +1503,16 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	return ndk::ScopedAStatus::ok();
 }
 
-::ndk::ScopedAStatus Hostapd::configApInterfaceIP()
+::ndk::ScopedAStatus Hostapd::configApInterfaceIP(const std::string& iface_name)
 {
-	const char* command = "ifconfig ap_br_wlan2 10.43.3.1 netmask 255.255.0.0";
-	int result = system(command);
+	wpa_printf(MSG_INFO, "config AP interface %s IP...", iface_name.c_str());
+	char ap_ip_address[PROPERTY_VALUE_MAX];
+	char ap_ip_netmask[PROPERTY_VALUE_MAX];
+	property_get("persist.vendor.wifi.ap_ip_address", ap_ip_address, "10.43.3.1");
+	property_get("persist.vendor.wifi.ap_ip_netmask", ap_ip_netmask, "255.255.0.0");
+	std::string command = "ifconfig  " + iface_name + " " + std::string(ap_ip_address)
+				+ " netmask " + std::string(ap_ip_netmask);
+	int result = system(command.c_str());
 	if (result == 0) {
 		return ndk::ScopedAStatus::ok();
 	} else {
