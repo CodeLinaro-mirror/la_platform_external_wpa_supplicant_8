@@ -668,6 +668,21 @@ static int hostapd_cli_cmd_wps_config(struct wpa_ctrl *ctrl, int argc,
 #endif /* CONFIG_WPS */
 
 
+static int hostapd_cli_cmd_link_remove(struct wpa_ctrl *ctrl, int argc,
+                                      char *argv[])
+{
+       char buf[256];
+
+       if (argc < 1) {
+               printf("Invalid 'link_removal' command  - atleast 2 args required\n");
+               return -1;
+       }
+
+       snprintf(buf, sizeof(buf), "LINK_REMOVE %s", argv[0]);
+       return wpa_ctrl_command(ctrl, buf);
+}
+
+
 static int hostapd_cli_cmd_disassoc_imminent(struct wpa_ctrl *ctrl, int argc,
 					     char *argv[])
 {
@@ -1726,6 +1741,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
 	{ "wps_get_status", hostapd_cli_cmd_wps_get_status, NULL,
 	  "= show current WPS status" },
 #endif /* CONFIG_WPS */
+	{ "link_remove", hostapd_cli_cmd_link_remove, NULL,
+	  "[TBTT]= remove the link after specified count, 5 <=TBTT<= 50" },
 	{ "disassoc_imminent", hostapd_cli_cmd_disassoc_imminent, NULL,
 	  "= send Disassociation Imminent notification" },
 	{ "ess_disassoc", hostapd_cli_cmd_ess_disassoc, NULL,
