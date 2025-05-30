@@ -396,6 +396,7 @@ struct wpa_auth_callbacks {
 	int (*get_ml_rsn_info)(void *ctx, struct wpa_auth_ml_rsn_info *info);
 	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info);
 #endif /* CONFIG_IEEE80211BE */
+	int (*remove_pmkid)(void *ctx, const u8 *sta_addr, const u8 *pmkid);
 };
 
 struct wpa_authenticator * wpa_init(const u8 *addr,
