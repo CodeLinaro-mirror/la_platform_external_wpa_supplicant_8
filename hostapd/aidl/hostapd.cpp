@@ -716,7 +716,7 @@ std::string CreateHostapdConfig(
 					"bssid=%s\n"
 					"mld_ap=1",
 					interface_mac_addr.c_str());
-			}
+            }
 		}
 		/* TODO set eht_su_beamformer, eht_su_beamformee, eht_mu_beamformer */
 	} else {
@@ -1411,6 +1411,10 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 	// hapd->mld_link_id  | 0 (default value)      |      link id (0)        | link id (0 or 1)
 	// _________________________________________________________________________________________
 	// hapd->mld_ap       |         0              |            1            |     1
+	// -----------------------------------------------------------------------------------------
+	// hapd->conf->bssid  |    configured          |    configured           | No configured
+	// -----------------------------------------------------------------------------------------
+	// hapd->conf->mld_addr|   No configured       |   No configured         |   configured
 	on_setup_complete_internal_callback =
 		[this](struct hostapd_data* iface_hapd) {
 			wpa_printf(
@@ -1422,7 +1426,8 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 				std::string instanceName = iface_hapd->conf->iface;
 #ifdef CONFIG_IEEE80211BE
 				if (iface_hapd->conf->mld_ap
-						&& strlen(iface_hapd->conf->bridge) == 0) {
+						&& strlen(iface_hapd->conf->bridge) == 0
+						&& strlen((char*)(iface_hapd->conf->bssid)) == 0) {
 					instanceName = std::to_string(iface_hapd->mld_link_id);
 				}
 #endif /* CONFIG_IEEE80211BE */
@@ -1451,7 +1456,8 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 		std::string instanceName = iface_hapd->conf->iface;
 #ifdef CONFIG_IEEE80211BE
 		if (iface_hapd->conf->mld_ap
-				&& strlen(iface_hapd->conf->bridge) == 0) {
+				&& strlen(iface_hapd->conf->bridge) == 0
+				&& strlen((char*)(iface_hapd->conf->bssid)) == 0) {
 			instanceName = std::to_string(iface_hapd->mld_link_id);
 		}
 #endif /* CONFIG_IEEE80211BE */
@@ -1487,7 +1493,9 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 					strlen(WPA_EVENT_CHANNEL_SWITCH)) == 0) {
 			std::string instanceName = iface_hapd->conf->iface;
 #ifdef CONFIG_IEEE80211BE
-			if (iface_hapd->conf->mld_ap && strlen(iface_hapd->conf->bridge) == 0) {
+			if (iface_hapd->conf->mld_ap
+					&& strlen(iface_hapd->conf->bridge) == 0
+					&& strlen((char*)(iface_hapd->conf->bssid)) == 0) {
 				instanceName = std::to_string(iface_hapd->mld_link_id);
 			}
 #endif /* CONFIG_IEEE80211BE */
@@ -1519,7 +1527,9 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 		{
 			std::string instanceName = iface_hapd->conf->iface;
 #ifdef CONFIG_IEEE80211BE
-			if (iface_hapd->conf->mld_ap && strlen(iface_hapd->conf->bridge) == 0) {
+			if (iface_hapd->conf->mld_ap
+					&& strlen(iface_hapd->conf->bridge) == 0
+					&& strlen((char*)(iface_hapd->conf->bssid)) == 0) {
 				instanceName = std::to_string(iface_hapd->mld_link_id);
 			}
 #endif /* CONFIG_IEEE80211BE */
