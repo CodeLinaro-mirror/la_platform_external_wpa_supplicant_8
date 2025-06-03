@@ -1192,7 +1192,7 @@ std::pair<std::string, ndk::ScopedAStatus> P2pIface::connectInternal(
 		}
 		p2p2 = true;
 		pairing_password = password.length() > 0 ? password.data() : nullptr;
-		if (authorize) {
+		if (authorize && !group_ifname.empty()) {
 			auto_join = 1;
 		}
 	}
