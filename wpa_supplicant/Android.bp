@@ -771,17 +771,24 @@ cc_library {
 }
 
 cc_defaults {
-    name: "wpa_supplicant_qca_default",
-    local_include_dirs: [
-        "src/fst",
-    ],
+    name: "wpa_supplicant_qca_cflags",
     cflags: [
         "-DCONFIG_DPP3",
         "-DCONFIG_FST",
         "-DCONFIG_OCV",
-        "-DCONFIG_SUPPLICANT_VENDOR_AIDL",
+        "-DCONFIG_USE_VENDOR_AIDL",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
+    ],
+}
+
+cc_defaults {
+    name: "wpa_supplicant_qca_default",
+    local_include_dirs: [
+        "src/fst",
+    ],
+    defaults: [
+        "wpa_supplicant_qca_cflags",
     ],
     srcs: [
         "src/common/ocv.c",
@@ -793,16 +800,14 @@ cc_defaults {
         "src/fst/fst_ctrl_iface.c",
         "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_eht.c",
-        "vendor_aidl/aidl_vendor.cpp",
-        "vendor_aidl/aidl_vendor_manager.cpp",
-        "vendor_aidl/vendorsta_iface.cpp",
-        "vendor_aidl/supplicantvendor.cpp",
+        "aidl/supplicant_vendor.cpp",
+        "aidl/vendorsta_iface.cpp",
     ],
     shared_libs: [
-        "vendor.qti.hardware.wifi.supplicant-V1-ndk",
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
     ],
     export_include_dirs: [
-        "vendor_aidl",
+        "aidl/vendor",
     ],
 }
 
@@ -1346,6 +1351,7 @@ cc_binary {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
@@ -1505,6 +1511,7 @@ cc_library_shared {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
