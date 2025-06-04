@@ -1825,9 +1825,13 @@ const std::string& iface_name, const std::string& linkIdentity)
 	struct hostapd_data* iface_hapd =
 		hostapd_get_iface_by_link_id(interfaces_, (size_t) linkIdentity.c_str());
 	if (iface_hapd) {
+#ifdef CONFIG_IEEE80211BE
+#ifdef CONFIG_TESTING_OPTIONS
 		if (0 == hostapd_link_remove(iface_hapd, 1)) {
 			return ndk::ScopedAStatus::ok();
 		}
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
 	}
 	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 }
