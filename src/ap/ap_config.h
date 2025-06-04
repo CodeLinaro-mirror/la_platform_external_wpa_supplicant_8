@@ -1,6 +1,6 @@
 /*
  * hostapd / Configuration definitions and helpers functions
- * Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -309,6 +309,7 @@ struct hostapd_bss_config {
 	struct hostapd_ip_addr own_ip_addr;
 	char *nas_identifier;
 	struct hostapd_radius_servers *radius;
+	int radius_require_message_authenticator;
 	int acct_interim_interval;
 	int radius_request_cui;
 	struct hostapd_radius_attr *radius_auth_req_attr;
@@ -357,7 +358,11 @@ struct hostapd_bss_config {
 	int wpa; /* bitfield of WPA_PROTO_WPA, WPA_PROTO_RSN */
 	int extended_key_id;
 	int wpa_key_mgmt;
+	int rsn_override_key_mgmt;
+	int rsn_override_key_mgmt_2;
 	enum mfp_options ieee80211w;
+	enum mfp_options rsn_override_mfp;
+	enum mfp_options rsn_override_mfp_2;
 	int group_mgmt_cipher;
 	int beacon_prot;
 	/* dot11AssociationSAQueryMaximumTimeout (in TUs) */
@@ -386,8 +391,12 @@ struct hostapd_bss_config {
 	u32 wpa_pairwise_update_count;
 	int wpa_disable_eapol_key_retries;
 	int rsn_pairwise;
+	int rsn_override_pairwise;
+	int rsn_override_pairwise_2;
 	int rsn_preauth;
 	char *rsn_preauth_interfaces;
+
+	int rsn_override_omit_rsnxe;
 
 #ifdef CONFIG_IEEE80211R_AP
 	/* IEEE 802.11r - Fast BSS Transition */
@@ -405,6 +414,7 @@ struct hostapd_bss_config {
 	int ft_over_ds;
 	int ft_psk_generate_local;
 	int r1_max_key_lifetime;
+	char *rxkh_file;
 #endif /* CONFIG_IEEE80211R_AP */
 
 	char *ctrl_interface; /* directory for UNIX domain sockets */
@@ -448,6 +458,7 @@ struct hostapd_bss_config {
 	int eap_sim_aka_result_ind;
 	int eap_sim_id;
 	char *imsi_privacy_key;
+	int eap_sim_aka_fast_reauth_limit;
 	int tnc;
 	int fragment_size;
 	u16 pwd_group;
@@ -463,6 +474,9 @@ struct hostapd_bss_config {
 				 */
 
 	int ap_max_inactivity;
+	int bss_max_idle;
+	int max_acceptable_idle_period;
+	bool no_disconnect_on_group_keyerror;
 	int ignore_broadcast_ssid;
 	int no_probe_resp_if_max_sta;
 
@@ -682,6 +696,11 @@ struct hostapd_bss_config {
 	u8 bss_load_test[5];
 	u8 bss_load_test_set;
 	struct wpabuf *own_ie_override;
+	struct wpabuf *rsne_override;
+	struct wpabuf *rsnoe_override;
+	struct wpabuf *rsno2e_override;
+	struct wpabuf *rsnxe_override;
+	struct wpabuf *rsnxoe_override;
 	int sae_reflection_attack;
 	int sae_commit_status;
 	int sae_pk_omit;
@@ -703,6 +722,16 @@ struct hostapd_bss_config {
 	unsigned int oci_freq_override_ft_assoc;
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int oci_freq_override_wnm_sleep;
+	struct wpabuf *eapol_m1_elements;
+	struct wpabuf *eapol_m3_elements;
+	bool eapol_m3_no_encrypt;
+	bool eapol_key_reserved_random;
+	int test_assoc_comeback_type;
+	struct wpabuf *presp_elements;
+
+#ifdef CONFIG_IEEE80211BE
+	u16 eht_oper_puncturing_override;
+#endif /* CONFIG_IEEE80211BE */
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #define MESH_ENABLED BIT(0)
@@ -790,6 +819,14 @@ struct hostapd_bss_config {
 #define BACKHAUL_BSS 1
 #define FRONTHAUL_BSS 2
 	int multi_ap; /* bitmap of BACKHAUL_BSS, FRONTHAUL_BSS */
+	int multi_ap_profile;
+	/* Multi-AP Profile-1 clients not allowed to connect */
+#define PROFILE1_CLIENT_ASSOC_DISALLOW BIT(0)
+	/* Multi-AP Profile-2 clients not allowed to connect */
+#define PROFILE2_CLIENT_ASSOC_DISALLOW BIT(1)
+	unsigned int multi_ap_client_disallow;
+	/* Primary VLAN ID to use in Multi-AP */
+	int multi_ap_vlanid;
 
 #ifdef CONFIG_AIRTIME_POLICY
 	unsigned int airtime_weight;
@@ -937,6 +974,31 @@ struct hostapd_bss_config {
 	u8 rnr;
 	char *config_id;
 	bool xrates_supported;
+
+	bool ssid_protection;
+	bool known_sta_identification;
+
+#ifdef CONFIG_IEEE80211BE
+	/* The AP is part of an AP MLD */
+	u8 mld_ap;
+
+	/* The MLD ID to which the AP MLD is affiliated with */
+	u8 mld_id;
+
+	/* The AP's MLD MAC address within the AP MLD */
+	u8 mld_addr[ETH_ALEN];
+
+#ifdef CONFIG_TESTING_OPTIONS
+	/*
+	 * If set indicate the AP as disabled in the RNR element included in the
+	 * other APs in the AP MLD.
+	 */
+	bool mld_indicate_disabled;
+#endif /* CONFIG_TESTING_OPTIONS */
+#endif /* CONFIG_IEEE80211BE */
+	int mbssid_index;
+
+	bool spp_amsdu;
 };
 
 /**
@@ -1095,8 +1157,7 @@ struct hostapd_config {
 	double ignore_reassoc_probability;
 	double corrupt_gtk_rekey_mic_probability;
 	int ecsa_ie_only;
-	unsigned int skip_send_eapol;
-	unsigned int enable_eapol_large_timeout;
+	int csa_ie_only;
 	bool delay_eapol_tx;
 #endif /* CONFIG_TESTING_OPTIONS */
 
@@ -1127,6 +1188,19 @@ struct hostapd_config {
 	u8 he_6ghz_rx_ant_pat;
 	u8 he_6ghz_tx_ant_pat;
 	u8 he_6ghz_reg_pwr_type;
+
+	int reg_def_cli_eirp_psd;
+	int reg_sub_cli_eirp_psd;
+
+	/*
+	 * This value should be used when regulatory client EIRP PSD values
+	 * advertised by an AP that is an SP AP or an indoor SP AP are
+	 * insufficient to ensure that regulatory client limits on total EIRP
+	 * are always met for all transmission bandwidths within the bandwidth
+	 * of the AP’s BSS.
+	 */
+	int reg_def_cli_eirp;
+
 	bool require_he;
 #endif /* CONFIG_IEEE80211AX */
 
@@ -1163,6 +1237,8 @@ struct hostapd_config {
 	struct eht_phy_capabilities_info eht_phy_capab;
 	u16 punct_bitmap; /* a bitmap of disabled 20 MHz channels */
 	u8 punct_acs_threshold;
+	u8 eht_default_pe_duration;
+	u8 eht_bw320_offset;
 #endif /* CONFIG_IEEE80211BE */
 
 	/* EHT enable/disable config from CHAN_SWITCH */
@@ -1175,6 +1251,13 @@ struct hostapd_config {
 		MBSSID_ENABLED = 1,
 		ENHANCED_MBSSID_ENABLED = 2,
 	} mbssid;
+	unsigned int mbssid_max;
+
+	/* Whether to enable TWT responder in HT and VHT modes */
+	bool ht_vht_twt_responder;
+
+	bool channel_usage;
+	bool peer_to_peer_twt;
 };
 
 
@@ -1230,7 +1313,8 @@ hostapd_set_oper_centr_freq_seg0_idx(struct hostapd_config *conf,
 #ifdef CONFIG_IEEE80211BE
 	if (conf->ieee80211be)
 		conf->eht_oper_centr_freq_seg0_idx = oper_centr_freq_seg0_idx;
-	if (center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
+	if (is_6ghz_op_class(conf->op_class) &&
+	    center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
 		oper_centr_freq_seg0_idx +=
 			conf->channel > oper_centr_freq_seg0_idx ? 16 : -16;
 #endif /* CONFIG_IEEE80211BE */
@@ -1262,6 +1346,43 @@ hostapd_set_oper_centr_freq_seg1_idx(struct hostapd_config *conf,
 	conf->vht_oper_centr_freq_seg1_idx = oper_centr_freq_seg1_idx;
 }
 
+static inline u8
+hostapd_get_bw320_offset(struct hostapd_config *conf)
+{
+#ifdef CONFIG_IEEE80211BE
+	if (conf->ieee80211be && is_6ghz_op_class(conf->op_class) &&
+	    hostapd_get_oper_chwidth(conf) == CONF_OPER_CHWIDTH_320MHZ)
+		return conf->eht_bw320_offset;
+#endif /* CONFIG_IEEE80211BE */
+	return 0;
+}
+
+static inline void
+hostapd_set_and_check_bw320_offset(struct hostapd_config *conf,
+				   u8 bw320_offset)
+{
+#ifdef CONFIG_IEEE80211BE
+	if (conf->ieee80211be && is_6ghz_op_class(conf->op_class) &&
+	    op_class_to_ch_width(conf->op_class) == CONF_OPER_CHWIDTH_320MHZ) {
+		if (conf->channel) {
+			/* If the channel is set, then calculate bw320_offset
+			 * by center frequency segment 0.
+			 */
+			u8 seg0 = hostapd_get_oper_centr_freq_seg0_idx(conf);
+
+			conf->eht_bw320_offset = (seg0 - 31) % 64 ? 2 : 1;
+		} else {
+			/* If the channel is not set, bw320_offset indicates
+			 * preferred offset of 320 MHz.
+			 */
+			conf->eht_bw320_offset = bw320_offset;
+		}
+	} else {
+		conf->eht_bw320_offset = 0;
+	}
+#endif /* CONFIG_IEEE80211BE */
+}
+
 
 int hostapd_mac_comp(const void *a, const void *b);
 struct hostapd_config * hostapd_config_defaults(void);
@@ -1270,6 +1391,7 @@ void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr);
 void hostapd_config_free_eap_user(struct hostapd_eap_user *user);
 void hostapd_config_free_eap_users(struct hostapd_eap_user *user);
 void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **p);
+void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf);
 void hostapd_config_free_bss(struct hostapd_bss_config *conf);
 void hostapd_config_free(struct hostapd_config *conf);
 int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,

@@ -19,6 +19,7 @@
 #include <netlink/route/link.h>
 #include <netlink/route/link/macsec.h>
 #include <linux/if_macsec.h>
+#include <linux/version.h>
 #include <inttypes.h>
 
 #include "utils/common.h"
@@ -32,7 +33,8 @@
 
 #define UNUSED_SCI 0xffffffffffffffff
 
-#if LIBNL_VER_NUM >= LIBNL_VER(3, 6)
+#if (LIBNL_VER_NUM >= LIBNL_VER(3, 6) && \
+     LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0))
 #define LIBNL_HAS_OFFLOAD
 #endif
 
@@ -1640,7 +1642,7 @@ static void macsec_drv_hapd_deinit(void *priv)
 
 static int macsec_drv_send_eapol(void *priv, const u8 *addr,
 				 const u8 *data, size_t data_len, int encrypt,
-				 const u8 *own_addr, u32 flags)
+				 const u8 *own_addr, u32 flags, int link_id)
 {
 	struct macsec_drv_data *drv = priv;
 	struct ieee8023_hdr *hdr;

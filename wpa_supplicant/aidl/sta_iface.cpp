@@ -1856,6 +1856,7 @@ StaIface::getConnectionCapabilitiesInternal()
 		}
 		capa.maxNumberRxSpatialStreams = wpa_s->connection_max_nss_rx;
 		capa.maxNumberTxSpatialStreams = wpa_s->connection_max_nss_tx;
+		capa.apTidToLinkMapNegotiationSupported = wpa_s->ap_t2lm_negotiation_support;
 	} else {
 		capa.technology = WifiTechnology::UNKNOWN;
 		capa.channelBandwidth = WifiChannelWidthInMhz::WIDTH_20;

@@ -106,12 +106,15 @@ struct wpa_sm {
 	int rsn_enabled; /* Whether RSN is enabled in configuration */
 	int mfp; /* 0 = disabled, 1 = optional, 2 = mandatory */
 	int ocv; /* Operating Channel Validation */
+	int adaptive11r_key_mgmt;
 	enum sae_pwe sae_pwe; /* SAE PWE generation options */
 
 	unsigned int sae_pk:1; /* whether SAE-PK is used */
 	unsigned int secure_ltf:1;
 	unsigned int secure_rtt:1;
 	unsigned int prot_range_neg:1;
+	unsigned int ssid_protection:1;
+	unsigned int spp_amsdu:1;
 
 	u8 *assoc_wpa_ie; /* Own WPA/RSN IE from (Re)AssocReq */
 	size_t assoc_wpa_ie_len;
@@ -119,6 +122,9 @@ struct wpa_sm {
 	size_t assoc_rsnxe_len;
 	u8 *ap_wpa_ie, *ap_rsn_ie, *ap_rsnxe;
 	size_t ap_wpa_ie_len, ap_rsn_ie_len, ap_rsnxe_len;
+	u8 *ap_rsne_override, *ap_rsne_override_2, *ap_rsnxe_override;
+	size_t ap_rsne_override_len, ap_rsne_override_2_len,
+		ap_rsnxe_override_len;
 
 #ifdef CONFIG_TDLS
 	struct wpa_tdls_peer *tdls;
@@ -182,12 +188,19 @@ struct wpa_sm {
 
 #ifdef CONFIG_TESTING_OPTIONS
 	struct wpabuf *test_assoc_ie;
+	struct wpabuf *test_eapol_m2_elems;
+	struct wpabuf *test_eapol_m4_elems;
+	struct wpabuf *test_rsnxe_data;
+	struct wpabuf *test_rsnxe_mask;
 	int ft_rsnxe_used;
 	unsigned int oci_freq_override_eapol;
 	unsigned int oci_freq_override_eapol_g2;
 	unsigned int oci_freq_override_ft_assoc;
 	unsigned int oci_freq_override_fils_assoc;
 	unsigned int disable_eapol_g2_tx;
+	unsigned int eapol_2_key_info_set_mask;
+	bool encrypt_eapol_m2;
+	bool encrypt_eapol_m4;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_FILS
@@ -222,6 +235,19 @@ struct wpa_sm {
 	struct wpa_sm_mlo mlo;
 
 	bool wmm_enabled;
+	bool driver_bss_selection;
+	bool ft_prepend_pmkid;
+
+	bool rsn_override_support;
+	enum wpa_rsn_override rsn_override;
+
+	u8 last_kck[WPA_KCK_MAX_LEN];
+	size_t last_kck_len;
+	size_t last_kck_pmk_len;
+	unsigned int last_kck_key_mgmt;
+	int last_kck_eapol_key_ver;
+	u8 last_kck_aa[ETH_ALEN];
+	int last_eapol_key_ver;
 };
 
 
@@ -380,13 +406,13 @@ static inline int wpa_sm_send_tdls_mgmt(struct wpa_sm *sm, const u8 *dst,
 					u8 action_code, u8 dialog_token,
 					u16 status_code, u32 peer_capab,
 					int initiator, const u8 *buf,
-					size_t len)
+					size_t len, int link_id)
 {
 	if (sm->ctx->send_tdls_mgmt)
 		return sm->ctx->send_tdls_mgmt(sm->ctx->ctx, dst, action_code,
 					       dialog_token, status_code,
 					       peer_capab, initiator, buf,
-					       len);
+					       len, link_id);
 	return -1;
 }
 
@@ -410,7 +436,9 @@ wpa_sm_tdls_peer_addset(struct wpa_sm *sm, const u8 *addr, int add,
 			u8 qosinfo, int wmm, const u8 *ext_capab,
 			size_t ext_capab_len, const u8 *supp_channels,
 			size_t supp_channels_len, const u8 *supp_oper_classes,
-			size_t supp_oper_classes_len)
+			size_t supp_oper_classes_len,
+			const struct ieee80211_eht_capabilities *eht_capab,
+			size_t eht_capab_len, int mld_link_id)
 {
 	if (sm->ctx->tdls_peer_addset)
 		return sm->ctx->tdls_peer_addset(sm->ctx->ctx, addr, add,
@@ -423,7 +451,9 @@ wpa_sm_tdls_peer_addset(struct wpa_sm *sm, const u8 *addr, int add,
 						 supp_channels,
 						 supp_channels_len,
 						 supp_oper_classes,
-						 supp_oper_classes_len);
+						 supp_oper_classes_len,
+						 eht_capab, eht_capab_len,
+						 mld_link_id);
 	return -1;
 }
 
@@ -507,6 +537,12 @@ wpa_sm_notify_pmksa_cache_entry(struct wpa_sm *sm,
 		sm->ctx->notify_pmksa_cache_entry(sm->ctx->ctx, entry);
 }
 
+static inline void wpa_sm_ssid_verified(struct wpa_sm *sm)
+{
+	if (sm->ctx->ssid_verified)
+		sm->ctx->ssid_verified(sm->ctx->ctx);
+}
+
 int wpa_eapol_key_send(struct wpa_sm *sm, struct wpa_ptk *ptk,
 		       int ver, const u8 *dest, u16 proto,
 		       u8 *msg, size_t msg_len, u8 *key_mic);
@@ -525,5 +561,6 @@ int wpa_derive_ptk_ft(struct wpa_sm *sm, const unsigned char *src_addr,
 
 void wpa_tdls_assoc(struct wpa_sm *sm);
 void wpa_tdls_disassoc(struct wpa_sm *sm);
+bool wpa_sm_rsn_overriding_supported(struct wpa_sm *sm);
 
 #endif /* WPA_I_H */

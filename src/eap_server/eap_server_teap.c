@@ -1,6 +1,6 @@
 /*
  * EAP-TEAP server (RFC 7170)
- * Copyright (c) 2004-2019, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2004-2024, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -30,7 +30,7 @@ struct eap_teap_data {
 	struct eap_ssl_data ssl;
 	enum {
 		START, PHASE1, PHASE1B, PHASE2_START, PHASE2_ID,
-		PHASE2_BASIC_AUTH, PHASE2_METHOD, CRYPTO_BINDING, REQUEST_PAC,
+		PHASE2_BASIC_AUTH, PHASE2_METHOD, CRYPTO_BINDING,
 		FAILURE_SEND_RESULT, SUCCESS_SEND_RESULT, SUCCESS, FAILURE
 	} state;
 
@@ -44,27 +44,25 @@ struct eap_teap_data {
 	u8 crypto_binding_nonce[32];
 	int final_result;
 
+	u8 simck[EAP_TEAP_SIMCK_LEN];
 	u8 simck_msk[EAP_TEAP_SIMCK_LEN];
 	u8 cmk_msk[EAP_TEAP_CMK_LEN];
 	u8 simck_emsk[EAP_TEAP_SIMCK_LEN];
 	u8 cmk_emsk[EAP_TEAP_CMK_LEN];
 	int simck_idx;
-	int cmk_emsk_available;
+	bool cmk_emsk_available;
 
-	u8 pac_opaque_encr[16];
 	u8 *srv_id;
 	size_t srv_id_len;
 	char *srv_id_info;
 
 	unsigned int basic_auth_not_done:1;
 	unsigned int inner_eap_not_done:1;
-	int anon_provisioning;
 	int skipped_inner_auth;
-	int send_new_pac; /* server triggered re-keying of Tunnel PAC */
 	struct wpabuf *pending_phase2_resp;
 	struct wpabuf *server_outer_tlvs;
 	struct wpabuf *peer_outer_tlvs;
-	u8 *identity; /* from PAC-Opaque or client certificate */
+	u8 *identity; /* from client certificate */
 	size_t identity_len;
 	int eap_seq;
 	int tnc_started;
@@ -297,13 +295,14 @@ static int eap_teap_derive_key_auth(struct eap_sm *sm,
 	/* RFC 7170, Section 5.1 */
 	res = tls_connection_export_key(sm->cfg->ssl_ctx, data->ssl.conn,
 					TEAP_TLS_EXPORTER_LABEL_SKS, NULL, 0,
-					data->simck_msk, EAP_TEAP_SIMCK_LEN);
+					data->simck, EAP_TEAP_SIMCK_LEN);
 	if (res)
 		return res;
 	wpa_hexdump_key(MSG_DEBUG,
 			"EAP-TEAP: session_key_seed (S-IMCK[0])",
-			data->simck_msk, EAP_TEAP_SIMCK_LEN);
-	os_memcpy(data->simck_emsk, data->simck_msk, EAP_TEAP_SIMCK_LEN);
+			data->simck, EAP_TEAP_SIMCK_LEN);
+	os_memcpy(data->simck_msk, data->simck, EAP_TEAP_SIMCK_LEN);
+	os_memcpy(data->simck_emsk, data->simck, EAP_TEAP_SIMCK_LEN);
 	data->simck_idx = 0;
 	return 0;
 }
@@ -319,9 +318,7 @@ static int eap_teap_update_icmk(struct eap_sm *sm, struct eap_teap_data *data)
 		   data->simck_idx + 1);
 
 	if (sm->cfg->eap_teap_auth == 1)
-		return eap_teap_derive_cmk_basic_pw_auth(data->tls_cs,
-							 data->simck_msk,
-							 data->cmk_msk);
+		goto out; /* no MSK derived in Basic-Password-Auth */
 
 	if (!data->phase2_method || !data->phase2_priv) {
 		wpa_printf(MSG_INFO, "EAP-TEAP: Phase 2 method not available");
@@ -343,8 +340,8 @@ static int eap_teap_update_icmk(struct eap_sm *sm, struct eap_teap_data *data)
 						     &emsk_len);
 	}
 
-	res = eap_teap_derive_imck(data->tls_cs,
-				   data->simck_msk, data->simck_emsk,
+out:
+	res = eap_teap_derive_imck(data->tls_cs, data->simck,
 				   msk, msk_len, emsk, emsk_len,
 				   data->simck_msk, data->cmk_msk,
 				   data->simck_emsk, data->cmk_emsk);
@@ -352,8 +349,7 @@ static int eap_teap_update_icmk(struct eap_sm *sm, struct eap_teap_data *data)
 	bin_clear_free(emsk, emsk_len);
 	if (res == 0) {
 		data->simck_idx++;
-		if (emsk)
-			data->cmk_emsk_available = 1;
+		data->cmk_emsk_available = emsk != NULL;
 	}
 	return 0;
 }
@@ -626,8 +622,7 @@ static struct wpabuf * eap_teap_build_crypto_binding(
 	if (!buf)
 		return NULL;
 
-	if (data->send_new_pac || data->anon_provisioning ||
-	    data->basic_auth_not_done || data->inner_eap_not_done ||
+	if (data->basic_auth_not_done || data->inner_eap_not_done ||
 	    data->phase2_method || sm->cfg->eap_teap_separate_result)
 		data->final_result = 0;
 	else
@@ -1166,18 +1161,9 @@ static void eap_teap_process_phase2_response(struct eap_sm *sm,
 		}
 
 		eap_teap_state(data, PHASE2_METHOD);
-		if (data->anon_provisioning) {
-			/* TODO: Allow any inner EAP method that provides
-			 * mutual authentication and EMSK derivation (i.e.,
-			 * EAP-pwd or EAP-EKE). */
-			next_vendor = EAP_VENDOR_IETF;
-			next_type = EAP_TYPE_PWD;
-			sm->user_eap_method_index = 0;
-		} else {
-			next_vendor = sm->user->methods[0].vendor;
-			next_type = sm->user->methods[0].method;
-			sm->user_eap_method_index = 1;
-		}
+		next_vendor = sm->user->methods[0].vendor;
+		next_type = sm->user->methods[0].method;
+		sm->user_eap_method_index = 1;
 		wpa_printf(MSG_DEBUG, "EAP-TEAP: Try EAP type %u:%u",
 			   next_vendor, next_type);
 		break;
@@ -1509,22 +1495,20 @@ static int eap_teap_validate_crypto_binding(
 		return -1;
 	}
 
+	if (data->cmk_emsk_available &&
+	    (flags == TEAP_CRYPTO_BINDING_EMSK_CMAC ||
+	     flags == TEAP_CRYPTO_BINDING_EMSK_AND_MSK_CMAC)) {
+		wpa_printf(MSG_DEBUG, "EAP-TEAP: Selected S-IMCK_EMSK");
+		os_memcpy(data->simck, data->simck_emsk, EAP_TEAP_SIMCK_LEN);
+	} else if (flags == TEAP_CRYPTO_BINDING_MSK_CMAC ||
+		   flags == TEAP_CRYPTO_BINDING_EMSK_AND_MSK_CMAC) {
+		wpa_printf(MSG_DEBUG, "EAP-TEAP: Selected S-IMCK_EMSK");
+		os_memcpy(data->simck, data->simck_msk, EAP_TEAP_SIMCK_LEN);
+	}
+	wpa_hexdump_key(MSG_DEBUG, "EAP-TEAP: Selected S-IMCK[j]",
+			data->simck, EAP_TEAP_SIMCK_LEN);
+
 	return 0;
-}
-
-
-static int eap_teap_pac_type(u8 *pac, size_t len, u16 type)
-{
-	struct teap_attr_pac_type *tlv;
-
-	if (!pac || len != sizeof(*tlv))
-		return 0;
-
-	tlv = (struct teap_attr_pac_type *) pac;
-
-	return be_to_host16(tlv->type) == PAC_TYPE_PAC_TYPE &&
-		be_to_host16(tlv->length) == 2 &&
-		be_to_host16(tlv->pac_type) == type;
 }
 
 
@@ -1623,42 +1607,10 @@ static void eap_teap_process_phase2_tlvs(struct eap_sm *sm,
 				   "EAP-TEAP: Authentication completed successfully");
 		}
 
-		if (data->anon_provisioning &&
-		    sm->cfg->eap_fast_prov != ANON_PROV &&
-		    sm->cfg->eap_fast_prov != BOTH_PROV) {
-			wpa_printf(MSG_DEBUG,
-				   "EAP-TEAP: Client is trying to use unauthenticated provisioning which is disabled");
-			eap_teap_state(data, FAILURE);
-			return;
-		}
-
-		if (sm->cfg->eap_fast_prov != AUTH_PROV &&
-		    sm->cfg->eap_fast_prov != BOTH_PROV &&
-		    tlv.request_action == TEAP_REQUEST_ACTION_PROCESS_TLV &&
-		    eap_teap_pac_type(tlv.pac, tlv.pac_len,
-				      PAC_TYPE_TUNNEL_PAC)) {
-			wpa_printf(MSG_DEBUG,
-				   "EAP-TEAP: Client is trying to use authenticated provisioning which is disabled");
-			eap_teap_state(data, FAILURE);
-			return;
-		}
-
-		if (data->anon_provisioning ||
-		    (tlv.request_action == TEAP_REQUEST_ACTION_PROCESS_TLV &&
-		     eap_teap_pac_type(tlv.pac, tlv.pac_len,
-				       PAC_TYPE_TUNNEL_PAC))) {
-			wpa_printf(MSG_DEBUG,
-				   "EAP-TEAP: Requested a new Tunnel PAC");
-			eap_teap_state(data, REQUEST_PAC);
-		} else if (data->send_new_pac) {
-			wpa_printf(MSG_DEBUG,
-				   "EAP-TEAP: Server triggered re-keying of Tunnel PAC");
-			eap_teap_state(data, REQUEST_PAC);
-		} else if (data->final_result) {
+		if (data->final_result)
 			eap_teap_state(data, SUCCESS);
-		} else if (sm->cfg->eap_teap_separate_result) {
+		else if (sm->cfg->eap_teap_separate_result)
 			eap_teap_state(data, SUCCESS_SEND_RESULT);
-		}
 	}
 
 	if (tlv.basic_auth_resp) {
@@ -1810,7 +1762,7 @@ static int eap_teap_process_phase2_start(struct eap_sm *sm,
 	enum eap_type next_type;
 
 	if (data->identity) {
-		/* Used PAC and identity is from PAC-Opaque */
+		/* Identity is from client certificate */
 		os_free(sm->identity);
 		sm->identity = data->identity;
 		data->identity = NULL;
@@ -1823,17 +1775,16 @@ static int eap_teap_process_phase2_start(struct eap_sm *sm,
 			next_vendor = EAP_VENDOR_IETF;
 			next_type = EAP_TYPE_NONE;
 			eap_teap_state(data, PHASE2_METHOD);
-		} else if (sm->cfg->eap_teap_pac_no_inner ||
-			sm->cfg->eap_teap_auth == 2) {
+		} else if (sm->cfg->eap_teap_auth == 2) {
 			wpa_printf(MSG_DEBUG,
-				   "EAP-TEAP: Used PAC or client certificate and identity already known - skip inner auth");
+				   "EAP-TEAP: Used client certificate and identity already known - skip inner auth");
 			data->skipped_inner_auth = 1;
-			/* FIX: Need to derive CMK here. However, how is that
-			 * supposed to be done? RFC 7170 does not tell that for
-			 * the no-inner-auth case. */
-			eap_teap_derive_cmk_basic_pw_auth(data->tls_cs,
-							  data->simck_msk,
-							  data->cmk_msk);
+			if (eap_teap_derive_imck(data->tls_cs, data->simck,
+						 NULL, 0, NULL, 0,
+						 data->simck_msk, data->cmk_msk,
+						 data->simck_emsk,
+						 data->cmk_emsk))
+				return -1;
 			eap_teap_state(data, CRYPTO_BINDING);
 			return 1;
 		} else if (sm->cfg->eap_teap_auth == 1) {
@@ -2043,9 +1994,7 @@ static u8 * eap_teap_getKey(struct eap_sm *sm, void *priv, size_t *len)
 	if (!eapKeyData)
 		return NULL;
 
-	/* FIX: RFC 7170 does not describe whether MSK or EMSK based S-IMCK[j]
-	 * is used in this derivation */
-	if (eap_teap_derive_eap_msk(data->tls_cs, data->simck_msk,
+	if (eap_teap_derive_eap_msk(data->tls_cs, data->simck,
 				    eapKeyData) < 0) {
 		os_free(eapKeyData);
 		return NULL;
@@ -2068,9 +2017,7 @@ static u8 * eap_teap_get_emsk(struct eap_sm *sm, void *priv, size_t *len)
 	if (!eapKeyData)
 		return NULL;
 
-	/* FIX: RFC 7170 does not describe whether MSK or EMSK based S-IMCK[j]
-	 * is used in this derivation */
-	if (eap_teap_derive_eap_emsk(data->tls_cs, data->simck_msk,
+	if (eap_teap_derive_eap_emsk(data->tls_cs, data->simck,
 				     eapKeyData) < 0) {
 		os_free(eapKeyData);
 		return NULL;

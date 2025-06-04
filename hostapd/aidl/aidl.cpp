@@ -5,11 +5,19 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "hostapd.h"
 #ifdef CONFIG_USE_VENDOR_AIDL
 #include "hostapd_vendor.h"
+#endif
+#ifdef CONFIG_HOSTAPD_RPC
+#include <cutils/properties.h>
+#include <hostapd_rpc_api.h>
 #endif
 #include <android/binder_process.h>
 #include <android/binder_manager.h>
@@ -60,6 +68,16 @@ int hostapd_aidl_init(struct hapd_interfaces *interfaces)
 		aidl_fd, hostapd_aidl_sock_handler, interfaces, NULL) < 0)
 		goto err;
 
+#ifdef CONFIG_HOSTAPD_RPC
+	if (property_get_bool("persist.vendor.wlan.hal.rpc", false)) {
+		if (!HostapdRpcStartClient()) {
+			wpa_printf(MSG_ERROR, "hostapd rpc client fail");
+			goto err;
+		}
+
+		return 0;
+	}
+#endif
 	wpa_printf(MSG_DEBUG, "Make service");
 	service = ndk::SharedRefBase::make<Hostapd>(interfaces);
 	if (!service)
@@ -86,6 +104,11 @@ err:
 void hostapd_aidl_deinit(struct hapd_interfaces *interfaces)
 {
 	wpa_printf(MSG_INFO, "Deiniting aidl control");
+#ifdef CONFIG_HOSTAPD_RPC
+	if (property_get_bool("persist.vendor.wlan.hal.rpc", false)) {
+		HostapdRpcStopClient();
+	} else
+#endif
 	// Before aidl deinit, make sure call terminate to clear callback_
 	if (service) {
 		service->terminate();

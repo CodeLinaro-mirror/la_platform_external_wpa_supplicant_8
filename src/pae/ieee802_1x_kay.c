@@ -602,8 +602,7 @@ ieee802_1x_kay_create_peer(const u8 *mi, u32 mn)
 
 	os_memcpy(peer->mi, mi, MI_LEN);
 	peer->mn = mn;
-	os_get_reltime(&now);
-	peer->expire = now.sec + MKA_LIFE_TIME / 1000;
+	peer->expire = time(NULL) + MKA_LIFE_TIME / 1000;
 	peer->sak_used = false;
 	peer->missing_sak_use_count = 0;
 
@@ -693,8 +692,7 @@ ieee802_1x_kay_move_live_peer(struct ieee802_1x_mka_participant *participant,
 	os_memcpy(&peer->sci, &participant->current_peer_sci,
 		  sizeof(peer->sci));
 	peer->mn = mn;
-	os_get_reltime(&now);
-	peer->expire = now.sec + MKA_LIFE_TIME / 1000;
+	peer->expire = time(NULL) + MKA_LIFE_TIME / 1000;
 
 	wpa_printf(MSG_DEBUG, "KaY: Move potential peer to live peer");
 	ieee802_1x_kay_dump_peer(peer);
@@ -877,15 +875,13 @@ ieee802_1x_mka_decode_basic_body(struct ieee802_1x_kay *kay, const u8 *mka_msg,
 		peer = ieee802_1x_kay_get_peer_sci(participant,
 						   &body->actor_sci);
 		if (peer) {
-			os_time_t new_expire;
-			struct os_reltime now;
+			time_t new_expire;
 
 			wpa_printf(MSG_WARNING,
 				   "KaY: duplicated SCI detected - maybe active attacker or peer selected new MI - ignore MKPDU");
 			/* Reduce timeout to speed up this process but left the
 			 * chance for old one to prove aliveness. */
-			os_get_reltime(&now);
-			new_expire = now.sec + MKA_HELLO_TIME * 1.5 / 1000;
+			new_expire = time(NULL) + MKA_HELLO_TIME * 1.5 / 1000;
 			if (peer->expire > new_expire)
 				peer->expire = new_expire;
 			return NULL;
@@ -1211,7 +1207,7 @@ ieee802_1x_mka_decode_potential_peer_body(
 			/* My message id is used by other participant */
 			if (peer_mn > participant->mn &&
 			    !reset_participant_mi(participant))
-				wpa_printf(MSG_DEBUG, "KaY: Could not update mi");
+				wpa_printf(MSG_DEBUG, "KaY: Could not update MI");
 			continue;
 		}
 	}
@@ -1841,6 +1837,18 @@ ieee802_1x_mka_decode_dist_sak_body(
 	kay->rcvd_keys++;
 	participant->to_use_sak = true;
 
+	/*
+	 * The key server may not include dist sak and use sak in one packet.
+	 * Meanwhile, after dist sak, the current participant (non-key server)
+	 * will install SC or SA(s) after decoding the dist sak which may take
+	 * few seconds in real physical platforms. Meanwhile, the peer expire
+	 * time is always initialized at adding the key server to peer list.
+	 * The gap between adding the key server to peer list and processing
+	 * next use sak packet may exceed the threshold of MKA_LIFE_TIME (6 s).
+	 * It will cause an unexpected cleanup (delete SC and SA(s)), so,
+	 * update the expire timeout at dist sak also. */
+	peer->expire = time(NULL) + MKA_LIFE_TIME / 1000;
+
 	return 0;
 }
 
@@ -2157,8 +2165,7 @@ ieee802_1x_kay_generate_new_sak(struct ieee802_1x_mka_participant *participant)
 	 * here only check first item and ingore
 	 *   && (!dl_list_empty(&participant->potential_peers))) {
 	 */
-	os_get_reltime(&now);
-	if ((now.sec - kay->dist_time) < MKA_LIFE_TIME / 1000) {
+	if ((time(NULL) - kay->dist_time) < MKA_LIFE_TIME / 1000) {
 		wpa_printf(MSG_ERROR,
 			   "KaY: Life time has not elapsed since prior SAK distributed");
 		return -1;
@@ -2252,7 +2259,7 @@ ieee802_1x_kay_generate_new_sak(struct ieee802_1x_mka_participant *participant)
 	if (kay->dist_an > 3)
 		kay->dist_an = 0;
 
-	kay->dist_time = now.sec;
+	kay->dist_time = time(NULL);
 
 	return 0;
 
@@ -2522,7 +2529,7 @@ ieee802_1x_participant_send_mkpdu(
 	}
 
 	if (ieee802_1x_kay_encode_mkpdu(participant, buf)) {
-		wpa_printf(MSG_ERROR, "KaY: encode mkpdu fail");
+		wpa_printf(MSG_ERROR, "KaY: encode MKPDU fail");
 		return -1;
 	}
 
@@ -2556,19 +2563,18 @@ static void ieee802_1x_participant_timer(void *eloop_ctx, void *timeout_ctx)
 	struct ieee802_1x_mka_participant *participant;
 	struct ieee802_1x_kay *kay;
 	struct ieee802_1x_kay_peer *peer, *pre_peer;
-	struct os_reltime now;
+	time_t now = time(NULL);
 	bool lp_changed;
+	bool key_server_removed;
 	struct receive_sc *rxsc, *pre_rxsc;
 	struct transmit_sa *txsa, *pre_txsa;
-
-	os_get_reltime(&now);
 
 	participant = (struct ieee802_1x_mka_participant *)eloop_ctx;
 	kay = participant->kay;
 	wpa_printf(MSG_DEBUG, "KaY: Participant timer (ifname=%s)",
 		   kay->if_name);
 	if (participant->cak_life) {
-		if (now.sec > participant->cak_life)
+		if (now > participant->cak_life)
 			goto delete_mka;
 	}
 
@@ -2576,7 +2582,7 @@ static void ieee802_1x_participant_timer(void *eloop_ctx, void *timeout_ctx)
 	 * when the MKA life elapsed since its creating */
 	if (participant->mka_life) {
 		if (dl_list_empty(&participant->live_peers)) {
-			if (now.sec > participant->mka_life)
+			if (now > participant->mka_life)
 				goto delete_mka;
 		} else {
 			participant->mka_life = 0;
@@ -2584,13 +2590,12 @@ static void ieee802_1x_participant_timer(void *eloop_ctx, void *timeout_ctx)
 	}
 
 	lp_changed = false;
+	key_server_removed = false;
 	dl_list_for_each_safe(peer, pre_peer, &participant->live_peers,
 			      struct ieee802_1x_kay_peer, list) {
-		if (now.sec > peer->expire) {
+		if (now > peer->expire) {
 			wpa_printf(MSG_DEBUG, "KaY: Live peer removed");
-			wpa_hexdump(MSG_DEBUG, "\tMI: ", peer->mi,
-				    sizeof(peer->mi));
-			wpa_printf(MSG_DEBUG, "\tMN: %d", peer->mn);
+			ieee802_1x_kay_dump_peer(peer);
 			dl_list_for_each_safe(rxsc, pre_rxsc,
 					      &participant->rxsc_list,
 					      struct receive_sc, list) {
@@ -2599,10 +2604,30 @@ static void ieee802_1x_participant_timer(void *eloop_ctx, void *timeout_ctx)
 						participant, rxsc);
 				}
 			}
+			key_server_removed |= peer->is_key_server;
 			dl_list_del(&peer->list);
 			os_free(peer);
 			lp_changed = true;
 		}
+	}
+
+	/* The key server may be removed due to the ingress packets delay.
+	 * In this situation, the endpoint of the key server may not be aware
+	 * of this participant who has removed the key server from the peer
+	 * list. Because the egress traffic is normal, the key server will not
+	 * remove this participant from the peer list of the key server. So in
+	 * the next MKA message, the key server will not dispatch a new SAK to
+	 * this participant. And this participant cannot be aware that that is
+	 * a new round of communication so it will not update its MI at
+	 * re-adding the key server to its peer list. So we need to update MI
+	 * to avoid the failure of the re-establishment MKA session. */
+	if (key_server_removed) {
+		if (!reset_participant_mi(participant))
+			wpa_printf(MSG_WARNING,
+				   "KaY: Could not update MI on key server removal");
+		else
+			wpa_printf(MSG_DEBUG,
+				   "KaY: Update MI on key server removal");
 	}
 
 	if (lp_changed) {
@@ -2644,11 +2669,9 @@ static void ieee802_1x_participant_timer(void *eloop_ctx, void *timeout_ctx)
 
 	dl_list_for_each_safe(peer, pre_peer, &participant->potential_peers,
 			      struct ieee802_1x_kay_peer, list) {
-		if (now.sec > peer->expire) {
+		if (now > peer->expire) {
 			wpa_printf(MSG_DEBUG, "KaY: Potential peer removed");
-			wpa_hexdump(MSG_DEBUG, "\tMI: ", peer->mi,
-				    sizeof(peer->mi));
-			wpa_printf(MSG_DEBUG, "\tMN: %d", peer->mn);
+			ieee802_1x_kay_dump_peer(peer);
 			dl_list_del(&peer->list);
 			os_free(peer);
 		}
@@ -3105,9 +3128,9 @@ static int ieee802_1x_kay_mkpdu_validity_check(struct ieee802_1x_kay *kay,
 		   be_to_host16(eth_hdr->ethertype));
 
 	/* the destination address shall not be an individual address */
-	if (os_memcmp(eth_hdr->dest, pae_group_addr, ETH_ALEN) != 0) {
+	if (!is_multicast_ether_addr(eth_hdr->dest)) {
 		wpa_printf(MSG_DEBUG,
-			   "KaY: ethernet destination address is not PAE group address");
+			   "KaY: ethernet destination address is not a multicast adddress");
 		return -1;
 	}
 
@@ -3349,7 +3372,7 @@ static int ieee802_1x_kay_decode_mkpdu(struct ieee802_1x_kay *kay,
 			   "KaY: Discarding Rx MKPDU: decode of parameter set type (%d) failed",
 			   MKA_SAK_USE);
 		if (!reset_participant_mi(participant))
-			wpa_printf(MSG_DEBUG, "KaY: Could not update mi");
+			wpa_printf(MSG_DEBUG, "KaY: Could not update MI");
 		else
 			wpa_printf(MSG_DEBUG,
 				   "KaY: Selected a new random MI: %s",
@@ -3388,7 +3411,7 @@ static int ieee802_1x_kay_decode_mkpdu(struct ieee802_1x_kay *kay,
 
 			/* Only update live peer watchdog after successful
 			 * decode of all parameter sets */
-			peer->expire = now.sec + MKA_LIFE_TIME / 1000;
+			peer->expire = time(NULL) + MKA_LIFE_TIME / 1000;
 		}
 	} else {
 		/* MKPDU is from new or potential peer */
@@ -3566,7 +3589,7 @@ ieee802_1x_kay_init(struct ieee802_1x_kay_ctx *ctx, enum macsec_policy policy,
 		goto error;
 	}
 
-	wpa_printf(MSG_DEBUG, "KaY: secy init macsec done");
+	wpa_printf(MSG_DEBUG, "KaY: SecY init MACsec done");
 
 	/* init CP */
 	kay->cp = ieee802_1x_cp_sm_init(kay);
@@ -3657,7 +3680,7 @@ ieee802_1x_kay_create_mka(struct ieee802_1x_kay *kay,
 		   kay->if_name, mode_txt(mode), yes_no(is_authenticator));
 
 	if (!kay || !ckn || !cak) {
-		wpa_printf(MSG_ERROR, "KaY: ckn or cak is null");
+		wpa_printf(MSG_ERROR, "KaY: CKN or CAK is null");
 		return NULL;
 	}
 
@@ -3689,12 +3712,8 @@ ieee802_1x_kay_create_mka(struct ieee802_1x_kay *kay,
 	os_memcpy(participant->cak.key, cak->key, cak->len);
 	wpa_hexdump_key(MSG_DEBUG, "KaY: CAK", participant->cak.key,
 			participant->cak.len);
-	if (life) {
-		struct os_reltime now;
-		os_get_reltime(&now);
-
-		participant->cak_life = life + now.sec;
-	}
+	if (life)
+		participant->cak_life = life + time(NULL);
 
 	switch (mode) {
 	case EAP_EXCHANGE:
@@ -3803,10 +3822,7 @@ ieee802_1x_kay_create_mka(struct ieee802_1x_kay *kay,
 	 * some peer appears.
 	 */
 	if (mode != PSK) {
-		struct os_reltime now;
-		os_get_reltime(&now);
-
-		participant->mka_life = MKA_LIFE_TIME / 1000 + now.sec +
+		participant->mka_life = MKA_LIFE_TIME / 1000 + time(NULL) +
 			usecs / 1000000;
 	}
 	participant->mode = mode;

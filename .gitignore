@@ -1,5 +1,11 @@
-*.patch
-hostapd/.cproject
-hostapd/.project
-wpa_supplicant/.cproject
-wpa_supplicant/.project
+*.pyc
+*~
+tests/hwsim/logs
+tests/remote/logs
+wpaspy/build
+**/parallel-vm.log
+tags
+build/
+# clangd commands and cache
+compile_commands.json
+.cache

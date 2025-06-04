@@ -215,7 +215,7 @@ struct ieee802_1x_kay {
 	u32 dist_kn;
 	u32 rcvd_keys;
 	u8 dist_an;
-	os_time_t dist_time;
+	time_t dist_time;
 
 	u8 mka_version;
 	u8 algo_agility[4];
