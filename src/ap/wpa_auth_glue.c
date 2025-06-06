@@ -1443,6 +1443,15 @@ static void hostapd_wpa_unregister_ft_oui(struct hostapd_data *hapd)
 #endif /* CONFIG_IEEE80211R_AP */
 
 
+static int hostapd_wpa_auth_remove_pmkid(void *ctx, const u8 *sta_addr,
+					 const u8 *pmkid)
+{
+	struct hostapd_data *hapd = ctx;
+
+	return hostapd_remove_pmkid(hapd, sta_addr, pmkid);
+}
+
+
 int hostapd_setup_wpa(struct hostapd_data *hapd)
 {
 	struct wpa_auth_config _conf;
@@ -1486,6 +1495,7 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.set_session_timeout = hostapd_wpa_auth_set_session_timeout,
 		.get_session_timeout = hostapd_wpa_auth_get_session_timeout,
 #endif /* CONFIG_IEEE80211R_AP */
+		.remove_pmkid = hostapd_wpa_auth_remove_pmkid,
 	};
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;

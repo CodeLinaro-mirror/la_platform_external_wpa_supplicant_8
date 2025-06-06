@@ -345,6 +345,7 @@ struct wpa_auth_callbacks {
 #ifdef CONFIG_MESH
 	int (*start_ampe)(void *ctx, const u8 *sta_addr);
 #endif /* CONFIG_MESH */
+	int (*remove_pmkid)(void *ctx, const u8 *sta_addr, const u8 *pmkid);
 };
 
 struct wpa_authenticator * wpa_init(const u8 *addr,
