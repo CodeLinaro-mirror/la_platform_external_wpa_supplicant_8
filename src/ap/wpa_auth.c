@@ -784,6 +784,7 @@ struct wpa_authenticator * wpa_init(const u8 *addr,
 		return NULL;
 	}
 
+	/* Per-link PMKSA cache */
 	wpa_auth->pmksa = pmksa_cache_auth_init(wpa_auth_pmksa_free_cb,
 						wpa_auth);
 	if (!wpa_auth->pmksa) {
@@ -794,12 +795,46 @@ struct wpa_authenticator * wpa_init(const u8 *addr,
 		return NULL;
 	}
 
+#ifdef CONFIG_IEEE80211BE
+	/* MLD-level PMKSA cache */
+	if (wpa_auth->is_ml && wpa_auth->primary_auth) {
+		wpa_auth->ml_pmksa = pmksa_cache_auth_init(
+			wpa_auth_pmksa_free_cb, wpa_auth);
+		if (!wpa_auth->ml_pmksa) {
+			wpa_printf(MSG_ERROR,
+				   "MLD-level PMKSA cache initialization failed.");
+			os_free(wpa_auth->group);
+			os_free(wpa_auth->wpa_ie);
+			pmksa_cache_auth_deinit(wpa_auth->pmksa);
+			os_free(wpa_auth);
+			return NULL;
+		}
+	} else if (wpa_auth->is_ml) {
+		struct wpa_authenticator *pa = wpa_get_primary_auth(wpa_auth);
+
+		if (!pa) {
+			wpa_printf(MSG_ERROR,
+				   "Could not find primary authenticator.");
+			os_free(wpa_auth->group);
+			os_free(wpa_auth->wpa_ie);
+			pmksa_cache_auth_deinit(wpa_auth->pmksa);
+			os_free(wpa_auth);
+			return NULL;
+		}
+		wpa_auth->ml_pmksa = pa->ml_pmksa;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
 #ifdef CONFIG_IEEE80211R_AP
 	wpa_auth->ft_pmk_cache = wpa_ft_pmk_cache_init();
 	if (!wpa_auth->ft_pmk_cache) {
 		wpa_printf(MSG_ERROR, "FT PMK cache initialization failed.");
 		os_free(wpa_auth->group);
 		os_free(wpa_auth->wpa_ie);
+#ifdef CONFIG_IEEE80211BE
+		if (wpa_auth->primary_auth)
+			pmksa_cache_auth_deinit(wpa_auth->ml_pmksa);
+#endif /* CONFIG_IEEE80211BE */
 		pmksa_cache_auth_deinit(wpa_auth->pmksa);
 		os_free(wpa_auth);
 		return NULL;
@@ -881,14 +916,34 @@ static void wpa_auth_free_conf(struct wpa_auth_config *conf)
 void wpa_deinit(struct wpa_authenticator *wpa_auth)
 {
 	struct wpa_group *group, *prev;
+#ifdef CONFIG_IEEE80211BE
+	struct wpa_authenticator *next_pa;
+#endif /* CONFIG_IEEE80211BE */
 
 	eloop_cancel_timeout(wpa_rekey_gmk, wpa_auth, NULL);
-
-	/* TODO: Assign ML primary authenticator to next link authenticator and
-	 * start rekey timer. */
 	eloop_cancel_timeout(wpa_rekey_gtk, wpa_auth, NULL);
 
 	pmksa_cache_auth_deinit(wpa_auth->pmksa);
+
+#ifdef CONFIG_IEEE80211BE
+	if (wpa_auth->is_ml && wpa_auth->primary_auth) {
+		next_pa = wpa_auth->cb->next_primary_auth(wpa_auth->cb_ctx);
+
+		if (!next_pa) {
+			/* Deinit PMKSA entry list if last link */
+			pmksa_cache_auth_deinit(wpa_auth->ml_pmksa);
+		} else {
+			/* Assign ML primary authenticator to the next link
+			 * authenticator and start rekey timer.
+			 */
+			next_pa->primary_auth = true;
+			if (next_pa->conf.wpa_group_rekey)
+				eloop_register_timeout(
+					next_pa->conf.wpa_group_rekey,
+					0, wpa_rekey_gtk, next_pa, NULL);
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_IEEE80211R_AP
 	wpa_ft_pmk_cache_deinit(wpa_auth->ft_pmk_cache);
@@ -6487,16 +6542,27 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 
 int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			   int akmp)
+			   int akmp, bool is_ml)
 {
+	struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
+	const u8 *aa = wpa_auth->addr;
+
 	if (wpa_auth->conf.disable_pmksa_caching)
 		return -1;
 
 	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK from SAE", pmk, pmk_len);
 	if (!akmp)
 		akmp = WPA_KEY_MGMT_SAE;
-	if (pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
-				 NULL, 0, wpa_auth->addr, addr, 0, NULL, akmp))
+
+#ifdef CONFIG_IEEE80211BE
+	if (is_ml) {
+		pmksa = wpa_auth->ml_pmksa;
+		aa = wpa_auth->mld_addr;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, aa, addr,
+				 0, NULL, akmp))
 		return 0;
 
 	return -1;
@@ -6512,17 +6578,27 @@ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid)
 
 int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			int session_timeout, int akmp, const u8 *dpp_pkhash)
+			int session_timeout, int akmp, const u8 *dpp_pkhash,
+			bool is_ml)
 {
+	struct rsn_pmksa_cache *pmksa;
+	const u8 *aa;
 	struct rsn_pmksa_cache_entry *entry;
 
 	if (!wpa_auth || wpa_auth->conf.disable_pmksa_caching)
 		return -1;
 
 	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (3)", pmk, PMK_LEN);
-	entry = pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
-				 NULL, 0, wpa_auth->addr, addr, session_timeout,
-				 NULL, akmp);
+	pmksa = wpa_auth->pmksa;
+	aa = wpa_auth->addr;
+#ifdef CONFIG_IEEE80211BE
+	if (is_ml) {
+		pmksa = wpa_auth->ml_pmksa;
+		aa = wpa_auth->mld_addr;
+	}
+#endif /* CONFIG_IEEE80211BE */
+	entry = pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, aa,
+				     addr, session_timeout, NULL, akmp);
 	if (!entry)
 		return -1;
 
@@ -6540,28 +6616,66 @@ void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
 
 	if (!wpa_auth || !wpa_auth->pmksa)
 		return;
+
 	pmksa = pmksa_cache_auth_get(wpa_auth->pmksa, sta_addr, NULL);
 	if (pmksa) {
 		wpa_printf(MSG_DEBUG, "WPA: Remove PMKSA cache entry for "
 			   MACSTR " based on request", MAC2STR(sta_addr));
 		pmksa_cache_free_entry(wpa_auth->pmksa, pmksa);
 	}
+
+#ifdef CONFIG_IEEE80211BE
+	if (wpa_auth->ml_pmksa) {
+		pmksa = pmksa_cache_auth_get(wpa_auth->ml_pmksa,
+					     sta_addr, NULL);
+		if (pmksa) {
+			wpa_printf(MSG_DEBUG,
+				   "WPA: Remove PMKSA cache entry for " MACSTR
+				   " based on request (MLD)",
+				   MAC2STR(sta_addr));
+			pmksa_cache_free_entry(wpa_auth->ml_pmksa, pmksa);
+		}
+	}
+#endif /* CONFIG_IEEE80211BE */
 }
 
 
 int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
 			size_t len)
 {
+	int ret, index;
+	char *pos = buf, *end = buf + len;
+
 	if (!wpa_auth || !wpa_auth->pmksa)
 		return 0;
-	return pmksa_cache_auth_list(wpa_auth->pmksa, buf, len);
+
+	ret = os_snprintf(pos, len,
+			  "Index / SPA / PMKID / expiration (in seconds) / opportunistic\n");
+	if (os_snprintf_error(end - pos, ret))
+		return pos - buf;
+	pos += ret;
+
+	index = 0;
+	pos += pmksa_cache_auth_list(wpa_auth->pmksa, pos, end - pos, &index);
+#ifdef CONFIG_IEEE80211BE
+	if (wpa_auth->ml_pmksa)
+		pos += pmksa_cache_auth_list(wpa_auth->ml_pmksa,
+					     pos, end - pos, &index);
+#endif /* CONFIG_IEEE80211BE */
+
+	return pos - buf;
 }
 
 
 void wpa_auth_pmksa_flush(struct wpa_authenticator *wpa_auth)
 {
-	if (wpa_auth && wpa_auth->pmksa)
+	if (wpa_auth && wpa_auth->pmksa) {
 		pmksa_cache_auth_flush(wpa_auth->pmksa);
+#ifdef CONFIG_IEEE80211BE
+		if (wpa_auth->ml_pmksa && wpa_auth->primary_auth)
+			pmksa_cache_auth_flush(wpa_auth->ml_pmksa);
+#endif /* CONFIG_IEEE80211BE */
+	}
 }
 
 

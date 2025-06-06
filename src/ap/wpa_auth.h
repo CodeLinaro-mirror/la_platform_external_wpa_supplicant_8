@@ -438,6 +438,7 @@ struct wpa_auth_callbacks {
 #ifdef CONFIG_IEEE80211BE
 	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info,
 			       bool rekey);
+	struct wpa_authenticator * (*next_primary_auth)(void *ctx);
 #endif /* CONFIG_IEEE80211BE */
 	int (*get_drv_flags)(void *ctx, u64 *drv_flags, u64 *drv_flags2);
 };
@@ -466,7 +467,8 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		    const u8 *rsnxe, size_t rsnxe_len,
 		    const u8 *mdie, size_t mdie_len,
 		    const u8 *owe_dh, size_t owe_dh_len,
-		    struct wpa_state_machine *assoc_sm);
+		    struct wpa_state_machine *assoc_sm,
+		    bool is_ml);
 int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
 		      struct wpa_state_machine *sm,
 		      const u8 *osen_ie, size_t osen_ie_len);
@@ -519,11 +521,12 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 			       struct eapol_state_machine *eapol);
 int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			   int akmp);
+			   int akmp, bool is_ml);
 void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
 int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			int session_timeout, int akmp, const u8 *dpp_pkhash);
+			int session_timeout, int akmp, const u8 *dpp_pkhash,
+			bool is_ml);
 void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
 			   const u8 *sta_addr);
 int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
