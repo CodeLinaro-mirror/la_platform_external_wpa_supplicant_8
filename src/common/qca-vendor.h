@@ -1325,6 +1325,27 @@ enum qca_radiotap_vendor_ids {
  *
  *	The attributes used with this event are defined in
  *	enum qca_wlan_vendor_attr_idle_shutdown.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE: Vendor subcommand that can
+ *	be used to trigger primary link migration from user space. Either just
+ *	one ML client or a bunch of clients can be migrated.
+ *
+ *	The attributes used with this subcommand are defined in
+ *	&enum qca_wlan_vendor_attr_pri_link_migrate.
+ *
+ *	@QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MLD_MAC_ADDR and
+ *	@QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID are mutually
+ *	exclusive attributes. Migration should be requested for either one ML
+ *	client or a bunch of ML clients.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG: Vendor subcommand that
+ *	can be used to send periodic or on-demand directed Probe Response frames
+ *	to a connected peer.
+ *
+ *	This command is only applicable for AP/P2P GO mode.
+ *
+ *	The attributes used with this command are defined in
+ * 	enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1564,6 +1585,8 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_GET_FW_SCAN_REPORT = 253,
 	QCA_NL80211_VENDOR_SUBCMD_IDLE_SHUTDOWN = 254,
 	/* 255 - reserved for QCA */
+	QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE = 256,
+	QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG = 257,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -2320,6 +2343,13 @@ enum qca_wlan_vendor_acs_hw_mode {
  *	supports preferring 6 GHz PSC channel as a primary channel in ACS
  *	result.
  *
+ * @QCA_WLAN_VENDOR_FEATURE_P2P_V2: Flag indicates that the driver supports
+ *	P2P R2 functionality (P2P R2 Discovery, Pairing, TWT power save, etc).
+ *
+ * @QCA_WLAN_VENDOR_FEATURE_PCC_MODE: Flag indicates that the driver supports
+ *	P2P Connection Compatibility mode in which GO allows connection
+ *	with both P2P R1 and R2 clients.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits
  */
 enum qca_wlan_vendor_features {
@@ -2351,6 +2381,8 @@ enum qca_wlan_vendor_features {
 	QCA_WLAN_VENDOR_FEATURE_RSN_OVERRIDE_STA = 25,
 	QCA_WLAN_VENDOR_FEATURE_NAN_USD_OFFLOAD = 26,
 	QCA_WLAN_VENDOR_FEATURE_ACS_PREFER_6GHZ_PSC = 27,
+	QCA_WLAN_VENDOR_FEATURE_P2P_V2 = 28,
+	QCA_WLAN_VENDOR_FEATURE_PCC_MODE = 29,
 	NUM_QCA_WLAN_VENDOR_FEATURES /* keep last */
 };
 
@@ -3848,6 +3880,13 @@ enum qca_wlan_vendor_attr_config {
 	 * difference larger than the value.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_ANT_DIV_SWITCH_BT_RSSI_DIFF = 129,
+
+	/* 8-bit unsigned value to enable/disable setup link Reconfiguration
+	 * feature support in STA mode.
+	 * 1 - Enable
+	 * 0 - Disable.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_SETUP_LINK_RECONFIG_SUPPORT = 130,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
@@ -5918,6 +5957,11 @@ enum qca_roam_scan_scheme {
  * @QCA_ROAM_TRIGGER_REASON_EXTERNAL_SCAN: Set if the roam has to be triggered
  *	based on the scan results obtained from an external scan (not triggered
  *	to aim roaming).
+ * @QCA_ROAM_TRIGGER_REASON_WTC: Set if the roam has to be triggered
+ *	due to Wireless to Cellular BSS Transition Management (BTM) request.
+ * @QCA_ROAM_TRIGGER_REASON_BT_ACTIVITY: Set if the roam has to be triggered
+ *	due to Bluetooth connection is established when the station is connected
+ *	in the 2.4 GHz band.
  *
  * Set the corresponding roam trigger reason bit to consider it for roam
  * trigger.
@@ -5938,6 +5982,8 @@ enum qca_vendor_roam_triggers {
 	QCA_ROAM_TRIGGER_REASON_IDLE		= 1 << 10,
 	QCA_ROAM_TRIGGER_REASON_TX_FAILURES	= 1 << 11,
 	QCA_ROAM_TRIGGER_REASON_EXTERNAL_SCAN	= 1 << 12,
+	QCA_ROAM_TRIGGER_REASON_WTC	        = 1 << 13,
+	QCA_ROAM_TRIGGER_REASON_BT_ACTIVITY	= 1 << 14,
 };
 
 /*
@@ -10585,6 +10631,40 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_RSNE_ADD_RANDOM_PMKIDS = 75,
 
+	/* 8-bit unsigned value to configure Triggered SU Beamforming Feedback
+	 * support in the EHT capabilities of an Association Request frame.
+	 * 1-enable, 0-disable
+	 *
+	 * This attribute is used for testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_TRIG_SU_BFORMING_FEEDBACK = 76,
+
+	/* 8-bit unsigned value to configure the extra EHT-LTFs support in the
+	 * EHT capabilities of an Association Request frame.
+	 * 1-enable, 0-disable
+	 *
+	 * This attribute is used for testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_EXTRA_LTF = 77,
+
+	/* 8-bit unsigned integer to configure the firmware to reject AP's BSS
+	 * Transition Management (BTM) request frame by sending a BTM response
+	 * with error status code.
+	 *
+	 * 1 - STA rejects AP's BTM request frame
+	 * 0 - STA accepts AP's BTM request frame
+	 *
+	 * This attribute is used for testing purposes.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_BTM_REQ_REJECT = 78,
+
+	/* Nested attribute to control the response of the driver upon receiving
+	 * a BTM request from the AP.
+	 * Uses the enum qca_wlan_vendor_attr_btm_req_resp attributes.
+	 * This attribute is used to configure the STA.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_BTM_REQ_RESP = 79,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
@@ -15086,6 +15166,56 @@ enum qca_wlan_vendor_pasn_action {
  *	If present, it indicates the successful PASN handshake with the peer. If
  *	this flag is not present, it indicates that the PASN handshake with the
  *	peer device failed.
+ * @QCA_WLAN_VENDOR_ATTR_PASN_PEER_AKM: Optional u32 attribute. It indicates the
+ *	AKM suite that is preferred in the PASN handshake in the event from the
+ *	driver to userspace when %QCA_WLAN_VENDOR_ATTR_PASN_ACTION is set to
+ *	%QCA_WLAN_VENDOR_PASN_ACTION_AUTH. In the status report from userspace
+ *	to the driver, it indicates the actual AKM suite used in the handshake.
+ *	Userspace can select the AKM based on the AP's capabilities, if the
+ *	given AKM suite is not applicable. Possible values are defined in
+ *	IEEE Std 802.11-2020, 9.4.2.24.3 (AKM suites) (e.g., 0x000FAC04)
+ * @QCA_WLAN_VENDOR_ATTR_PASN_PEER_CIPHER: Optional u32 attribute. It indicates
+ *	the pairwise cipher suite that is preferred in the PASN handshake in
+ *	the event from the driver to userspace when
+ *	%QCA_WLAN_VENDOR_ATTR_PASN_ACTION is set to
+ *	%QCA_WLAN_VENDOR_PASN_ACTION_AUTH. In the status report from userspace
+ *	to the driver, it indicates the actual cipher used in the handshake.
+ *	Userspace can select the cipher suite based on the capabilities of the
+ *	P, if the given cipher suite is not applicable. Possible values are
+ *	defined in IEEE Std 802.11-2020, 9.4.2.24.2 (Cipher suites)
+ *	(e.g., 0x000FAC04).
+ * @QCA_WLAN_VENDOR_ATTR_PASN_PEER_PASSWORD: This is a variable length byte
+ *	array attribute. This attribute is present if the AKM suite specified
+ *	in %QCA_WLAN_VENDOR_ATTR_PASN_PEER_AKM requires a password. The
+ *	password is used in PASN handshake request in an event from the driver
+ *	to userspace when %QCA_WLAN_VENDOR_ATTR_PASN_ACTION is set to
+ *	%QCA_WLAN_VENDOR_PASN_ACTION_AUTH.
+ * @QCA_WLAN_VENDOR_ATTR_PASN_PEER_PMKID: This is a byte array attribute with a
+ *	size of 16 bytes. When this attribute is present this PMKSA caching
+ *	using the PMKSA identified by this PMKID is preferred to be used with
+ *	PASN. This attribute is sent along with PASN handshake request in an
+ *	event from the driver to userspace when
+ *	%QCA_WLAN_VENDOR_ATTR_PASN_ACTION is set to
+ *	%QCA_WLAN_VENDOR_PASN_ACTION_AUTH.
+ * @QCA_WLAN_VENDOR_ATTR_PASN_PEER_COMEBACK_AFTER: u16 attribute in units for
+ *	TUs (1024 microseconds). This attribute is sent from userspace along
+ *	with the attribute %QCA_WLAN_VENDOR_ATTR_PASN_PEER_COOKIE to the
+ *	driver in the status report using the %QCA_NL80211_VENDOR_SUBCMD_PASN
+ *	subcommand when the AP request PASN to be retried later.
+ * @QCA_WLAN_VENDOR_ATTR_PASN_PEER_COOKIE: This is a variable length byte array
+ *	attribute. In case an AP refused PASN temporarily, the STA can retry
+ *	PASN handshake by attaching this attribute data to PASN request after
+ *	the time period mentioned in the attribute
+ *	%QCA_WLAN_VENDOR_ATTR_PASN_PEER_COMEBACK_AFTER.
+ *	In case the AP refused the PASN handshake temporarily, cookie data is
+ *	received from the AP and it is sent from userspace to the driver along
+ *	with the attribute %QCA_WLAN_VENDOR_ATTR_PASN_PEER_COMEBACK_AFTER in
+ *	the status report using the %QCA_NL80211_VENDOR_SUBCMD_PASN subcommand.
+ *	When the driver wants to retry PASN with the same AP after having
+ *	received this information, this attribute must be sent along with PASN
+ *	handshake request in an event from the driver to
+ *	userspace when %QCA_WLAN_VENDOR_ATTR_PASN_ACTION is set to
+ *	%QCA_WLAN_VENDOR_PASN_ACTION_AUTH.
  */
 enum qca_wlan_vendor_attr_pasn_peer {
 	QCA_WLAN_VENDOR_ATTR_PASN_PEER_INVALID = 0,
@@ -15093,6 +15223,12 @@ enum qca_wlan_vendor_attr_pasn_peer {
 	QCA_WLAN_VENDOR_ATTR_PASN_PEER_MAC_ADDR = 2,
 	QCA_WLAN_VENDOR_ATTR_PASN_PEER_LTF_KEYSEED_REQUIRED = 3,
 	QCA_WLAN_VENDOR_ATTR_PASN_PEER_STATUS_SUCCESS = 4,
+	QCA_WLAN_VENDOR_ATTR_PASN_PEER_AKM = 5,
+	QCA_WLAN_VENDOR_ATTR_PASN_PEER_CIPHER = 6,
+	QCA_WLAN_VENDOR_ATTR_PASN_PEER_PASSWORD = 7,
+	QCA_WLAN_VENDOR_ATTR_PASN_PEER_PMKID = 8,
+	QCA_WLAN_VENDOR_ATTR_PASN_PEER_COMEBACK_AFTER = 9,
+	QCA_WLAN_VENDOR_ATTR_PASN_PEER_COOKIE = 10,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_PASN_PEER_AFTER_LAST,
@@ -17801,6 +17937,8 @@ enum qca_wlan_vendor_attr_ap_suspend {
  * @QCA_TRAFFIC_TYPE_SCREEN_SHARE: Traffic type is screen share
  * @QCA_TRAFFIC_TYPE_UNKNOWN: Traffic type is unknown
  * @QCA_TRAFFIC_TYPE_INVALID: Invalid traffic type
+ * @QCA_TRAFFIC_TYPE_BROWSING: Traffic type is browsing website
+ * @QCA_TRAFFIC_TYPE_APERIODIC_BURSTS: Traffic type is aperiodic bursts
  */
 enum qca_traffic_type {
 	QCA_TRAFFIC_TYPE_STREAMING = 0,
@@ -17810,6 +17948,8 @@ enum qca_traffic_type {
 	QCA_TRAFFIC_TYPE_SCREEN_SHARE = 4,
 	QCA_TRAFFIC_TYPE_UNKNOWN = 5,
 	QCA_TRAFFIC_TYPE_INVALID = 6,
+	QCA_TRAFFIC_TYPE_BROWSING = 7,
+	QCA_TRAFFIC_TYPE_APERIODIC_BURSTS = 8,
 };
 
 /**
@@ -18789,6 +18929,141 @@ enum qca_wlan_vendor_attr_idle_shutdown {
 	QCA_WLAN_VENDOR_ATTR_IDLE_SHUTDOWN_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_IDLE_SHUTDOWN_MAX =
 	QCA_WLAN_VENDOR_ATTR_IDLE_SHUTDOWN_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_pri_link_migrate: Attributes used by the vendor
+ * 	subcommand %QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MLD_MAC_ADDR: 6 byte MAC address. When
+ *	specified, indicates that primary link migration will occur only for
+ *	the ML client with the given MLD MAC address.
+ * @QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID: Optional u8
+ *	attribute. When specified, all ML clients having their current primary
+ *	link as specified will be considered for migration.
+ * @QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_NEW_PRI_LINK_ID: Optional u8 attribute.
+ *	Indicates the new primary link to which the selected ML clients
+ *	should be migrated to. If not provided, the driver will select a
+ *	suitable primary link on its own.
+ */
+enum qca_wlan_vendor_attr_pri_link_migrate {
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MLD_MAC_ADDR = 1,
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID = 2,
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_NEW_PRI_LINK_ID = 3,
+
+	/* keep this last */
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MAX =
+	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_btm_req_resp_type: Represents response types to follow
+ * upon receiving BTM request from AP.
+ *
+ * @QCA_WLAN_BTM_REQ_RESP_DEFAULT: Reset to default behavior.
+ * @QCA_WLAN_BTM_REQ_RESP_RECONFIG_FRAME: Send link reconfiguration request
+ * frames with specified info.
+ * @QCA_WLAN_BTM_REQ_RESP_TTLM_FRAME: Send TTLM request frame.
+ * @QCA_WLAN_BTM_REQ_RESP_REASSOC_FRAME: Send Reassociation Request frame.
+ */
+enum qca_wlan_vendor_btm_req_resp_type {
+	QCA_WLAN_BTM_REQ_RESP_DEFAULT = 0,
+	QCA_WLAN_BTM_REQ_RESP_RECONFIG_FRAME = 1,
+	QCA_WLAN_BTM_REQ_RESP_TTLM_FRAME = 2,
+	QCA_WLAN_BTM_REQ_RESP_REASSOC_FRAME = 3,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_reconfig_frame_info - Attribute used by
+ * %QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_RECONFIG_FRAME_INFO.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RECONFIG_ADD_LINKS_BITMASK: u16 attribute. Bitmask of
+ * link IDs to be added.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_RECONFIG_DELETE_LINKS_BITMASK: u16 attribute bitmask of
+ * link IDs to be removed.
+ */
+enum qca_wlan_vendor_attr_reconfig_frame_info {
+	QCA_WLAN_VENDOR_ATTR_RECONFIG_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_RECONFIG_ADD_LINKS_BITMASK = 1,
+	QCA_WLAN_VENDOR_ATTR_RECONFIG_DELETE_LINKS_BITMASK = 2,
+
+	QCA_WLAN_VENDOR_ATTR_RECONFIG_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_RECONFIG_MAX =
+	QCA_WLAN_VENDOR_ATTR_RECONFIG_AFTER_LAST - 1
+};
+
+/**
+ * enum qca_wlan_vendor_attr_btm_req_resp - Attribute used by
+ * %QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_BTM_REQ_RESP.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_TYPE: u8 attribute. Indicates type of
+ * response to send. Possible values for this attribute are defined in
+ * enum qca_wlan_vendor_btm_req_resp_type. This is a mandatory attribute.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_RECONFIG_FRAME_INFO: Array of nested
+ * attributes containing information about one or more setup link
+ * reconfiguration request frames, each set represents one link reconfiguration
+ * frame information. The driver shall send a separate link reconfiguration
+ * frame for each nested attribute set. It takes attributes as defined in enum
+ * qca_wlan_vendor_attr_reconfig_frame_info. This attribute must be present
+ * when %QCA_WLAN_BTM_REQ_RESP_RECONFIG_FRAME specified in
+ * %QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_TYPE attribute.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_TTLM_MAP: TID to Link Mapping to
+ * be used in TTLM request frame. This nested attribute with
+ * %NL80211_ATTR_MLO_TTLM_DLINK and %NL80211_ATTR_MLO_TTLM_ULINK is used to
+ * specify the TID to Link mapping for downlink/uplink traffic. This attribute
+ * must be present when %QCA_WLAN_BTM_REQ_RESP_TTLM_FRAME specified in
+ * %QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_TYPE attribute.
+ */
+enum qca_wlan_vendor_attr_btm_req_resp {
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_TYPE = 1,
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_RECONFIG_FRAME_INFO = 2,
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_TTLM_MAP = 3,
+
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_MAX =
+	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_AFTER_LAST - 1
+};
+
+/**
+ * enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg: Attributes used
+ * by vendor subcmd QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PEER_MAC_ADDR: Connected peer
+ * MAC address to which Probe Response frames are to be sent.
+ * Multicast/Broadcast addresses are not supported.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD: 32-bit unsigned value.
+ * This attribute specifies the interval (in microseconds) in which directed
+ * Probe Response frames are sent periodically to the peer as specified in
+ * attribute QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PEER_MAC_ADDR. When the peer
+ *is in power save, sending of the frames might be delayed until the device
+ * comes out of power save. Attribute value can be in the range of minimum value
+ * of 50000 and maximum value of 1500000.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_COUNT: 8-bit unsigned value.
+ * Specifies number of directed Probe Responses frames that can be sent as per
+ * interval defined in QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD. When
+ * attribute value is 255, directed Probe Response frames are sent continuously
+ * until this attribute is sent as 0 in the command to disable period
+ * transmission. When the attribute value is 1, one directed Probe Response
+ * frame will be sent and the attribute
+ * QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD will not be considered.
+ */
+enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg {
+	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_PEER_MAC_ADDR = 1,
+	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_PERIOD = 2,
+	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_COUNT = 3,
+
+	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_MAX =
+	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_AFTER_LAST - 1,
 };
 
 #endif /* QCA_VENDOR_H */

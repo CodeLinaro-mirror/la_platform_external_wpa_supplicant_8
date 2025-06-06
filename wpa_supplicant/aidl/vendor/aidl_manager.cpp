@@ -760,8 +760,6 @@ KeyMgmtMask convertSupplicantSelectedKeyMgmtForConnectionToAidl(int key_mgmt)
 			return KeyMgmtMask::WAPI_PSK;
 		case WPA_KEY_MGMT_WAPI_CERT:
 			return KeyMgmtMask::WAPI_CERT;
-		case WPA_KEY_MGMT_OSEN:
-			return KeyMgmtMask::OSEN;
 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
 		case WPA_KEY_MGMT_FT_IEEE8021X_SHA384:
 			return KeyMgmtMask::SUITE_B_192;
@@ -997,8 +995,7 @@ void AidlManager::notifyAnqpQueryDone(
 			misc_utils::convertWpaBufToVector(
 			anqp->hs20_connection_capability);
 		aidl_hs20_anqp_data.osuProvidersList =
-			misc_utils::convertWpaBufToVector(
-			anqp->hs20_osu_providers_list);
+			misc_utils::convertWpaBufToVector(NULL);
 #else
 		aidl_hs20_anqp_data.operatorFriendlyName =
 			misc_utils::convertWpaBufToVector(NULL);
@@ -1454,9 +1451,15 @@ void AidlManager::notifyP2pDeviceFound(
 		params.wfdR2DeviceInfo = aidl_peer_wfd_r2_device_info;
 		params.vendorElemBytes = aidl_vendor_elems;
 		if (areAidlServiceAndClientAtLeastVersion(4)) {
-			// TODO Fill the DIRA info when supplicant implementation is ready
 			params.pairingBootstrappingMethods = convertP2pPairingBootstrappingMethodsToAidl(
 				info->pairing_config.bootstrap_methods);
+			if (info->nonce_tag_valid) {
+				params.dirInfo->cipherVersion =
+					P2pDirInfo::CipherVersion::DIRA_CIPHER_VERSION_128_BIT;
+				params.dirInfo->deviceInterfaceMacAddress = macAddrToArray(info->p2p_device_addr);
+				params.dirInfo->nonce = byteArrToVec(info->nonce, DEVICE_IDENTITY_NONCE_LEN);
+				params.dirInfo->dirTag = byteArrToVec(info->tag, DEVICE_IDENTITY_TAG_LEN);
+			}
 		}
 		callWithEachP2pIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
@@ -1709,7 +1712,8 @@ void AidlManager::notifyP2pInvitationResult(
 void AidlManager::notifyP2pProvisionDiscovery(
 	struct wpa_supplicant *wpa_s, const u8 *dev_addr, int request,
 	enum p2p_prov_disc_status status, u16 config_methods,
-	unsigned int generated_pin, const char *group_ifname)
+	unsigned int generated_pin, const char *group_ifname,
+	u16 pairing_bootstrapping_method)
 {
 	if (!wpa_s || !dev_addr)
 		return;
@@ -1717,6 +1721,17 @@ void AidlManager::notifyP2pProvisionDiscovery(
 	if (p2p_iface_object_map_.find(wpa_s->ifname) ==
 		p2p_iface_object_map_.end())
 		return;
+
+	int32_t aidl_pairing_bootstrapping_method = 0;
+	if (pairing_bootstrapping_method > 0) {
+		aidl_pairing_bootstrapping_method = convertP2pPairingBootstrappingMethodsToAidl(
+			pairing_bootstrapping_method);
+		if (aidl_pairing_bootstrapping_method == 0 || !areAidlServiceAndClientAtLeastVersion(4)) {
+			wpa_printf(MSG_ERROR, "Drop pairing bootstrapping message - method %d",
+				pairing_bootstrapping_method);
+			return;
+		}
+	}
 
 	std::string aidl_generated_pin;
 	if (generated_pin > 0) {
@@ -1732,6 +1747,9 @@ void AidlManager::notifyP2pProvisionDiscovery(
 		params.status = static_cast<P2pProvDiscStatusCode>(status);
 		params.configMethods = config_methods;
 		params.generatedPin = aidl_generated_pin;
+		if (areAidlServiceAndClientAtLeastVersion(4)) {
+			params.pairingBootstrappingMethod = aidl_pairing_bootstrapping_method;
+		}
 		if (group_ifname != NULL) {
 			params.groupInterfaceName = misc_utils::charBufToString(group_ifname);
 		}
@@ -1918,7 +1936,11 @@ void AidlManager::notifyDppConfigReceived(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	aidl_dpp_config_data.password = misc_utils::charBufToString(config->passphrase);
+	if (aidl_dpp_config_data.securityAkm == DppAkm::SAE)
+		aidl_dpp_config_data.password = misc_utils::charBufToString(config->sae_password);
+	else
+		aidl_dpp_config_data.password = misc_utils::charBufToString(config->passphrase);
+
 	aidl_dpp_config_data.psk = byteArrToVec(config->psk, 32);
 	std::vector<uint8_t> aidl_ssid(
 		config->ssid,
