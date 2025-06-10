@@ -70,8 +70,6 @@ int band5Ghz = (int)BandMask::BAND_5_GHZ;
 int band6Ghz = (int)BandMask::BAND_6_GHZ;
 int band60Ghz = (int)BandMask::BAND_60_GHZ;
 
-int ctrlInterfaceCount = 0;
-
 #define MAX_PORTS 1024
 bool GetInterfacesInBridge(std::string br_name,
                            std::vector<std::string>* interfaces) {
@@ -802,7 +800,7 @@ std::string CreateHostapdConfig(
 	return StringPrintf(
 		"interface=%s\n"
 		"driver=nl80211\n"
-		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl%d\n"
+		"ctrl_interface=/data/vendor/wifi/hostapd/ctrl\n"
 		// ssid2 signals to hostapd that the value is not a literal value
 		// for use as a SSID.  In this case, we're giving it a hex
 		// std::string and hostapd needs to expect that.
@@ -831,7 +829,6 @@ std::string CreateHostapdConfig(
 #endif
 		"beacon_prot=1\n",
 		iface_params.name.c_str(),
-		ctrlInterfaceCount,
 		ssid_as_string.c_str(),
 		channel_config_as_string.c_str(),
 		iface_params.hwModeParams.enable80211N ? 1 : 0,
@@ -1111,7 +1108,6 @@ std::vector<uint8_t>  generateRandomOweSsid()
 	int channelParamsListSize = iface_params.channelParams.size();
 
 	for (std::size_t i = 0; i < channelParamsListSize; i++) {
-		ctrlInterfaceCount++;
 		const auto conf_params = CreateHostapdConfig(iface_params,
 				iface_params.channelParams[i], nw_params, "", "",
 				iface_params.hwModeParams.enable80211BE);
