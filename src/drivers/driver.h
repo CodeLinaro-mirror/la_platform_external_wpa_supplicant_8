@@ -1404,11 +1404,15 @@ struct wpa_driver_associate_params {
 	 */
 	struct wpa_driver_mld_params mld_params;
 
-
 	/**
 	 * rsn_overriding - wpa_supplicant RSN overriding support
 	 */
 	bool rsn_overriding;
+
+	/**
+	 * spp_amsdu - SPP A-MSDU used on this connection
+	 */
+	bool spp_amsdu;
 };
 
 enum hide_ssid {
@@ -1651,11 +1655,6 @@ struct wpa_driver_ap_params {
 	 * disable_dgaf - Whether group-addressed frames are disabled
 	 */
 	int disable_dgaf;
-
-	/**
-	 * osen - Whether OSEN security is enabled
-	 */
-	int osen;
 
 	/**
 	 * freq - Channel parameters for dynamic bandwidth changes
@@ -2034,10 +2033,17 @@ struct wpa_driver_set_key_params {
 	 * %KEY_FLAG_GROUP_TX_DEFAULT
 	 *  GTK key valid for TX only, immediately taking over TX.
 	 * %KEY_FLAG_PAIRWISE_RX_TX
-	 *  Pairwise key immediately becoming the active pairwise key.
+	 *  Pairwise key immediately becoming the active pairwise key. If this
+	 *  key was previously set as an alternative RX-only key with
+	 *  %KEY_FLAG_PAIRWISE_RX | %KEY_FLAG_NEXT, the alternative RX-only key
+	 *  is taken into use for both TX and RX without changing the RX counter
+	 *  values.
 	 * %KEY_FLAG_PAIRWISE_RX
 	 *  Pairwise key not yet valid for TX. (Only usable when Extended
-	 *  Key ID is supported by the driver.)
+	 *  Key ID is supported by the driver or when configuring the next TK
+	 *  for RX-only with %KEY_FLAG_NEXT in which case the new TK can be used
+	 *  as an alternative key for decrypting received frames without
+	 *  replacing the possibly already configured old TK.)
 	 * %KEY_FLAG_PAIRWISE_RX_TX_MODIFY
 	 *  Enable TX for a pairwise key installed with
 	 *  KEY_FLAG_PAIRWISE_RX.
@@ -2149,7 +2155,6 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE		0x00100000
 #define WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384	0x00200000
 #define WPA_DRIVER_CAPA_KEY_MGMT_CCKM		0x00400000
-#define WPA_DRIVER_CAPA_KEY_MGMT_OSEN		0x00800000
 #define WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY	0x01000000
 #define WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE_EXT_KEY	0x02000000
 	/** Bitfield of supported key management suites */
@@ -2380,6 +2385,12 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
 /** Driver supports NAN offload */
 #define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
+/** Driver/device supports SPP A-MSDUs */
+#define WPA_DRIVER_FLAGS2_SPP_AMSDU		0x0000000001000000ULL
+/** Driver supports P2P V2 */
+#define WPA_DRIVER_FLAGS2_P2P_FEATURE_V2	0x0000000002000000ULL
+/** Driver supports P2P PCC mode */
+#define WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE	0x0000000004000000ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -2658,6 +2669,7 @@ struct wpa_bss_params {
 #define WPA_STA_TDLS_PEER BIT(4)
 #define WPA_STA_AUTHENTICATED BIT(5)
 #define WPA_STA_ASSOCIATED BIT(6)
+#define WPA_STA_SPP_AMSDU BIT(7)
 
 enum tdls_oper {
 	TDLS_DISCOVERY_REQ,
@@ -3156,6 +3168,53 @@ struct wpa_driver_ops {
 	 * key indexes. In most cases, WPA uses only key indexes 1 and 2 for
 	 * broadcast keys, so key index 0 is available for this kind of
 	 * configuration.
+	 *
+	 * For pairwise keys, there are potential race conditions between
+	 * enabling a new TK on each end of the connection and sending the first
+	 * protected frame. Drivers have multiple options on which style of key
+	 * configuration to support with the simplest option not providing any
+	 * protection for the race condition while the more complex options do
+	 * provide partial or full protection.
+	 *
+	 * Option 1: Do not support extended key IDs (i.e., use only Key ID 0
+	 * for pairwise keys) and do not support configuration of the next TK
+	 * as an alternative RX key. This provides no protection, but is simple
+	 * to support. The driver needs to ignore set_key() calls with
+	 * KEY_FLAG_NEXT.
+	 *
+	 * Option 2: Do not support extended key IDs (i.e., use only Key ID 0
+	 * for pairwise keys), but support configuration of the next TK as an
+	 * alternative RX key for the initial 4-way handshake. This provides
+	 * protection for the initial key setup at the beginning of an
+	 * association. The driver needs to configure the initial TK for RX-only
+	 * when receiving a set_key() call with KEY_FLAG_NEXT. This RX-only key
+	 * is ready for receiving protected Data frames from the peer before the
+	 * local device has enabled the key for TX. Unprotected EAPOL frames
+	 * need to be allowed even when this next TK is configured as RX-only
+	 * key. The same key is then set with KEY_FLAG_PAIRWISE_RX_TX to enable
+	 * its use for both TX and RX. The driver ignores set_key() calls with
+	 * KEY_FLAG_NEXT when a TK has been configured. When fully enabling the
+	 * TK for TX and RX, the RX counters associated with the TK must not be
+	 * cleared.
+	 *
+	 * Option 3: Same as option 2, but the driver supports multiple RX keys
+	 * in parallel during PTK rekeying. The driver processed set_key() calls
+	 * with KEY_FLAG_NEXT also when a TK has been configured. At that point
+	 * in the rekeying sequence the driver uses the previously configured TK
+	 * for TX and decrypts received frames with either the previously
+	 * configured TK or the next TK (RX-only).
+	 *
+	 * Option 4: The driver supports extended Key IDs and they are used for
+	 * an association but does not support KEY_FLAG_NEXT (options 2 and 3).
+	 * The next TK is configured as RX-only with KEY_FLAG_PAIRWISE_RX and
+	 * it is enabled for TX and RX with KEY_FLAG_PAIRWISE_RX_TX_MODIFY. When
+	 * extended key ID is not used for an association, the driver behaves
+	 * like in option 1.
+	 *
+	 * Option 5 and 6: Like option 4 but with support for KEY_FLAG_NEXT as
+	 * described above for options 2 and 3, respectively. Option 4 is used
+	 * for cases where extended key IDs are used for an association. Option
+	 * 2 or 3 is used for cases where extended key IDs are not used.
 	 *
 	 * Please note that TKIP keys include separate TX and RX MIC keys and
 	 * some drivers may expect them in different order than wpa_supplicant

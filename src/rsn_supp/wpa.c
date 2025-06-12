@@ -256,8 +256,7 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
 	if (rbuf == NULL)
 		return;
 
-	reply->type = (sm->proto == WPA_PROTO_RSN ||
-		       sm->proto == WPA_PROTO_OSEN) ?
+	reply->type = (sm->proto == WPA_PROTO_RSN) ?
 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
 	key_info = WPA_KEY_INFO_REQUEST | ver;
 	key_info |= WPA_KEY_INFO_SECURE;
@@ -482,8 +481,7 @@ static int wpa_supplicant_get_pmk(struct wpa_sm *sm,
 
 	if (abort_cached && wpa_key_mgmt_wpa_ieee8021x(sm->key_mgmt) &&
 	    !wpa_key_mgmt_suite_b(sm->key_mgmt) &&
-	    !wpa_key_mgmt_ft(sm->key_mgmt) && sm->key_mgmt != WPA_KEY_MGMT_OSEN)
-	{
+	    !wpa_key_mgmt_ft(sm->key_mgmt)) {
 		/* Send EAPOL-Start to trigger full EAP authentication. */
 		u8 *buf;
 		size_t buflen;
@@ -637,8 +635,7 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
 		return -1;
 	}
 
-	reply->type = (sm->proto == WPA_PROTO_RSN ||
-		       sm->proto == WPA_PROTO_OSEN) ?
+	reply->type = (sm->proto == WPA_PROTO_RSN) ?
 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
 	key_info = ver | WPA_KEY_INFO_KEY_TYPE;
 	if (sm->ptk_set && sm->proto != WPA_PROTO_WPA)
@@ -654,7 +651,7 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
 		key_info |= sm->eapol_2_key_info_set_mask;
 #endif /* CONFIG_TESTING_OPTIONS */
 	WPA_PUT_BE16(reply->key_info, key_info);
-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
+	if (sm->proto == WPA_PROTO_RSN)
 		WPA_PUT_BE16(reply->key_length, 0);
 	else
 		os_memcpy(reply->key_length, key->key_length, 2);
@@ -1228,14 +1225,16 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
 	enum wpa_alg alg;
 	const u8 *key_rsc;
 
-	if (sm->ptk.installed) {
+	if (sm->ptk.installed ||
+	    (sm->ptk.installed_rx && (key_flag & KEY_FLAG_NEXT))) {
 		wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
 			"WPA: Do not re-install same PTK to the driver");
 		return 0;
 	}
 
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
-		"WPA: Installing PTK to the driver");
+		"WPA: Installing %sTK to the driver",
+		(key_flag & KEY_FLAG_NEXT) ? "next " : "");
 
 	if (sm->pairwise_cipher == WPA_CIPHER_NONE) {
 		wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Pairwise Cipher "
@@ -1259,7 +1258,7 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
 	}
 	rsclen = wpa_cipher_rsc_len(sm->pairwise_cipher);
 
-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN) {
+	if (sm->proto == WPA_PROTO_RSN) {
 		key_rsc = null_rsc;
 	} else {
 		key_rsc = key->key_rsc;
@@ -1269,6 +1268,9 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
 	if (wpa_sm_set_key(sm, -1, alg, wpa_sm_get_auth_addr(sm),
 			   sm->keyidx_active, 1, key_rsc, rsclen, sm->ptk.tk,
 			   keylen, KEY_FLAG_PAIRWISE | key_flag) < 0) {
+		if (key_flag & KEY_FLAG_NEXT)
+			return 0; /* Not all drivers support this, so do not
+				   * report failures on the RX-only set_key */
 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
 			"WPA: Failed to set PTK to the driver (alg=%d keylen=%d auth_addr="
 			MACSTR " idx=%d key_flag=0x%x)",
@@ -1294,11 +1296,15 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
 	wpa_sm_store_ptk(sm, sm->bssid, sm->pairwise_cipher,
 			 sm->dot11RSNAConfigPMKLifetime, &sm->ptk);
 
-	/* TK is not needed anymore in supplicant */
-	os_memset(sm->ptk.tk, 0, WPA_TK_MAX_LEN);
-	sm->ptk.tk_len = 0;
-	sm->ptk.installed = 1;
-	sm->tk_set = true;
+	if (key_flag & KEY_FLAG_NEXT) {
+		sm->ptk.installed_rx = true;
+	} else {
+		/* TK is not needed anymore in supplicant */
+		os_memset(sm->ptk.tk, 0, WPA_TK_MAX_LEN);
+		sm->ptk.tk_len = 0;
+		sm->ptk.installed = 1;
+		sm->tk_set = true;
+	}
 
 	if (sm->wpa_ptk_rekey) {
 		eloop_cancel_timeout(wpa_sm_rekey_ptk, sm, NULL);
@@ -2363,8 +2369,7 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
 		return -1;
 	}
 
-	reply->type = (sm->proto == WPA_PROTO_RSN ||
-		       sm->proto == WPA_PROTO_OSEN) ?
+	reply->type = (sm->proto == WPA_PROTO_RSN) ?
 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
 	key_info &= WPA_KEY_INFO_SECURE;
 	key_info |= ver | WPA_KEY_INFO_KEY_TYPE;
@@ -2377,7 +2382,7 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
 #endif /* CONFIG_TESTING_OPTIONS */
 	WPA_PUT_BE16(reply->key_info, key_info);
-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
+	if (sm->proto == WPA_PROTO_RSN)
 		WPA_PUT_BE16(reply->key_length, 0);
 	else
 		os_memcpy(reply->key_length, key->key_length, 2);
@@ -2900,6 +2905,16 @@ static void wpa_supplicant_process_3_of_4(struct wpa_sm *sm,
 	    wpa_supplicant_install_ptk(sm, key, KEY_FLAG_RX))
 		goto failed;
 
+	if (!sm->use_ext_key_id &&
+	    wpa_supplicant_install_ptk(sm, key, KEY_FLAG_RX | KEY_FLAG_NEXT)) {
+		/* Continue anyway since the many drivers do not support
+		 * configuration of the TK for RX-only purposes for cases where
+		 * multiple keys might be in use in parallel and this being an
+		 * optional optimization to avoid race condition during TK
+		 * changes that could result in some protected frames getting
+		 * discarded. */
+	}
+
 	if (wpa_supplicant_send_4_of_4(sm, wpa_sm_get_auth_addr(sm), key, ver,
 				       key_info, &sm->ptk) < 0)
 		goto failed;
@@ -3019,8 +3034,7 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 	if (rbuf == NULL)
 		return -1;
 
-	reply->type = (sm->proto == WPA_PROTO_RSN ||
-		       sm->proto == WPA_PROTO_OSEN) ?
+	reply->type = (sm->proto == WPA_PROTO_RSN) ?
 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
 	key_info &= WPA_KEY_INFO_KEY_INDEX_MASK;
 	key_info |= ver | WPA_KEY_INFO_SECURE;
@@ -3029,7 +3043,7 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 	else
 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
 	WPA_PUT_BE16(reply->key_info, key_info);
-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
+	if (sm->proto == WPA_PROTO_RSN)
 		WPA_PUT_BE16(reply->key_length, 0);
 	else
 		os_memcpy(reply->key_length, key->key_length, 2);
@@ -3428,6 +3442,28 @@ failed:
 }
 
 
+static void wpa_sm_tptk_to_ptk(struct wpa_sm *sm)
+{
+	sm->tptk_set = 0;
+	sm->ptk_set = 1;
+	os_memcpy(&sm->ptk, &sm->tptk, sizeof(sm->ptk));
+	os_memset(&sm->tptk, 0, sizeof(sm->tptk));
+
+	if (wpa_sm_pmf_enabled(sm)) {
+		os_memcpy(sm->last_kck, sm->ptk.kck, sm->ptk.kck_len);
+		sm->last_kck_len = sm->ptk.kck_len;
+		sm->last_kck_pmk_len = sm->pmk_len;
+		sm->last_kck_key_mgmt = sm->key_mgmt;
+		sm->last_kck_eapol_key_ver = sm->last_eapol_key_ver;
+		os_memcpy(sm->last_kck_aa, wpa_sm_get_auth_addr(sm), ETH_ALEN);
+	} else {
+		os_memset(sm->last_kck, 0, sizeof(sm->last_kck));
+		sm->last_kck_len = 0;
+		os_memset(sm->last_kck_aa, 0, ETH_ALEN);
+	}
+}
+
+
 static int wpa_supplicant_verify_eapol_key_mic(struct wpa_sm *sm,
 					       struct wpa_eapol_key *key,
 					       u16 ver,
@@ -3457,10 +3493,7 @@ static int wpa_supplicant_verify_eapol_key_mic(struct wpa_sm *sm,
 		continue_fuzz:
 #endif /* TEST_FUZZ */
 			ok = 1;
-			sm->tptk_set = 0;
-			sm->ptk_set = 1;
-			os_memcpy(&sm->ptk, &sm->tptk, sizeof(sm->ptk));
-			os_memset(&sm->tptk, 0, sizeof(sm->tptk));
+			wpa_sm_tptk_to_ptk(sm);
 			/*
 			 * This assures the same TPTK in sm->tptk can never be
 			 * copied twice to sm->ptk as the new PTK. In
@@ -3713,12 +3746,8 @@ static int wpa_supp_aead_decrypt(struct wpa_sm *sm, u8 *buf, size_t buf_len,
 	WPA_PUT_BE16(pos, *key_data_len);
 	bin_clear_free(tmp, *key_data_len);
 
-	if (sm->tptk_set) {
-		sm->tptk_set = 0;
-		sm->ptk_set = 1;
-		os_memcpy(&sm->ptk, &sm->tptk, sizeof(sm->ptk));
-		os_memset(&sm->tptk, 0, sizeof(sm->tptk));
-	}
+	if (sm->tptk_set)
+		wpa_sm_tptk_to_ptk(sm);
 
 	os_memcpy(sm->rx_replay_counter, key->replay_counter,
 		  WPA_REPLAY_COUNTER_LEN);
@@ -4043,6 +4072,8 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 		goto out;
 	}
 
+	sm->last_eapol_key_ver = ver;
+
 	if ((key_info & WPA_KEY_INFO_MIC) &&
 	    wpa_supplicant_verify_eapol_key_mic(sm, key, ver, tmp, data_len))
 		goto out;
@@ -4054,7 +4085,7 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 	}
 #endif /* CONFIG_FILS */
 
-	if ((sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN) &&
+	if (sm->proto == WPA_PROTO_RSN &&
 	    (key_info & WPA_KEY_INFO_ENCR_KEY_DATA) && mic_len) {
 		/*
 		 * Only decrypt the Key Data field if the frame's authenticity
@@ -4124,8 +4155,7 @@ static u32 wpa_key_mgmt_suite(struct wpa_sm *sm)
 {
 	switch (sm->key_mgmt) {
 	case WPA_KEY_MGMT_IEEE8021X:
-		return ((sm->proto == WPA_PROTO_RSN ||
-			 sm->proto == WPA_PROTO_OSEN) ?
+		return ((sm->proto == WPA_PROTO_RSN) ?
 			RSN_AUTH_KEY_MGMT_UNSPEC_802_1X :
 			WPA_AUTH_KEY_MGMT_UNSPEC_802_1X);
 	case WPA_KEY_MGMT_PSK:
@@ -4393,6 +4423,7 @@ void wpa_sm_deinit(struct wpa_sm *sm)
 #ifdef CONFIG_DPP2
 	wpabuf_clear_free(sm->dpp_z);
 #endif /* CONFIG_DPP2 */
+	os_memset(sm->last_kck, 0, sizeof(sm->last_kck));
 	os_free(sm);
 }
 
@@ -4953,6 +4984,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
 		break;
 	case WPA_PARAM_USE_EXT_KEY_ID:
 		sm->use_ext_key_id = value;
+		break;
+	case WPA_PARAM_SPP_AMSDU:
+		sm->spp_amsdu = !!value;
 		break;
 #ifdef CONFIG_TESTING_OPTIONS
 	case WPA_PARAM_FT_RSNXE_USED:
@@ -7226,6 +7260,12 @@ void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm)
 }
 
 
+bool wpa_sm_uses_spp_amsdu(struct wpa_sm *sm)
+{
+	return sm ? sm->spp_amsdu : false;
+}
+
+
 struct rsn_pmksa_cache * wpa_sm_get_pmksa_cache(struct wpa_sm *sm)
 {
 	return sm ? sm->pmksa : NULL;
@@ -7245,4 +7285,42 @@ void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
 {
 	if (sm)
 		sm->driver_bss_selection = driver_bss_selection;
+}
+
+
+struct wpabuf * wpa_sm_known_sta_identification(struct wpa_sm *sm, const u8 *aa,
+						u64 timestamp)
+{
+	struct wpabuf *ie;
+	unsigned int mic_len;
+	const u8 *start;
+	u8 *mic;
+
+	if (!sm || sm->last_kck_len == 0)
+		return NULL;
+
+	if (!ether_addr_equal(aa, sm->last_kck_aa))
+		return NULL;
+
+	mic_len = wpa_mic_len(sm->last_kck_key_mgmt, sm->last_kck_pmk_len);
+
+	ie = wpabuf_alloc(3 + 8 + 1 + mic_len);
+	if (!ie)
+		return NULL;
+
+	wpabuf_put_u8(ie, WLAN_EID_EXTENSION);
+	wpabuf_put_u8(ie, 1 + 8 + 1 + mic_len);
+	wpabuf_put_u8(ie, WLAN_EID_EXT_KNOWN_STA_IDENTIFICATION);
+	start = wpabuf_put(ie, 0);
+	wpabuf_put_le64(ie, timestamp);
+	wpabuf_put_u8(ie, mic_len);
+	mic = wpabuf_put(ie, mic_len);
+	if (wpa_eapol_key_mic(sm->last_kck, sm->last_kck_len,
+			      sm->last_kck_key_mgmt, sm->last_kck_eapol_key_ver,
+			      start, 8, mic) < 0) {
+		wpabuf_free(ie);
+		return NULL;
+	}
+
+	return ie;
 }
