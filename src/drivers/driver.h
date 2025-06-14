@@ -3030,6 +3030,7 @@ enum pasn_status {
  * @akmp: Authentication key management protocol type supported.
  * @cipher: Cipher suite.
  * @group: Finite cyclic group. Default group used is 19 (ECC).
+ * @password: Password of user requested network.
  * @ltf_keyseed_required: Indicates whether LTF keyseed generation is required
  * @status: PASN response status, %PASN_STATUS_SUCCESS for successful
  *	authentication, use %PASN_STATUS_FAILURE if PASN authentication
@@ -3043,6 +3044,7 @@ struct pasn_peer {
 	int akmp;
 	int cipher;
 	int group;
+	char *password;
 	bool ltf_keyseed_required;
 	enum pasn_status status;
 };
