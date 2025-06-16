@@ -70,6 +70,11 @@ void wpas_notify_supplicant_deinitialized(struct wpa_global *global)
 	if (global->aidl)
 		wpas_aidl_deinit(global->aidl);
 #endif /* CONFIG_AIDL */
+
+#ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
+	if (global->vendor_aidl)
+		wpas_aidl_vendor_deinit(global->vendor_aidl);
+#endif /* CONFIG_SUPPLICANT_VENDOR_AIDL */
 }
 
 
@@ -93,17 +98,30 @@ int wpas_notify_iface_added(struct wpa_supplicant *wpa_s)
 		return -1;
 #endif
 
+#ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
+	if (!wpa_s || !wpa_s->global->vendor_aidl)
+		return 0;
+	if (wpas_aidl_vendor_register_interface(wpa_s))
+		return -1;
+#endif /* CONFIG_SUPPLICANT_VENDOR_AIDL */
+
 	return 0;
 }
 
 
 void wpas_notify_iface_removed(struct wpa_supplicant *wpa_s)
 {
-	if (wpa_s->p2p_mgmt)
-		return;
+	if (!wpa_s->p2p_mgmt) {
+		/* unregister interface in new DBus ctrl iface */
+		wpas_dbus_unregister_interface(wpa_s);
+	}
 
-	/* unregister interface in new DBus ctrl iface */
-	wpas_dbus_unregister_interface(wpa_s);
+	/* AIDL interface wants to keep track of the P2P mgmt iface. */
+	wpas_aidl_unregister_interface(wpa_s);
+#ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
+	wpas_aidl_vendor_unregister_interface(wpa_s);
+#endif /* CONFIG_SUPPLICANT_VENDOR_AIDL */
+
 }
 
 
