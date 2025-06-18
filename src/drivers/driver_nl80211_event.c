@@ -584,11 +584,13 @@ struct links_info {
 };
 
 
-static void nl80211_get_basic_mle_links_info(const u8 *mle, size_t mle_len,
+static void nl80211_get_basic_mle_links_info(struct wpabuf *mlbuf,
 					     struct links_info *info)
 {
 	size_t rem_len;
 	const u8 *pos;
+	const u8 *mle = wpabuf_head(mlbuf);
+	size_t mle_len = wpabuf_len(mlbuf);
 
 	if (mle_len < MULTI_LINK_CONTROL_LEN + 1 ||
 	    mle_len - MULTI_LINK_CONTROL_LEN < mle[MULTI_LINK_CONTROL_LEN])
@@ -601,7 +603,20 @@ static void nl80211_get_basic_mle_links_info(const u8 *mle, size_t mle_len,
 
 	/* Parse Subelements */
 	while (rem_len > 2) {
-		size_t ie_len = 2 + pos[1];
+		size_t ie_len, subelem_defrag_len;
+		int num_frag_subelems;
+
+		num_frag_subelems =
+			ieee802_11_defrag_mle_subelem(mlbuf, pos,
+						      &subelem_defrag_len);
+		if (num_frag_subelems < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Failed to parse MLE subelem");
+			break;
+		}
+
+		ie_len = 2 + subelem_defrag_len;
+		rem_len -= num_frag_subelems * 2;
 
 		if (rem_len < ie_len)
 			break;
@@ -611,7 +626,8 @@ static void nl80211_get_basic_mle_links_info(const u8 *mle, size_t mle_len,
 			const u8 *sta_profile;
 			u16 sta_ctrl;
 
-			if (pos[1] < BASIC_MLE_STA_PROF_STA_MAC_IDX + ETH_ALEN)
+			if (subelem_defrag_len <
+			    BASIC_MLE_STA_PROF_STA_MAC_IDX + ETH_ALEN)
 				goto next_subelem;
 
 			sta_profile = &pos[2];
@@ -667,8 +683,7 @@ static int nl80211_update_rejected_links_info(struct driver_sta_mlo_info *mlo,
 		return -1;
 	}
 	os_memset(&req_info, 0, sizeof(req_info));
-	nl80211_get_basic_mle_links_info(wpabuf_head(mle), wpabuf_len(mle),
-					 &req_info);
+	nl80211_get_basic_mle_links_info(mle, &req_info);
 	wpabuf_free(mle);
 
 	mle = ieee802_11_defrag(resp_elems.basic_mle, resp_elems.basic_mle_len,
@@ -679,8 +694,7 @@ static int nl80211_update_rejected_links_info(struct driver_sta_mlo_info *mlo,
 		return -1;
 	}
 	os_memset(&resp_info, 0, sizeof(resp_info));
-	nl80211_get_basic_mle_links_info(wpabuf_head(mle), wpabuf_len(mle),
-					 &resp_info);
+	nl80211_get_basic_mle_links_info(mle, &resp_info);
 	wpabuf_free(mle);
 
 	if (req_info.non_assoc_links != resp_info.non_assoc_links) {
@@ -4293,13 +4307,13 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 
 
 static bool nl80211_drv_in_list(struct nl80211_global *global,
-				struct wpa_driver_nl80211_data *drv)
+				unsigned int unique_drv_id)
 {
 	struct wpa_driver_nl80211_data *tmp;
 
 	dl_list_for_each(tmp, &global->interfaces,
 			 struct wpa_driver_nl80211_data, list) {
-		if (drv == tmp)
+		if (tmp->unique_drv_id == unique_drv_id)
 			return true;
 	}
 
@@ -4359,6 +4373,8 @@ int process_global_event(struct nl_msg *msg, void *arg)
 
 	dl_list_for_each_safe(drv, tmp, &global->interfaces,
 			      struct wpa_driver_nl80211_data, list) {
+		unsigned int unique_drv_id = drv->unique_drv_id;
+
 		for (bss = drv->first_bss; bss; bss = bss->next) {
 			if (wiphy_idx_set)
 				wiphy_idx = nl80211_get_wiphy_index(bss);
@@ -4384,7 +4400,7 @@ int process_global_event(struct nl_msg *msg, void *arg)
 				 * e.g., due to NL80211_CMD_RADAR_DETECT event,
 				 * so need to stop the loop if that has
 				 * happened. */
-				if (!nl80211_drv_in_list(global, drv))
+				if (!nl80211_drv_in_list(global, unique_drv_id))
 					break;
 			}
 		}

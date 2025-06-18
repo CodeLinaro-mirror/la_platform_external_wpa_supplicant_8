@@ -2076,7 +2076,12 @@ static void wpas_start_gc(struct wpa_supplicant *wpa_s,
 		entry->network_ctx = ssid;
 		os_memcpy(entry->spa, wpa_s->own_addr, ETH_ALEN);
 
-		wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) {
+			wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+		} else {
+			os_free(wpa_s->p2p_pmksa_entry);
+			wpa_s->p2p_pmksa_entry = entry;
+		}
 		ssid->pmk_valid = true;
 	} else if (res->akmp == WPA_KEY_MGMT_SAE && res->sae_password[0]) {
 		ssid->auth_alg = WPA_AUTH_ALG_SAE;
@@ -7419,13 +7424,12 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 		}
 	}
 
-	if (freq == 2 || freq == 5) {
+	if (freq == 2 || freq == 5 || freq == 6) {
 		res = wpa_drv_get_pref_freq_list(wpa_s, WPA_IF_P2P_GO,
-						 &size, pref_freq_list);
+					 &size, pref_freq_list);
 		if (!res && size > 0 && !is_p2p_allow_6ghz(wpa_s->global->p2p))
 			size = p2p_remove_6ghz_channels(pref_freq_list, size);
 	}
-
 	if (freq == 2) {
 		wpa_printf(MSG_DEBUG, "P2P: Request to start GO on 2.4 GHz "
 			   "band");
@@ -7555,6 +7559,36 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 			}
 			wpa_printf(MSG_DEBUG, "P2P: Use random 5 GHz band "
 				   "channel: %d MHz", freq);
+		}
+	}
+
+	if (freq == 6) {
+		wpa_printf(MSG_DEBUG, "P2P: Request to start GO on 6 GHz band");
+		if (!res && size > 0) {
+			for (i = 0; i < size; i++) {
+				freq = pref_freq_list[i].freq;
+				if (is_6ghz_freq(freq) &&
+				    p2p_supported_freq(wpa_s->global->p2p,
+						       freq) &&
+				    !wpas_p2p_disallowed_freq(wpa_s->global,
+							      freq) &&
+				    p2p_pref_freq_allowed(&pref_freq_list[i],
+							  true))
+					break;
+			}
+
+			if (i >= size) {
+				wpa_printf(MSG_DEBUG,
+					   "P2P: Could not select 6 GHz channel for P2P group");
+				return -1;
+			}
+
+			wpa_printf(MSG_DEBUG,
+				   "P2P: Use preferred 6 GHz band channel: %d MHz",
+				   freq);
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "P2P: No preferred 6 GHz channel available");
 		}
 	}
 
@@ -8226,7 +8260,12 @@ static int wpas_start_p2p_client(struct wpa_supplicant *wpa_s,
 			entry->network_ctx = ssid;
 			os_memcpy(entry->spa, wpa_s->own_addr, ETH_ALEN);
 
-			wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+			if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) {
+				wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+			} else {
+				os_free(wpa_s->p2p_pmksa_entry);
+				wpa_s->p2p_pmksa_entry = entry;
+			}
 			ssid->pmk_valid = true;
 		}
 		wpa_s->current_ssid = ssid;
@@ -11640,8 +11679,10 @@ int wpas_p2p_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->global->p2p_disabled || !p2p)
 		return -2;
-
 	wpa_s->p2p2 = true;
+
+        if (wpa_s->p2p_mode == WPA_P2P_MODE_WFD_R1)
+		wpa_s->p2p_mode = WPA_P2P_MODE_WFD_R2;
 	return p2p_pasn_auth_rx(p2p, mgmt, len, freq);
 }
 
