@@ -108,7 +108,10 @@ void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
 				const u8 *p2p_dev_addr, const u8 *ip);
 void wpas_notify_p2p_find_stopped(struct wpa_supplicant *wpa_s);
 void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
-				  const u8 *dev_addr, int new_device);
+				 const u8 *addr, const struct p2p_peer_info *info,
+				 const u8* peer_wfd_device_info, u8 peer_wfd_device_info_len,
+				 const u8* peer_wfd_r2_device_info, u8 peer_wfd_r2_device_info_len,
+				 int new_device);
 void wpas_notify_p2p_device_lost(struct wpa_supplicant *wpa_s,
 				 const u8 *dev_addr);
 void wpas_notify_p2p_group_removed(struct wpa_supplicant *wpa_s,
@@ -175,6 +178,9 @@ void wpas_notify_mesh_peer_connected(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_addr);
 void wpas_notify_mesh_peer_disconnected(struct wpa_supplicant *wpa_s,
 					const u8 *peer_addr, u16 reason_code);
+void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
+				 const char *result,
+				 const struct wpa_bss_anqp *anqp);
 void wpas_notify_hs20_icon_query_done(struct wpa_supplicant *wpa_s, const u8* bssid,
 				      const char* file_name, const u8* image,
 				      u32 image_length);
@@ -221,8 +227,6 @@ void wpas_notify_ssid_temp_disabled(struct wpa_supplicant *wpa_s,
 		const char *reason_string);
 void wpas_notify_open_ssl_failure(struct wpa_supplicant *wpa_s,
                 const char *reason_string);
-void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s,
-				 const u8 *dst, const char *result);
 void wpas_notify_frequency_changed(struct wpa_supplicant *wpa_s, int frequency);
 ssize_t wpas_get_certificate(const char *alias, uint8_t** value);
 void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
@@ -259,4 +263,6 @@ void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg
 void wpas_notify_mlo_info_change_reason(struct wpa_supplicant *wpa_s,
 					enum mlo_info_change_reason reason);
 void wpas_notify_qos_policy_reset(struct wpa_supplicant *wpa_s);
+void wpas_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
+	struct dscp_policy_data *policies, int num_policies);
 #endif /* NOTIFY_H */
