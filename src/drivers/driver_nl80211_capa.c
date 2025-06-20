@@ -1602,6 +1602,9 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 	if (!info.data_tx_status)
 		drv->capa.flags &= ~WPA_DRIVER_FLAGS_EAPOL_TX_STATUS;
 
+	// By default, core supplicant enable WFD R2 and PCC mode for SME non-offload drivers.
+	// TODO Enable this code once the feature is tested on such driver implementations.
+#if 0
 	/* Enable P2P2 and PCC mode capabilities by default for the drivers
 	 * for which SME runs in wpa_supplicant
 	 */
@@ -1609,6 +1612,7 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_V2;
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE;
 	}
+#endif
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	if (!(info.capa->flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD))

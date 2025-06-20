@@ -2308,6 +2308,7 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 					  const char *driver_params,
 					  enum wpa_p2p_mode p2p_mode)
 {
+	static unsigned int next_unique_drv_id = 0;
 	struct wpa_driver_nl80211_data *drv;
 	struct i802_bss *bss;
 	char path[128], buf[200], *pos;
@@ -2340,6 +2341,7 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 	drv->ctx = ctx;
 	drv->hostapd = !!hostapd;
 	drv->eapol_sock = -1;
+	drv->unique_drv_id = next_unique_drv_id++;
 
 	/*
 	 * There is no driver capability flag for this, so assume it is
@@ -4982,8 +4984,7 @@ static int nl80211_unsol_bcast_probe_resp(struct i802_bss *bss,
 }
 
 
-static int nl80211_mbssid(struct nl_msg *msg,
-			 struct wpa_driver_ap_params *params)
+static int nl80211_mbssid(struct nl_msg *msg, struct mbssid_data *params)
 {
 	struct nlattr *config, *elems;
 	int ifidx;
@@ -5002,6 +5003,10 @@ static int nl80211_mbssid(struct nl_msg *msg,
 		if (ifidx <= 0 ||
 		    nla_put_u32(msg, NL80211_MBSSID_CONFIG_ATTR_TX_IFINDEX,
 				ifidx))
+			return -1;
+		if (params->mbssid_tx_iface_linkid >= 0 &&
+		    nla_put_u8(msg, NL80211_MBSSID_CONFIG_ATTR_TX_LINK_ID,
+			       params->mbssid_tx_iface_linkid))
 			return -1;
 	}
 
@@ -5280,6 +5285,12 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	    nla_put(msg, NL80211_ATTR_SSID, params->ssid_len, params->ssid))
 		goto fail;
 
+	if (params->freq)
+		nl80211_link_set_freq(bss,
+				      params->mld_ap ? params->mld_link_id :
+				      NL80211_DRV_LINK_ID_NA,
+				      params->freq->freq);
+
 	if (params->mld_ap) {
 		wpa_printf(MSG_DEBUG, "nl80211: link_id=%u",
 			   params->mld_link_id);
@@ -5287,10 +5298,6 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID,
 			       params->mld_link_id))
 			goto fail;
-
-		if (params->freq)
-			nl80211_link_set_freq(bss, params->mld_link_id,
-					      params->freq->freq);
 	}
 
 	if (params->proberesp && params->proberesp_len) {
@@ -5562,7 +5569,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	    nl80211_unsol_bcast_probe_resp(bss, msg, &params->ubpr) < 0)
 		goto fail;
 
-	if (nl80211_mbssid(msg, params) < 0)
+	if (nl80211_mbssid(msg, &params->mbssid) < 0)
 		goto fail;
 #endif /* CONFIG_IEEE80211AX */
 
@@ -9765,12 +9772,11 @@ int nl80211_remove_link(struct i802_bss *bss, int link_id)
 	link = &bss->links[link_id];
 
 	os_memcpy(link_addr, link->addr, ETH_ALEN);
-
 	/* First remove the link locally */
-	bss->valid_links &= ~BIT(link_id);
 	os_memset(link->addr, 0, ETH_ALEN);
 	/* Clear the active links and set the flink */
 	nl80211_update_active_links(bss, link_id);
+	bss->valid_links &= ~BIT(link_id);
 
 	/* If this was the last link, reset default link */
 	if (!bss->valid_links) {
@@ -11110,6 +11116,8 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
 		drv->ctx = bss->ctx;
 
 	if (!bss->valid_links) {
+		void *ctx = bss->ctx;
+
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: No more links remaining, so remove interface");
 		ret = wpa_driver_nl80211_if_remove(bss, type, ifname);
@@ -11117,7 +11125,7 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
 			return ret;
 
 		/* Notify that the MLD interface is removed */
-		wpa_supplicant_event(bss->ctx, EVENT_MLD_INTERFACE_FREED, NULL);
+		wpa_supplicant_event(ctx, EVENT_MLD_INTERFACE_FREED, NULL);
 	}
 
 	return 0;
@@ -11537,8 +11545,8 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 	return pos - buf;
 }
 
-
-static int set_beacon_data(struct nl_msg *msg, struct beacon_data *settings)
+static int set_beacon_data(struct nl_msg *msg, struct beacon_data *settings,
+			   bool skip_mbssid)
 {
 	if ((settings->head &&
 	     nla_put(msg, NL80211_ATTR_BEACON_HEAD,
@@ -11559,6 +11567,11 @@ static int set_beacon_data(struct nl_msg *msg, struct beacon_data *settings)
 	     nla_put(msg, NL80211_ATTR_PROBE_RESP,
 		     settings->probe_resp_len, settings->probe_resp)))
 		return -ENOBUFS;
+
+#ifdef CONFIG_IEEE80211AX
+	if (!skip_mbssid && nl80211_mbssid(msg, &settings->mbssid) < 0)
+		return -ENOBUFS;
+#endif /* CONFIG_IEEE80211AX */
 
 	return 0;
 }
@@ -11664,7 +11677,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 		goto error;
 
 	/* beacon_after params */
-	ret = set_beacon_data(msg, &settings->beacon_after);
+	ret = set_beacon_data(msg, &settings->beacon_after, false);
 	if (ret)
 		goto error;
 
@@ -11673,7 +11686,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 	if (!beacon_csa)
 		goto fail;
 
-	ret = set_beacon_data(msg, &settings->beacon_csa);
+	ret = set_beacon_data(msg, &settings->beacon_csa, true);
 	if (ret)
 		goto error;
 
@@ -11750,7 +11763,7 @@ static int nl80211_switch_color(void *priv, struct cca_settings *settings)
 		goto error;
 
 	/* beacon_after params */
-	ret = set_beacon_data(msg, &settings->beacon_after);
+	ret = set_beacon_data(msg, &settings->beacon_after, false);
 	if (ret)
 		goto error;
 
@@ -11761,7 +11774,7 @@ static int nl80211_switch_color(void *priv, struct cca_settings *settings)
 		goto error;
 	}
 
-	ret = set_beacon_data(msg, &settings->beacon_cca);
+	ret = set_beacon_data(msg, &settings->beacon_cca, true);
 	if (ret)
 		goto error;
 
