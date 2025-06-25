@@ -141,7 +141,7 @@ hostapd_cflags_cc_defaults {
         "-DANDROID_P2P",
         "-DANDROID_LIB_STUB",
         "-DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/hostapd/sockets\"",
-        "-DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/hostapd/ctrl0\"",
+        "-DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/hostapd/ctrl\"",
         "-DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/vendor/wifi/hostapd\"",
         "-DHOSTAPD",
         "-DHOSTAPD_DUMP_STATE",
