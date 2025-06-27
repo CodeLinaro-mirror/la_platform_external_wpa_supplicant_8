@@ -24,6 +24,10 @@ void wpas_nan_cluster_join(struct wpa_supplicant *wpa_s,
 			   const u8 *cluster_id,
 			   bool new_cluster);
 void wpas_nan_next_dw(struct wpa_supplicant *wpa_s, u32 freq);
+void wpas_nan_sched_update_done(struct wpa_supplicant *wpa_s,
+				const union wpa_event_data *data);
+void wpas_nan_ulw_update(struct wpa_supplicant *wpa_s,
+			 const u8 *ulw, size_t ulw_len);
 int wpas_nan_sched_config_map(struct wpa_supplicant *wpa_s, const char *cmd);
 int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd);
 void wpas_nan_rx_naf(struct wpa_supplicant *wpa_s,
@@ -32,6 +36,8 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_ndp_terminate(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		       char *reply, size_t reply_size);
+int wpas_nan_status(struct wpa_supplicant *wpa_s, char *reply,
+		    size_t reply_size);
 int wpas_nan_bootstrap_request(struct wpa_supplicant *wpa_s, char *cmd);
 int wpas_nan_bootstrap_reset(struct wpa_supplicant *wpa_s, char *cmd);
 
@@ -91,6 +97,14 @@ static inline void wpas_nan_cluster_join(struct wpa_supplicant *wpa_s,
 static inline void wpas_nan_next_dw(struct wpa_supplicant *wpa_s, u32 freq)
 {}
 
+static inline void wpas_nan_sched_update_done(struct wpa_supplicant *wpa_s,
+					      const union wpa_event_data *data)
+{}
+
+static inline void wpas_nan_ulw_update(struct wpa_supplicant *wpa_s,
+				       const u8 *ulw, size_t ulw_len)
+{}
+
 static inline void wpas_nan_rx_naf(struct wpa_supplicant *wpa_s,
 				   const struct ieee80211_mgmt *mgmt,
 				   size_t len)
@@ -127,7 +141,8 @@ void wpas_nan_cancel_subscribe(struct wpa_supplicant *wpa_s,
 			       int subscribe_id);
 int wpas_nan_transmit(struct wpa_supplicant *wpa_s, int handle,
 		      const struct wpabuf *ssi, const struct wpabuf *elems,
-		      const u8 *peer_addr, u8 req_instance_id);
+		      const u8 *peer_addr, u8 req_instance_id,
+		      u32 *cookie);
 void wpas_nan_tx_wait_expire(struct wpa_supplicant *wpa_s);
 void wpas_nan_tx_status(struct wpa_supplicant *wpa_s,
 			const u8 *data, size_t data_len, u8 acked);

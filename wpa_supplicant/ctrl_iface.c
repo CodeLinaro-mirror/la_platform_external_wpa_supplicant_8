@@ -12718,6 +12718,20 @@ static int wpas_ctrl_ml_probe(struct wpa_supplicant *wpa_s, char *cmd)
 
 #if defined(CONFIG_NAN) || defined(CONFIG_NAN_USD)
 
+static bool wpas_nan_gtk_cs_supported(const int *cipher_list)
+{
+	size_t i;
+
+	for (i = 0; cipher_list && cipher_list[i]; i++) {
+		if (cipher_list[i] == NAN_CS_GTK_CCMP_128 ||
+		    cipher_list[i] == NAN_CS_GTK_GCMP_256)
+			return true;
+	}
+
+	return false;
+}
+
+
 static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 				 char *buf, size_t buflen)
 {
@@ -12873,8 +12887,20 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strcmp(token, "gtk_required=1") == 0) {
+			params.gtk_required = true;
+			continue;
+		}
+
 		wpa_printf(MSG_INFO, "CTRL: Invalid NAN_PUBLISH parameter: %s",
 			   token);
+		goto fail;
+	}
+
+	if (params.gtk_required &&
+	    !wpas_nan_gtk_cs_supported(params.cipher_suites_list)) {
+		wpa_printf(MSG_INFO,
+			   "CTRL: GTK required but no GTK cipher suite configured");
 		goto fail;
 	}
 
@@ -13186,6 +13212,8 @@ static int wpas_ctrl_nan_transmit(struct wpa_supplicant *wpa_s, char *cmd)
 	struct wpabuf *ssi = NULL;
 	u8 peer_addr[ETH_ALEN];
 	int ret = -1;
+	u32 cookie = 0;
+	u32 *cookie_ptr = NULL;
 
 	os_memset(peer_addr, 0, ETH_ALEN);
 
@@ -13211,6 +13239,19 @@ static int wpas_ctrl_nan_transmit(struct wpa_supplicant *wpa_s, char *cmd)
 			continue;
 		}
 
+		if (os_strncmp(token, "cookie=", 7) == 0) {
+			cookie = strtoul(token + 7, NULL, 0);
+			if (!cookie) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: Invalid cookie value: %s",
+					   token + 7);
+				goto fail;
+			}
+
+			cookie_ptr = &cookie;
+			continue;
+		}
+
 		wpa_printf(MSG_INFO,
 			   "CTRL: Invalid NAN_TRANSMIT parameter: %s",
 			   token);
@@ -13230,7 +13271,7 @@ static int wpas_ctrl_nan_transmit(struct wpa_supplicant *wpa_s, char *cmd)
 	}
 
 	ret = wpas_nan_transmit(wpa_s, handle, ssi, NULL, peer_addr,
-				req_instance_id);
+				req_instance_id, cookie_ptr);
 fail:
 	wpabuf_free(ssi);
 	return ret;
@@ -14410,6 +14451,8 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "NAN_PEER_INFO ", 14) == 0) {
 		reply_len = wpas_nan_peer_info(wpa_s, buf + 14, reply,
 					       reply_size);
+	} else if (os_strcmp(buf, "NAN_STATUS") == 0) {
+		reply_len = wpas_nan_status(wpa_s, reply, reply_size);
 	} else if (os_strncmp(buf, "NAN_BOOTSTRAP ", 14) == 0) {
 		if (wpas_nan_bootstrap_request(wpa_s, buf + 14) < 0)
 			reply_len = -1;
@@ -14447,12 +14490,12 @@ static int wpa_supplicant_global_iface_add(struct wpa_global *global,
 	char *pos, *extra;
 	struct wpa_supplicant *wpa_s;
 	unsigned int create_iface = 0;
-	u8 mac_addr[ETH_ALEN];
+	u8 mac_addr[ETH_ALEN], *addr_ptr = NULL;
 	enum wpa_driver_if_type type = WPA_IF_STATION;
 
 	/*
 	 * <ifname>TAB<confname>TAB<driver>TAB<ctrl_interface>TAB<driver_param>
-	 * TAB<bridge_ifname>[TAB<create>[TAB<interface_type>]]
+	 * TAB<bridge_ifname>[TAB<create>[TAB<interface_type>][TAB<addr>]]
 	 */
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE GLOBAL INTERFACE_ADD '%s'", cmd);
 
@@ -14525,6 +14568,10 @@ static int wpa_supplicant_global_iface_add(struct wpa_global *global,
 			if (!pos)
 				break;
 
+			extra = os_strchr(pos, '\t');
+			if (extra)
+				*extra++ = '\0';
+
 			if (os_strcmp(pos, "sta") == 0) {
 				type = WPA_IF_STATION;
 			} else if (os_strcmp(pos, "ap") == 0) {
@@ -14541,6 +14588,19 @@ static int wpa_supplicant_global_iface_add(struct wpa_global *global,
 					   pos);
 				return -1;
 			}
+
+			pos = extra;
+			if (!pos || !pos[0])
+				break;
+
+			if (hwaddr_aton(pos, mac_addr)) {
+				wpa_printf(MSG_DEBUG,
+					   "INTERFACE_ADD invalid MAC address: '%s'",
+					   pos);
+				return -1;
+			}
+
+			addr_ptr = mac_addr;
 		} else {
 			wpa_printf(MSG_DEBUG,
 				   "INTERFACE_ADD unsupported extra parameter: '%s'",
@@ -14555,7 +14615,7 @@ static int wpa_supplicant_global_iface_add(struct wpa_global *global,
 		if (!global->ifaces)
 			return -1;
 		if (wpa_drv_if_add(global->ifaces, type, iface.ifname,
-				   NULL, NULL, NULL, mac_addr, NULL) < 0) {
+				   addr_ptr, NULL, NULL, mac_addr, NULL) < 0) {
 			wpa_printf(MSG_ERROR,
 				   "CTRL_IFACE interface creation failed");
 			return -1;
