@@ -317,10 +317,14 @@ CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN
+NEED_NAN=y
+CFLAGS += -DCONFIG_NAN
+endif
+
 ifdef CONFIG_NAN_USD
-OBJS += ../src/common/nan_de.o
-OBJS += nan_usd.o
 NEED_OFFCHANNEL=y
+NEED_NAN=y
 CFLAGS += -DCONFIG_NAN_USD
 endif
 
@@ -328,6 +332,21 @@ ifdef CONFIG_PR
 OBJS += ../src/common/proximity_ranging.o
 OBJS += pr_supplicant.o
 CFLAGS += -DCONFIG_PR
+endif
+
+ifdef NEED_NAN
+OBJS += nan_supplicant.o
+OBJS += ../src/nan/nan.o
+OBJS += ../src/common/nan_de.o
+OBJS += ../src/nan/nan_util.o
+OBJS += ../src/nan/nan_ndp.o
+OBJS += ../src/nan/nan_ndl.o
+OBJS += ../src/nan/nan_crypto.o
+OBJS += ../src/nan/nan_sec.o
+OBJS += ../src/nan/nan_bootstrap.o
+ifdef CONFIG_PASN
+OBJS += ../src/nan/nan_pairing.o
+endif
 endif
 
 ifdef CONFIG_OWE
@@ -1919,6 +1938,10 @@ OBJS += ../src/common/common_module_tests.o
 OBJS += ../src/crypto/crypto_module_tests.o
 ifdef CONFIG_WPS
 OBJS += ../src/wps/wps_module_tests.o
+endif
+ifdef CONFIG_NAN
+OBJS += ../src/nan/nan_module_tests.o
+OBJS += ../src/nan/nan_module_test_cases.o
 endif
 endif
 

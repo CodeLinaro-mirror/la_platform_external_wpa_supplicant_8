@@ -1674,8 +1674,6 @@ static void pr_pasn_set_password(struct pasn_data *pasn, u8 pasn_type,
 	pasn->pt = sae_derive_pt(pasn_groups, (const u8 *) PR_PASN_SSID,
 				 os_strlen(PR_PASN_SSID),
 				 (const u8 *) passphrase, len, NULL, 0);
-	/* Set passphrase for PASN responder to validate Auth 1 frame */
-	pasn->password = passphrase;
 }
 
 
@@ -1763,14 +1761,16 @@ static int pr_pasn_initialize(struct pr_data *pr, struct pr_device *dev,
 						       pasn->peer_addr,
 						       dev->pmk,
 						       dev->pmk_len,
-						       pmkid);
+						       pmkid,
+						       WPA_KEY_MGMT_SAE);
 		else
 			pasn_responder_pmksa_cache_add(pr->responder_pmksa,
 						       pasn->own_addr,
 						       pasn->peer_addr,
 						       dev->pmk,
 						       dev->pmk_len,
-						       pmkid);
+						       pmkid,
+						       WPA_KEY_MGMT_SAE);
 		pasn->akmp = WPA_KEY_MGMT_SAE;
 	} else {
 		pasn->akmp = WPA_KEY_MGMT_PASN;

@@ -22,7 +22,7 @@
 #include "common/defs.h"
 #include "common/ieee802_11_defs.h"
 #include "common/wpa_common.h"
-#include "common/nan.h"
+#include "common/nan_defs.h"
 #ifdef CONFIG_MACSEC
 #include "pae/ieee802_1x_kay.h"
 #endif /* CONFIG_MACSEC */
@@ -2166,8 +2166,85 @@ enum wpa_driver_if_type {
 	 */
 	WPA_IF_NAN,
 
+	/*
+	 * WPA_IF_NAN_DATA - NAN Data interface
+	 */
+	WPA_IF_NAN_DATA,
+
 	/* keep last */
 	WPA_IF_MAX
+};
+
+/**
+ * struct nan_capa - NAN capabilities
+ *
+ * @drv_flags: NAN capability flags (WPA_DRIVER_FLAGS_NAN_*)
+ * @num_radios: Maximum number of NAN radios
+ * @sched_chans: Maximum number of channels in NAN schedule (per map)
+ * @slot_duration: NAN schedule bitmap slot duration (16, 32, 64 or 128) in TUs
+ * @schedule_period: Schedule period (powers of 2 in range: 128 - 8192) in TUs
+ * @max_channel_switch_time: Max channel switch time in microseconds
+ * @num_antennas: Number of antennas (lower nibble TX, upper nibble RX)
+ * @op_modes: NAN capability operation modes
+ * @dev_capa: NAN device capabilities
+ * @ht_capab: HT capabilities information as defined in IEEE80211
+ *     specification in section 9.4.2.54.2 (HT Capability Information field)
+ * @ht_ampdu_params: HT A-MPDU parameters as defined in IEEE80211
+ *     specification in section 9.4.2.54.3 (A-MPDU Parameters field)
+ * @ht_mcs_set: HT MCS set as defined in IEEE80211 specification in
+ *     section 9.4.2.54.4 (Supported MCS Set field)
+ * @vht_capab: VHT capabilities information as defined in IEEE80211
+ *     specification in section 9.4.2.156.2 (VHT Capabilities Information
+ *     field)
+ * @vht_mcs_set: VHT MCS set as defined in IEEE80211 specification in section
+ *     9.4.2.156.3 (Supported VHT-MCS and NSS Set field)
+ * @vht_valid: Whether &vht_capab and &vht_mcs_set are both valid
+ * @he_capab: HE capabilities. See &struct he_capabilities.
+ * @he_valid: Whether HE capabilities are valid
+ *
+ * For the schedule capabilities, even if the driver/device supports multiple
+ * options, only a single option should be selected. For example, if both 16 TU
+ * and 32 TU slot durations are supported, the driver should report
+ * the shortest supported slot duration (16 TU). For schedule period, the
+ * driver should report the maximum supported period, as longer periods can
+ * always be represented by repetitions of the shorter schedule bitmap. In any
+ * case 512/16 configuration is recommended for better interoperability.
+ *
+ * As for the PHY capabilities, HT must be supported for NAN Data path, and
+ * without valid HT capabilities NAN Data path would be disabled.
+ *
+ * TODO: For now support only a single PHY capabilities configuration. This
+ * might need to be extended to support multiple configurations in the future.
+ */
+struct nan_capa {
+/* Driver supports dual band NAN operation */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_DUAL_BAND		0x00000001
+/* Driver supports NAN synchronization configuration */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_SYNC_CONFIG	0x00000002
+/* Driver supports DW notifications and SDF TX/RX over NAN device interface */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE	0x00000004
+/** Driver supports NAN Data path */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP		0x00000008
+	u32 drv_flags;
+	u8 num_radios;
+	u8 sched_chans;
+	u8 slot_duration;
+	u16 schedule_period;
+	u16 max_channel_switch_time;
+	u8 num_antennas;
+	u8 op_modes;
+	u8 dev_capa;
+
+	u16 ht_capab;
+	u8 ht_mcs_set[16];
+	u8 ht_ampdu_params;
+
+	u32 vht_capab;
+	u8 vht_mcs_set[8];
+	bool vht_valid;
+
+	struct he_capabilities he_capab;
+	bool he_valid;
 };
 
 /**
@@ -2425,8 +2502,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
 /** Driver supports RSN override elements */
 #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
-/** Driver supports NAN offload */
-#define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
+/** Driver supports NAN USD offload */
+#define WPA_DRIVER_FLAGS2_NAN_USD_OFFLOAD	0x0000000000800000ULL
 /** Driver/device supports SPP A-MSDUs */
 #define WPA_DRIVER_FLAGS2_SPP_AMSDU		0x0000000001000000ULL
 /** Driver supports P2P V2 */
@@ -2441,7 +2518,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_NON_TRIGGER_BASED_RESPONDER   0x0000000020000000ULL
 /** Driver supports non-trigger based ranging initiator functionality */
 #define WPA_DRIVER_FLAGS2_NON_TRIGGER_BASED_INITIATOR	0x0000000040000000ULL
-
+/** Driver supports NAN Device interface and NAN Synchronization */
+#define WPA_DRIVER_FLAGS2_SUPPORT_NAN			0x0000000080000000ULL
 	u64 flags2;
 
 #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
@@ -2582,6 +2660,10 @@ struct wpa_driver_capa {
 	u8 max_rx_sts_gt_80;
 	u8 max_tx_sts_le_80;
 	u8 max_tx_sts_gt_80;
+
+#ifdef CONFIG_NAN
+	struct nan_capa nan_capa;
+#endif /* CONFIG_NAN */
 };
 
 
@@ -2689,6 +2771,15 @@ struct hostapd_sta_add_params {
 	s8 mld_link_id;
 	const u8 *mld_link_addr;
 	u16 eml_cap;
+
+#ifdef CONFIG_NAN
+	/*
+	 * For a station added to a NAN Data Interface (NDI) indicate the
+	 * address of the NAN Management Interface (NMI) to which this station
+	 * belongs
+	 */
+	const u8 *nmi_addr;
+#endif /* CONFIG_NAN */
 };
 
 struct mac_address {
@@ -3207,6 +3298,130 @@ struct driver_sta_mlo_info {
 		unsigned int freq;
 		struct t2lm_mapping t2lmap;
 	} links[MAX_NUM_MLD_LINKS];
+};
+
+/**
+ * struct nan_band_config - NAN band specific configuration
+ *
+ * For details on NAN band configuration, see the Wi-Fi Aware (TM) Specification
+ *
+ * @frequency: Frequency in MHz for the band
+ * @rssi_close: RSSI close threshold used for NAN state transition algorithm
+ * @rssi_middle: RSSI middle threshold used for NAN state transition algorithm
+ * @awake_dw_interval: committed DW information
+ * @disable_scan: Disable scan for this band
+ */
+struct nan_band_config {
+	u16 frequency;
+	s8 rssi_close;
+	s8 rssi_middle;
+	u8 awake_dw_interval;
+	bool disable_scan;
+};
+
+/**
+ * struct nan_cluster_config - NAN cluster configuration
+ *
+ * @master_pref: Master preference for the cluster
+ * @dual_band: Dual band operation enabled
+ * @enable_dw_notif: Enable discovery window notifications
+ * @cluster_id: Cluster ID for the NAN cluster
+ * @scan_period: Period for NAN scan in seconds
+ * @scan_dwell_time: Dwell time for NAN scan in TUs per channel
+ * @discovery_beacon_interval: Interval for discovery beacon in TUs
+ * @low_band_cfg: Configuration for low band NAN operation
+ * @high_band_cfg: Configuration for high band NAN operation
+ * @extra_nan_attrs: Extra NAN attributes to be included in NAN beacons
+ * @extra_nan_attrs_len: Length of the extra NAN attributes
+ * @vendor_elems: Vendor specific elements to be included in NAN beacons
+ * @vendor_elems_len: Length of the vendor specific elements
+ */
+struct nan_cluster_config {
+	u8 master_pref;
+	u8 dual_band;
+	bool enable_dw_notif;
+
+	u8 cluster_id[ETH_ALEN];
+	u16 scan_period;
+	u16 scan_dwell_time;
+	u8 discovery_beacon_interval;
+	struct nan_band_config low_band_cfg;
+	struct nan_band_config high_band_cfg;
+	u8 *extra_nan_attrs;
+	size_t extra_nan_attrs_len;
+	u8 *vendor_elems;
+	size_t vendor_elems_len;
+};
+
+/**
+ * Even if the device supports more channels, 4 channels should be enough
+ * for any practical purpose
+ */
+#define MAX_NUM_NAN_SCHEDULE_CHANNELS 4
+
+#define MAX_NUM_NAN_MAPS 2
+
+/**
+ * struct nan_schedule_config - NAN schedule configuration
+ *
+ * @num_channels: Number of channels in the schedule
+ * @channels: Channel specific schedule information
+ */
+struct nan_schedule_config {
+	u8 num_channels;
+
+	/**
+	 * channels - Channel specific schedule information
+	 *
+	 * @freq: Frequency in MHz
+	 * @center_freq1: Center frequency 1 in MHz
+	 * @center_freq2: Center frequency 2 in MHz
+	 * @bandwidth: Channel bandwidth
+	 * @time_bitmap: Bitmap indicating the committed availability
+	 *     on the channel.
+	 * @rx_nss: Number of spatial streams supported for RX on the
+	 *     channel
+	 * @chan_entry: Channel Entry as defined in Wi-Fi
+	 *     Aware (TM) 4.0 specification Table 100 (Channel Entry
+	 *     format for the NAN Availability attribute).
+	 *
+	 * Note: Time bitmap slot duration and schedule length equal to the
+	 * reported NAN capabilities (see &nan_slot_duration and
+	 * &nan_schedule_length in &struct wpa_driver_capa).
+	 */
+	struct nan_schedule_channel {
+		int freq;
+		int center_freq1;
+		int center_freq2;
+		int bandwidth;
+		struct wpabuf *time_bitmap;
+		u8 rx_nss;
+
+		u8 chan_entry[6];
+
+	} channels[MAX_NUM_NAN_SCHEDULE_CHANNELS];
+};
+
+/**
+ * struct nan_peer_schedule_config - NAN peer schedule configuration
+ *
+ * @n_maps: Number of maps in the schedule
+ * @maps: Map specific schedule information
+ */
+struct nan_peer_schedule_config {
+	u8 n_maps;
+
+	/**
+	 * maps - Map specific schedule information
+	 *
+	 * @map_id: Map ID
+	 * @sched: NAN schedule configuration for the map
+	 */
+	struct nan_schedule_map {
+		u8 map_id;
+		struct nan_schedule_config sched;
+	} maps[MAX_NUM_NAN_MAPS];
+
 };
 
 /**
@@ -5562,6 +5777,77 @@ struct wpa_driver_ops {
 	 * Returns: Chip vendor ID (OUI) or 0 if not available.
 	 */
 	unsigned int (*get_chip_vendor_id)(void *priv);
+
+#ifdef CONFIG_NAN
+	/**
+	 * nan_start - start NAN operation
+	 * @priv: Private driver interface data
+	 * @conf: NAN configuration parameters
+	 * Returns 0 on success, -1 on failure
+	 *
+	 * This command joins an existing NAN cluster or starts a new one.
+	 */
+	int (*nan_start)(void *priv, struct nan_cluster_config *conf);
+
+	/**
+	 * nan_change_config - Update the NAN cluster configuration
+	 * @priv: Private driver interface data
+	 * @conf: NAN configuration parameters
+	 * Returns 0 on success, -1 on failure
+	 *
+	 * This command modifies the NAN cluster configuration.
+	 */
+	int (*nan_change_config)(void *priv, struct nan_cluster_config *conf);
+
+	/**
+	 * nan_stop - stops NAN operation
+	 * @priv: Private driver interface data
+	 */
+	void (*nan_stop)(void *priv);
+
+	/**
+	 * nan_config_schedule - Configure NAN schedule
+	 * @priv: Private driver interface data
+	 * @map_id: NAN schedule map ID
+	 * @conf: NAN schedule configuration parameters
+	 * Returns 0 on success, -1 on failure
+	 *
+	 * This command configures the local NAN schedule. It should be
+	 * executed on NAN device interface after NAN has been started.
+	 * The configured schedule should be valid for RX for all NAN
+	 * activities (management and data).
+	 * For devices that support multiple concurrent NAN radios, this
+	 * callback should be called for each radio with the corresponding
+	 * %map_id.
+	 * If previous configuration exists, it is replaced with the new
+	 * one. To delete previous schedule, set %conf.num_channels = 0.
+	 */
+	int (*nan_config_schedule)(void *priv, u8 map_id,
+				   struct nan_schedule_config *conf);
+
+	/**
+	 * nan_config_peer_schedule - configure NAN peer schedule
+	 * @priv: Private driver interface data
+	 * @peer: Peer's NAN device address
+	 * @cdw: Peer's committed DW.
+	 * @sequence_id: Peer's schedule sequence ID
+	 * @max_chan_switch_time: Maximum channel switch time in TUs
+	 * @ulw: Peer's unaligned window attributes or %NULL
+	 * @sched: NAN peer schedule configuration parameters
+	 * Returns 0 on success, -1 on failure
+	 *
+	 * This command configures peer's NAN schedule. To remove previous
+	 * schedule for a given %map_id, set %sched.num_channels = 0.
+	 * %ulw attributes are used to provide the initial information about
+	 * peer's unaligned schedule. Further updates to ULW should be tracked
+	 * internally by the device/driver.
+	 */
+	int (*nan_config_peer_schedule)(void *priv, const u8 *peer,
+					u16 cdw, u8 sequence_id,
+					u16 max_chan_switch_time,
+					const struct wpabuf *ulw,
+					struct nan_peer_schedule_config *sched);
+#endif
 };
 
 /**
@@ -6199,6 +6485,30 @@ enum wpa_event_type {
 	 * EVENT_SETUP_LINK_RECONFIG - Notification that new AP links added
 	 */
 	EVENT_SETUP_LINK_RECONFIG,
+
+	/**
+	 * EVENT_NAN_CLUSTER_JOIN - Notification of new cluster has been
+	 * joined or started.
+	 *
+	 * This event is used to notify wpa_supplicant that a NAN cluster
+	 * has been joined or started. The event data includes the NAN cluster
+	 * ID and a boolean indicating whether a new cluster was started or
+	 * an existing cluster was joined.
+	 *
+	 * Described in wpa_event_data.nan_cluster_join_info.
+	 */
+	EVENT_NAN_CLUSTER_JOIN,
+
+	/**
+	 * EVENT_NAN_NEXT_DW - Notification of NAN next Discovery Window
+	 *
+	 * This event is used to notify wpa_supplicant that the device/driver
+	 * is ready for the next Discovery Window (DW) frames. It may be used
+	 * to trigger transmission of multicast SDFs (active subscribe and
+	 * unsolicited publish).
+	 * The event data includes the DW frequency.
+	 */
+	EVENT_NAN_NEXT_DW,
 };
 
 
@@ -7198,6 +7508,15 @@ union wpa_event_data {
 		const u8 *resp_ie; /* Starting from Group Key Data */
 		size_t resp_ie_len;
 	} reconfig_info;
+
+	struct nan_cluster_join_info {
+		const u8 *bssid;
+		bool new_cluster;
+	} nan_cluster_join_info;
+
+	struct nan_next_dw_info {
+		int freq;
+	} nan_next_dw_info;
 };
 
 /**

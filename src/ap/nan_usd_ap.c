@@ -48,7 +48,10 @@ hostapd_nan_de_discovery_result(void *ctx, int subscribe_id,
 				enum nan_service_protocol_type srv_proto_type,
 				const u8 *ssi, size_t ssi_len,
 				int peer_publish_id, const u8 *peer_addr,
-				bool fsd, bool fsd_gas)
+				bool fsd, bool fsd_gas,
+				const u8 *pmkid_list, size_t pmkid_count,
+				const u8 *cipher_suite,
+				size_t n_cipher_suite)
 {
 	struct hostapd_data *hapd = ctx;
 	char *ssi_hex;
@@ -129,7 +132,8 @@ static void hostapd_nan_de_subscribe_terminated(void *ctx, int subscribe_id,
 
 static void hostapd_nan_de_receive(void *ctx, int id, int peer_instance_id,
 				   const u8 *ssi, size_t ssi_len,
-				   const u8 *peer_addr)
+				   const u8 *peer_addr,
+				   const u8 *buf, size_t len)
 {
 	struct hostapd_data *hapd = ctx;
 	char *ssi_hex;
@@ -180,7 +184,7 @@ void hostapd_nan_usd_rx_sdf(struct hostapd_data *hapd, const u8 *src,
 {
 	if (!hapd->nan_de)
 		return;
-	nan_de_rx_sdf(hapd->nan_de, src, a3, freq, buf, len);
+	nan_de_rx_sdf(hapd->nan_de, src, a3, freq, buf, len, 0);
 }
 
 
@@ -267,5 +271,5 @@ int hostapd_nan_usd_transmit(struct hostapd_data *hapd, int handle,
 	if (!hapd->nan_de)
 		return -1;
 	return nan_de_transmit(hapd->nan_de, handle, ssi, elems, peer_addr,
-			       req_instance_id);
+			       req_instance_id, NULL);
 }

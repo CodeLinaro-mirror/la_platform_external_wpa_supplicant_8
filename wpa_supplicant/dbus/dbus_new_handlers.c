@@ -28,7 +28,7 @@
 #include "../autoscan.h"
 #include "../ap.h"
 #include "../interworking.h"
-#include "../nan_usd.h"
+#include "../nan_supplicant.h"
 #include "dbus_new_helpers.h"
 #include "dbus_new.h"
 #include "dbus_new_handlers.h"
@@ -6601,8 +6601,8 @@ DBusMessage * wpas_dbus_handler_nan_publish(DBusMessage *message,
 	if (!srv_name)
 		goto fail;
 
-	publish_id = wpas_nan_usd_publish(wpa_s, srv_name, srv_proto_type, ssi,
-					  &params, p2p);
+	publish_id = wpas_nan_publish(wpa_s, srv_name, srv_proto_type, ssi,
+				      &params, p2p);
 	if (publish_id < 0) {
 		reply = wpas_dbus_error_unknown_error(
 			message, "error publishing NAN USD");
@@ -6870,8 +6870,8 @@ DBusMessage * wpas_dbus_handler_nan_subscribe(DBusMessage *message,
 	if (!srv_name)
 		goto fail;
 
-	subscribe_id = wpas_nan_usd_subscribe(wpa_s, srv_name, srv_proto_type,
-					      ssi, &params, p2p);
+	subscribe_id = wpas_nan_subscribe(wpa_s, srv_name, srv_proto_type,
+					  ssi, &params, p2p);
 	if (subscribe_id < 0) {
 		reply = wpas_dbus_error_unknown_error(
 			message, "error subscribing NAN USD");
@@ -7035,8 +7035,8 @@ DBusMessage * wpas_dbus_handler_nan_transmit(DBusMessage *message,
 	if (handle < 0 || req_instance_id < 0 || !peer_addr_set || !ssi)
 		goto fail;
 
-	if (wpas_nan_usd_transmit(wpa_s, handle, ssi, NULL, peer_addr,
-				  req_instance_id) < 0)
+	if (wpas_nan_transmit(wpa_s, handle, ssi, NULL, peer_addr,
+			      req_instance_id) < 0)
 		reply = wpas_dbus_error_unknown_error(
 			message, "failed to transmit follow-up");
 out:

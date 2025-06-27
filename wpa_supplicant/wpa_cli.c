@@ -3391,12 +3391,100 @@ static int wpa_cli_cmd_nan_flush(struct wpa_ctrl *ctrl, int argc,
 #endif /* CONFIG_NAN_USD */
 
 
+#ifdef CONFIG_NAN
+
+static int wpa_cli_cmd_nan_start(struct wpa_ctrl *ctrl, int argc,
+				 char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_START", 0, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_stop(struct wpa_ctrl *ctrl, int argc,
+				char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_STOP", 0, argc, argv);
+}
+
+static int wpa_cli_cmd_nan_set(struct wpa_ctrl *ctrl, int argc,
+			       char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_SET", 2, argc, argv);
+}
+
+static int wpa_cli_cmd_nan_update_conf(struct wpa_ctrl *ctrl, int argc,
+				       char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_UPDATE_CONF", 0, argc, argv);
+}
+
+static int wpa_cli_cmd_nan_sched_config_map(struct wpa_ctrl *ctrl, int argc,
+					     char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_SCHED_CONFIG_MAP", 1, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_ndp_request(struct wpa_ctrl *ctrl, int argc,
+				       char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_NDP_REQUEST", 4, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_ndp_response(struct wpa_ctrl *ctrl, int argc,
+					char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_NDP_RESPONSE", 3, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_ndp_terminate(struct wpa_ctrl *ctrl, int argc,
+					 char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_NDP_TERMINATE", 3, argc, argv);
+}
+
+
+static int wpa_cli_cmd_nan_peer_info(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_PEER_INFO", 2, argc, argv);
+}
+
+static int wpa_cli_cmd_nan_bootstrap(struct wpa_ctrl *ctrl, int argc,
+				     char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_BOOTSTRAP", 4, argc, argv);
+}
+
+static int wpa_cli_cmd_nan_bootstrap_reset(struct wpa_ctrl *ctrl,
+					   int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_BOOTSTRAP_RESET", 1, argc, argv);
+}
+
+#ifdef CONFIG_PASN
+static int wpa_cli_cmd_nan_pair_start(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_PAIR", 5, argc, argv);
+}
+
+static int wpa_cli_cmd_nan_pair_abort(struct wpa_ctrl *ctrl, int argc,
+				      char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "NAN_PAIR_ABORT", 1, argc, argv);
+}
+#endif /* CONFIG_PASN */
+#endif /* CONFIG_NAN */
+
+
 static int wpa_cli_cmd_generate_new_mac(struct wpa_ctrl *ctrl, int argc,
 					char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "NEW_RANDOM_MAC_ADDRESS");
 }
-
 
 enum wpa_cli_cmd_flags {
 	cli_cmd_flag_none		= 0x00,
@@ -4170,6 +4258,40 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "nan_flush", wpa_cli_cmd_nan_flush, NULL,
 	  cli_cmd_flag_none, "= Flush all NAN USD services" },
 #endif /* CONFIG_NAN_USD */
+#ifdef CONFIG_NAN
+	{ "nan_start", wpa_cli_cmd_nan_start, NULL, cli_cmd_flag_none,
+	  "= start/join NAN cluster with current configuration" },
+	{ "nan_stop", wpa_cli_cmd_nan_stop, NULL, cli_cmd_flag_none,
+	  "= stop NAN operation" },
+	{ "nan_set", wpa_cli_cmd_nan_set, NULL, cli_cmd_flag_none,
+	  "= set NAN configuration variable" },
+	{ "nan_update_conf", wpa_cli_cmd_nan_update_conf, NULL,
+	  cli_cmd_flag_none, "= update NAN configuration" },
+	{ "nan_sched_config_map", wpa_cli_cmd_nan_sched_config_map, NULL,
+	  cli_cmd_flag_none, "map_id=<id> [freq:bitmap_hex] = Configure NAN schedule. Clear if no bitmaps provided" },
+	{ "nan_ndp_request", wpa_cli_cmd_nan_ndp_request, NULL,
+	  cli_cmd_flag_none, "handle=<id> ndi=<ifname> peer_nmi=<nmi> peer_id=<peer_instance_id> [ssi=<hexdata>] [qos=<slots:latency>] [csid = <cipher_suite> <password=<string>|pmk=<hex>>] = Request NAN data path" },
+	{ "nan_ndp_response", wpa_cli_cmd_nan_ndp_response, NULL,
+	  cli_cmd_flag_none, "accept|reject peer_nmi=<nmi> [reason_code=<reject_reason>] [ndi=<ifname> handle=<service_handle> init_ndi=<ndi> ndp_id=<id> [ssi=<hexdata>] [qos=<slots:latency>] [csid=<csid> <password=<string>|pmk=<hex>]] = Respond to NAN data path request" },
+	{ "nan_ndp_terminate", wpa_cli_cmd_nan_ndp_terminate, NULL,
+	  cli_cmd_flag_none, "peer_nmi=<nmi> init_ndi=<ndi> ndp_id=<id> = Terminate NAN data path" },
+	{ "nan_peer_info", wpa_cli_cmd_nan_peer_info, NULL,
+	  cli_cmd_flag_none, "<addr> <schedule|potential|capa> [map_id] = Get NAN peer information" },
+	{ "nan_bootstrap", wpa_cli_cmd_nan_bootstrap, NULL,
+	  cli_cmd_flag_none,
+	  " = <peer_mac> <handle=<service handle>> <req_instance_id=<peer requestor id>> <method=<Bootstrap method>> [auth] = Request or authorize NAN boostrapping with peer" },
+	{ "nan_bootstrap_reset", wpa_cli_cmd_nan_bootstrap_reset, NULL,
+	  cli_cmd_flag_none,
+	  " = <peer_mac> = Reset NAN boostrapping with peer" },
+#ifdef CONFIG_PASN
+	{ "nan_pair", wpa_cli_cmd_nan_pair_start, NULL,
+	  cli_cmd_flag_none,
+	  " = <peer_mac> <handle=<service handle>> <peer_instance_id=<peer requestor id>> <auth=<0|1|2>> <cipher=<CCMP|GCMP-256>> [password=<password>] [responder] = Request or authorize NAN pairing with peer" },
+	{ "nan_pair_abort", wpa_cli_cmd_nan_pair_abort, NULL,
+	  cli_cmd_flag_none,
+	  " = <peer_mac> = Abort NAN pairing with peer" },
+#endif /* CONFIG_PASN */
+#endif /* CONFIG_NAN */
 	{ "new_random_mac_address", wpa_cli_cmd_generate_new_mac, NULL,
 	  cli_cmd_flag_none, "= Generate new random MAC address" },
 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
