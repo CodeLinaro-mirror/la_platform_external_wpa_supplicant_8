@@ -450,6 +450,12 @@ std::string CreateHostapdConfig(
 		return "";
 	}
 
+	bool support11ac = iface_params.hwModeParams.enable80211AC;
+#ifdef CONFIG_IEEE80211AX
+	if (!support11ac) {
+		support11ac = iface_params.hwModeParams.enable80211AX;
+	}
+#endif
 	std::string channel_config_as_string;
 	bool isFirst = true;
 	if (channelParams.enableAcs) {
@@ -475,12 +481,6 @@ std::string CreateHostapdConfig(
 			channelParams.acsShouldExcludeDfs,
 			freqList_as_string.c_str());
 	} else {
-		bool support11ac = iface_params.hwModeParams.enable80211AC;
-#ifdef CONFIG_IEEE80211AX
-		if (!support11ac) {
-			support11ac = iface_params.hwModeParams.enable80211AX;
-		}
-#endif
 		int op_class = getOpClassForChannel(
 			channelParams.channel,
 			band,
@@ -587,8 +587,7 @@ std::string CreateHostapdConfig(
 			(band & band6Ghz) ? "op_class=134" : "");
 		break;
 	default:
-		if (!is_2Ghz_band_only && !is_60Ghz_used
-		    && iface_params.hwModeParams.enable80211AC) {
+		if (!is_2Ghz_band_only && !is_60Ghz_used && support11ac) {
 			ht_cap_vht_oper_he_oper_chwidth_as_string =
 					"vht_oper_chwidth=1\n";
 			if (allowed_ht40_first_channel_list.end()
