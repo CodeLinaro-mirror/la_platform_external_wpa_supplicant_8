@@ -6345,6 +6345,7 @@ static void wpas_setup_link_reconfig(struct wpa_supplicant *wpa_s,
 	end = info->resp_ie + info->resp_ie_len;
 	wpa_hexdump(MSG_DEBUG, "MLD: Link reconfig resp - IEs", ies, end - ies);
 
+	wpas_notify_mlo_info_change_reason(wpa_s, MLO_LINK_DYNAMIC_RECONFIG);
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_LINK_RECONFIG "valid_links=0x%x",
 		wpa_s->valid_links);
 }
