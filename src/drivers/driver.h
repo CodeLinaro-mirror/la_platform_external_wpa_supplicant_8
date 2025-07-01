@@ -2741,6 +2741,22 @@ struct wpa_mlo_signal_info {
 };
 
 /**
+ * struct wpa_mlo_reconfig_info - Information about user-requested add and/or
+ * remove setup links for the current MLO association.
+ *
+ * @add_links: Bitmask of links to be added
+ * @add_link_bssid: Array of BSSIDs for the links to be added
+ * @add_link_freq: Array of frequencies for the links to be added
+ * @delete_links: Bitmask of links to be removed
+ */
+struct wpa_mlo_reconfig_info {
+	u16 add_links;
+	u8 add_link_bssid[MAX_NUM_MLD_LINKS][ETH_ALEN];
+	int add_link_freq[MAX_NUM_MLD_LINKS];
+	u16 delete_links;
+};
+
+/**
  * struct wpa_channel_info - Information about the current channel
  * @frequency: Center frequency of the primary 20 MHz channel
  * @chanwidth: Width of the current operating channel
@@ -4445,6 +4461,15 @@ struct wpa_driver_ops {
 			       struct wpa_mlo_signal_info *mlo_signal_info);
 
 	/**
+	 * setup_link_reconfig - Used to initiate Link Reconfiguration request
+	 * for the current MLO association.
+	 * @priv: Private driver interface data
+	 * @info: Link reconfiguration request info
+	 */
+	int (*setup_link_reconfig)(void *priv,
+				   struct wpa_mlo_reconfig_info *info);
+
+	/**
 	 * channel_info - Get parameters of the current operating channel
 	 * @priv: Private driver interface data
 	 * @channel_info: Channel info structure
@@ -6081,6 +6106,11 @@ enum wpa_event_type {
 	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
 	 */
 	EVENT_MLD_INTERFACE_FREED,
+
+	/**
+	 * EVENT_SETUP_LINK_RECONFIG - Notification that new AP links added
+	 */
+	EVENT_SETUP_LINK_RECONFIG,
 };
 
 
@@ -7068,6 +7098,17 @@ union wpa_event_data {
 		u8 valid_links;
 		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
 	} t2l_map_info;
+
+	/**
+	 * struct reconfig_info - Data for EVENT_SETUP_LINK_RECONFIG
+	 */
+	struct reconfig_info {
+		u16 added_links;
+		u8 count;
+		const u8 *status_list;
+		const u8 *resp_ie; /* Starting from Group Key Data */
+		size_t resp_ie_len;
+	} reconfig_info;
 };
 
 /**
