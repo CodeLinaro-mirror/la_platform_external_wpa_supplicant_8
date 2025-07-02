@@ -695,6 +695,7 @@ cc_binary {
     defaults: [
         "hostapd_cflags_default",
         "hostapd_includes_default",
+        "hostapd_qca_default",
     ],
 }
 
@@ -769,6 +770,7 @@ cc_library_static {
     defaults: [
         "hostapd_cflags_default",
         "hostapd_includes_default",
+        "hostapd_qca_default",
     ],
 }
 
