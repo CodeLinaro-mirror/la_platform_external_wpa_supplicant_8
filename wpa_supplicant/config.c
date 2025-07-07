@@ -5598,8 +5598,6 @@ static const struct global_parse_data global_fields[] = {
 	{ INT(p2p_interface_random_mac_addr), 0 },
 	{ INT(p2p_6ghz_disable), 0 },
 	{ INT(p2p_dfs_chan_enable), 0 },
-	{ BOOL(p2p_pairing_setup), 0 },
-	{ BOOL(p2p_pairing_cache), 0 },
 	{ INT(p2p_bootstrap_methods), 0 },
 	{ INT(p2p_pasn_type), 0 },
 	{ INT(p2p_comeback_after), 0 },
