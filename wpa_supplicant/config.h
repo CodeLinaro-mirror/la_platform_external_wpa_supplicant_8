@@ -913,8 +913,6 @@ struct wpa_config {
 	int p2p_optimize_listen_chan;
 	int p2p_6ghz_disable;
 	int p2p_dfs_chan_enable;
-	bool p2p_pairing_setup;
-	bool p2p_pairing_cache;
 	int p2p_bootstrap_methods;
 	int p2p_pasn_type;
 	int p2p_comeback_after;
