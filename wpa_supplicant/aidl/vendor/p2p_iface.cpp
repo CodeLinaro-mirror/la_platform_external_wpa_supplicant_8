@@ -211,7 +211,7 @@ int joinGroup(
 		wpa_s, wpa_network, 0, 0, freq, 0, ht40, vht,
 		CONF_OPER_CHWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s),
 		P2P_JOIN_LIMIT, isAnyEtherAddr(group_owner_bssid) ? NULL : group_owner_bssid,
-		NULL, NULL, NULL, 0)) {
+		NULL, NULL, NULL, 0, true)) {
 		ret = -1;
 	}
 
@@ -1817,7 +1817,7 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
 			CONF_OPER_CHWIDTH_USE_HT, he, edmg, NULL, 0, 0,
 			is6GhzAllowed(wpa_s), 0, NULL,
-			NULL, NULL, NULL, 0)) {
+			NULL, NULL, NULL, 0, false)) {
 			return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
