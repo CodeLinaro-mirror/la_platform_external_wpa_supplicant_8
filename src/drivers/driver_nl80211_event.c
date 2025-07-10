@@ -903,6 +903,47 @@ out:
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
+static void mlme_event_link_removal(struct wpa_driver_nl80211_data *drv,
+				    struct nlattr *mlo_links)
+{
+	struct nlattr *link;
+	u16 removed_links = 0;
+	int rem_links, i;
+
+	if (!mlo_links)
+		return;
+	nla_for_each_nested(link, mlo_links, rem_links) {
+		struct nlattr *tb[NL80211_ATTR_MAX + 1];
+		int link_id;
+
+		nla_parse(tb, NL80211_ATTR_MAX, nla_data(link), nla_len(link),
+			  NULL);
+
+		if (!tb[NL80211_ATTR_MLO_LINK_ID])
+			continue;
+
+		link_id = nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
+		if (link_id >= MAX_NUM_MLD_LINKS)
+			continue;
+
+		removed_links |= BIT(link_id);
+	}
+
+	drv->sta_mlo_info.valid_links &= ~removed_links;
+	drv->sta_mlo_info.req_links &= ~removed_links;
+
+	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+		if (!(removed_links & BIT(i)))
+			continue;
+
+		os_memset(&drv->sta_mlo_info.links[i], 0,
+			  sizeof(drv->sta_mlo_info.links[i]));
+	}
+
+	wpa_supplicant_event(drv->ctx, EVENT_LINK_RECONFIG, NULL);
+}
+
+
 static void mlme_event_connect(struct wpa_driver_nl80211_data *drv,
 			       enum nl80211_commands cmd, bool qca_roam_auth,
 			       struct nlattr *status,
@@ -1640,6 +1681,69 @@ static void mlme_event_unprot_beacon(struct wpa_driver_nl80211_data *drv,
 	os_memset(&event, 0, sizeof(event));
 	event.unprot_beacon.sa = mgmt->sa;
 	wpa_supplicant_event(drv->ctx, EVENT_UNPROT_BEACON, &event);
+}
+
+
+static void mlme_event_link_addition(struct wpa_driver_nl80211_data *drv,
+				     const u8 *frame, size_t len)
+{
+	const struct ieee80211_mgmt *mgmt;
+	union wpa_event_data event;
+	u16 curr_valid_links, added_links;
+	u8 count;
+	const u8 *resp_ie;
+	const u8 *end;
+
+	if (!frame) {
+		wpa_printf(MSG_DEBUG,
+			   "Link Reconfiguration Response frame is NULL - unspecified reason");
+		return;
+	}
+	wpa_hexdump(MSG_DEBUG, "JKM", frame, len);
+	end = frame + len;
+
+	os_memset(&event, 0, sizeof(event));
+
+	mgmt = (const struct ieee80211_mgmt *) frame;
+
+	if (len < 24 + 1 + sizeof(mgmt->u.action.u.link_reconf_resp)) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Too short Link Reconfig Response frame");
+		return;
+	}
+
+	count = mgmt->u.action.u.link_reconf_resp.count;
+	event.reconfig_info.count = count;
+	resp_ie = mgmt->u.action.u.link_reconf_resp.variable;
+	if (end - resp_ie < 3 * count) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Truncated Link Reconfig Response frame");
+		return;
+	}
+	event.reconfig_info.status_list = resp_ie;
+	resp_ie += 3 * count;
+	curr_valid_links = drv->sta_mlo_info.valid_links;
+
+	if (get_sta_mlo_interface_info(drv) < 0) {
+		wpa_printf(MSG_INFO, "nl80211: Failed to get STA MLO info");
+		return;
+	}
+
+	if (!nl80211_get_assoc_bssid(drv)) {
+		wpa_printf(MSG_INFO,
+			   "nl80211: Failed to get BSSID info for newly added links");
+		return;
+	}
+
+	added_links = ~curr_valid_links & drv->sta_mlo_info.valid_links;
+
+	event.reconfig_info.resp_ie = resp_ie;
+	event.reconfig_info.resp_ie_len = end - resp_ie;
+	event.reconfig_info.added_links = added_links;
+
+	drv->sta_mlo_info.req_links = drv->sta_mlo_info.valid_links;
+
+	wpa_supplicant_event(drv->ctx, EVENT_SETUP_LINK_RECONFIG, &event);
 }
 
 
@@ -4282,7 +4386,10 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		break;
 #endif /* CONFIG_IEEE80211AX */
 	case NL80211_CMD_LINKS_REMOVED:
-		wpa_supplicant_event(drv->ctx, EVENT_LINK_RECONFIG, NULL);
+		mlme_event_link_removal(drv, tb[NL80211_ATTR_MLO_LINKS]);
+		break;
+	case NL80211_CMD_ASSOC_MLO_RECONF:
+		mlme_event_link_addition(drv, nla_data(frame), nla_len(frame));
 		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
