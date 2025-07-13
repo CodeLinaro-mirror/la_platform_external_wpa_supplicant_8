@@ -752,9 +752,11 @@ hostapd_cc_binary {
 cc_library_static {
     name: "libhostapd_aidl",
     soc_specific: true,
+    enabled: true,
     srcs: [
         "aidl/aidl.cpp",
         "aidl/hostapd.cpp",
+        "src/common/ieee802_11_common.c",
     ],
     shared_libs: [
         "android.hardware.wifi.hostapd-V3-ndk",
