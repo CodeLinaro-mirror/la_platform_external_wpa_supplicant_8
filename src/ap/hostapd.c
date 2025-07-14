@@ -3478,10 +3478,10 @@ void hostapd_interface_deinit_free(struct hostapd_iface *iface)
 		   (unsigned int) iface->conf->num_bss);
 	driver = iface->bss[0]->driver;
 	drv_priv = iface->bss[0]->drv_priv;
-	hostapd_interface_deinit(iface);
 	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
 		   __func__, driver, drv_priv);
 	hostapd_cleanup_driver(driver, drv_priv, iface);
+	hostapd_interface_deinit(iface);
 	hostapd_interface_free(iface);
 }
 
