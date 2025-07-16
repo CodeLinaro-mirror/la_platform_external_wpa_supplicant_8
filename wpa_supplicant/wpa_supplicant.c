@@ -740,6 +740,11 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s) {
   os_free(wpa_s->last_scan_res);
   wpa_s->last_scan_res = NULL;
 
+#ifdef CONFIG_P2P
+	os_free(wpa_s->p2p_pmksa_entry);
+	wpa_s->p2p_pmksa_entry = NULL;
+#endif /* CONFIG_P2P */
+
 #ifdef CONFIG_HS20
 	if (wpa_s->drv_priv)
 		wpa_drv_configure_frame_filters(wpa_s, 0);
@@ -4508,6 +4513,15 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit) {
     wpa_supplicant_req_auth_timeout(wpa_s, timeout, 0);
   }
 
+#ifdef CONFIG_P2P
+	if (ssid->pmk_valid && wpa_s->p2p_pmksa_entry &&
+	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)) {
+		wpa_sm_pmksa_cache_add_entry(wpa_s->wpa,
+					     wpa_s->p2p_pmksa_entry);
+		wpa_s->p2p_pmksa_entry = NULL;
+	}
+#endif /* CONFIG_P2P */
+
 #ifdef CONFIG_WEP
   if (wep_keys_set &&
       (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SET_KEYS_AFTER_ASSOC)) {
@@ -7159,6 +7173,14 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
     wpa_printf(MSG_ERROR, "Failed to initialize GAS query");
     return -1;
   }
+
+#ifdef CONFIG_P2P
+	if (wpa_s->drv_flags2 & (WPA_DRIVER_FLAGS2_P2P_FEATURE_V2 |
+				 WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE)) {
+		wpa_s->p2p_pairing_setup = true;
+		wpa_s->p2p_pairing_cache = true;
+	}
+#endif /* CONFIG_P2P */
 
   if ((!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) ||
        wpa_s->p2p_mgmt) &&
