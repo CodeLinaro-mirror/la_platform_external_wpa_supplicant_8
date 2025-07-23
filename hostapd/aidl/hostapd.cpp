@@ -714,15 +714,9 @@ std::string CreateHostapdConfig(
 			channelParams.acsShouldExcludeDfs,
 			freqList_as_string.c_str());
 	} else {
-		int op_class = getOpClassForChannel(
-			channelParams.channel,
-			band,
-			iface_params.hwModeParams.enable80211N,
-			iface_params.hwModeParams.enable80211AC);
 		channel_config_as_string = StringPrintf(
-			"channel=%d\n"
-			"op_class=%d",
-			channelParams.channel, op_class);
+			"channel=%d\n",
+			channelParams.channel);
 	}
 
 	std::string hw_mode_as_string;
@@ -904,7 +898,17 @@ std::string CreateHostapdConfig(
 		break;
 	}
 
-	if (!channelParams.enableAcs && bandwidth > 40) {
+	if (!channelParams.enableAcs) {
+	    if (bandwidth < 80) {
+		int op_class = getOpClassForChannel(
+			channelParams.channel,
+			band,
+			iface_params.hwModeParams.enable80211N,
+			iface_params.hwModeParams.enable80211AC);
+		channel_config_as_string += StringPrintf(
+			"op_class=%d\n",
+			op_class);
+	    } else {
 		int center_segment0 = get_oper_center_freq_seg0_idx(bandwidth, band,
 				channelParams.channel);
 		ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
@@ -921,6 +925,7 @@ std::string CreateHostapdConfig(
 				StringPrintf("eht_oper_centr_freq_seg0_idx=%d\n", center_segment0);
 		}
 #endif /* CONFIG_IEEE80211BE */
+	   }
 	}
 
 #ifdef CONFIG_INTERWORKING
