@@ -2076,7 +2076,12 @@ static void wpas_start_gc(struct wpa_supplicant *wpa_s,
 		entry->network_ctx = ssid;
 		os_memcpy(entry->spa, wpa_s->own_addr, ETH_ALEN);
 
-		wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) {
+			wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+		} else {
+			os_free(wpa_s->p2p_pmksa_entry);
+			wpa_s->p2p_pmksa_entry = entry;
+		}
 		ssid->pmk_valid = true;
 	} else if (res->akmp == WPA_KEY_MGMT_SAE && res->sae_password[0]) {
 		ssid->auth_alg = WPA_AUTH_ALG_SAE;
@@ -6001,12 +6006,9 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 				   "P2P: Failed to update configuration");
 	}
 
-	p2p.pairing_config.enable_pairing_setup =
-		wpa_s->conf->p2p_pairing_setup;
-	p2p.pairing_config.pairing_capable =
-		wpa_s->conf->p2p_pairing_setup;
-	p2p.pairing_config.enable_pairing_cache =
-		wpa_s->conf->p2p_pairing_cache;
+	p2p.pairing_config.enable_pairing_setup = wpa_s->p2p_pairing_setup;
+	p2p.pairing_config.pairing_capable = wpa_s->p2p_pairing_setup;
+	p2p.pairing_config.enable_pairing_cache = wpa_s->p2p_pairing_cache;
 	p2p.pairing_config.bootstrap_methods =
 		wpa_s->conf->p2p_bootstrap_methods;
 	p2p.pairing_config.pasn_type = wpa_s->conf->p2p_pasn_type;
@@ -8257,7 +8259,12 @@ static int wpas_start_p2p_client(struct wpa_supplicant *wpa_s,
 			entry->network_ctx = ssid;
 			os_memcpy(entry->spa, wpa_s->own_addr, ETH_ALEN);
 
-			wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+			if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) {
+				wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+			} else {
+				os_free(wpa_s->p2p_pmksa_entry);
+				wpa_s->p2p_pmksa_entry = entry;
+			}
 			ssid->pmk_valid = true;
 		}
 		wpa_s->current_ssid = ssid;
@@ -11673,6 +11680,8 @@ int wpas_p2p_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 		return -2;
 
 	wpa_s->p2p2 = true;
+	if (wpa_s->p2p_mode == WPA_P2P_MODE_WFD_R1)
+		wpa_s->p2p_mode = WPA_P2P_MODE_WFD_R2;
 	return p2p_pasn_auth_rx(p2p, mgmt, len, freq);
 }
 
