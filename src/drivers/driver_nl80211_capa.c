@@ -1422,6 +1422,12 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 		wpa_printf(MSG_INFO, "Driver support of Enabled Adaptive 11r");
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS_ADAPTIVE_11R;
 	}
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_RSN_OVERRIDE_STA, &info)) {
+		wpa_printf(MSG_DEBUG,
+			   "The driver supports RSN overriding in STA mode");
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
+	}
+
 	os_free(info.flags);
 }
 
@@ -1449,6 +1455,7 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 			WPA_DRIVER_CAPA_KEY_MGMT_WPA_PSK |
 			WPA_DRIVER_CAPA_KEY_MGMT_WPA2 |
 			WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK |
+			WPA_DRIVER_CAPA_KEY_MGMT_PSK_SHA256 |
 			WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B |
 			WPA_DRIVER_CAPA_KEY_MGMT_OWE |
 			WPA_DRIVER_CAPA_KEY_MGMT_DPP;
@@ -1464,6 +1471,7 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 				WPA_DRIVER_CAPA_KEY_MGMT_FILS_SHA384 |
 				WPA_DRIVER_CAPA_KEY_MGMT_FT_FILS_SHA256 |
 				WPA_DRIVER_CAPA_KEY_MGMT_FT_FILS_SHA384 |
+				WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY |
 				WPA_DRIVER_CAPA_KEY_MGMT_SAE;
 		else if (drv->capa.flags & WPA_DRIVER_FLAGS_FILS_SK_OFFLOAD)
 			drv->capa.key_mgmt |=
