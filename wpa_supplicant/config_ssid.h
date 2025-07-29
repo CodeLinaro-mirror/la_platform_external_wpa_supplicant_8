@@ -71,6 +71,20 @@ enum sae_pk_mode {
 };
 
 /**
+ * rsn_overriding - RSN overriding
+ *
+ * 0 = Disabled
+ * 1 = Enabled automatically if the driver indicates support
+ * 2 = Forced to be enabled even without driver capability indication
+ */
+enum wpas_rsn_overriding {
+	RSN_OVERRIDING_NOT_SET = -1,
+	RSN_OVERRIDING_DISABLED = 0,
+	RSN_OVERRIDING_AUTO = 1,
+	RSN_OVERRIDING_ENABLED = 2,
+};
+
+/**
  * struct wpa_ssid - Network configuration data
  *
  * This structure includes all the configuration variables for a network. This
@@ -1191,6 +1205,12 @@ struct wpa_ssid {
 	 * to 1 to have it disabled.
 	 */
 	int disable_eht;
+
+	/**
+	 * rsn_overriding - RSN overriding (per-network override for the global
+	 *	parameter with the same name)
+	 */
+	enum wpas_rsn_overriding rsn_overriding;
 };
 
 #endif /* CONFIG_SSID_H */
