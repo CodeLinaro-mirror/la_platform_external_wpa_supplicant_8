@@ -1312,6 +1312,11 @@ struct wpa_driver_associate_params {
 	 */
 	u32 td_policy;
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
+	/**
+	 * rsn_overriding - wpa_supplicant RSN overriding support
+	 */
+	bool rsn_overriding;
 };
 
 enum hide_ssid {

@@ -876,7 +876,7 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 				"WPA: Failed to get random data for SNonce");
 			goto failed;
 		}
-		if (sm->rsn_override != RSN_OVERRIDE_NOT_USED)
+		if (wpa_sm_rsn_overriding_supported(sm))
 			rsn_set_snonce_cookie(sm->snonce);
 		sm->renew_snonce = 0;
 		wpa_hexdump(MSG_DEBUG, "WPA: Renewed SNonce",
@@ -2093,8 +2093,7 @@ static int wpa_supplicant_validate_ie(struct wpa_sm *sm,
 		return -1;
 	}
 
-	if (sm->proto == WPA_PROTO_RSN &&
-	    sm->rsn_override != RSN_OVERRIDE_NOT_USED) {
+	if (sm->proto == WPA_PROTO_RSN && wpa_sm_rsn_overriding_supported(sm)) {
 		if ((sm->ap_rsne_override && !ie->rsne_override) ||
 		    (!sm->ap_rsne_override && ie->rsne_override) ||
 		    (sm->ap_rsne_override && ie->rsne_override &&
@@ -2307,26 +2306,6 @@ static int wpa_supplicant_validate_link_kde(struct wpa_sm *sm, u8 link_id,
 		rsnxe_len = rsnxe[1] + 2;
 	}
 
-	if (rsn_override_link_kde) {
-		rsnoe = get_vendor_ie(rsn_override_link_kde + 1,
-				      rsn_override_link_kde_len - 1,
-				      RSNE_OVERRIDE_IE_VENDOR_TYPE);
-		if (rsnoe)
-			rsnoe_len = 2 + rsnoe[1];
-
-		rsno2e = get_vendor_ie(rsn_override_link_kde + 1,
-				       rsn_override_link_kde_len - 1,
-				       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
-		if (rsno2e)
-			rsno2e_len = 2 + rsno2e[1];
-
-		rsnxoe = get_vendor_ie(rsn_override_link_kde + 1,
-				       rsn_override_link_kde_len - 1,
-				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
-		if (rsnxoe)
-			rsnxoe_len = 2 + rsnxoe[1];
-	}
-
 	if (wpa_compare_rsn_ie(wpa_key_mgmt_ft(sm->key_mgmt),
 			       sm->mlo.links[link_id].ap_rsne,
 			       sm->mlo.links[link_id].ap_rsne_len,
@@ -2357,6 +2336,29 @@ static int wpa_supplicant_validate_link_kde(struct wpa_sm *sm, u8 link_id,
 		wpa_hexdump(MSG_INFO, "RSNXE in EAPOL-Key msg 3/4",
 			    rsnxe, rsnxe_len);
 		goto fail;
+	}
+
+	if (!wpa_sm_rsn_overriding_supported(sm))
+		return 0;
+
+	if (rsn_override_link_kde) {
+		rsnoe = get_vendor_ie(rsn_override_link_kde + 1,
+				      rsn_override_link_kde_len - 1,
+				      RSNE_OVERRIDE_IE_VENDOR_TYPE);
+		if (rsnoe)
+			rsnoe_len = 2 + rsnoe[1];
+
+		rsno2e = get_vendor_ie(rsn_override_link_kde + 1,
+				       rsn_override_link_kde_len - 1,
+				       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
+		if (rsno2e)
+			rsno2e_len = 2 + rsno2e[1];
+
+		rsnxoe = get_vendor_ie(rsn_override_link_kde + 1,
+				       rsn_override_link_kde_len - 1,
+				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
+		if (rsnxoe)
+			rsnxoe_len = 2 + rsnxoe[1];
 	}
 
 	if ((sm->mlo.links[link_id].ap_rsnoe && !rsnoe) ||
@@ -4553,6 +4555,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
 	case WPA_PARAM_RSN_OVERRIDE:
 		sm->rsn_override = value;
 		break;
+	case WPA_PARAM_RSN_OVERRIDE_SUPPORT:
+		sm->rsn_override_support = value;
+		break;
 	default:
 		break;
 	}
@@ -4658,6 +4663,17 @@ int wpa_sm_pmf_enabled(struct wpa_sm *sm)
 		return 1;
 
 	return 0;
+}
+
+
+bool wpa_sm_rsn_overriding_supported(struct wpa_sm *sm)
+{
+	const u8 *rsne;
+	size_t rsne_len;
+
+	rsne = wpa_sm_get_ap_rsne(sm, &rsne_len);
+
+	return sm->rsn_override_support && rsne;
 }
 
 
