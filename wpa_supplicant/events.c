@@ -2914,7 +2914,8 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 	if (wpa_s->wpa_proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) {
 		const u8 *bss_rsn;
 
-		bss_rsn = wpa_bss_get_rsne(wpa_s, bss, ssid, false);
+		bss_rsn = wpa_bss_get_rsne(wpa_s, bss, ssid,
+					   wpa_s->valid_links);
 		if (bss_rsn) {
 			p = bss_rsn;
 			len = 2 + bss_rsn[1];
@@ -3013,9 +3014,10 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					  union wpa_event_data *data)
 {
 	int l, len, found = 0, found_x = 0, wpa_found, rsn_found;
-	const u8 *p;
+	const u8 *p, *ie;
 	u8 bssid[ETH_ALEN];
 	bool bssid_known;
+	enum wpa_rsn_override rsn_override;
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	struct wpa_ie_data ie;
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
@@ -3227,6 +3229,25 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 		}
 	}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+
+	rsn_override = RSN_OVERRIDE_NOT_USED;
+	ie = get_vendor_ie(data->assoc_info.req_ies,
+			   data->assoc_info.req_ies_len,
+			   RSN_SELECTION_IE_VENDOR_TYPE);
+	if (ie && ie[1] >= 4 + 1) {
+		switch (ie[2 + 4]) {
+		case RSN_SELECTION_RSNE:
+			rsn_override = RSN_OVERRIDE_RSNE;
+			break;
+		case RSN_SELECTION_RSNE_OVERRIDE:
+			rsn_override = RSN_OVERRIDE_RSNE_OVERRIDE;
+			break;
+		case RSN_SELECTION_RSNE_OVERRIDE_2:
+			rsn_override = RSN_OVERRIDE_RSNE_OVERRIDE_2;
+			break;
+		}
+	}
+	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE, rsn_override);
 
 #ifdef CONFIG_FILS
 #ifdef CONFIG_SME
@@ -3470,8 +3491,10 @@ static int wpa_supplicant_assoc_update_ie(struct wpa_supplicant *wpa_s)
 
 	bss_wpa = wpa_bss_get_vendor_ie(wpa_s->current_bss,
 					WPA_IE_VENDOR_TYPE);
-	bss_rsn = wpa_bss_get_rsne(wpa_s, wpa_s->current_bss, NULL, false);
-	bss_rsnx = wpa_bss_get_rsnxe(wpa_s, wpa_s->current_bss, NULL, false);
+	bss_rsn = wpa_bss_get_rsne(wpa_s, wpa_s->current_bss, NULL,
+				   wpa_s->valid_links);
+	bss_rsnx = wpa_bss_get_rsnxe(wpa_s, wpa_s->current_bss, NULL,
+				     wpa_s->valid_links);
 
 	if (wpa_sm_set_ap_wpa_ie(wpa_s->wpa, bss_wpa,
 				 bss_wpa ? 2 + bss_wpa[1] : 0) ||
