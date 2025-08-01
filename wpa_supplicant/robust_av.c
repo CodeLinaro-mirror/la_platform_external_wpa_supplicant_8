@@ -1320,7 +1320,7 @@ static bool dscp_valid_domain_name(const char *str)
 }
 
 
-static void wpas_add_dscp_policy(struct wpa_supplicant *wpa_s,
+static int wpas_add_dscp_policy(struct wpa_supplicant *wpa_s,
 				 struct dscp_policy_data *policy)
 {
 	int ip_ver = 0, res;
@@ -1407,10 +1407,11 @@ static void wpas_add_dscp_policy(struct wpa_supplicant *wpa_s,
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY
 		"add policy_id=%u dscp=%u ip_version=%d%s",
 		policy->policy_id, policy->dscp, ip_ver, policy_str);
-	return;
+	return 0;
 fail:
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY "reject policy_id=%u",
 		policy->policy_id);
+	return -1;
 }
 
 
@@ -1591,16 +1592,37 @@ void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
 		}
 
 		if (policy.req_type == DSCP_POLICY_REQ_ADD)
-			wpas_add_dscp_policy(wpa_s, &policy);
+			res = wpas_add_dscp_policy(wpa_s, &policy);
 		else if (policy.req_type == DSCP_POLICY_REQ_REMOVE)
 			wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY
 				"remove policy_id=%u", policy.policy_id);
-		else
+		else {
 			wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY
 				"reject policy_id=%u", policy.policy_id);
+			res = -1;
+		}
+
+		if (res)
+			continue;
+
+		policies_temp = os_realloc(policies,
+					   (num_dscp_policies + 1)  *
+					   sizeof(struct dscp_policy_data));
+		if (!policies_temp)
+			goto fail;
+
+		policies = policies_temp;
+		policies[num_dscp_policies] = policy;
+		num_dscp_policies++;
 	}
 
+	wpas_notify_qos_policy_request(wpa_s, policies, num_dscp_policies);
+
 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_DSCP_POLICY "request_end");
+
+fail:
+        os_free(policies);
+        return;
 }
 
 
