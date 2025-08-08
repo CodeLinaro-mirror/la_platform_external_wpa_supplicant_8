@@ -1156,18 +1156,6 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		return;
 	}
 
-	/* Check if any of configured channels require DFS */
-	is_dfs0 = hostapd_is_dfs_required(hapd->iface);
-	hapd->iface->freq = freq;
-
-	channel = hostapd_hw_get_channel(hapd, freq);
-	if (!channel) {
-		hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
-			       HOSTAPD_LEVEL_WARNING,
-			       "driver switched to bad channel!");
-		return;
-	}
-
 	switch (width) {
 	case CHAN_WIDTH_80:
 		chwidth = CONF_OPER_CHWIDTH_80MHZ;
@@ -1188,6 +1176,27 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		chwidth = CONF_OPER_CHWIDTH_USE_HT;
 		break;
 	}
+	/* Check if any of configured channels require DFS */
+	is_dfs0 = hostapd_is_dfs_required(hapd->iface);
+#ifdef CONFIG_IEEE80211BE
+	if (is_dfs0 && hapd->iface->freq == freq && hapd->iconf->eht_oper_chwidth == chwidth && punct_bitmap) {
+		wpa_printf(MSG_INFO, "Only punct bitmap updated. In this case, "
+			   "no new CAC start event. So ignore all CAC end "
+			   "events with radar detected.");
+		hapd->iface->ignore_cac_end = true;
+		hapd->iface->cac_started = 1;
+	}
+#endif
+	hapd->iface->freq = freq;
+
+	channel = hostapd_hw_get_channel(hapd, freq);
+	if (!channel) {
+		hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
+			       HOSTAPD_LEVEL_WARNING,
+			       "driver switched to bad channel!");
+		return;
+	}
+
 
 	/* The operating channel changed when CSA finished, so need to update
 	 * hw_mode for all following operations to cover the cases where the
