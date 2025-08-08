@@ -142,6 +142,7 @@ cc_defaults {
         "-DCONFIG_CTRL_IFACE_AIDL",
         "-Wall",
         "-Werror",
+        "-Wno-unused-but-set-variable",
         "-Wno-unused-parameter",
         "-Wno-unused-variable",
         "-Wno-macro-redefined",
