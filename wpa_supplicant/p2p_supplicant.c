@@ -2259,7 +2259,8 @@ static void p2p_go_configured(void *ctx, void *data)
 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
 				       params->peer_device_addr,
 				       params->pmk, params->pmk_len,
-				       params->pmkid, WPA_KEY_MGMT_SAE);
+				       params->pmkid, WPA_KEY_MGMT_SAE,
+				       false);
 		hostapd_add_pmkid(hapd, params->peer_device_addr,
 				  params->pmk, params->pmk_len,
 				  params->pmkid, WPA_KEY_MGMT_SAE);
@@ -2915,7 +2916,8 @@ static void wpas_set_go_security_config(void *ctx,
 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
 				       params->peer_device_addr,
 				       params->pmk, params->pmk_len,
-				       params->pmkid, WPA_KEY_MGMT_SAE);
+				       params->pmkid, WPA_KEY_MGMT_SAE,
+				       false);
 		hostapd_add_pmkid(hapd, params->peer_device_addr,
 				  params->pmk, params->pmk_len,
 				  params->pmkid, WPA_KEY_MGMT_SAE);
@@ -3133,7 +3135,9 @@ static void wpas_dev_found(void *ctx, const u8 *addr,
 
 	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_DEVICE_FOUND MACSTR
 		       " p2p_dev_addr=" MACSTR
-		       " pri_dev_type=%s name='%s' config_methods=0x%x dev_capab=0x%x group_capab=0x%x%s%s%s new=%d pcea_cap_info=0x%x bootstrap_methods=0x%x pasn_type=0x%x",
+		       " pri_dev_type=%s name='%s' config_methods=0x%x "
+		       "dev_capab=0x%x group_capab=0x%x%s%s%s%s%s new=%d",
+		       "pcea_cap_info=0x%x bootstrap_methods=0x%x pasn_type=0x%x",
 		       MAC2STR(addr), MAC2STR(info->p2p_device_addr),
 		       wps_dev_type_bin2str(info->pri_dev_type, devtype,
 					    sizeof(devtype)),
@@ -3141,6 +3145,8 @@ static void wpas_dev_found(void *ctx, const u8 *addr,
 		       info->dev_capab, info->group_capab,
 		       wfd_dev_info_hex ? " wfd_dev_info=0x" : "",
 		       wfd_dev_info_hex ? wfd_dev_info_hex : "",
+		       wfd_r2_dev_info_hex ? " wfd_r2_dev_info=0x" : "",
+		       wfd_r2_dev_info_hex ? wfd_r2_dev_info_hex : "",
 		       info->vendor_elems ? " vendor_elems=1" : "",
 		       new_device, info->pcea_cap_info,
 		       info->pairing_config.bootstrap_methods,
@@ -3148,9 +3154,14 @@ static void wpas_dev_found(void *ctx, const u8 *addr,
 
 done:
 	os_free(wfd_dev_info_hex);
+	os_free(wfd_r2_dev_info_hex);
 #endif /* CONFIG_NO_STDOUT_DEBUG */
 
-	wpas_notify_p2p_device_found(ctx, info->p2p_device_addr, new_device);
+	wpas_notify_p2p_device_found(ctx, addr, info, wfd_dev_info,
+				     wfd_dev_info_len, wfd_r2_dev_info,
+				     wfd_r2_dev_info_len, new_device);
+	os_free(wfd_dev_info);
+	os_free(wfd_r2_dev_info);
 }
 
 
