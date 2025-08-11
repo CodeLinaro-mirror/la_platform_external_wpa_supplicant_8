@@ -102,7 +102,7 @@ cc_defaults {
     shared_libs: [
         "android.hardware.wifi.supplicant-V4-ndk",
         "android.system.keystore2-V1-ndk",
-        "vendor.qti.hardware.wifi.supplicant-V1-ndk",
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbinder_ndk",
         "libbase",
         "libc",
@@ -719,9 +719,9 @@ cc_defaults {
         "-DCONFIG_DPP3",
         "-DCONFIG_FST",
         "-DCONFIG_OCV",
-        "-DCONFIG_SUPPLICANT_VENDOR_AIDL",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
+        "-DCONFIG_USE_VENDOR_AIDL",
     ],
 }
 
@@ -743,16 +743,9 @@ cc_defaults {
         "src/fst/fst_ctrl_iface.c",
         "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_eht.c",
-        "vendor_aidl/aidl_vendor.cpp",
-        "vendor_aidl/aidl_vendor_manager.cpp",
-        "vendor_aidl/vendorsta_iface.cpp",
-        "vendor_aidl/supplicantvendor.cpp",
     ],
     shared_libs: [
-        "vendor.qti.hardware.wifi.supplicant-V1-ndk",
-    ],
-    export_include_dirs: [
-        "vendor_aidl",
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
     ],
 }
 
@@ -1561,6 +1554,8 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
+        "aidl/vendor/supplicant_vendor.cpp",
+        "aidl/vendor/vendorsta_iface.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V4-ndk",
