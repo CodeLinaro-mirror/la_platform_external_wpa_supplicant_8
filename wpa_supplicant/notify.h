@@ -267,5 +267,8 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
 void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 					  int subscribe_id,
 					  enum nan_de_reason reason);
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg);
+#endif
 
 #endif /* NOTIFY_H */

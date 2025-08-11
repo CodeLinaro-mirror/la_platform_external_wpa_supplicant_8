@@ -4057,7 +4057,7 @@ fail:
 #endif /* CONFIG_NAN_USD */
 
 
-static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 					      char *buf, char *reply,
 					      int reply_size,
 					      struct sockaddr_storage *from,
