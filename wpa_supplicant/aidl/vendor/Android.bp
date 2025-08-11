@@ -11,6 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Changes from Qualcomm Technologies, Inc. are provided under the following license:
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 
 package {
     // See: http://go/android-license-faq
@@ -27,11 +31,24 @@ cc_library_headers {
     soc_specific: true,
 }
 
-cc_library_static {
-    name: "libwpa_aidl_bp",
-    srcs: [
-        "aidl_manager.cpp",
+soong_config_module_type {
+    name: "wpa_cc_library_static_aidl_vendor_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "srcs",
+    ],
+}
+
+wpa_cc_library_static_aidl_vendor_type {
+     name: "libwpa_aidl_bp",
+     soc_specific: true,
+     srcs: [
         "aidl.cpp",
+        "aidl_manager.cpp",
         "certificate_utils.cpp",
         "iface_config_utils.cpp",
         "p2p_iface.cpp",
@@ -41,12 +58,14 @@ cc_library_static {
         "sta_network.cpp",
         "supplicant.cpp",
         "supplicant_wifi_rtt_controller.cpp",
+        "sta_iface.cpp",
+        "sta_network.cpp",
+        "supplicant.cpp",
     ],
     defaults: [
         "libwpa_aidl_cflags_defaults",
         "wpa_supplicant_cflags_defaults",
     ],
-    soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
         "android.system.keystore2-V1-ndk",
@@ -70,11 +89,25 @@ cc_library_static {
         "libwpa_aidl_headers",
         "libwpa_shared_aidl_headers_vendor",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            srcs: [
+                "supplicant_vendor.cpp",
+                "vendorsta_iface.cpp",
+            ],
+        },
+    },
 }
 
 vintf_fragment {
     name: "android.hardware.wifi.supplicant.xml",
     src: "android.hardware.wifi.supplicant.xml",
+    soc_specific: true,
+}
+
+vintf_fragment {
+    name: "android.hardware.wifi.supplicant.vendor.xml",
+    src: "android.hardware.wifi.supplicant.vendor.xml",
     soc_specific: true,
 }
 
@@ -97,9 +130,27 @@ libwpa_aidl_cflags_cc_defaults {
     },
 }
 
-prebuilt_etc {
+soong_config_module_type {
+    name: "supplicant_manifest_prebuilt",
+    module_type: "prebuilt_etc",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "src",
+    ],
+}
+
+supplicant_manifest_prebuilt {
     name: "android.hardware.wifi.supplicant.xml.prebuilt",
-    src: "android.hardware.wifi.supplicant.xml",
     relative_install_path: "vintf",
     installable: false,
+    src: "android.hardware.wifi.supplicant.xml",
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            src: "android.hardware.wifi.supplicant.vendor.xml",
+        },
+    },
 }
+
