@@ -1640,3 +1640,13 @@ void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 }
 
 #endif /* CONFIG_NAN_USD */
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
+				    const char* msg)
+{
+	if (!wpa_s || !msg)
+		return;
+	wpas_aidl_notify_vendor_ctrl_event(wpa_s, msg);
+}
+#endif

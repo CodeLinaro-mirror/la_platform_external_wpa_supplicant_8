@@ -696,6 +696,7 @@ cc_defaults {
         "-DCONFIG_OCV",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
+        "-DCONFIG_USE_VENDOR_AIDL",
     ],
 }
 
@@ -717,6 +718,9 @@ cc_defaults {
         "src/fst/fst_ctrl_iface.c",
         "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_eht.c",
+    ],
+    shared_libs: [
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
     ],
 }
 
@@ -1517,6 +1521,8 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
+        "aidl/vendor/supplicant_vendor.cpp",
+        "aidl/vendor/vendorsta_iface.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
