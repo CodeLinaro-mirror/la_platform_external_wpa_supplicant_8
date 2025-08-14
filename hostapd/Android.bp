@@ -508,6 +508,7 @@ hostapd_cc_defaults_type {
         "-DCONFIG_ACS",
         "-DCONFIG_ANDROID_LOG",
         "-DCONFIG_CTRL_IFACE_AIDL",
+        "-DALL_DH_GROUPS",
     ] + select(soong_config_variable("wpa_supplicant_8", "hostapd_use_stub_lib"), {
         true: ["-DANDROID_LIB_STUB"],
         default: [],
