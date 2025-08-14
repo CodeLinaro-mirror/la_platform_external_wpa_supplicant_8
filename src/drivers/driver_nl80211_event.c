@@ -131,13 +131,55 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_SET_QOS_MAP)
 	C2S(NL80211_CMD_ADD_TX_TS)
 	C2S(NL80211_CMD_DEL_TX_TS)
+	C2S(NL80211_CMD_GET_MPP)
+	C2S(NL80211_CMD_JOIN_OCB)
+	C2S(NL80211_CMD_LEAVE_OCB)
+	C2S(NL80211_CMD_CH_SWITCH_STARTED_NOTIFY)
+	C2S(NL80211_CMD_TDLS_CHANNEL_SWITCH)
+	C2S(NL80211_CMD_TDLS_CANCEL_CHANNEL_SWITCH)
 	C2S(NL80211_CMD_WIPHY_REG_CHANGE)
+	C2S(NL80211_CMD_ABORT_SCAN)
+	C2S(NL80211_CMD_START_NAN)
+	C2S(NL80211_CMD_STOP_NAN)
+	C2S(NL80211_CMD_ADD_NAN_FUNCTION)
+	C2S(NL80211_CMD_DEL_NAN_FUNCTION)
+	C2S(NL80211_CMD_CHANGE_NAN_CONFIG)
+	C2S(NL80211_CMD_NAN_MATCH)
+	C2S(NL80211_CMD_SET_MULTICAST_TO_UNICAST)
+	C2S(NL80211_CMD_UPDATE_CONNECT_PARAMS)
+	C2S(NL80211_CMD_SET_PMK)
+	C2S(NL80211_CMD_DEL_PMK)
 	C2S(NL80211_CMD_PORT_AUTHORIZED)
+	C2S(NL80211_CMD_RELOAD_REGDB)
 	C2S(NL80211_CMD_EXTERNAL_AUTH)
 	C2S(NL80211_CMD_STA_OPMODE_CHANGED)
 	C2S(NL80211_CMD_CONTROL_PORT_FRAME)
+	C2S(NL80211_CMD_GET_FTM_RESPONDER_STATS)
+	C2S(NL80211_CMD_PEER_MEASUREMENT_START)
+	C2S(NL80211_CMD_PEER_MEASUREMENT_RESULT)
+	C2S(NL80211_CMD_PEER_MEASUREMENT_COMPLETE)
+	C2S(NL80211_CMD_NOTIFY_RADAR)
 	C2S(NL80211_CMD_UPDATE_OWE_INFO)
+	C2S(NL80211_CMD_PROBE_MESH_LINK)
+	C2S(NL80211_CMD_SET_TID_CONFIG)
 	C2S(NL80211_CMD_UNPROT_BEACON)
+	C2S(NL80211_CMD_CONTROL_PORT_FRAME_TX_STATUS)
+	C2S(NL80211_CMD_SET_SAR_SPECS)
+	C2S(NL80211_CMD_OBSS_COLOR_COLLISION)
+	C2S(NL80211_CMD_COLOR_CHANGE_REQUEST)
+	C2S(NL80211_CMD_COLOR_CHANGE_STARTED)
+	C2S(NL80211_CMD_COLOR_CHANGE_ABORTED)
+	C2S(NL80211_CMD_COLOR_CHANGE_COMPLETED)
+	C2S(NL80211_CMD_SET_FILS_AAD)
+	C2S(NL80211_CMD_ASSOC_COMEBACK)
+	C2S(NL80211_CMD_ADD_LINK)
+	C2S(NL80211_CMD_REMOVE_LINK)
+	C2S(NL80211_CMD_ADD_LINK_STA)
+	C2S(NL80211_CMD_MODIFY_LINK_STA)
+	C2S(NL80211_CMD_REMOVE_LINK_STA)
+	C2S(NL80211_CMD_SET_HW_TIMESTAMP)
+	C2S(NL80211_CMD_LINKS_REMOVED)
+	C2S(NL80211_CMD_SET_TID_TO_LINK_MAPPING)
 	default:
 		return "NL80211_CMD_UNKNOWN";
 	}
@@ -2039,6 +2081,14 @@ static void qca_nl80211_key_mgmt_auth(struct wpa_driver_nl80211_data *drv,
 			   tb[QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_FILS_ERP_NEXT_SEQ_NUM],
 			   tb[QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_PMK],
 			   tb[QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_PMKID]);
+
+#ifdef ANDROID
+#ifdef ANDROID_LIB_EVENT
+	wpa_driver_nl80211_driver_event(
+		drv, OUI_QCA, QCA_NL80211_VENDOR_SUBCMD_KEY_MGMT_ROAM_AUTH,
+		(u8 *)data, len);
+#endif /* ANDROID_LIB_EVENT */
+#endif /* ANDROID */
 }
 
 
@@ -2049,7 +2099,6 @@ qca_nl80211_key_mgmt_auth_handler(struct wpa_driver_nl80211_data *drv,
 	if (!drv->roam_indication_done) {
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Pending roam indication, delay processing roam+auth vendor event");
-		os_get_reltime(&drv->pending_roam_ind_time);
 
 		os_free(drv->pending_roam_data);
 		drv->pending_roam_data = os_memdup(data, len);
@@ -2437,7 +2486,13 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 
 #ifdef ANDROID
 #ifdef ANDROID_LIB_EVENT
-       wpa_driver_nl80211_driver_event(drv, vendor_id, subcmd, data, len);
+	/* Postpone QCA roam+auth event indication to the point when both that
+	 * and the NL80211_CMD_ROAM event have been received (see calls to
+	 * qca_nl80211_key_mgmt_auth() and drv->pending_roam_data). */
+	if (!(vendor_id == OUI_QCA &&
+	      subcmd == QCA_NL80211_VENDOR_SUBCMD_KEY_MGMT_ROAM_AUTH))
+		wpa_driver_nl80211_driver_event(drv, vendor_id, subcmd, data,
+						len);
 #endif /* ANDROID_LIB_EVENT */
 #endif /* ANDROID */
 
@@ -2749,17 +2804,10 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 	if (cmd == NL80211_CMD_ROAM &&
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD)) {
 		if (drv->pending_roam_data) {
-			struct os_reltime now, age;
-
-			os_get_reltime(&now);
-			os_reltime_sub(&now, &drv->pending_roam_ind_time, &age);
-			if (age.sec == 0 && age.usec < 100000) {
-				wpa_printf(MSG_DEBUG,
-					   "nl80211: Process pending roam+auth vendor event");
-				qca_nl80211_key_mgmt_auth(
-					drv, drv->pending_roam_data,
-					drv->pending_roam_data_len);
-			}
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Process pending roam+auth vendor event");
+			qca_nl80211_key_mgmt_auth(drv, drv->pending_roam_data,
+						  drv->pending_roam_data_len);
 			os_free(drv->pending_roam_data);
 			drv->pending_roam_data = NULL;
 			return;

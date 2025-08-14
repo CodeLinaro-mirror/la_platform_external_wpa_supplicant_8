@@ -3760,6 +3760,15 @@ int wpa_sm_pmksa_exists(struct wpa_sm *sm, const u8 *bssid,
 }
 
 
+struct rsn_pmksa_cache_entry * wpa_sm_pmksa_cache_get(struct wpa_sm *sm,
+						const u8 *aa,
+						const u8 *pmkid,
+						const void *network_ctx,
+						int akmp)
+{
+	return pmksa_cache_get(sm->pmksa, aa, pmkid, network_ctx, akmp);
+}
+
 void wpa_sm_drop_sa(struct wpa_sm *sm)
 {
 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Clear old PMK and PTK");
@@ -5152,3 +5161,11 @@ void wpa_sm_set_dpp_z(struct wpa_sm *sm, const struct wpabuf *z)
 	}
 }
 #endif /* CONFIG_DPP2 */
+
+
+void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm)
+{
+	if (sm)
+		pmksa_cache_reconfig(sm->pmksa);
+}
+

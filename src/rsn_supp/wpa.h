@@ -189,6 +189,11 @@ void wpa_sm_pmksa_cache_add(struct wpa_sm *sm, const u8 *pmk, size_t pmk_len,
 int wpa_sm_pmksa_exists(struct wpa_sm *sm, const u8 *bssid,
 			const void *network_ctx);
 void wpa_sm_drop_sa(struct wpa_sm *sm);
+struct rsn_pmksa_cache_entry * wpa_sm_pmksa_cache_get(struct wpa_sm *sm,
+						const u8 *aa,
+						const u8 *pmkid,
+						const void *network_ctx,
+						int akmp);
 int wpa_sm_has_ptk(struct wpa_sm *sm);
 int wpa_sm_has_ptk_installed(struct wpa_sm *sm);
 
@@ -204,6 +209,7 @@ void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm,
 			    const u8 *ptk_kck, size_t ptk_kck_len,
 			    const u8 *ptk_kek, size_t ptk_kek_len);
 int wpa_fils_is_completed(struct wpa_sm *sm);
+void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm);
 
 #else /* CONFIG_NO_WPA */
 
@@ -370,6 +376,13 @@ static inline void wpa_sm_drop_sa(struct wpa_sm *sm)
 {
 }
 
+static inline struct rsn_pmksa_cache_entry *
+wpa_sm_pmksa_cache_get(struct wpa_sm *sm, const u8 *aa, const u8 *pmkid,
+		const void *network_ctx, int akmp)
+{
+	return NULL;
+}
+
 static inline int wpa_sm_has_ptk(struct wpa_sm *sm)
 {
 	return 0;
@@ -404,6 +417,10 @@ static inline void wpa_sm_set_ptk_kck_kek(struct wpa_sm *sm, const u8 *ptk_kck,
 static inline int wpa_fils_is_completed(struct wpa_sm *sm)
 {
 	return 0;
+}
+
+static inline void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm)
+{
 }
 
 #endif /* CONFIG_NO_WPA */

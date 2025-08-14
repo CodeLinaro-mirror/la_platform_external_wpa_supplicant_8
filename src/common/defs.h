@@ -49,6 +49,7 @@
 #define WPA_KEY_MGMT_OWE BIT(22)
 #define WPA_KEY_MGMT_DPP BIT(23)
 #define WPA_KEY_MGMT_FT_IEEE8021X_SHA384 BIT(24)
+#define WPA_KEY_MGMT_SAE_EXT_KEY BIT(26)
 
 #define WPA_KEY_MGMT_FT (WPA_KEY_MGMT_FT_PSK | \
 			 WPA_KEY_MGMT_FT_IEEE8021X | \
@@ -166,6 +167,13 @@ static inline int wpa_key_mgmt_cckm(int akm)
 	return akm == WPA_KEY_MGMT_CCKM;
 }
 
+static inline int wpa_key_mgmt_cross_akm(int akm)
+{
+	return !!(akm & (WPA_KEY_MGMT_PSK |
+			 WPA_KEY_MGMT_PSK_SHA256 |
+			 WPA_KEY_MGMT_SAE |
+			 WPA_KEY_MGMT_SAE_EXT_KEY));
+}
 
 #define WPA_PROTO_WPA BIT(0)
 #define WPA_PROTO_RSN BIT(1)
