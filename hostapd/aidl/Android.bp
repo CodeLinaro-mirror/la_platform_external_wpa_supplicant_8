@@ -32,7 +32,6 @@ cc_library_static {
     soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.hostapd-V1-ndk",
-        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
         "libbinder_ndk",
         "libbase",
         "libutils",
