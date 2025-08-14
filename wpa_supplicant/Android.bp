@@ -722,6 +722,7 @@ cc_defaults {
         "-DCONFIG_SUPPLICANT_VENDOR_AIDL",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
+        "-DCONFIG_HE_OVERRIDES",
     ],
 }
 
