@@ -606,6 +606,7 @@ struct hostapd_iface {
 	int freq;
 
 	bool radar_detected;
+	bool ignore_cac_end;
 
 	/* Background radar configuration */
 	struct {
