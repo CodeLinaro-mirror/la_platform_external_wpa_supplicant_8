@@ -321,6 +321,9 @@ struct hostapd_data {
 			   size_t psk_len);
 	void *new_psk_cb_ctx;
 
+	void (*ctrl_event_aidl_cb)(void *ctx, const char* msg);
+	void *ctrl_event_aidl_cb_ctx;
+
 	/* channel switch parameters */
 	struct hostapd_freq_params cs_freq_params;
 	u8 cs_count;
@@ -501,9 +504,8 @@ struct hostapd_data {
 	 * total, additional 7 characters required. */
 	char ctrl_sock_iface[IFNAMSIZ + 7 + 1];
 
-#ifdef CONFIG_TESTING_OPTIONS
 	u8 eht_mld_link_removal_count;
-#endif /* CONFIG_TESTING_OPTIONS */
+	bool eht_mld_link_removal_inprogress;
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_NAN_USD
@@ -856,6 +858,10 @@ int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
 struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
 					       u8 link_id);
 int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
+int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx,
+				bool is_link_remove);
+size_t hostapd_eid_eht_ml_reconfig_len(struct hostapd_data *hapd);
+u8 * hostapd_eid_eht_reconf_ml(struct hostapd_data *hapd, u8 *eid);
 bool hostapd_is_ml_partner(struct hostapd_data *hapd1,
 			   struct hostapd_data *hapd2);
 u8 hostapd_get_mld_id(struct hostapd_data *hapd);
