@@ -29,7 +29,17 @@ cc_library_headers {
 
 cc_library_static {
     name: "libwpa_aidl_bp",
-    srcs: ["*.cpp"],
+    srcs: [
+        "aidl_manager.cpp",
+        "aidl.cpp",
+        "certificate_utils.cpp",
+        "iface_config_utils.cpp",
+        "p2p_iface.cpp",
+        "p2p_network.cpp",
+        "sta_iface.cpp",
+        "sta_network.cpp",
+        "supplicant.cpp",
+    ],
     defaults: [
         "libwpa_aidl_cflags_defaults",
         "wpa_supplicant_cflags_defaults",

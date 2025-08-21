@@ -299,6 +299,9 @@ bool Supplicant::isValid()
 
 ndk::ScopedAStatus Supplicant::addP2pDevInterface(struct wpa_interface iface_params)
 {
+#ifdef MAINLINE_SUPPLICANT
+    return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+#else
 	char primary_ifname[IFNAMSIZ];
 	u32 primary_ifname_len =
 		strlen(iface_params.ifname) - strlen(P2P_MGMT_DEVICE_PREFIX);
@@ -351,13 +354,16 @@ ndk::ScopedAStatus Supplicant::addP2pDevInterface(struct wpa_interface iface_par
 	wpa_s->pending_interface_name[0] = '\0';
 
 	return ndk::ScopedAStatus::ok();
+#endif
 }
 
 std::pair<std::shared_ptr<ISupplicantP2pIface>, ndk::ScopedAStatus>
 Supplicant::addP2pInterfaceInternal(const std::string& name)
 {
 	std::shared_ptr<ISupplicantP2pIface> iface;
-
+#ifdef MAINLINE_SUPPLICANT
+    return {iface, createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+#else
 	// Check if required |ifname| argument is empty.
 	if (name.empty()) {
 		return {nullptr, createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID)};
@@ -431,6 +437,7 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 	// The supplicant core creates a corresponding aidl object via
 	// AidlManager when |wpa_supplicant_add_iface| is called.
 	return getP2pInterfaceInternal(name);
+#endif
 }
 
 std::pair<std::shared_ptr<ISupplicantStaIface>, ndk::ScopedAStatus>

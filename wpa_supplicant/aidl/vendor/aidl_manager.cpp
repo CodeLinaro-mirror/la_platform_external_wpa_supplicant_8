@@ -431,10 +431,34 @@ int32_t AidlManager::areAidlServiceAndClientAtLeastVersion(int32_t expected_vers
 		&& isAidlClientVersionAtLeast(expected_version);
 }
 
+#ifdef MAINLINE_SUPPLICANT
+
+int AidlManager::registerAidlService(struct wpa_global *global)
+{
+    wpa_printf(MSG_INFO, "Registering the mainline supplicant as a lazy service");
+    std::string service_name = "wifi_mainline_supplicant";
+    std::shared_ptr<MainlineSupplicant> service
+		= ndk::SharedRefBase::make<MainlineSupplicant>(global);
+    if (__builtin_available(android __ANDROID_API_V__, *)) {
+        int status =
+            AServiceManager_registerLazyService(service->asBinder().get(), service_name.c_str());
+        if (status != EX_NONE) {
+            wpa_printf(MSG_ERROR, "Registration failed with status %d", status);
+            return 1;
+        }
+        // Initialize the death notifier.
+	    death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
+        return 0;
+    }
+    return 1;
+}
+
+#else
+
 int AidlManager::registerAidlService(struct wpa_global *global)
 {
 	// Create the main aidl service object and register it.
-	wpa_printf(MSG_INFO, "Starting AIDL supplicant");
+	wpa_printf(MSG_INFO, "Registering the vendor AIDL supplicant");
 	supplicant_object_ = ndk::SharedRefBase::make<Supplicant>(global);
 	if (!supplicant_object_->getInterfaceVersion(&aidl_service_version).isOk()) {
 		aidl_service_version = Supplicant::version;
@@ -452,6 +476,8 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
 	return 0;
 }
+
+#endif
 
 /**
  * Register an interface to aidl manager.
@@ -1343,6 +1369,7 @@ void AidlManager::notifyP2pDeviceFound(
 	u8 peer_wfd_device_info_len, const u8 *peer_wfd_r2_device_info,
 	u8 peer_wfd_r2_device_info_len)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !addr || !info)
 		return;
 
@@ -1429,11 +1456,13 @@ void AidlManager::notifyP2pDeviceFound(
 			aidl_peer_wfd_r2_device_info, aidl_vendor_elems);
 		callWithEachP2pIfaceCallback(wpa_s->ifname, func);
 	}
+#endif
 }
 
 void AidlManager::notifyP2pDeviceLost(
 	struct wpa_supplicant *wpa_s, const u8 *p2p_device_addr)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !p2p_device_addr)
 		return;
 
@@ -1445,10 +1474,12 @@ void AidlManager::notifyP2pDeviceLost(
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 				   &ISupplicantP2pIfaceCallback::onDeviceLost,
 				   std::placeholders::_1, macAddrToVec(p2p_device_addr)));
+#endif
 }
 
 void AidlManager::notifyP2pFindStopped(struct wpa_supplicant *wpa_s)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s)
 		return;
 
@@ -1460,12 +1491,14 @@ void AidlManager::notifyP2pFindStopped(struct wpa_supplicant *wpa_s)
 		misc_utils::charBufToString(wpa_s->ifname), std::bind(
 				   &ISupplicantP2pIfaceCallback::onFindStopped,
 				   std::placeholders::_1));
+#endif
 }
 
 void AidlManager::notifyP2pGoNegReq(
 	struct wpa_supplicant *wpa_s, const u8 *src_addr, u16 dev_passwd_id,
 	u8 /* go_intent */)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !src_addr)
 		return;
 
@@ -1480,11 +1513,13 @@ void AidlManager::notifyP2pGoNegReq(
 		std::placeholders::_1, macAddrToVec(src_addr),
 		static_cast<WpsDevPasswordId>(
 			dev_passwd_id)));
+#endif
 }
 
 void AidlManager::notifyP2pGoNegCompleted(
 	struct wpa_supplicant *wpa_s, const struct p2p_go_neg_results *res)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !res)
 		return;
 
@@ -1499,11 +1534,13 @@ void AidlManager::notifyP2pGoNegCompleted(
 		std::placeholders::_1,
 		static_cast<P2pStatusCode>(
 			res->status)));
+#endif
 }
 
 void AidlManager::notifyP2pGroupFormationFailure(
 	struct wpa_supplicant *wpa_s, const char *reason)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !reason)
 		return;
 
@@ -1516,6 +1553,7 @@ void AidlManager::notifyP2pGroupFormationFailure(
 		std::bind(
 		&ISupplicantP2pIfaceCallback::onGroupFormationFailure,
 		std::placeholders::_1, reason));
+#endif
 }
 
 uint32_t convertSupplicantKeyMgmtForP2pGroupConnectionToAidl(int supp_key_mgmt)
@@ -1534,6 +1572,7 @@ void AidlManager::notifyP2pGroupStarted(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 	int persistent, int client, const u8 *ip)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_group_s || !wpa_group_s->parent || !ssid)
 		return;
 
@@ -1592,12 +1631,14 @@ void AidlManager::notifyP2pGroupStarted(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(&ISupplicantP2pIfaceCallback::onGroupStartedWithParams,
 		std::placeholders::_1, params));
+#endif
 }
 
 void AidlManager::notifyP2pGroupRemoved(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 	const char *role)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_group_s || !wpa_group_s->parent || !ssid || !role)
 		return;
 
@@ -1613,12 +1654,14 @@ void AidlManager::notifyP2pGroupRemoved(
 		std::bind(
 		&ISupplicantP2pIfaceCallback::onGroupRemoved,
 		std::placeholders::_1, misc_utils::charBufToString(wpa_group_s->ifname), aidl_is_go));
+#endif
 }
 
 void AidlManager::notifyP2pInvitationReceived(
 	struct wpa_supplicant *wpa_s, const u8 *sa, const u8 *go_dev_addr,
 	const u8 *bssid, int id, int op_freq)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !sa || !go_dev_addr || !bssid)
 		return;
 
@@ -1638,11 +1681,13 @@ void AidlManager::notifyP2pInvitationReceived(
 		&ISupplicantP2pIfaceCallback::onInvitationReceived,
 		std::placeholders::_1, macAddrToVec(sa), macAddrToVec(go_dev_addr),
 		macAddrToVec(bssid), aidl_network_id, op_freq));
+#endif
 }
 
 void AidlManager::notifyP2pInvitationResult(
 	struct wpa_supplicant *wpa_s, int status, const u8 *bssid)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s)
 		return;
 
@@ -1657,6 +1702,7 @@ void AidlManager::notifyP2pInvitationResult(
 		std::placeholders::_1, bssid ? macAddrToVec(bssid) : kZeroBssid,
 		static_cast<P2pStatusCode>(
 			status)));
+#endif
 }
 
 void AidlManager::notifyP2pProvisionDiscovery(
@@ -1665,6 +1711,7 @@ void AidlManager::notifyP2pProvisionDiscovery(
 	unsigned int generated_pin, const char *group_ifname,
 	u16 pairing_bootstrapping_method)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !dev_addr)
 		return;
 
@@ -1718,12 +1765,14 @@ void AidlManager::notifyP2pProvisionDiscovery(
 			static_cast<P2pProvDiscStatusCode>(status),
 			static_cast<WpsConfigMethods>(config_methods), aidl_generated_pin));
 	}
+#endif
 }
 
 void AidlManager::notifyP2pSdResponse(
 	struct wpa_supplicant *wpa_s, const u8 *sa, u16 update_indic,
 	const u8 *tlvs, size_t tlvs_len)
 {
+#ifdef CONFIG_P2P
 	if (!wpa_s || !sa || !tlvs)
 		return;
 
@@ -1737,6 +1786,7 @@ void AidlManager::notifyP2pSdResponse(
 		&ISupplicantP2pIfaceCallback::onServiceDiscoveryResponse,
 		std::placeholders::_1, macAddrToVec(sa), update_indic,
 		byteArrToVec(tlvs, tlvs_len)));
+#endif
 }
 
 void AidlManager::notifyApStaAuthorized(
