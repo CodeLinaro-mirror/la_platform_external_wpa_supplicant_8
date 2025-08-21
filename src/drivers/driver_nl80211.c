@@ -9781,7 +9781,7 @@ int nl80211_ml_reconfig_link_remove(struct i802_bss *bss,
 	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_REMOVE_LINK);
 	if (!msg ||
 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, params->link_id) ||
-	    nla_put_u16(msg, NL80211_ATTR_AP_REMOVAL_COUNT, params->removal_count) ||
+	    nla_put_u32(msg, NL80211_ATTR_AP_REMOVAL_COUNT, params->removal_count) ||
 	    nla_put(msg, NL80211_ATTR_IE, params->ml_reconfig_elem_len,
 		    params->ml_reconfig_elem)) {
 		nlmsg_free(msg);
