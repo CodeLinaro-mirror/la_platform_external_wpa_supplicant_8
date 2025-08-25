@@ -4977,8 +4977,6 @@ void p2p_set_managed_oper(struct p2p_data *p2p, int enabled)
 }
 
 
-#ifdef CONFIG_TESTING_OPTIONS
-
 void p2p_set_bootstrapmethods(struct p2p_data *p2p, int bootstrap_methods)
 {
 	p2p_dbg(p2p, "Bootstraping methods: 0x%x", bootstrap_methods);
@@ -5041,8 +5039,6 @@ void p2p_set_invitation_op_freq(struct p2p_data *p2p, int freq)
 	p2p->cfg->inv_op_class = op_class;
 	p2p->cfg->inv_op_channel = channel;
 }
-
-#endif /* CONFIG_TESTING_OPTIONS */
 
 
 int p2p_config_get_random_social(struct p2p_config *p2p, u8 *op_class,
@@ -6162,6 +6158,10 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
 		p2p_dbg(p2p, "Failed to add a peer P2P Device");
 		return;
 	}
+
+	if (msg.device_name[0])
+		os_memcpy(dev->info.device_name, msg.device_name,
+			  sizeof(dev->info.device_name));
 
 	dev->p2p2 = true;
 	/* Reset info from old IEs */
