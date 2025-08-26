@@ -5679,6 +5679,7 @@ static const struct global_parse_data global_fields[] = {
 	{ FUNC(mld_connect_bssid_pref), 0 },
 #endif /* CONFIG_TESTING_OPTIONS */
 	{ BOOL(ft_prepend_pmkid), CFG_CHANGED_FT_PREPEND_PMKID },
+	{ BOOL(disable_op_classes_80_80_mhz), 0 },
 	/* NOTE: When adding new parameters here, add_interface() in
 	 * wpa_supplicant/dbus_new_introspect.c may need to be modified to
 	 * increase the size of the iface->xml buffer. */
