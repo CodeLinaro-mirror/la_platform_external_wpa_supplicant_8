@@ -51,6 +51,7 @@ struct nan_publish_params;
 
 #define HOSTAPD_CHAN_INDOOR_ONLY 0x00010000
 #define HOSTAPD_CHAN_GO_CONCURRENT 0x00020000
+#define HOSTAPD_CHAN_AUTO_BW 0x00040000
 
 /* Allowed bandwidth mask */
 enum hostapd_chan_width_attr {
@@ -1430,6 +1431,11 @@ struct wpa_driver_associate_params {
 	 * bssid_filter_count - Number of allowed BSSIDs
 	 */
 	unsigned int bssid_filter_count;
+
+	/**
+	 * p2p_mode - P2P R1 only, P2P R2 only, or PCC mode
+	 */
+	enum wpa_p2p_mode p2p_mode;
 };
 
 enum hide_ssid {
@@ -2771,6 +2777,22 @@ struct wpa_mlo_signal_info {
 };
 
 /**
+ * struct wpa_mlo_reconfig_info - Information about user-requested add and/or
+ * remove setup links for the current MLO association.
+ *
+ * @add_links: Bitmask of links to be added
+ * @add_link_bssid: Array of BSSIDs for the links to be added
+ * @add_link_freq: Array of frequencies for the links to be added
+ * @delete_links: Bitmask of links to be removed
+ */
+struct wpa_mlo_reconfig_info {
+	u16 add_links;
+	u8 add_link_bssid[MAX_NUM_MLD_LINKS][ETH_ALEN];
+	int add_link_freq[MAX_NUM_MLD_LINKS];
+	u16 delete_links;
+};
+
+/**
  * struct wpa_channel_info - Information about the current channel
  * @frequency: Center frequency of the primary 20 MHz channel
  * @chanwidth: Width of the current operating channel
@@ -3047,6 +3069,14 @@ enum pasn_status {
  * @akmp: Authentication key management protocol type supported.
  * @cipher: Cipher suite.
  * @group: Finite cyclic group. Default group used is 19 (ECC).
+ * @temporary_network: Indicates if a temporary network was created to perform
+ *	PASN authentication.
+ * @password: Password of user requested network.
+ * @comeback_len: Length of the comeback cookie data.
+ * @comeback: Comeback cookie data that may be present in case a temporary
+ * rejection is received from the AP.
+ * @comeback_after: The time after which the STA can try for PASN handshake in
+ * case of temporary rejection.
  * @ltf_keyseed_required: Indicates whether LTF keyseed generation is required
  * @status: PASN response status, %PASN_STATUS_SUCCESS for successful
  *	authentication, use %PASN_STATUS_FAILURE if PASN authentication
@@ -3060,6 +3090,11 @@ struct pasn_peer {
 	int akmp;
 	int cipher;
 	int group;
+	bool temporary_network;
+	char *password;
+	size_t comeback_len;
+	u8 *comeback;
+	u16 comeback_after;
 	bool ltf_keyseed_required;
 	enum pasn_status status;
 };
@@ -3858,13 +3893,14 @@ struct wpa_driver_ops {
 	 * @own_addr: Source address and BSSID for the Disassociation frame
 	 * @addr: MAC address of the station to disassociate
 	 * @reason: Reason code for the Disassociation frame
+	 * @link_id: Link ID to use for Disassociation frame, or -1 if not set
 	 * Returns: 0 on success, -1 on failure
 	 *
 	 * This function requests a specific station to be disassociated and
 	 * a Disassociation frame to be sent to it.
 	 */
 	int (*sta_disassoc)(void *priv, const u8 *own_addr, const u8 *addr,
-			    u16 reason);
+			    u16 reason, int link_id);
 
 	/**
 	 * sta_remove - Remove a station entry (AP only)
@@ -4476,6 +4512,15 @@ struct wpa_driver_ops {
 	 */
 	int (*mlo_signal_poll)(void *priv,
 			       struct wpa_mlo_signal_info *mlo_signal_info);
+
+	/**
+	 * setup_link_reconfig - Used to initiate Link Reconfiguration request
+	 * for the current MLO association.
+	 * @priv: Private driver interface data
+	 * @info: Link reconfiguration request info
+	 */
+	int (*setup_link_reconfig)(void *priv,
+				   struct wpa_mlo_reconfig_info *info);
 
 	/**
 	 * channel_info - Get parameters of the current operating channel
@@ -6114,6 +6159,11 @@ enum wpa_event_type {
 	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
 	 */
 	EVENT_MLD_INTERFACE_FREED,
+
+	/**
+	 * EVENT_SETUP_LINK_RECONFIG - Notification that new AP links added
+	 */
+	EVENT_SETUP_LINK_RECONFIG,
 };
 
 
@@ -7101,6 +7151,17 @@ union wpa_event_data {
 		u8 valid_links;
 		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
 	} t2l_map_info;
+
+	/**
+	 * struct reconfig_info - Data for EVENT_SETUP_LINK_RECONFIG
+	 */
+	struct reconfig_info {
+		u16 added_links;
+		u8 count;
+		const u8 *status_list;
+		const u8 *resp_ie; /* Starting from Group Key Data */
+		size_t resp_ie_len;
+	} reconfig_info;
 };
 
 /**

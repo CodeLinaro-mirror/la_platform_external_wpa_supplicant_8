@@ -2435,10 +2435,36 @@ static int hostapd_ctrl_register_frame(struct hostapd_data *hapd,
 
 #ifdef NEED_AP_MLME
 
+static struct hostapd_hw_modes * get_target_hw_mode(struct hostapd_iface *iface,
+						    int freq)
+{
+	int i;
+	enum hostapd_hw_mode target_mode;
+	bool is_6ghz = is_6ghz_freq(freq);
+
+	if (freq < 4000)
+		target_mode = HOSTAPD_MODE_IEEE80211G;
+	else if (freq > 50000)
+		target_mode = HOSTAPD_MODE_IEEE80211AD;
+	else
+		target_mode = HOSTAPD_MODE_IEEE80211A;
+
+	for (i = 0; i < iface->num_hw_features; i++) {
+		struct hostapd_hw_modes *mode;
+
+		mode = &iface->hw_features[i];
+		if (mode->mode == target_mode && mode->is_6ghz == is_6ghz)
+			return mode;
+	}
+
+	return NULL;
+}
+
+
 static bool
-hostapd_ctrl_is_freq_in_cmode(struct hostapd_hw_modes *mode,
-			      struct hostapd_multi_hw_info *current_hw_info,
-			      int freq)
+hostapd_ctrl_is_freq_in_mode(struct hostapd_hw_modes *mode,
+			     struct hostapd_multi_hw_info *current_hw_info,
+			     int freq)
 {
 	struct hostapd_channel_data *chan;
 	int i;
@@ -2655,6 +2681,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 {
 #ifdef NEED_AP_MLME
 	struct csa_settings settings;
+	struct hostapd_hw_modes *target_mode;
 	int ret;
 	int dfs_range = 0;
 	unsigned int i;
@@ -2673,10 +2700,16 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 		settings.link_id = iface->bss[0]->mld_link_id;
 #endif /* CONFIG_IEEE80211BE */
 
+	target_mode = get_target_hw_mode(iface, settings.freq_params.freq);
+	if (!target_mode) {
+		wpa_printf(MSG_DEBUG,
+			   "chanswitch: Invalid frequency settings provided for hw mode");
+		return -1;
+	}
+
 	if (iface->num_hw_features > 1 &&
-	    !hostapd_ctrl_is_freq_in_cmode(iface->current_mode,
-					   iface->current_hw_info,
-					   settings.freq_params.freq)) {
+	    !hostapd_ctrl_is_freq_in_mode(target_mode, iface->current_hw_info,
+					  settings.freq_params.freq)) {
 		wpa_printf(MSG_INFO,
 			   "chanswitch: Invalid frequency settings provided for multi band phy");
 		return -1;
@@ -4041,6 +4074,25 @@ fail:
 #endif /* CONFIG_NAN_USD */
 
 
+#ifdef CONFIG_SAE
+static int hostapd_ctrl_iface_sae_password_bind(struct hostapd_data *hapd,
+						const char *cmd)
+{
+	u8 addr[ETH_ALEN];
+	const char *password;
+
+	if (hwaddr_aton(cmd, addr))
+		return -1;
+	password = os_strchr(cmd, ' ');
+	if (!password)
+		return -1;
+	password++;
+
+	return sae_password_bind(hapd, addr, password);
+}
+#endif /* CONFIG_SAE */
+
+
 static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 					      char *buf, char *reply,
 					      int reply_size,
@@ -4644,6 +4696,11 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 			reply_len = -1;
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
+#ifdef CONFIG_SAE
+	} else if (os_strncmp(buf, "SAE_PASSWORD_BIND ", 18) == 0) {
+		if (hostapd_ctrl_iface_sae_password_bind(hapd, buf + 18))
+			reply_len = -1;
+#endif /* CONFIG_SAE */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
 		reply_len = 16;
@@ -6227,7 +6284,7 @@ static void hostapd_ctrl_iface_send_internal(int sock, struct dl_list *ctrl_dst,
 				       &dst->addr, dst->addrlen);
 			msg.msg_name = &dst->addr;
 			msg.msg_namelen = dst->addrlen;
-			if (sendmsg(sock, &msg, 0) < 0) {
+			if (sendmsg(sock, &msg, MSG_DONTWAIT) < 0) {
 				int _errno = errno;
 				wpa_printf(MSG_INFO, "CTRL_IFACE monitor[%d]: "
 					   "%d - %s",
