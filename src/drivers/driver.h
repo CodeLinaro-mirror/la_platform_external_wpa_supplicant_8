@@ -3030,6 +3030,14 @@ enum pasn_status {
  * @akmp: Authentication key management protocol type supported.
  * @cipher: Cipher suite.
  * @group: Finite cyclic group. Default group used is 19 (ECC).
+ * @temporary_network: Indicates if a temporary network was created to perform
+ *	PASN authentication.
+ * @password: Password of user requested network.
+ * @comeback_len: Length of the comeback cookie data.
+ * @comeback: Comeback cookie data that may be present in case a temporary
+ * rejection is received from the AP.
+ * @comeback_after: The time after which the STA can try for PASN handshake in
+ * case of temporary rejection.
  * @ltf_keyseed_required: Indicates whether LTF keyseed generation is required
  * @status: PASN response status, %PASN_STATUS_SUCCESS for successful
  *	authentication, use %PASN_STATUS_FAILURE if PASN authentication
@@ -3043,6 +3051,11 @@ struct pasn_peer {
 	int akmp;
 	int cipher;
 	int group;
+	bool temporary_network;
+	char *password;
+	size_t comeback_len;
+	u8 *comeback;
+	u16 comeback_after;
 	bool ltf_keyseed_required;
 	enum pasn_status status;
 };

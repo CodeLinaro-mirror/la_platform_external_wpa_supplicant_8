@@ -669,6 +669,7 @@ struct active_scs_elem {
 	struct dl_list list;
 	u8 scs_id;
 	enum scs_response_status status;
+	struct scs_desc_elem desc_elem;
 };
 
 struct dscp_policy_data {
@@ -777,6 +778,7 @@ struct wpa_supplicant {
 	} links[MAX_NUM_MLD_LINKS];
 	u8 *last_con_fail_realm;
 	size_t last_con_fail_realm_len;
+	bool sta_roaming_disabled;
 
 	/* Selected configuration (based on Beacon/ProbeResp WPA IE) */
 	int pairwise_cipher;
@@ -1131,6 +1133,7 @@ struct wpa_supplicant {
 
 #ifdef CONFIG_P2P
 	struct p2p_go_neg_results *go_params;
+	struct rsn_pmksa_cache_entry *p2p_pmksa_entry;
 	int create_p2p_iface;
 	u8 pending_interface_addr[ETH_ALEN];
 	char pending_interface_name[100];
@@ -1153,6 +1156,8 @@ struct wpa_supplicant {
 	int p2p_in_invitation;
 	int p2p_retry_limit;
 	int p2p_invite_go_freq;
+	bool p2p_pairing_setup;
+	bool p2p_pairing_cache;
 	int pending_invite_ssid_id;
 	int show_group_started;
 	u8 go_dev_addr[ETH_ALEN];
@@ -1665,6 +1670,8 @@ struct wpa_supplicant {
 	u64 first_beacon_tsf;
 	unsigned int beacons_checked;
 	unsigned int next_beacon_check;
+
+	bool scs_reconfigure;
 };
 
 
@@ -2050,6 +2057,7 @@ void wpas_handle_robust_av_recv_action(struct wpa_supplicant *wpa_s,
 void wpas_handle_assoc_resp_mscs(struct wpa_supplicant *wpa_s, const u8 *bssid,
 				 const u8 *ies, size_t ies_len);
 int wpas_send_scs_req(struct wpa_supplicant *wpa_s);
+int wpas_scs_reconfigure(struct wpa_supplicant *wpa_s);
 void free_up_tclas_elem(struct scs_desc_elem *elem);
 void free_up_scs_desc(struct scs_robust_av_data *data);
 void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,

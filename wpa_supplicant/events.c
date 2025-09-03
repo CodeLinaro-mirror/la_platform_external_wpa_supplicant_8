@@ -430,6 +430,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 
 	wpa_s->wps_scan_done = false;
 	wpas_reset_mlo_info(wpa_s);
+	wpas_scs_deinit(wpa_s);
 
 #ifdef CONFIG_SME
 	wpa_s->sme.bss_max_idle_period = 0;
@@ -6349,9 +6350,18 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 {
 #ifdef CONFIG_P2P
 	struct ieee802_11_elems elems;
+	size_t auth_length;
 
-	if (len < 24) {
-		wpa_printf(MSG_DEBUG, "nl80211: Too short Management frame");
+	auth_length = IEEE80211_HDRLEN + sizeof(mgmt->u.auth);
+
+	if (len < auth_length) {
+		wpa_printf(MSG_DEBUG, "PASN: Too short Authentication frame");
+		return -2;
+	}
+
+	if (le_to_host16(mgmt->u.auth.auth_alg) != WLAN_AUTH_PASN) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Not a PASN Authentication frame, skip frame parsing");
 		return -2;
 	}
 
@@ -6447,6 +6457,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			wpa_printf(MSG_INFO,
 				   "Ignore unexpected EVENT_ASSOC in disconnected state");
 			break;
+		}
+		if (dl_list_len(&wpa_s->active_scs_ids) > 0) {
+			wpa_printf(MSG_DEBUG,
+				   "SCS rules renegotiation required after roaming");
+			wpa_s->scs_reconfigure = true;
 		}
 		wpa_supplicant_event_assoc(wpa_s, data);
 		wpa_s->assoc_status_code = WLAN_STATUS_SUCCESS;
