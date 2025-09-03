@@ -7271,9 +7271,11 @@ static int p2p_ctrl_group_add_persistent(struct wpa_supplicant *wpa_s,
 					 int id, int freq, int vht_center_freq2,
 					 int ht40, int vht, int vht_chwidth,
 					 int he, int edmg, bool allow_6ghz,
-					 const u8 *go_bssid)
+					 const u8 *go_bssid, bool p2p2,
+					 enum wpa_p2p_mode p2p_mode)
 {
 	struct wpa_ssid *ssid;
+	bool join = false;
 
 	ssid = wpa_config_get_network(wpa_s->conf, id);
 	if (ssid == NULL || ssid->disabled != 2) {
@@ -7283,11 +7285,17 @@ static int p2p_ctrl_group_add_persistent(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
+	if (p2p2) {
+		wpa_s->p2p2 = p2p2;
+		wpa_s->p2p_mode = p2p_mode;
+		join = true;
+	}
 	return wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq, freq,
 					     vht_center_freq2, ht40, vht,
 					     vht_chwidth, he, edmg,
 					     NULL, 0, 0, allow_6ghz, 0,
-					     go_bssid, NULL, NULL, NULL, 0);
+					     go_bssid, NULL, NULL, NULL, 0,
+					     join);
 }
 
 
@@ -7296,6 +7304,7 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 	int freq = 0, persistent = 0, group_id = -1;
 	bool p2p2 = false;
 	int p2pmode = WPA_P2P_MODE_WFD_R1;
+	enum wpa_p2p_mode p2p_mode;
 	bool allow_6ghz = false;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
@@ -7389,19 +7398,21 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
 	wpa_s->p2p_go_allow_dfs = !!(wpa_s->drv_flags &
 				     WPA_DRIVER_FLAGS_DFS_OFFLOAD);
 
+	if (p2pmode < WPA_P2P_MODE_WFD_R1 || p2pmode > WPA_P2P_MODE_WFD_PCC)
+		return -1;
+	p2p_mode = p2pmode;
+
 	if (group_id >= 0)
 		return p2p_ctrl_group_add_persistent(wpa_s, group_id,
 						     freq, freq2, ht40, vht,
 						     max_oper_chwidth, he,
 						     edmg, allow_6ghz,
-						     go_bssid);
-
-	if (p2pmode < WPA_P2P_MODE_WFD_R1 || p2pmode > WPA_P2P_MODE_WFD_PCC)
-		return -1;
+						     go_bssid, p2p2,
+						     p2p_mode);
 
 	return wpas_p2p_group_add(wpa_s, persistent, freq, freq2, ht40, vht,
 				  max_oper_chwidth, he, edmg, allow_6ghz, p2p2,
-				  (enum wpa_p2p_mode) p2pmode);
+				  p2p_mode);
 }
 
 
@@ -7804,17 +7815,6 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
 		return 0;
 	}
 
-#ifdef CONFIG_TESTING_OPTIONS
-	if (os_strcmp(cmd, "pairing_setup") == 0) {
-		p2p_set_pairing_setup(wpa_s->global->p2p, atoi(param));
-		return 0;
-	}
-
-	if (os_strcmp(cmd, "pairing_cache") == 0) {
-		p2p_set_pairing_cache(wpa_s->global->p2p, atoi(param));
-		return 0;
-	}
-
 	if (os_strcmp(cmd, "supported_bootstrapmethods") == 0) {
 		p2p_set_bootstrapmethods(wpa_s->global->p2p, atoi(param));
 		return 0;
@@ -7849,7 +7849,6 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
 		p2p_set_invitation_op_freq(wpa_s->global->p2p, atoi(param));
 		return 0;
 	}
-#endif /* CONFIG_TESTING_OPTIONS */
 
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown P2P_SET field value '%s'",
 		   cmd);
