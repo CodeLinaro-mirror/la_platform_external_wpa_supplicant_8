@@ -593,6 +593,8 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
 		       sm->proto == WPA_PROTO_OSEN) ?
 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
 	key_info = ver | WPA_KEY_INFO_KEY_TYPE;
+	if (sm->ptk_set && sm->proto != WPA_PROTO_WPA)
+		key_info |= WPA_KEY_INFO_SECURE;
 	if (mic_len)
 		key_info |= WPA_KEY_INFO_MIC;
 	else
@@ -3243,6 +3245,7 @@ static int wpa_supp_aead_decrypt(struct wpa_sm *sm, u8 *buf, size_t buf_len,
  * @src_addr: Source MAC address of the EAPOL packet
  * @buf: Pointer to the beginning of the EAPOL data (EAPOL header)
  * @len: Length of the EAPOL frame
+ * @encrypted: Whether the frame was encrypted
  * Returns: 1 = WPA EAPOL-Key processed, 0 = not a WPA EAPOL-Key, -1 failure
  *
  * This function is called for each received EAPOL frame. Other than EAPOL-Key
@@ -3254,7 +3257,7 @@ static int wpa_supp_aead_decrypt(struct wpa_sm *sm, u8 *buf, size_t buf_len,
  * successful key handshake.
  */
 int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
-		    const u8 *buf, size_t len)
+		    const u8 *buf, size_t len, enum frame_encryption encrypted)
 {
 	size_t plen, data_len, key_data_len;
 	const struct ieee802_1x_hdr *hdr;
