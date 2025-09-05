@@ -1935,6 +1935,8 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			    struct pasn_auth *pasn_auth);
 void wpas_pasn_auth_work_done(struct wpa_supplicant *wpa_s, int status);
+bool wpa_is_non_eht_scs_traffic_desc_supported(struct wpa_bss *bss);
+
 bool wpas_ap_supports_rsn_overriding(struct wpa_supplicant *wpa_s,
                                     struct wpa_bss *bss);
 bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
