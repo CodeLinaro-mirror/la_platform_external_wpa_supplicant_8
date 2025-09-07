@@ -1162,6 +1162,8 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
 			if (iface->state != HAPD_IFACE_ENABLED &&
 			    !iface->radar_detected)
 				hostapd_setup_interface_complete(iface, 0);
+			else if (iface->ignore_cac_end && iface->radar_detected)
+				wpa_printf(MSG_INFO, "Ignore CAC end events with radar detected");
 			else
 				iface->cac_started = 0;
 		} else {
