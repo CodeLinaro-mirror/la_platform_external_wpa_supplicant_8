@@ -3816,6 +3816,7 @@ no_pfs:
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_IEEE8021X_SHA384) ||
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE_EXT_KEY)) &&
 		wpa_ft_is_completed(wpa_s->wpa)) {
+		wpa_s->assoc_freq = data->assoc_info.freq;
 		return 0;
 	}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
