@@ -1414,6 +1414,11 @@ struct wpa_driver_associate_params {
 	 * spp_amsdu - SPP A-MSDU used on this connection
 	 */
 	bool spp_amsdu;
+
+	/**
+	 * p2p_mode - P2P R1 only, P2P R2 only, or PCC mode
+	 */
+	enum wpa_p2p_mode p2p_mode;
 };
 
 enum hide_ssid {
