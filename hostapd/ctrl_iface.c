@@ -82,8 +82,7 @@
 #endif /* CONFIG_CTRL_IFACE_UDP */
 
 #ifdef CONFIG_IEEE80211BE
-#define MIN_ML_RECONF_COUNT 5
-#define MAX_ML_RECONF_COUNT 50
+#define DEFAULT_ML_RECONF_COUNT 5
 #endif /* CONFIG_IEEE80211BE */
 
 static void hostapd_ctrl_iface_send(struct hostapd_data *hapd, int level,
@@ -3727,24 +3726,59 @@ static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
 					  char *buf, size_t buflen)
 {
 	int ret;
-	u32 count = atoi(cmd);
+	const char *p = cmd;
+	char *endptr = NULL;
+	long val = 0;
+	u32 count;
 
-	if (!count) {
-		count = MIN_ML_RECONF_COUNT;
-	} else if (count < MIN_ML_RECONF_COUNT || count > MAX_ML_RECONF_COUNT) {
-		wpa_printf(MSG_ERROR, "Invalid link removal count:%d allowed range %d-%d\n",
-			    count, MIN_ML_RECONF_COUNT, MAX_ML_RECONF_COUNT);
-		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
-		if (os_snprintf_error(buflen, ret))
-		return -1;
-	} else if (!hapd->conf->mld_ap) {
+	/* Link removal only support in MLO AP. */
+	if (!hapd->conf->mld_ap) {
 		wpa_printf(MSG_ERROR, "ML reconfigure is not supported in non-MLO case\n");
 		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
-		if (os_snprintf_error(buflen, ret))
-			return -1;
-		return -1;
+		return os_snprintf_error(buflen, ret)? -1 : ret;
 	}
 
+	/* Jump space before count number */
+	while (p && *p == ' ')
+		p++;
+
+	/* Transfer the count number from cmd. */
+	val = strtol(p, &endptr, 10);
+
+	/* Return FAIL if the cmd isn't numeric string. */
+	if (endptr == p) {
+		wpa_printf(MSG_ERROR, "Invalid input: not a valid number.");
+		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+		return os_snprintf_error(buflen, ret)? -1 : ret;
+	}
+
+	/* If there is a non-numeric string at the end of string, return FAIL expect spaces. */
+	while (*endptr == ' ')
+		endptr++;
+	if (*endptr != '\0') {
+		wpa_printf(MSG_ERROR, "Invalid input: trailing junk after number");
+		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+		return os_snprintf_error(buflen, ret)? -1 : ret;
+	}
+
+	/*
+	 * As define in 802.11be-2024 9.4.2.322.4, AP removal counter should not set to zero
+	 * as zero is reserved.
+	 * If val is zero,  set to DEFAULT_ML_RECONF_COUNT.
+	 */
+	if (val == 0) {
+		count = DEFAULT_ML_RECONF_COUNT;
+	} else {
+		if (val > INT_MAX) {
+			wpa_printf(MSG_ERROR, "Invalid link removal count:%ld out of range", val);
+			ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+			return os_snprintf_error(buflen, ret)? -1 : ret;
+		}
+		count = (u32)val;
+	}
+
+	/* Send the TBTT number to run link removal. */
+	wpa_printf(MSG_INFO, "Proceeding with link removal count: %d", count);
 	ret = hostapd_link_remove(hapd, count);
 	if (ret == 0) {
 		ret = os_snprintf(buf, buflen, "%s\n", "OK");
