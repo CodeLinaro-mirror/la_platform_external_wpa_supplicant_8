@@ -1452,35 +1452,6 @@ wpa_supplicant_cc_binary {
     },
 }
 
-wpa_supplicant_cc_binary {
-    name: "wpa_supplicant_mainline",
-    shared_libs: [
-        "android.system.wifi.mainline_supplicant-ndk",
-        "libbase",
-        "libbinder_ndk",
-        "libc",
-        "libcrypto",
-        "libcutils_sockets",
-        "liblog",
-        "libnl",
-        "libssl",
-    ],
-    static_libs: [
-        "mainline_supplicant_aidl_bp",
-    ],
-    defaults: [
-        "wpa_supplicant_mainline_srcs_default",
-        "wpa_supplicant_includes_default",
-        "wpa_supplicant_mainline_cflags_default",
-        "wpa_supplicant_usd_defaults",
-    ],
-    apex_available: [
-        "//apex_available:platform",
-        "com.android.wifi",
-    ],
-    min_sdk_version: "30",
-}
-
 cc_library_shared {
     name: "libwpa_client",
     proprietary: true,
@@ -1524,9 +1495,6 @@ cc_fuzz {
         "liblog",
         "libnl",
         "libssl",
-    ],
-    static_libs: [
-        "mainline_supplicant_aidl_bp",
     ],
     cflags: [
         "-DSUPPLICANT_SERVICE_FUZZER",
