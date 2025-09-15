@@ -6315,21 +6315,6 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
 		wpa_s->valid_links);
 }
 
-#ifdef MAINLINE_SUPPLICANT
-static bool is_event_allowlisted(enum wpa_event_type event) {
-	return event == EVENT_SCAN_STARTED ||
-	       event == EVENT_SCAN_RESULTS ||
-	       event == EVENT_RX_MGMT ||
-	       event == EVENT_REMAIN_ON_CHANNEL ||
-	       event == EVENT_CANCEL_REMAIN_ON_CHANNEL ||
-	       event == EVENT_TX_WAIT_EXPIRE ||
-	       event == EVENT_INTERFACE_MAC_CHANGED ||
-	       event == EVENT_INTERFACE_ENABLED ||
-	       event == EVENT_INTERFACE_DISABLED ||
-	       event == EVENT_TX_STATUS;
-}
-#endif /* MAINLINE_SUPPLICANT */
-
 
 #ifdef CONFIG_PASN
 static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
@@ -6371,15 +6356,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
-
-#ifdef MAINLINE_SUPPLICANT
-	if (!is_event_allowlisted(event)) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"Ignore event %s (%d) which is not allowlisted",
-			event_to_string(event), event);
-		return;
-	}
-#endif /* MAINLINE_SUPPLICANT */
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED &&
 	    event != EVENT_INTERFACE_ENABLED &&
