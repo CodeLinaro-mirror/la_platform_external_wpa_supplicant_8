@@ -148,6 +148,8 @@ int hostapd_drv_set_secure_ranging_ctx(struct hostapd_data *hapd,
 				       u32 cipher, u8 key_len, const u8 *key,
 				       u8 ltf_keyseed_len,
 				       const u8 *ltf_keyseed, u32 action);
+int hostapd_remove_pmkid(struct hostapd_data *hapd, const u8 *sta_addr,
+			 const u8 *pmkid);
 
 
 #include "drivers/driver.h"
