@@ -1642,14 +1642,9 @@ const std::string& iface_name, const std::string& linkIdentity)
 	struct hostapd_data* iface_hapd =
 		hostapd_get_iface_by_link_id(interfaces_, std::stoi(linkIdentity.c_str()));
 	if (iface_hapd) {
-// Currently, hostapd_link_remove is still under CONFIG_TESTING_OPTIONS.
-// TODO: b/340821197 - Make sure to take out the hostapd_link_remove() and other related code
-// out of CONFIG_TESTING_OPTIONS.
-#ifdef CONFIG_TESTING_OPTIONS
 		if (0 == hostapd_link_remove(iface_hapd, 1)) {
 			return ndk::ScopedAStatus::ok();
 		}
-#endif /* CONFIG_TESTING_OPTIONS */
 	}
 	return createStatus(HostapdStatusCode::FAILURE_ARGS_INVALID);
 #endif /* CONFIG_IEEE80211BE */
