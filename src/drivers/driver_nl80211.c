@@ -4168,7 +4168,7 @@ static enum nl80211_auth_type get_nl_auth_type(int wpa_auth_alg)
 	if (wpa_auth_alg & WPA_AUTH_ALG_FILS_SK_PFS)
 		return NL80211_AUTHTYPE_FILS_SK_PFS;
 
-	return NL80211_AUTHTYPE_MAX;
+	return NL80211_AUTHTYPE_MAX + 1;
 }
 
 
@@ -4291,7 +4291,7 @@ retry:
 	}
 	type = get_nl_auth_type(params->auth_alg);
 	wpa_printf(MSG_DEBUG, "  * Auth Type %d", type);
-	if (type == NL80211_AUTHTYPE_MAX ||
+	if (type > NL80211_AUTHTYPE_MAX ||
 	    nla_put_u32(msg, NL80211_ATTR_AUTH_TYPE, type))
 		goto fail;
 	if (params->local_state_change) {
@@ -7451,7 +7451,7 @@ static int wpa_driver_nl80211_try_connect(
 
 	type = get_nl_auth_type(params->auth_alg);
 	wpa_printf(MSG_DEBUG, "  * Auth Type %d", type);
-	if (type == NL80211_AUTHTYPE_MAX ||
+	if (type > NL80211_AUTHTYPE_MAX ||
 	    nla_put_u32(msg, NL80211_ATTR_AUTH_TYPE, type))
 		goto fail;
 
@@ -13973,8 +13973,8 @@ static int nl80211_nan_publish(void *priv, const u8 *src, int publish_id,
 	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_USD_SERVICE_PROTOCOL_TYPE,
 		       srv_proto_type) ||
 	    nla_put_u16(msg, QCA_WLAN_VENDOR_ATTR_USD_TTL, params->ttl) ||
-	    nla_put(msg, QCA_WLAN_VENDOR_ATTR_USD_ELEMENT_CONTAINER,
-		    wpabuf_len(elems), wpabuf_head(elems)) ||
+	    (elems && nla_put(msg, QCA_WLAN_VENDOR_ATTR_USD_ELEMENT_CONTAINER,
+		    wpabuf_len(elems), wpabuf_head(elems))) ||
 	    (ssi && nla_put(msg, QCA_WLAN_VENDOR_ATTR_USD_SSI,
 			    wpabuf_len(ssi), wpabuf_head(ssi))))
 		goto fail;
@@ -14126,8 +14126,8 @@ static int nl80211_nan_subscribe(void *priv, const u8 *src, int subscribe_id,
 	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_USD_SERVICE_PROTOCOL_TYPE,
 		       srv_proto_type) ||
 	    nla_put_u16(msg, QCA_WLAN_VENDOR_ATTR_USD_TTL, params->ttl) ||
-	    nla_put(msg, QCA_WLAN_VENDOR_ATTR_USD_ELEMENT_CONTAINER,
-		    wpabuf_len(elems), wpabuf_head(elems)) ||
+	    (elems && nla_put(msg, QCA_WLAN_VENDOR_ATTR_USD_ELEMENT_CONTAINER,
+		    wpabuf_len(elems), wpabuf_head(elems))) ||
 	    (ssi && nla_put(msg, QCA_WLAN_VENDOR_ATTR_USD_SSI,
 			    wpabuf_len(ssi), wpabuf_head(ssi))))
 		goto fail;
@@ -14549,7 +14549,7 @@ static int nl80211_update_connection_params(
 
 	if (mask & WPA_DRV_UPDATE_AUTH_TYPE) {
 		type = get_nl_auth_type(params->auth_alg);
-		if (type == NL80211_AUTHTYPE_MAX ||
+		if (type > NL80211_AUTHTYPE_MAX ||
 		    nla_put_u32(msg, NL80211_ATTR_AUTH_TYPE, type))
 			goto fail;
 		wpa_printf(MSG_DEBUG, "  * Auth Type %d", type);
