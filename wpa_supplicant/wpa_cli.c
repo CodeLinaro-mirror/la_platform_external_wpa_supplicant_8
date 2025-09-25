@@ -425,13 +425,6 @@ static int wpa_cli_cmd_mlo_signal_poll(struct wpa_ctrl *ctrl, int argc, char *ar
 }
 
 
-static int wpa_cli_cmd_setup_link_reconfig(struct wpa_ctrl *ctrl, int argc,
-					   char *argv[])
-{
-	return wpa_cli_cmd(ctrl, "SETUP_LINK_RECONFIG", 1, argc, argv);
-}
-
-
 static int wpa_cli_cmd_set(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	char cmd[256];
@@ -524,7 +517,6 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 #endif /* CONFIG_TESTING_OPTIONS */
 		"relative_rssi", "relative_band_adjust",
 		"extended_key_id",
-		"disable_op_classes_80_80_mhz",
 	};
 	int i, num_fields = ARRAY_SIZE(fields);
 
@@ -625,8 +617,7 @@ static char ** wpa_cli_complete_get(const char *str, int pos)
 		"tdls_external_control", "wowlan_triggers",
 		"p2p_search_delay", "mac_addr", "rand_addr_lifetime",
 		"preassoc_mac_addr", "key_mgmt_offload", "passive_scan",
-		"reassoc_same_bss_optim", "extended_key_id",
-		"disable_op_classes_80_80_mhz"
+		"reassoc_same_bss_optim", "extended_key_id"
 	};
 	int i, num_fields = ARRAY_SIZE(fields);
 
@@ -4101,9 +4092,6 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "dscp_query", wpa_cli_cmd_dscp_query, NULL,
 	  cli_cmd_flag_none,
 	  "wildcard/domain_name=<string> = Send DSCP Query" },
-	{ "setup_link_reconfig", wpa_cli_cmd_setup_link_reconfig, NULL,
-	  cli_cmd_flag_none,
-	  "<<add=/delete=><ID1> [ID2]...> = Add new setup links and/or remove existing ones for the current MLO connection in STA mode" },
 	{ "mlo_status", wpa_cli_cmd_mlo_status, NULL,
 	  cli_cmd_flag_none,
 	  "= get MLO status" },

@@ -783,7 +783,7 @@ atheros_sta_deauth(void *priv, const u8 *own_addr, const u8 *addr,
 
 static int
 atheros_sta_disassoc(void *priv, const u8 *own_addr, const u8 *addr,
-		     u16 reason_code, int link_id)
+		     u16 reason_code)
 {
 	struct atheros_driver_data *drv = priv;
 	struct ieee80211req_mlme mlme;

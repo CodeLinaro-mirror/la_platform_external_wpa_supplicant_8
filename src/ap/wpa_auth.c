@@ -661,12 +661,6 @@ static void wpa_auth_pmksa_free_cb(struct rsn_pmksa_cache_entry *entry,
 {
 	struct wpa_authenticator *wpa_auth = ctx;
 	wpa_auth_for_each_sta(wpa_auth, wpa_auth_pmksa_clear_cb, entry);
-
-	/* Remove matching PMKID from the driver, if it had been added, e.g.,
-	 * by external SAE authentication */
-	if (wpa_auth->cb->remove_pmkid)
-		wpa_auth->cb->remove_pmkid(wpa_auth->cb_ctx, entry->spa,
-					   entry->pmkid);
 }
 
 
@@ -4363,7 +4357,8 @@ static void wpa_auth_get_ml_key_info(struct wpa_authenticator *wpa_auth,
 }
 
 
-size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm, u16 req_links)
+static size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm,
+					 u16 req_links)
 {
 	struct wpa_authenticator *wpa_auth;
 	size_t kde_len = 0;
@@ -4414,8 +4409,8 @@ size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm, u16 req_links)
 }
 
 
-u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos,
-			    u16 req_links)
+static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos,
+				   u16 req_links)
 {
 	struct wpa_auth_ml_key_info ml_key_info;
 	unsigned int i, link_id;
@@ -6560,10 +6555,9 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 
 int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			   int akmp, bool is_ml, int vlan_id)
+			   int akmp, bool is_ml)
 {
 	struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
-	struct rsn_pmksa_cache_entry *entry;
 	const u8 *aa = wpa_auth->addr;
 
 	if (wpa_auth->conf.disable_pmksa_caching)
@@ -6580,14 +6574,11 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	}
 #endif /* CONFIG_IEEE80211BE */
 
-	entry = pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0,
-				     aa, addr, 0, NULL, akmp);
-	if (!entry)
-		return -1;
+	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, aa, addr,
+				 0, NULL, akmp))
+		return 0;
 
-	entry->sae_vlan_id = vlan_id;
-
-	return 0;
+	return -1;
 }
 
 
@@ -7708,15 +7699,4 @@ bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
 	}
 
 	return true;
-}
-
-
-void wpa_reset_assoc_sm_info(struct wpa_state_machine *assoc_sm,
-			     struct wpa_authenticator *wpa_auth,
-			     u8 mld_assoc_link_id)
-{
-#ifdef CONFIG_IEEE80211BE
-	assoc_sm->wpa_auth = wpa_auth;
-	assoc_sm->mld_assoc_link_id = mld_assoc_link_id;
-#endif /* CONFIG_IEEE80211BE */
 }

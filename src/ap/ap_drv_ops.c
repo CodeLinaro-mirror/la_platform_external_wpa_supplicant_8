@@ -924,23 +924,20 @@ int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,
 			     const u8 *addr, int reason)
 {
 	const u8 *own_addr = hapd->own_addr;
-	int link_id = -1;
 
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->conf->mld_ap) {
 		struct sta_info *sta = ap_get_sta(hapd, addr);
 
-		if (ap_sta_is_mld(hapd, sta)) {
+		if (ap_sta_is_mld(hapd, sta))
 			own_addr = hapd->mld->mld_addr;
-			link_id = hapd->mld_link_id;
-		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
 	if (!hapd->driver || !hapd->driver->sta_disassoc || !hapd->drv_priv)
 		return 0;
 	return hapd->driver->sta_disassoc(hapd->drv_priv, own_addr, addr,
-					  reason, link_id);
+					  reason);
 }
 
 
@@ -1154,8 +1151,7 @@ void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 {
 	int i;
 	bool is_no_ir = false;
-	bool allow_6g_acs = is_6ghz_op_class(hapd->iconf->op_class) &&
-		hostapd_config_check_bss_6g(hapd->conf) &&
+	bool allow_6g_acs = hostapd_config_check_bss_6g(hapd->conf) &&
 		(hapd->iface->conf->ieee80211ax ||
 		 hapd->iface->conf->ieee80211be);
 
@@ -1392,26 +1388,4 @@ int hostapd_add_pmkid(struct hostapd_data *hapd, const u8 *bssid, const u8 *pmk,
 	params.pmk_len = pmk_len;
 
 	return hostapd_drv_add_pmkid(hapd, &params);
-}
-
-
-static int hostapd_drv_remove_pmkid(struct hostapd_data *hapd,
-				    struct wpa_pmkid_params *params)
-{
-	if (!hapd->driver || !hapd->driver->remove_pmkid || !hapd->drv_priv)
-		return 0;
-	return hapd->driver->remove_pmkid(hapd->drv_priv, params);
-}
-
-
-int hostapd_remove_pmkid(struct hostapd_data *hapd, const u8 *sta_addr,
-			 const u8 *pmkid)
-{
-	struct wpa_pmkid_params params;
-
-	os_memset(&params, 0, sizeof(params));
-	params.bssid = sta_addr;
-	params.pmkid = pmkid;
-
-	return hostapd_drv_remove_pmkid(hapd, &params);
 }

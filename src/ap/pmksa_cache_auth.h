@@ -33,7 +33,6 @@ struct rsn_pmksa_cache_entry {
 	struct radius_class_data radius_class;
 	u8 eap_type_authsrv;
 	struct vlan_description *vlan_desc;
-	int sae_vlan_id;
 	int opportunistic;
 
 	u64 acct_multi_session_id;
