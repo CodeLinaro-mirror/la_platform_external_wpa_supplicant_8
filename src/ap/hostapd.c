@@ -1809,14 +1809,6 @@ int hostapd_set_acl(struct hostapd_data *hapd)
 	if (hapd->iface->drv_max_acl_mac_addrs == 0)
 		return 0;
 
-#ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap) {
-		wpa_printf(MSG_DEBUG,
-			   "Kernel doesn't support offloaded ACL for AP MLD. Use hostapd based ACL instead.");
-		return 0;
-	}
-#endif /* CONFIG_IEEE80211BE */
-
 	if (conf->macaddr_acl == DENY_UNLESS_ACCEPTED) {
 		accept_acl = 1;
 		err = hostapd_set_acl_list(hapd, conf->accept_mac,
@@ -2668,7 +2660,6 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 			for (;;) {
 				hapd = iface->bss[j];
 				hostapd_bss_deinit_no_free(hapd);
-				hostapd_bss_link_deinit(hapd);
 				hostapd_free_hapd_data(hapd);
 				if (j == 0)
 					break;
@@ -2687,7 +2678,6 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 				for (;;) {
 					hapd = iface->bss[j];
 					hostapd_bss_deinit_no_free(hapd);
-					hostapd_bss_link_deinit(hapd);
 					hostapd_free_hapd_data(hapd);
 					if (j == 0)
 						break;
@@ -3606,12 +3596,8 @@ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
 
 	if (hapd_iface->interfaces == NULL ||
 	    hapd_iface->interfaces->driver_init == NULL ||
-	    hapd_iface->interfaces->driver_init(hapd_iface)) {
-		hostapd_deinit_driver(hapd_iface->bss[0]->driver,
-				      hapd_iface->bss[0]->drv_priv,
-				      hapd_iface);
+	    hapd_iface->interfaces->driver_init(hapd_iface))
 		return -1;
-	}
 
 	if (hostapd_setup_interface(hapd_iface)) {
 		hostapd_deinit_driver(hapd_iface->bss[0]->driver,
@@ -3869,13 +3855,8 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 		}
 
 		if (new_iface) {
-			if (interfaces->driver_init(hapd_iface)) {
-				hostapd_deinit_driver(
-					hapd_iface->bss[0]->driver,
-					hapd_iface->bss[0]->drv_priv,
-					hapd_iface);
+			if (interfaces->driver_init(hapd_iface))
 				goto fail;
-			}
 
 			if (hostapd_setup_interface(hapd_iface)) {
 				hostapd_deinit_driver(

@@ -415,17 +415,13 @@ static const u8 * hostapd_wpa_auth_get_psk(void *ctx, const u8 *addr,
 #endif /* CONFIG_SAE */
 
 #ifdef CONFIG_OWE
-	if (((hapd->conf->wpa_key_mgmt | hapd->conf->rsn_override_key_mgmt |
-	      hapd->conf->rsn_override_key_mgmt_2) &
-	     WPA_KEY_MGMT_OWE) &&
+	if ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE) &&
 	    sta && sta->owe_pmk) {
 		if (psk_len)
 			*psk_len = sta->owe_pmk_len;
 		return sta->owe_pmk;
 	}
-	if (((hapd->conf->wpa_key_mgmt | hapd->conf->rsn_override_key_mgmt |
-	      hapd->conf->rsn_override_key_mgmt_2) &
-	     WPA_KEY_MGMT_OWE) && sta) {
+	if ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE) && sta) {
 		struct rsn_pmksa_cache_entry *sa;
 
 		sa = wpa_auth_sta_get_pmksa(sta->wpa_sm);
@@ -1670,15 +1666,6 @@ static int hostapd_wpa_auth_get_drv_flags(void *ctx,
 }
 
 
-static int hostapd_wpa_auth_remove_pmkid(void *ctx, const u8 *sta_addr,
-					 const u8 *pmkid)
-{
-	struct hostapd_data *hapd = ctx;
-
-	return hostapd_remove_pmkid(hapd, sta_addr, pmkid);
-}
-
-
 int hostapd_setup_wpa(struct hostapd_data *hapd)
 {
 	struct wpa_auth_config _conf;
@@ -1734,7 +1721,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.next_primary_auth = hostapd_next_primary_auth,
 #endif /* CONFIG_IEEE80211BE */
 		.get_drv_flags = hostapd_wpa_auth_get_drv_flags,
-		.remove_pmkid = hostapd_wpa_auth_remove_pmkid,
 	};
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;

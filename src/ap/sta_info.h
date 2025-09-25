@@ -316,7 +316,6 @@ struct sta_info {
 #ifdef CONFIG_IEEE80211BE
 	struct mld_info mld_info;
 	u8 mld_assoc_link_id;
-	struct link_reconf_req_list *reconf_req;
 #endif /* CONFIG_IEEE80211BE */
 
 	u16 max_idle_period; /* if nonzero, the granted BSS max idle period in

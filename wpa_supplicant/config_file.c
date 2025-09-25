@@ -359,7 +359,7 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
 				    bool ro)
 {
 	FILE *f;
-	char buf[1024], *pos;
+	char buf[512], *pos;
 	int errors = 0, line = 0;
 	struct wpa_ssid *ssid, *tail, *head;
 	struct wpa_cred *cred, *cred_tail, *cred_head;
@@ -787,7 +787,6 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(bgscan);
 	STR(autoscan);
 	STR(scan_freq);
-	STR(freq_list);
 #ifdef IEEE8021X_EAPOL
 	write_eap(f, ssid);
 	STR(identity);
@@ -1397,6 +1396,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_6ghz_disable)
 		fprintf(f, "p2p_6ghz_disable=%d\n", config->p2p_6ghz_disable);
 
+	if (config->p2p_pairing_setup)
+		fprintf(f, "p2p_pairing_setup=%d\n", config->p2p_pairing_setup);
+	if (config->p2p_pairing_cache)
+		fprintf(f, "p2p_pairing_cache=%d\n", config->p2p_pairing_cache);
 	if (config->p2p_bootstrap_methods)
 		fprintf(f, "p2p_bootstrap_methods=%d\n",
 			config->p2p_bootstrap_methods);
@@ -1759,9 +1762,6 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "wfa_gen_capa=%d\n", config->wfa_gen_capa);
 	write_global_bin(f, "wfa_gen_capa_supp", config->wfa_gen_capa_supp);
 	write_global_bin(f, "wfa_gen_capa_cert", config->wfa_gen_capa_cert);
-	if (config->disable_op_classes_80_80_mhz)
-		fprintf(f, "disable_op_classes_80_80_mhz=%d\n",
-			config->disable_op_classes_80_80_mhz);
 }
 
 static void wpa_config_write_identity(FILE *f, struct wpa_dev_ik *dev_ik)

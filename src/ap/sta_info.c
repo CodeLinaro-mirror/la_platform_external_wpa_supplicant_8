@@ -469,7 +469,6 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 
 #ifdef CONFIG_IEEE80211BE
 	ap_sta_free_sta_profile(&sta->mld_info);
-	ml_deinit_link_reconf_req(&sta->reconf_req);
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_TESTING_OPTIONS
@@ -967,7 +966,7 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
 	if (free_1x)
 		ieee802_1x_free_station(hapd, sta);
 #ifdef CONFIG_IEEE80211BE
-	if (!ap_sta_is_mld(hapd, sta) ||
+	if (!hapd->conf->mld_ap ||
 	    hapd->mld_link_id == sta->mld_assoc_link_id) {
 		wpa_auth_sta_deinit(sta->wpa_sm);
 		clear_wpa_sm_for_each_partner_link(hapd, sta);
@@ -1088,7 +1087,7 @@ static bool ap_sta_ml_disconnect(struct hostapd_data *hapd,
 	unsigned int i, link_id;
 	struct hapd_interfaces *interfaces;
 
-	if (!hostapd_is_multiple_link_mld(hapd))
+	if (!hostapd_is_mld_ap(hapd))
 		return false;
 
 	/*
@@ -1599,13 +1598,10 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
 		char dpp_pkhash_buf[100];
 		char keyid_buf[100];
 		char ip_addr[100];
-		char vlanid_buf[20];
 
 		dpp_pkhash_buf[0] = '\0';
 		keyid_buf[0] = '\0';
 		ip_addr[0] = '\0';
-		vlanid_buf[0] = '\0';
-
 #ifdef CONFIG_P2P
 		if (wpa_auth_get_ip_addr(sta->wpa_sm, ip_addr_buf) == 0) {
 			os_snprintf(ip_addr, sizeof(ip_addr),
@@ -1634,21 +1630,15 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
 					 dpp_pkhash, SHA256_MAC_LEN);
 		}
 
-#ifndef CONFIG_NO_VLAN
-		if (sta->vlan_id)
-			os_snprintf(vlanid_buf, sizeof(vlanid_buf),
-				    " vlanid=%u", sta->vlan_id);
-#endif /* CONFIG_NO_VLAN */
-
-		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_CONNECTED "%s%s%s%s%s",
-			buf, ip_addr, keyid_buf, dpp_pkhash_buf, vlanid_buf);
+		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_CONNECTED "%s%s%s%s",
+			buf, ip_addr, keyid_buf, dpp_pkhash_buf);
 
 		if (hapd->msg_ctx_parent &&
 		    hapd->msg_ctx_parent != hapd->msg_ctx)
 			wpa_msg_no_global(hapd->msg_ctx_parent, MSG_INFO,
-					  AP_STA_CONNECTED "%s%s%s%s%s",
+					  AP_STA_CONNECTED "%s%s%s%s",
 					  buf, ip_addr, keyid_buf,
-					  dpp_pkhash_buf, vlanid_buf);
+					  dpp_pkhash_buf);
 	} else {
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_DISCONNECTED "%s", buf);
 

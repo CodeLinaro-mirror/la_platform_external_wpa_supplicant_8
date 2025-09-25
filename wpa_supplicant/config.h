@@ -913,6 +913,8 @@ struct wpa_config {
 	int p2p_optimize_listen_chan;
 	int p2p_6ghz_disable;
 	int p2p_dfs_chan_enable;
+	bool p2p_pairing_setup;
+	bool p2p_pairing_cache;
 	int p2p_bootstrap_methods;
 	int p2p_pasn_type;
 	int p2p_comeback_after;
@@ -1928,16 +1930,6 @@ struct wpa_config {
 	 * wfa_gen_capa_supp.
 	 */
 	struct wpabuf *wfa_gen_capa_cert;
-
-	/**
-	 * disable_op_classes_80_80_mhz - Disable advertisement of 80+80 MHz
-	 * channel capabilities in the Supported Operating Classes element
-	 *
-	 * By default, %wpa_supplicant tries to advertise 80+80 MHz channel
-	 * capabilities in the Supported Operating Classes element if the driver
-	 * supports this.
-	*/
-	bool disable_op_classes_80_80_mhz;
 };
 
 
