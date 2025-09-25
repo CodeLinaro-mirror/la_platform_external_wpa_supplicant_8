@@ -746,7 +746,6 @@ struct p2p_config {
 	 */
 	bool chan_switch_req_enable;
 
-#ifdef CONFIG_TESTING_OPTIONS
 	/**
 	 * Operating class for own operational channel in Invitation Response
 	 */
@@ -756,7 +755,6 @@ struct p2p_config {
 	 * inv_op_channel - Own operational channel in Invitation Response
 	 */
 	u8 inv_op_channel;
-#endif /* CONFIG_TESTING_OPTIONS */
 
 	/**
 	 * cb_ctx - Context to use with callback functions
@@ -2792,8 +2790,6 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
 			   const u8 *peer_addr, unsigned int freq);
 int p2p_get_dik_id(struct p2p_data *p2p, const u8 *peer);
 
-void p2p_set_pairing_setup(struct p2p_data *p2p, int pairing_setup);
-void p2p_set_pairing_cache(struct p2p_data *p2p, int pairing_cache);
 void p2p_set_bootstrapmethods(struct p2p_data *p2p, int bootstrap_methods);
 void p2p_set_pasn_type(struct p2p_data *p2p, u8 pasn_type);
 void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after);
