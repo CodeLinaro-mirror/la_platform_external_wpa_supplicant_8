@@ -946,6 +946,9 @@ struct hostapd_bss_config {
 	u16 pasn_comeback_after;
 #endif /* CONFIG_PASN */
 
+	int urnm_mfpr_x20;
+	int urnm_mfpr;
+
 	unsigned int unsol_bcast_probe_resp_interval;
 
 	u8 ext_capa_mask[EXT_CAPA_MAX_LEN];
@@ -1240,6 +1243,9 @@ struct hostapd_config {
 
 	bool channel_usage;
 	bool peer_to_peer_twt;
+
+	/* Set I2R LMR policy to allow LMR response from ISTA */
+	bool i2r_lmr_policy;
 };
 
 
