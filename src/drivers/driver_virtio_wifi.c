@@ -6,6 +6,8 @@
  */
 #include "includes.h"
 
+#include "android/utils/lock.h"
+#include "android/utils/sockets.h"
 #include "common.h"
 #include "driver.h"
 #include "driver_virtio_wifi.h"
@@ -19,105 +21,6 @@
 
 #define IEEE80211_MAX_FRAME_LEN		2352
 
-// AEMU mutex
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN 1
-#include <windows.h>
-#else
-#include <pthread.h>
-#endif
-
-#ifdef _WIN32
-#define RWLOCK_TYPE SRWLOCK
-static void rwlock_init(void *lock) {
-  InitializeSRWLock(lock);
-}
-static void rwlock_write_lock(void *lock) {
-  AcquireSRWLockExclusive(lock);
-}
-static void rwlock_write_unlock(void *lock) {
-  ReleaseSRWLockExclusive(lock);
-}
-static void rwlock_read_lock(void *lock) {
-  AcquireSRWLockShared(lock);
-}
-static void rwlock_read_unlock(void *lock) {
-  ReleaseSRWLockShared(lock);
-}
-static void rwlock_destroy(void *lock) {
-}
-#else
-#define RWLOCK_TYPE pthread_rwlock_t
-static void rwlock_init(void *lock) {
-  pthread_rwlock_init(lock, NULL);
-}
-static void rwlock_write_lock(void *lock) {
-  pthread_rwlock_wrlock(lock);
-}
-static void rwlock_write_unlock(void *lock) {
-  pthread_rwlock_unlock(lock);
-}
-static void rwlock_read_lock(void *lock) {
-  pthread_rwlock_rdlock(lock);
-}
-static void rwlock_read_unlock(void *lock) {
-  pthread_rwlock_unlock(lock);
-}
-static void rwlock_destroy(void *lock) {
-  pthread_rwlock_destroy(lock);
-}
-#endif
-// end AEMU mutex
-
-// AEMU sockets
-#ifndef _MSC_VER
-#include <unistd.h>
-#endif
-
-#ifdef _WIN32
-#include <winsock2.h>
-#else /* !_WIN32 */
-#include <sys/socket.h>
-#endif /* !_WIN32 */
-
-/* QSOCKET_CALL is used to deal with the fact that EINTR happens pretty
- * easily in QEMU since we use SIGALRM to implement periodic timers
- */
-#ifdef _WIN32
-#define QSOCKET_CALL(_ret, _cmd) \
-    do {                         \
-        _ret = (_cmd);           \
-    } while (_ret < 0 && WSAGetLastError() == WSAEINTR)
-#else
-#define HANDLE_EINTR(x)                                       \
-    __extension__({                                           \
-        __typeof__(x) eintr_wrapper_result;                   \
-        do {                                                  \
-            eintr_wrapper_result = (x);                       \
-        } while (eintr_wrapper_result < 0 && errno == EINTR); \
-        eintr_wrapper_result;                                 \
-    })
-#define QSOCKET_CALL(_ret, _cmd)   \
-    do {                           \
-        errno = 0;                 \
-        _ret = HANDLE_EINTR(_cmd); \
-    } while (0);
-#endif
-
-#define SOCKET_CALL(cmd)             \
-    int ret;                         \
-    QSOCKET_CALL(ret, (cmd));        \
-    return ret;
-
-static int socket_recv(int fd, void* buf, int len) {
-    SOCKET_CALL(recvfrom(fd, buf, len, 0, 0, 0))
-}
-
-static int socket_send(int fd, const void* buf, int buflen) {
-    SOCKET_CALL(send(fd, buf, buflen, 0))
-}
-// end AEMU sockets
-
 struct virtio_wifi_data {
 	struct hostapd_data *hapd;
 	int sock; /* raw packet socket */
@@ -125,7 +28,7 @@ struct virtio_wifi_data {
 	u8 perm_addr[ETH_ALEN];
 	struct virtio_wifi_key_data PTK; /* Pairwise Temporal Key */
 	struct virtio_wifi_key_data GTK; /* Group Temporal Key */
-	RWLOCK_TYPE lock;
+	CReadWriteLock* rwlock;
 };
 
 static const unsigned char s_bssid[] = { 0x00, 0x13, 0x10, 0x85, 0xfe, 0x01 };
@@ -288,9 +191,9 @@ struct virtio_wifi_key_data get_active_ptk() {
 	struct virtio_wifi_key_data ret;
 	os_memset(&ret, 0, sizeof(ret));
 	if (priv_drv) {
-	rwlock_read_lock(&priv_drv->lock);
+		android_rw_lock_read_acquire(priv_drv->rwlock);
 		ret = priv_drv->PTK;
-	rwlock_read_unlock(&priv_drv->lock);
+		android_rw_lock_read_release(priv_drv->rwlock);
 	}
 	return ret;
 }
@@ -299,9 +202,9 @@ struct virtio_wifi_key_data get_active_gtk() {
 	struct virtio_wifi_key_data ret;
 	os_memset(&ret, 0, sizeof(ret));
 	if (priv_drv) {
-	rwlock_read_lock(&priv_drv->lock);
+		android_rw_lock_read_acquire(priv_drv->rwlock);
 		ret = priv_drv->GTK;
-	rwlock_read_unlock(&priv_drv->lock);
+		android_rw_lock_read_release(priv_drv->rwlock);
 	}
 	return ret;
 }
@@ -322,7 +225,7 @@ static void *virtio_wifi_init(struct hostapd_data *hapd,
 	}
 	os_memset(&drv->GTK, 0, sizeof(drv->GTK));
 	os_memset(&drv->PTK, 0, sizeof(drv->PTK));
-	rwlock_init(&drv->lock);
+	drv->rwlock = android_rw_lock_new();
 	priv_drv = drv;
 	return drv;
 }
@@ -330,7 +233,7 @@ static void *virtio_wifi_init(struct hostapd_data *hapd,
 static void virtio_wifi_deinit(void *priv) {
 	struct virtio_wifi_data *drv = priv;
 	priv_drv = NULL;
-	rwlock_destroy(&drv->lock);
+	android_rw_lock_free(drv->rwlock);
 	eloop_unregister_read_sock(drv->sock);
 	eloop_unregister_read_sock(drv->ctrl_sock);
 	os_free(drv);
@@ -519,7 +422,7 @@ static int virtio_wifi_set_key(const char *ifname, void *priv,
 	u32 suite;
 	int ret = 0;
 	struct virtio_wifi_data *drv = priv;
-	rwlock_write_lock(&drv->lock);
+	android_rw_lock_write_acquire(drv->rwlock);
 	if (alg == WPA_ALG_NONE) {
 		if (key_idx == drv->PTK.key_idx)
 			drv->PTK.key_len = 0;
@@ -550,7 +453,7 @@ static int virtio_wifi_set_key(const char *ifname, void *priv,
 		drv->PTK.key_idx = key_idx;
 	}
 out:
-	rwlock_write_unlock(&drv->lock);
+	android_rw_lock_write_release(drv->rwlock);
 	return ret;
 }
 
