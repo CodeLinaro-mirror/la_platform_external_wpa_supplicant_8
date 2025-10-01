@@ -101,9 +101,6 @@ void wpas_aidl_deinit(struct wpas_aidl_priv *priv)
 
 int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
-#ifdef MAINLINE_SUPPLICANT
-    return 1;
-#else
 	if (!wpa_s || !wpa_s->global->aidl)
 		return 1;
 
@@ -116,14 +113,10 @@ int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 		return 1;
 
 	return aidl_manager->registerInterface(wpa_s);
-#endif
 }
 
 int wpas_aidl_unregister_interface(struct wpa_supplicant *wpa_s)
 {
-#ifdef MAINLINE_SUPPLICANT
-    return 1;
-#else
 	if (!wpa_s || !wpa_s->global->aidl)
 		return 1;
 
@@ -136,15 +129,11 @@ int wpas_aidl_unregister_interface(struct wpa_supplicant *wpa_s)
 		return 1;
 
 	return aidl_manager->unregisterInterface(wpa_s);
-#endif
 }
 
 int wpas_aidl_register_network(
 	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 {
-#ifdef MAINLINE_SUPPLICANT
-    return 1;
-#else
 	if (!wpa_s || !wpa_s->global->aidl || !ssid)
 		return 1;
 
@@ -156,15 +145,11 @@ int wpas_aidl_register_network(
 		return 1;
 
 	return aidl_manager->registerNetwork(wpa_s, ssid);
-#endif
 }
 
 int wpas_aidl_unregister_network(
 	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 {
-#ifdef MAINLINE_SUPPLICANT
-    return 1;
-#else
 	if (!wpa_s || !wpa_s->global->aidl || !ssid)
 		return 1;
 
@@ -176,7 +161,6 @@ int wpas_aidl_unregister_network(
 		return 1;
 
 	return aidl_manager->unregisterNetwork(wpa_s, ssid);
-#endif
 }
 
 int wpas_aidl_notify_state_changed(struct wpa_supplicant *wpa_s)
@@ -1111,9 +1095,6 @@ void wpas_aidl_notify_qos_policy_request(struct wpa_supplicant *wpa_s,
 
 ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
 {
-#ifdef MAINLINE_SUPPLICANT
-    return -1;
-#else
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager)
 		return -1;
@@ -1121,7 +1102,6 @@ ssize_t wpas_aidl_get_certificate(const char* alias, uint8_t** value)
 	wpa_printf(MSG_INFO, "Requesting certificate from framework");
 
 	return aidl_manager->getCertificate(alias, value);
-#endif
 }
 
 ssize_t wpas_aidl_list_aliases(const char *prefix, char ***aliases)
