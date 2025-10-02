@@ -133,6 +133,8 @@ static void wpas_update_fils_connect_params(struct wpa_supplicant *wpa_s);
 #ifdef CONFIG_OWE
 static void wpas_update_owe_connect_params(struct wpa_supplicant *wpa_s);
 #endif /* CONFIG_OWE */
+static void radio_remove_pending_connect(struct wpa_supplicant *wpa_s,
+					 const struct wpa_ssid *ssid);
 
 
 #ifdef CONFIG_WEP
@@ -1281,6 +1283,12 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		sme_sched_obss_scan(wpa_s, 0);
 	}
 	wpa_s->wpa_state = state;
+
+#ifndef CONFIG_NO_ROBUST_AV
+	if (state == WPA_COMPLETED && dl_list_len(&wpa_s->active_scs_ids) &&
+	    wpa_s->scs_reconfigure)
+		wpas_scs_reconfigure(wpa_s);
+#endif /* CONFIG_NO_ROBUST_AV */
 
 #ifdef CONFIG_BGSCAN
 	if (state == WPA_COMPLETED && wpa_s->current_ssid != wpa_s->bgscan_ssid)
@@ -5209,6 +5217,7 @@ int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id)
 	if (!ssid)
 		return -1;
 	wpas_notify_network_removed(wpa_s, ssid);
+	radio_remove_pending_connect(wpa_s, ssid);
 
 	if (ssid == prev || !prev) {
 #ifdef CONFIG_SME
@@ -7395,6 +7404,31 @@ void radio_remove_pending_work(struct wpa_supplicant *wpa_s, void *ctx)
 }
 
 
+static void radio_remove_pending_connect(struct wpa_supplicant *wpa_s,
+					 const struct wpa_ssid *ssid)
+{
+	struct wpa_radio_work *work, *tmp;
+	struct wpa_radio *radio = wpa_s->radio;
+	struct wpa_connect_work *cwork;
+
+	dl_list_for_each_safe(work, tmp, &radio->work, struct wpa_radio_work,
+			      list) {
+		if (!radio_work_is_connect(work))
+			continue;
+
+		cwork = work->ctx;
+		if (cwork->ssid != ssid)
+			continue;
+
+		wpa_printf(MSG_DEBUG, "Remove radio work '%s'@%p ssid=%s",
+			   work->type, work,
+			   wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+		work->cb(work, 1);
+		radio_work_free(work);
+	}
+}
+
+
 static void radio_remove_interface(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_radio *radio = wpa_s->radio;
@@ -7966,6 +8000,14 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_ERROR, "Failed to initialize GAS query");
 		return -1;
 	}
+
+#ifdef CONFIG_P2P
+	if (wpa_s->drv_flags2 & (WPA_DRIVER_FLAGS2_P2P_FEATURE_V2 |
+				 WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE)) {
+		wpa_s->p2p_pairing_setup = true;
+		wpa_s->p2p_pairing_cache = true;
+	}
+#endif /* CONFIG_P2P */
 
 	if ((!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) ||
 	     wpa_s->p2p_mgmt) &&
