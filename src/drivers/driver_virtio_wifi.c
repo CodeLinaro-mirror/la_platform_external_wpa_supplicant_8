@@ -110,7 +110,7 @@ static void rwlock_destroy(void *lock) {
     return ret;
 
 static int socket_recv(int fd, void* buf, int len) {
-    SOCKET_CALL(recvfrom(fd, buf, len, 0, 0, 0))
+    SOCKET_CALL(recv(fd, buf, len, 0))
 }
 
 static int socket_send(int fd, const void* buf, int buflen) {
@@ -125,7 +125,7 @@ struct virtio_wifi_data {
 	u8 perm_addr[ETH_ALEN];
 	struct virtio_wifi_key_data PTK; /* Pairwise Temporal Key */
 	struct virtio_wifi_key_data GTK; /* Group Temporal Key */
-	RWLOCK_TYPE lock;
+	RWLOCK_TYPE *lock;
 };
 
 static const unsigned char s_bssid[] = { 0x00, 0x13, 0x10, 0x85, 0xfe, 0x01 };
@@ -225,8 +225,13 @@ static void handle_read(int sock, void *eloop_ctx, void *sock_ctx)
 	unsigned char buf[IEEE80211_MAX_FRAME_LEN];
 	len = socket_recv(sock, buf, IEEE80211_MAX_FRAME_LEN);
 
-	if (len < 0) {
-		wpa_printf(MSG_ERROR, "virtio_wifi: recv error: %s", strerror(errno));
+	if (len < IEEE80211_HDRLEN) {
+		if (len < 0) {
+			wpa_printf(MSG_ERROR, "virtio_wifi: recv error: %s", strerror(errno));
+		} else if (len > 0) {
+			wpa_printf(MSG_DEBUG, "virtio_wifi: received too short frame: %d",
+				   len);
+		}
 		return;
 	}
 	handle_frame(drv, buf, len);
@@ -288,9 +293,9 @@ struct virtio_wifi_key_data get_active_ptk() {
 	struct virtio_wifi_key_data ret;
 	os_memset(&ret, 0, sizeof(ret));
 	if (priv_drv) {
-	rwlock_read_lock(&priv_drv->lock);
+	rwlock_read_lock(priv_drv->lock);
 		ret = priv_drv->PTK;
-	rwlock_read_unlock(&priv_drv->lock);
+	rwlock_read_unlock(priv_drv->lock);
 	}
 	return ret;
 }
@@ -299,9 +304,9 @@ struct virtio_wifi_key_data get_active_gtk() {
 	struct virtio_wifi_key_data ret;
 	os_memset(&ret, 0, sizeof(ret));
 	if (priv_drv) {
-	rwlock_read_lock(&priv_drv->lock);
+	rwlock_read_lock(priv_drv->lock);
 		ret = priv_drv->GTK;
-	rwlock_read_unlock(&priv_drv->lock);
+	rwlock_read_unlock(priv_drv->lock);
 	}
 	return ret;
 }
@@ -322,7 +327,8 @@ static void *virtio_wifi_init(struct hostapd_data *hapd,
 	}
 	os_memset(&drv->GTK, 0, sizeof(drv->GTK));
 	os_memset(&drv->PTK, 0, sizeof(drv->PTK));
-	rwlock_init(&drv->lock);
+	drv->lock = os_zalloc(sizeof(*drv->lock));
+	rwlock_init(drv->lock);
 	priv_drv = drv;
 	return drv;
 }
@@ -330,7 +336,8 @@ static void *virtio_wifi_init(struct hostapd_data *hapd,
 static void virtio_wifi_deinit(void *priv) {
 	struct virtio_wifi_data *drv = priv;
 	priv_drv = NULL;
-	rwlock_destroy(&drv->lock);
+	rwlock_destroy(drv->lock);
+	os_free(drv->lock);
 	eloop_unregister_read_sock(drv->sock);
 	eloop_unregister_read_sock(drv->ctrl_sock);
 	os_free(drv);
@@ -519,7 +526,7 @@ static int virtio_wifi_set_key(const char *ifname, void *priv,
 	u32 suite;
 	int ret = 0;
 	struct virtio_wifi_data *drv = priv;
-	rwlock_write_lock(&drv->lock);
+	rwlock_write_lock(drv->lock);
 	if (alg == WPA_ALG_NONE) {
 		if (key_idx == drv->PTK.key_idx)
 			drv->PTK.key_len = 0;
@@ -550,7 +557,7 @@ static int virtio_wifi_set_key(const char *ifname, void *priv,
 		drv->PTK.key_idx = key_idx;
 	}
 out:
-	rwlock_write_unlock(&drv->lock);
+	rwlock_write_unlock(drv->lock);
 	return ret;
 }
 
