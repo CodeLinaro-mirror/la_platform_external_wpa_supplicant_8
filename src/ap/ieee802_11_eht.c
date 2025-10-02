@@ -1903,8 +1903,10 @@ hostapd_send_link_reconf_resp(struct hostapd_data *hapd,
 			assoc_sta->wpa_sm, req_list->links_add_ok) + 1;
 		len += kde_len;
 
+#ifdef CONFIG_OCV
 		if (wpa_auth_uses_ocv(assoc_sta->wpa_sm))
 			len += OCV_OCI_EXTENDED_LEN;
+#endif /* CONFIG_OCV */
 
 		mld.mld_sta = true;
 		dl_list_for_each(info, &req_list->add_req,
@@ -2001,6 +2003,7 @@ hostapd_send_link_reconf_resp(struct hostapd_data *hapd,
 		pos_len += kde_len;
 	}
 
+#ifdef CONFIG_OCV
 	/* OCI element for add links */
 	if (wpa_auth_uses_ocv(assoc_sta->wpa_sm)) {
 		struct wpa_channel_info ci;
@@ -2022,6 +2025,7 @@ hostapd_send_link_reconf_resp(struct hostapd_data *hapd,
 		pos += OCV_OCI_EXTENDED_LEN;
 		pos_len += OCV_OCI_EXTENDED_LEN;
 	}
+#endif /* CONFIG_OCV */
 
 	/* Basic Multi-Link element for add links */
 	if (mle_len) {
@@ -2686,6 +2690,7 @@ hostapd_handle_link_reconf_req(struct hostapd_data *hapd, const u8 *buf,
 	if (dl_list_empty(&req_list->add_req))
 		goto skip_oci_validation;
 
+#ifdef CONFIG_OCV
 	if (!elems.oci || !elems.oci_len) {
 		if (wpa_auth_uses_ocv(assoc_sta->wpa_sm) == 1) {
 			wpa_printf(MSG_INFO,
@@ -2715,6 +2720,7 @@ hostapd_handle_link_reconf_req(struct hostapd_data *hapd, const u8 *buf,
 			goto out;
 		}
 	}
+#endif /* CONFIG_OCV */
 
 skip_oci_validation:
 	/* Do STA profile validation */
