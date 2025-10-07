@@ -120,6 +120,10 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
 {
-	// TODO(b/457258887): add register event callback implementation
-	return  createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+    AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager ||
+		!aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+	return ndk::ScopedAStatus::ok();
 }

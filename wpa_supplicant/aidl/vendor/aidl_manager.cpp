@@ -57,6 +57,13 @@ constexpr bool isP2pIface(const struct wpa_supplicant *wpa_s)
 	return wpa_s->global->p2p_init_wpa_s == wpa_s;
 }
 
+constexpr bool isNanIface(const struct wpa_supplicant *wpa_s)
+{
+	// TODO: check if the provided wpa_supplicant represents a NAN iface.
+	// return wpa_s->nan_mgmt;
+	return false;
+}
+
 /**
  * Creates a unique key for the network using the provided |ifname| and
  * |network_id| to be used in the internal map of |ISupplicantNetwork| objects.
@@ -97,6 +104,31 @@ int registerForDeathAndAddCallbackAidlObjectToList(
 	}
 	return 0;
 }
+
+#ifdef MAINLINE_SUPPLICANT
+// The ISupplicantNanIfaceEventCallback does not have the getInterfaceVersion API,
+// so we cannot reuse the above general template of
+// registerForDeathAndAddCallbackAidlObjectToList.
+template <>
+int registerForDeathAndAddCallbackAidlObjectToList<NanIface::ISupplicantNanIfaceEventCallback>(
+	AIBinder_DeathRecipient* death_notifier,
+	const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback,
+	std::vector<std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>> &callback_list)
+{
+	binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
+			death_notifier, nullptr /* cookie */);
+	if (status != STATUS_OK) {
+		wpa_printf(
+			MSG_ERROR,
+			"Error registering for death notification for "
+			"supplicant callback object");
+		return 1;
+	}
+	callback_list.push_back(callback);
+	// ISupplicantNanIfaceEventCallback does not have getInterfaceVersion.
+	return 0;
+}
+#endif
 
 template <class ObjectType>
 int addAidlObjectToMap(
@@ -562,6 +594,25 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 	if (!wpa_s)
 		return 1;
 
+#ifdef MAINLINE_SUPPLICANT
+	if (isNanIface(wpa_s)) {
+		if (addAidlObjectToMap<NanIface>(
+			wpa_s->ifname,
+			ndk::SharedRefBase::make<NanIface>(wpa_s->global, wpa_s->ifname),
+			nan_iface_object_map_)) {
+			wpa_printf(
+				MSG_ERROR,
+				"Failed to register NAN interface with AIDL "
+				"control: %s",
+				wpa_s->ifname);
+			return 1;
+		}
+		nan_iface_callbacks_map_[wpa_s->ifname] =
+			std::vector<std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>>();
+		return 0;
+	}
+#endif
+
 	if (isP2pIface(wpa_s)) {
 		if (addAidlObjectToMap<P2pIface>(
 			wpa_s->ifname,
@@ -662,7 +713,7 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 
 	bool success = removeWifiRttControllerIfRegistered(wpa_s);
 	// Check if this interface is present in P2P map first, else check in
-	// STA map.
+	// STA and NAN map.
 	// Note: We can't use isP2pIface() here because interface
 	// pointers (wpa_s->global->p2p_init_wpa_s == wpa_s) used by the helper
 	// function is cleared by the core before notifying the AIDL interface.
@@ -670,20 +721,23 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 	if (success) {  // assumed to be P2P
 		success = !removeAllIfaceCallbackAidlObjectsFromMap(
 			death_notifier_, wpa_s->ifname, p2p_iface_callbacks_map_);
-	} else {  // assumed to be STA
-		success = !removeAidlObjectFromMap(
-			wpa_s->ifname, sta_iface_object_map_);
-		if (success) {
-			success = !removeAllIfaceCallbackAidlObjectsFromMap(
-				death_notifier_, wpa_s->ifname, sta_iface_callbacks_map_);
-		}
+	} else if ((success = !removeAidlObjectFromMap(wpa_s->ifname, sta_iface_object_map_))) {
+		success = !removeAllIfaceCallbackAidlObjectsFromMap(
+			death_notifier_, wpa_s->ifname, sta_iface_callbacks_map_);
 	}
+#ifdef MAINLINE_SUPPLICANT
+	else if ((success = !removeAidlObjectFromMap(wpa_s->ifname, nan_iface_object_map_))) {
+		success = !removeAllIfaceCallbackAidlObjectsFromMap(
+			death_notifier_, wpa_s->ifname, nan_iface_callbacks_map_);
+	}
+#endif
+	// Failed to remove from callback map or also object map
 	if (!success) {
 		wpa_printf(
 			MSG_ERROR,
-			"Failed to unregister interface with AIDL "
-			"control: %s",
-			wpa_s->ifname);
+			"Failed to unregister interface '%s' with AIDL control "
+			"(success: %d)",
+			wpa_s->ifname, success);
 		return 1;
 	}
 
@@ -2992,6 +3046,27 @@ void AidlManager::callWithEachStaIfaceCallback(
 	callWithEachIfaceCallback(ifname, method, sta_iface_callbacks_map_);
 }
 
+#ifdef MAINLINE_SUPPLICANT
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered interface callback aidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required aidl method from
+ * |ISupplicantNanIfaceEventCallback|.
+ */
+void AidlManager::callWithEachNanIfaceCallback(
+	const std::string &ifname,
+	const std::function<ndk::ScopedAStatus(
+	std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>)> &method)
+{
+	if (ifname.empty()) return;
+
+	callWithEachIfaceCallback(ifname, method, nan_iface_callbacks_map_);
+}
+#endif
+
 /**
  * Helper function to invoke the provided callback method on all the
  * registered network callback aidl objects for the specified
@@ -3027,6 +3102,24 @@ void AidlManager::callWithEachWifiRttControllerEventCallback(
 {
 	callWithEachWifiRttControllerCallback(ifname, method, wifi_rtt_controller_callbacks_map_);
 }
+
+#ifdef MAINLINE_SUPPLICANT
+/**
+ * Add a new iface callback aidl object reference to our
+ * nan interface callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param callback Aidl reference of the callback object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::addNanIfaceCallbackAidlObject(
+	const std::string &ifname,
+	const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback) {
+	return addIfaceCallbackAidlObjectToMap(
+		death_notifier_, ifname, callback, nan_iface_callbacks_map_);
+}
+#endif
 
 void AidlManager::notifyQosPolicyReset(
 	struct wpa_supplicant *wpa_s)

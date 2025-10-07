@@ -28,6 +28,7 @@
 
 #ifdef MAINLINE_SUPPLICANT
 #include "mainline_supplicant.h"
+#include "nan_iface.h"
 #endif
 
 extern "C"
@@ -234,6 +235,11 @@ public:
 	int addStaNetworkCallbackAidlObject(
 		const std::string &ifname, int network_id,
 		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
+#ifdef MAINLINE_SUPPLICANT
+	int addNanIfaceCallbackAidlObject(
+		const std::string &ifname,
+		const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback);
+#endif
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
 	int createOrGetWifiRttControllerAidlObject(
@@ -263,7 +269,6 @@ private:
 	void removeStaNetworkCallbackAidlObject(
 		const std::string &ifname, int network_id,
 		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
-
 	void callWithEachSupplicantCallback(
 		const std::function<ndk::ScopedAStatus(
 		std::shared_ptr<ISupplicantCallback>)> &method);
@@ -283,6 +288,12 @@ private:
 		const std::string &ifname,
 		const std::function<::ndk::ScopedAStatus(
 		std::shared_ptr<ISupplicantWifiRttControllerEventCallback>)> &method);
+#ifdef MAINLINE_SUPPLICANT
+	void callWithEachNanIfaceCallback(
+		const std::string &ifname,
+		const std::function<ndk::ScopedAStatus(
+		std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>)> &method);
+#endif
 
 	// Singleton instance of this class.
 	static AidlManager *instance_;
@@ -315,6 +326,13 @@ private:
 	// |ifname|.
 	std::map<const std::string, std::shared_ptr<SupplicantWifiRttController>>
 		wifi_rtt_controller_object_map_;
+#ifdef MAINLINE_SUPPLICANT
+	// Map of all the NAN interface specific aidl objects controlled by
+	// wpa_supplicant. This map is keyed in by the corresponding
+	// |ifname|.
+	std::map<const std::string, std::shared_ptr<NanIface>>
+		nan_iface_object_map_;
+#endif
 
 	// Callbacks registered for the main aidl service object.
 	std::vector<std::shared_ptr<ISupplicantCallback>> supplicant_callbacks_;
@@ -348,6 +366,15 @@ private:
 		const std::string,
 		std::vector<std::shared_ptr<ISupplicantWifiRttControllerEventCallback>>>
 		wifi_rtt_controller_callbacks_map_;
+#ifdef MAINLINE_SUPPLICANT
+	// Map of all the callbacks registered for NAN interface specific
+	// aidl objects controlled by wpa_supplicant. This map is keyed in by
+	// the corresponding |ifname|.
+	std::map<
+		const std::string,
+		std::vector<std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>>>
+		nan_iface_callbacks_map_;
+#endif
 };
 
 // The aidl interface uses some values which are the same as internal ones to
