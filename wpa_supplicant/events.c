@@ -1037,6 +1037,17 @@ static int rate_match(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 				continue;
 			}
 
+			if (flagged && ((rate_ie[j] & 0x7f) ==
+					BSS_MEMBERSHIP_SELECTOR_EHT_PHY)) {
+				if (!eht_supported(mode, IEEE80211_MODE_INFRA)) {
+					if (debug_print)
+						wpa_dbg(wpa_s, MSG_DEBUG,
+							"   hardware does not support EHT PHY");
+					return 0;
+				}
+				continue;
+			}
+
 #ifdef CONFIG_SAE
 			if (flagged && ((rate_ie[j] & 0x7f) ==
 					BSS_MEMBERSHIP_SELECTOR_SAE_H2E_ONLY)) {
@@ -4423,9 +4434,11 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		/* Check for FT reassociation is done by the driver */
 #ifdef CONFIG_IEEE80211R
 		int use_sha384 = wpa_key_mgmt_sha384(wpa_s->wpa->key_mgmt);
+		bool reassoc_resp = wpa_s->wpa_state == WPA_COMPLETED ? true : false;
 		if (wpa_key_mgmt_ft(wpa_s->key_mgmt) && (wpa_s->key_mgmt == ie.key_mgmt)) {
 			if (wpa_ft_parse_ies(data->assoc_info.resp_ies,
-				data->assoc_info.resp_ies_len, &parse, use_sha384, false) < 0) {
+				data->assoc_info.resp_ies_len, &parse, use_sha384,
+				reassoc_resp) < 0) {
 				wpa_printf(MSG_DEBUG, "Failed to parse FT IEs");
 				return;
 			}
