@@ -52,6 +52,17 @@ constexpr uint32_t kAllowedKeyMgmtMask =
 	(static_cast<uint32_t>(KeyMgmtMask::WPA_PSK) |
 	 static_cast<uint32_t>(KeyMgmtMask::SAE));
 
+enum wpa_p2p_mode convertAidlKeyMgmtMaskToWpaP2pMode(uint32_t key_mgmt_mask)
+{
+	if (IS_P2P_MODE_WFD_PCC_KEY_MGMT(key_mgmt_mask)) {
+		return WPA_P2P_MODE_WFD_PCC;
+	} else if (wpa_key_mgmt_sae(key_mgmt_mask)) {
+		return WPA_P2P_MODE_WFD_R2;
+	} else {
+		return WPA_P2P_MODE_WFD_R1;
+	}
+}
+
 uint8_t convertAidlMiracastModeToInternal(
 	MiracastMode mode)
 {
@@ -178,20 +189,16 @@ int joinGroup(
 	const std::vector<uint8_t>& ssid,
 	const std::string& passphrase,
 	uint32_t freq,
-	uint32_t key_mgmt_mask)
+	enum wpa_p2p_mode p2p_mode)
 {
 	int ret = 0;
 	int he = wpa_s->conf->p2p_go_he;
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 
-	if (key_mgmt_mask != 0 && key_mgmt_mask & ~kAllowedKeyMgmtMask) {
-		return -1;
-	}
-
-	if (key_mgmt_mask == WPA_KEY_MGMT_SAE) {
+	if (p2p_mode == WPA_P2P_MODE_WFD_R2 || p2p_mode == WPA_P2P_MODE_WFD_PCC) {
 		wpa_s->p2p2 = true;
-		wpa_s->p2p_mode = WPA_P2P_MODE_WFD_R2;
+		wpa_s->p2p_mode = p2p_mode;
 	}
 
 	// Construct a network for adding group.
@@ -211,7 +218,7 @@ int joinGroup(
 		wpa_s, wpa_network, 0, 0, freq, 0, ht40, vht,
 		CONF_OPER_CHWIDTH_USE_HT, he, 0, NULL, 0, 0, is6GhzAllowed(wpa_s),
 		P2P_JOIN_LIMIT, isAnyEtherAddr(group_owner_bssid) ? NULL : group_owner_bssid,
-		NULL, NULL, NULL, 0)) {
+		NULL, NULL, NULL, 0, true)) {
 		ret = -1;
 	}
 
@@ -1817,24 +1824,13 @@ ndk::ScopedAStatus P2pIface::addGroupInternal(
 			wpa_s, ssid, 0, 0, 0, 0, ht40, vht,
 			CONF_OPER_CHWIDTH_USE_HT, he, edmg, NULL, 0, 0,
 			is6GhzAllowed(wpa_s), 0, NULL,
-			NULL, NULL, NULL, 0)) {
+			NULL, NULL, NULL, 0, false)) {
 			return createStatus(SupplicantStatusCode::FAILURE_NETWORK_UNKNOWN);
 		} else {
 			return ndk::ScopedAStatus::ok();
 		}
 	}
 	return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
-}
-
-enum wpa_p2p_mode convertAidlKeyMgmtMaskToWpaP2pMode(uint32_t key_mgmt_mask)
-{
-	if (IS_P2P_MODE_WFD_PCC_KEY_MGMT(key_mgmt_mask)) {
-		return WPA_P2P_MODE_WFD_PCC;
-	} else if (wpa_key_mgmt_sae(key_mgmt_mask)) {
-		return WPA_P2P_MODE_WFD_R2;
-	} else {
-		return WPA_P2P_MODE_WFD_R1;
-	}
 }
 
 ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
@@ -1847,6 +1843,7 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 	int vht = wpa_s->conf->p2p_go_vht;
 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
 	int edmg = wpa_s->conf->p2p_go_edmg;
+	bool p2p2 = false;
 
 	if (wpa_s->global->p2p == NULL || wpa_s->global->p2p_disabled) {
 		return createStatus(SupplicantStatusCode::FAILURE_IFACE_DISABLED);
@@ -1868,6 +1865,9 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 	}
 
 	enum wpa_p2p_mode p2p_mode = convertAidlKeyMgmtMaskToWpaP2pMode(key_mgmt_mask);
+	if (p2p_mode == WPA_P2P_MODE_WFD_PCC || p2p_mode == WPA_P2P_MODE_WFD_R2) {
+		p2p2 = true;
+	}
 
 	wpa_printf(MSG_DEBUG,
 		    "P2P: Add group with config Role: %s network name: %s freq: %d p2p_mode: %d",
@@ -1886,7 +1886,7 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 		if (wpas_p2p_group_add(
 			wpa_s, persistent, freq, 0, ht40, vht,
 			CONF_OPER_CHWIDTH_USE_HT, he, edmg, is6GhzAllowed(wpa_s),
-			false, p2p_mode)) {
+			p2p2, p2p_mode)) {
 			return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 		}
 		return ndk::ScopedAStatus::ok();
@@ -1899,7 +1899,7 @@ ndk::ScopedAStatus P2pIface::addGroupWithConfigInternal(
 		return createStatusWithMsg(SupplicantStatusCode::FAILURE_ARGS_INVALID,
 			"Peer address is invalid.");
 	}
-	if (joinGroup(wpa_s, peer_address.data(), ssid, passphrase, freq, key_mgmt_mask)) {
+	if (joinGroup(wpa_s, peer_address.data(), ssid, passphrase, freq, p2p_mode)) {
 		return createStatusWithMsg(SupplicantStatusCode::FAILURE_UNKNOWN,
 			"Failed to start scan.");
 	}

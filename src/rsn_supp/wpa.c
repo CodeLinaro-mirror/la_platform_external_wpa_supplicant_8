@@ -4730,14 +4730,36 @@ void wpa_sm_set_ssid(struct wpa_sm *sm, const u8 *ssid, size_t ssid_len)
 }
 
 
+static void wpa_sm_clear_mlo_group_keys(struct wpa_sm *sm, int link_id)
+{
+	if (!sm)
+		return;
+
+	os_memset(&sm->mlo.links[link_id].gtk, 0,
+		  sizeof(sm->mlo.links[link_id].gtk));
+	os_memset(&sm->mlo.links[link_id].gtk_wnm_sleep, 0,
+		  sizeof(sm->mlo.links[link_id].gtk_wnm_sleep));
+	os_memset(&sm->mlo.links[link_id].igtk, 0,
+		  sizeof(sm->mlo.links[link_id].igtk));
+	os_memset(&sm->mlo.links[link_id].igtk_wnm_sleep, 0,
+		  sizeof(sm->mlo.links[link_id].igtk_wnm_sleep));
+	os_memset(&sm->mlo.links[link_id].bigtk, 0,
+		  sizeof(sm->mlo.links[link_id].bigtk));
+	os_memset(&sm->mlo.links[link_id].bigtk_wnm_sleep, 0,
+		  sizeof(sm->mlo.links[link_id].bigtk_wnm_sleep));
+}
+
+
 int wpa_sm_set_mlo_params(struct wpa_sm *sm, const struct wpa_sm_mlo *mlo)
 {
 	int i;
+	u16 removed_links;
 
 	if (!sm)
 		return -1;
 
 	os_memcpy(sm->mlo.ap_mld_addr, mlo->ap_mld_addr, ETH_ALEN);
+	removed_links = ~mlo->valid_links & sm->mlo.valid_links;
 	sm->mlo.assoc_link_id =  mlo->assoc_link_id;
 	sm->mlo.valid_links = mlo->valid_links;
 	sm->mlo.req_links = mlo->req_links;
@@ -4865,6 +4887,13 @@ int wpa_sm_set_mlo_params(struct wpa_sm *sm, const struct wpa_sm_mlo *mlo)
 				return -1;
 			}
 			sm->mlo.links[i].ap_rsnxoe_len = len;
+		}
+
+		if (removed_links & BIT(i)) {
+			wpa_printf(MSG_DEBUG,
+				   "RSN: Clearing MLO group keys for link[%u]",
+				   i);
+			wpa_sm_clear_mlo_group_keys(sm, i);
 		}
 	}
 
@@ -7332,4 +7361,71 @@ struct wpabuf * wpa_sm_known_sta_identification(struct wpa_sm *sm, const u8 *aa,
 	}
 
 	return ie;
+}
+
+
+static int mlo_ieee80211w_set_keys_for_new_links(struct wpa_sm *sm,
+						 struct wpa_eapol_ie_parse *ie,
+						 u16 added_links_bitmap)
+{
+	int i;
+
+	if (!wpa_cipher_valid_mgmt_group(sm->mgmt_group_cipher) ||
+	    sm->mgmt_group_cipher == WPA_CIPHER_GTK_NOT_USED)
+		return 0;
+
+	for_each_link(added_links_bitmap, i) {
+		if (_mlo_ieee80211w_set_keys(sm, i, ie))
+			return -1;
+	}
+
+	return 0;
+}
+
+
+static int wpa_supplicant_install_mlo_gtk_keys(struct wpa_sm *sm,
+					       struct wpa_eapol_ie_parse *ie,
+					       u16 added_links_bitmap)
+{
+	int i;
+
+	for_each_link(added_links_bitmap, i) {
+		if (!ie->mlo_gtk[i]) {
+			wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+				"MLO RSN: GTK not found for link ID %u", i);
+			return -1;
+		}
+
+		if (wpa_supplicant_mlo_gtk(sm, i, ie->mlo_gtk[i],
+					   ie->mlo_gtk_len[i], 0))
+			return -1;
+	}
+
+	return 0;
+}
+
+
+int wpa_sm_install_mlo_group_keys(struct wpa_sm *sm, const u8 *key_data,
+				  size_t key_data_len, u16 added_links_bitmap)
+{
+	struct wpa_eapol_ie_parse ie;
+
+	if (!sm)
+		return -1;
+
+	wpa_hexdump_key(MSG_DEBUG, "RSN: IE KeyData for MLO link reconfig",
+			key_data, key_data_len);
+
+	if (wpa_supplicant_parse_ies(key_data, key_data_len, &ie) < 0)
+		return -1;
+
+	if (wpa_supplicant_install_mlo_gtk_keys(
+		    sm, &ie, added_links_bitmap) < 0)
+		return -1;
+
+	if (mlo_ieee80211w_set_keys_for_new_links(sm, &ie,
+						  added_links_bitmap) < 0)
+		return -1;
+
+	return 0;
 }

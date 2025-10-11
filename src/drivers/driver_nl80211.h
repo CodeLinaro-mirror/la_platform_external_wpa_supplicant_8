@@ -348,6 +348,7 @@ int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 			 void *arg, int use_existing);
 void nl80211_remove_iface(struct wpa_driver_nl80211_data *drv, int ifidx);
 unsigned int nl80211_get_assoc_freq(struct wpa_driver_nl80211_data *drv);
+const u8 * nl80211_get_assoc_bssid(struct wpa_driver_nl80211_data *drv);
 int nl80211_get_assoc_ssid(struct wpa_driver_nl80211_data *drv, u8 *ssid);
 enum chan_width convert2width(int width);
 void nl80211_mark_disconnected(struct wpa_driver_nl80211_data *drv);
@@ -388,6 +389,8 @@ struct i802_link * nl80211_get_link(struct i802_bss *bss, s8 link_id);
 u8 nl80211_get_link_id_from_link(struct i802_bss *bss, struct i802_link *link);
 int nl80211_remove_link(struct i802_bss *bss, int link_id);
 void nl80211_update_active_links(struct i802_bss *bss, int link_id);
+int nl80211_has_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx,
+		      int ifidx_reason);
 
 static inline bool nl80211_link_valid(u16 links, s8 link_id)
 {
@@ -448,5 +451,7 @@ int nl80211_set_default_scan_ies(void *priv, const u8 *ies, size_t ies_len);
 struct hostapd_multi_hw_info *
 nl80211_get_multi_hw_info(struct i802_bss *bss, unsigned int *num_multi_hws);
 u32 get_nl80211_protocol_features(struct wpa_driver_nl80211_data *drv);
+
+int get_sta_mlo_interface_info(struct wpa_driver_nl80211_data *drv);
 
 #endif /* DRIVER_NL80211_H */
