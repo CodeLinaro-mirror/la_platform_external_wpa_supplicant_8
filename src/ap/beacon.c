@@ -791,7 +791,8 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
 
 		if (hapd_probed != hapd && hapd_probed->conf->mld_ap)
 			buflen += hostapd_eid_eht_basic_ml_len(hapd_probed,
-							       NULL, true);
+							       NULL, true,
+							       false);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -957,7 +958,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 
 	if (hapd_probed != hapd && hapd_probed->conf->mld_ap)
 		pos = hostapd_eid_eht_basic_ml_common(hapd_probed, pos, NULL,
-						      true);
+						      true, false);
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_IEEE80211AC
@@ -2683,6 +2684,14 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
 		wpa_printf(MSG_ERROR, "Cannot set beacons during CSA period");
 		return -1;
 	}
+
+#ifdef CONFIG_IEEE80211AX
+	if (hapd->cca_in_progress) {
+		wpa_printf(MSG_ERROR,
+			   "Cannot set beacons during CCA period");
+		return -1;
+	}
+#endif /* CONFIG_IEEE80211AX */
 
 	hapd->beacon_set_done = 1;
 
