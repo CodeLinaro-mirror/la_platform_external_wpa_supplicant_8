@@ -180,6 +180,30 @@ extern "C"
 		int subscribe_id, enum nan_de_reason reason);
 	void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
 		u16 auth_type, u16 auth_transaction, u16 status_code);
+	void wpas_aidl_notify_nan_service_discovered(
+		struct wpa_supplicant* wpa_s,
+		enum nan_service_protocol_type srv_proto_type, int subscribe_id,
+		int peer_publish_id, const u8* peer_addr, bool fsd, const u8* ssi,
+		size_t ssi_len);
+	void wpas_aidl_notify_nan_publish_replied(
+		struct wpa_supplicant* wpa_s,
+		enum nan_service_protocol_type srv_proto_type, int publish_id,
+		int peer_subscribe_id, const u8* peer_addr, const u8* ssi,
+		size_t ssi_len);
+	void wpas_aidl_notify_nan_message_received(
+		struct wpa_supplicant* wpa_s, int id, int peer_instance_id,
+		const u8* peer_addr, const u8* message, size_t message_len);
+	void wpas_aidl_notify_nan_publish_terminated(
+		struct wpa_supplicant* wpa_s, int publish_id,
+		enum nan_de_reason reason);
+	void wpas_aidl_notify_nan_subscribe_terminated(
+		struct wpa_supplicant* wpa_s, int subscribe_id,
+		enum nan_de_reason reason);
+	void wpas_aidl_notify_nan_cluster_event(
+		struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr);
+	void wpas_aidl_notify_nan_match_expired(
+		struct wpa_supplicant* wpa_s, int subscribe_id,
+		int peer_publish_id);
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -405,6 +429,25 @@ static void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa
 		int subscribe_id, enum nan_de_reason reason) {}
 static void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
 		u16 auth_type, u16 auth_transaction, u16 status_code) {}
+static void wpas_aidl_notify_nan_service_discovered(
+    struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
+    int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
+    const u8* ssi, size_t ssi_len) {}
+static void wpas_aidl_notify_nan_publish_replied(
+    struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
+    int publish_id, int peer_subscribe_id, const u8* peer_addr, const u8* ssi,
+    size_t ssi_len) {}
+static void wpas_aidl_notify_nan_message_received(
+    struct wpa_supplicant* wpa_s, int id, int peer_instance_id,
+    const u8* peer_addr, const u8* message, size_t message_len) {}
+static void wpas_aidl_notify_nan_publish_terminated(
+    struct wpa_supplicant* wpa_s, int subscribe_id, enum nan_de_reason reason) {}
+static void wpas_aidl_notify_nan_subscribe_terminated(
+    struct wpa_supplicant* wpa_s, int subscribe_id, enum nan_de_reason reason) {}
+static void wpas_aidl_notify_nan_cluster_event(
+    struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr) {}
+static void wpas_aidl_notify_nan_match_expired(
+    struct wpa_supplicant* wpa_s, int subscribe_id, int peer_publish_id) {}
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus

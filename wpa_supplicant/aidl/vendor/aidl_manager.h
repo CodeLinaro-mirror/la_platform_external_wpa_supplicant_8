@@ -211,6 +211,27 @@ public:
 	void notifyExtRadioWorkTimeout(
 		struct wpa_supplicant *wpa_s, uint32_t id);
 	bool removeWifiRttControllerIfRegistered(struct wpa_supplicant *wpa_s);
+	void notifyNanServiceDiscovered(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len);
+	void notifyNanPublishReplied(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int publish_id, int peer_subscribe_id,
+		const u8 *peer_addr, const u8 *ssi, size_t ssi_len);
+	void notifyNanMessageReceived(struct wpa_supplicant *wpa_s, int id,
+		int peer_instance_id, const u8 *peer_addr,
+		const u8 *message, size_t message_len);
+	void notifyNanPublishTerminated(struct wpa_supplicant *wpa_s,
+		int publish_id, enum nan_de_reason reason);
+	void notifyNanSubscribeTerminated(struct wpa_supplicant *wpa_s,
+		int subscribe_id, enum nan_de_reason reason);
+	void notifyNanClusterEvent(struct wpa_supplicant *wpa_s,
+		u8 event_type, const u8 *peer_addr);
+	void notifyNanMatchExpired(struct wpa_supplicant *wpa_s,
+		int subscribe_id, int peer_publish_id);
+	void notifyNanTransmitFollowup(struct wpa_supplicant *wpa_s,
+		int cmd_id, u8 status_code);
 
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
