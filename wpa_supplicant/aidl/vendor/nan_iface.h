@@ -71,6 +71,28 @@ private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
 		const std::shared_ptr<ISupplicantNanIfaceEventCallback>&
 		in_callback);
+	::ndk::ScopedAStatus getCapabilitiesRequestInternal(
+		char16_t cmdId);
+	::ndk::ScopedAStatus configRequestInternal(
+		char16_t cmdId, const NanConfigRequest& request);
+	::ndk::ScopedAStatus enableRequestInternal(
+		char16_t cmdId, const NanEnableRequest& msg1,
+		const NanConfigRequest& msg2);
+	::ndk::ScopedAStatus disableRequestInternal(char16_t cmdId);
+	::ndk::ScopedAStatus createDataInterfaceRequestInternal(
+		char16_t, const std::string& ifaceName);
+	::ndk::ScopedAStatus deleteDataInterfaceRequestInternal(
+		char16_t, const std::string& ifaceName);
+	::ndk::ScopedAStatus startPublishRequestInternal(
+		char16_t cmdId, const NanPublishRequest& msg);
+	::ndk::ScopedAStatus stopPublishRequestInternal(
+		char16_t cmdId, int8_t sessionId);
+	::ndk::ScopedAStatus startSubscribeRequestInternal(
+		char16_t cmdId, const NanSubscribeRequest& msg);
+	::ndk::ScopedAStatus stopSubscribeRequestInternal(
+		char16_t cmdId, int8_t sessionId);
+	::ndk::ScopedAStatus transmitFollowupRequestInternal(
+		char16_t cmdId, const NanTransmitFollowupRequest& msg);
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
 	const std::string ifname_;

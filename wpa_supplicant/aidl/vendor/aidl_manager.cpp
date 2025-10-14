@@ -54,7 +54,7 @@ using aidl::android::system::wifi::mainline_supplicant::NanFollowupReceivedInd;
 using aidl::android::system::wifi::mainline_supplicant::NanMatchInd;
 using aidl::android::system::wifi::mainline_supplicant::NanStatus;
 using NanStatusCode =
-    aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
+	aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
 using NanClusterEventType = aidl::android::system::wifi::mainline_supplicant::
     NanClusterEventType;
 #endif
@@ -110,8 +110,8 @@ int registerForDeathAndAddCallbackAidlObjectToList(
 	}
 	callback_list.push_back(callback);
 	if (aidl_client_version == 0) {
-	    callback->getInterfaceVersion(&aidl_client_version);
-	    wpa_printf(MSG_INFO, "AIDL client version: %d", aidl_client_version);
+		callback->getInterfaceVersion(&aidl_client_version);
+		wpa_printf(MSG_INFO, "AIDL client version: %d", aidl_client_version);
 	}
 	return 0;
 }
@@ -549,22 +549,22 @@ int32_t AidlManager::areAidlServiceAndClientAtLeastVersion(int32_t expected_vers
 
 int AidlManager::registerAidlService(struct wpa_global *global)
 {
-    wpa_printf(MSG_INFO, "Registering the mainline supplicant as a lazy service");
-    std::string service_name = "wifi_mainline_supplicant";
-    std::shared_ptr<MainlineSupplicant> service
+	wpa_printf(MSG_INFO, "Registering the mainline supplicant as a lazy service");
+	std::string service_name = "wifi_mainline_supplicant";
+	std::shared_ptr<MainlineSupplicant> service
 		= ndk::SharedRefBase::make<MainlineSupplicant>(global);
-    if (__builtin_available(android __ANDROID_API_V__, *)) {
-        int status =
-            AServiceManager_registerLazyService(service->asBinder().get(), service_name.c_str());
-        if (status != EX_NONE) {
-            wpa_printf(MSG_ERROR, "Registration failed with status %d", status);
-            return 1;
-        }
-        // Initialize the death notifier.
-	    death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
-        return 0;
-    }
-    return 1;
+	if (__builtin_available(android __ANDROID_API_V__, *)) {
+	int status =
+	AServiceManager_registerLazyService(service->asBinder().get(), service_name.c_str());
+	if (status != EX_NONE) {
+	wpa_printf(MSG_ERROR, "Registration failed with status %d", status);
+	return 1;
+	}
+	// Initialize the death notifier.
+		death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
+	return 0;
+	}
+	return 1;
 }
 
 #else
@@ -916,7 +916,7 @@ KeyMgmtMask convertSupplicantSelectedKeyMgmtForConnectionToAidl(int key_mgmt)
 			return KeyMgmtMask::DPP;
 		default:
 			wpa_printf(MSG_INFO, "Unable to convert supplicant key_mgmt 0x%x to AIDL",
-				    key_mgmt);
+					key_mgmt);
 			return (KeyMgmtMask) key_mgmt;
 	}
 }
@@ -1588,8 +1588,8 @@ void AidlManager::notifyP2pDeviceFound(
 			return;
 		} else {
 			std::copy(peer_wfd_r2_device_info,
-			    peer_wfd_r2_device_info + peer_wfd_r2_device_info_len,
-			    std::back_inserter(aidl_peer_wfd_r2_device_info));
+				peer_wfd_r2_device_info + peer_wfd_r2_device_info_len,
+				std::back_inserter(aidl_peer_wfd_r2_device_info));
 		}
 	}
 
@@ -1633,7 +1633,7 @@ void AidlManager::notifyP2pDeviceFound(
 			&ISupplicantP2pIfaceCallback::onDeviceFoundWithParams,
 			std::placeholders::_1, params));
 	} else {
-	    // Use legacy callback if service or client interface version < 3
+		// Use legacy callback if service or client interface version < 3
 		const std::function<
 			ndk::ScopedAStatus(std::shared_ptr<ISupplicantP2pIfaceCallback>)>
 			func = std::bind(
@@ -1819,7 +1819,7 @@ void AidlManager::notifyP2pGroupStarted(
 			   params.p2pClientIpInfo.ipAddressClient,
 			   params.p2pClientIpInfo.ipAddressMask,
 			   params.p2pClientIpInfo.ipAddressGo);
-    }
+	}
 	if (areAidlServiceAndClientAtLeastVersion(4)) {
 		params.keyMgmtMask = convertSupplicantKeyMgmtForP2pGroupConnectionToAidl(
 			wpa_group_s->key_mgmt);
@@ -2591,7 +2591,7 @@ void AidlManager::notifyFrequencyChanged(struct wpa_supplicant *wpa_s, int frequ
 	} else {
 		wpa_printf(MSG_INFO, "Drop frequency changed event");
 		return;
-        }
+	}
 }
 
 void AidlManager::notifyCertification(struct wpa_supplicant *wpa_s,
@@ -3263,7 +3263,7 @@ void AidlManager::notifyQosPolicyRequest(struct wpa_supplicant *wpa_s,
 }
 
 void AidlManager::notifyMloLinksInfoChanged(struct wpa_supplicant *wpa_s,
-					    enum mlo_info_change_reason reason)
+						enum mlo_info_change_reason reason)
 {
 	if (!wpa_s)
 		return;
@@ -3618,7 +3618,7 @@ void AidlManager::notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
 
 #ifdef MAINLINE_SUPPLICANT
 NanMatchInd createNanServiceMatchResult(
-    int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len)
+	int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len)
 {
 	NanMatchInd nanMatchInfo;
 	nanMatchInfo.discoverySessionId = own_id;
@@ -3648,9 +3648,9 @@ NanStatus convertNanTerminateReasonCodeToAidl(nan_de_reason reason)
 #endif
 
 void AidlManager::notifyNanServiceDiscovered(
-    struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
-    int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
-    const u8* ssi, size_t ssi_len)
+	struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
+	int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
+	const u8* ssi, size_t ssi_len)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3659,51 +3659,51 @@ void AidlManager::notifyNanServiceDiscovered(
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-	    nan_iface_object_map_.end()) {
+		nan_iface_object_map_.end()) {
 		callWithEachNanIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::eventMatch,
 			std::placeholders::_1,
 			createNanServiceMatchResult(
-			    subscribe_id, peer_publish_id, peer_addr, ssi,
-			    ssi_len)));
+				subscribe_id, peer_publish_id, peer_addr, ssi,
+				ssi_len)));
 		return;
 	}
 #endif
 
 	if (p2p_iface_object_map_.find(wpa_s->ifname) !=
-	    p2p_iface_object_map_.end()) {
+		p2p_iface_object_map_.end()) {
 		// Notify service discovered event on P2P device interface.
 		P2pUsdBasedServiceDiscoveryResultParams
-		    p2pServiceDiscoveryInfo =
+			p2pServiceDiscoveryInfo =
 			createP2pUsdBasedServiceDiscoveryResult(
-			    srv_proto_type, subscribe_id, peer_publish_id,
-			    peer_addr, ssi, ssi_len);
+				srv_proto_type, subscribe_id, peer_publish_id,
+				peer_addr, ssi, ssi_len);
 		callWithEachP2pIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&ISupplicantP2pIfaceCallback::
-			    onUsdBasedServiceDiscoveryResult,
+				onUsdBasedServiceDiscoveryResult,
 			std::placeholders::_1, p2pServiceDiscoveryInfo));
 	} else {
 		// Notify service discovered event on STA interface.
 		UsdServiceDiscoveryInfo discoveryInfo =
-		    createUsdServiceDiscoveryInfo(
+			createUsdServiceDiscoveryInfo(
 			srv_proto_type, subscribe_id, peer_publish_id,
 			peer_addr, fsd, ssi, ssi_len);
 		callWithEachStaIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&ISupplicantStaIfaceCallback::onUsdServiceDiscovered,
 			std::placeholders::_1, discoveryInfo));
 	}
 }
 
 void AidlManager::notifyNanPublishReplied(
-    struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
-    int publish_id, int peer_subscribe_id, const u8* peer_addr, const u8* ssi,
-    size_t ssi_len)
+	struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
+	int publish_id, int peer_subscribe_id, const u8* peer_addr, const u8* ssi,
+	size_t ssi_len)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3712,32 +3712,32 @@ void AidlManager::notifyNanPublishReplied(
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-	    nan_iface_object_map_.end()) {
+		nan_iface_object_map_.end()) {
 		callWithEachNanIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::eventMatch,
 			std::placeholders::_1,
 			createNanServiceMatchResult(
-			    publish_id, peer_subscribe_id, peer_addr, ssi,
-			    ssi_len)));
+				publish_id, peer_subscribe_id, peer_addr, ssi,
+				ssi_len)));
 		return;
 	}
 #endif
 
 	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
-	    srv_proto_type, publish_id, peer_subscribe_id, peer_addr,
-	    false /* fsd */, ssi, ssi_len);
+		srv_proto_type, publish_id, peer_subscribe_id, peer_addr,
+		false /* fsd */, ssi, ssi_len);
 	callWithEachStaIfaceCallback(
-	    misc_utils::charBufToString(wpa_s->ifname),
-	    std::bind(
+		misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(
 		&ISupplicantStaIfaceCallback::onUsdPublishReplied,
 		std::placeholders::_1, discoveryInfo));
 }
 
 void AidlManager::notifyNanMessageReceived(
-    struct wpa_supplicant* wpa_s, int id, int peer_instance_id,
-    const u8* peer_addr, const u8* message, size_t message_len)
+	struct wpa_supplicant* wpa_s, int id, int peer_instance_id,
+	const u8* peer_addr, const u8* message, size_t message_len)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3746,18 +3746,18 @@ void AidlManager::notifyNanMessageReceived(
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-	    nan_iface_object_map_.end()) {
+		nan_iface_object_map_.end()) {
 		NanFollowupReceivedInd message_received_info;
 		message_received_info.discoverySessionId = id;
 		message_received_info.peerId = peer_instance_id;
 		message_received_info.addr = macAddrToArray(peer_addr);
 		if (message != NULL) {
 			message_received_info.serviceSpecificInfo =
-			    byteArrToVec(message, message_len);
+				byteArrToVec(message, message_len);
 		}
 		callWithEachNanIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::eventFollowupReceived,
 			std::placeholders::_1, message_received_info));
 		return;
@@ -3771,14 +3771,14 @@ void AidlManager::notifyNanMessageReceived(
 	messageInfo.message = byteArrToVec(message, message_len);
 
 	callWithEachStaIfaceCallback(
-	    misc_utils::charBufToString(wpa_s->ifname),
-	    std::bind(
+		misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(
 		&ISupplicantStaIfaceCallback::onUsdMessageReceived,
 		std::placeholders::_1, messageInfo));
 }
 
 void AidlManager::notifyNanPublishTerminated(
-    struct wpa_supplicant* wpa_s, int publish_id, enum nan_de_reason reason)
+	struct wpa_supplicant* wpa_s, int publish_id, enum nan_de_reason reason)
 {
 	if (!wpa_s)
 		return;
@@ -3787,12 +3787,12 @@ void AidlManager::notifyNanPublishTerminated(
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-	    nan_iface_object_map_.end()) {
+		nan_iface_object_map_.end()) {
 		callWithEachNanIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::
-			    eventPublishTerminated,
+				eventPublishTerminated,
 			std::placeholders::_1, publish_id,
 			convertNanTerminateReasonCodeToAidl(reason)));
 		return;
@@ -3800,28 +3800,28 @@ void AidlManager::notifyNanPublishTerminated(
 #endif
 
 	UsdTerminateReasonCode aidlReasonCode =
-	    convertUsdTerminateReasonCodeToAidl(reason);
+		convertUsdTerminateReasonCodeToAidl(reason);
 	if (p2p_iface_object_map_.find(wpa_s->ifname) !=
-	    p2p_iface_object_map_.end()) {
+		p2p_iface_object_map_.end()) {
 		// Notify publish terminated event on P2P device interface.
 		callWithEachP2pIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&ISupplicantP2pIfaceCallback::
-			    onUsdBasedServiceAdvertisementTerminated,
+				onUsdBasedServiceAdvertisementTerminated,
 			std::placeholders::_1, publish_id, aidlReasonCode));
 	} else {
 		// Notify publish terminated event on STA interface.
 		callWithEachStaIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&ISupplicantStaIfaceCallback::onUsdPublishTerminated,
 			std::placeholders::_1, publish_id, aidlReasonCode));
 	}
 }
 
 void AidlManager::notifyNanSubscribeTerminated(
-    struct wpa_supplicant* wpa_s, int subscribe_id, enum nan_de_reason reason)
+	struct wpa_supplicant* wpa_s, int subscribe_id, enum nan_de_reason reason)
 {
 	if (!wpa_s)
 		return;
@@ -3830,12 +3830,12 @@ void AidlManager::notifyNanSubscribeTerminated(
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-	    nan_iface_object_map_.end()) {
+		nan_iface_object_map_.end()) {
 		callWithEachNanIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::
-			    eventSubscribeTerminated,
+				eventSubscribeTerminated,
 			std::placeholders::_1, subscribe_id,
 			convertNanTerminateReasonCodeToAidl(reason)));
 		return;
@@ -3843,27 +3843,27 @@ void AidlManager::notifyNanSubscribeTerminated(
 #endif
 
 	UsdTerminateReasonCode aidlReasonCode =
-	    convertUsdTerminateReasonCodeToAidl(reason);
+		convertUsdTerminateReasonCodeToAidl(reason);
 	if (p2p_iface_object_map_.find(wpa_s->ifname) !=
-	    p2p_iface_object_map_.end()) {
+		p2p_iface_object_map_.end()) {
 		// Notify subscribe terminated event on P2P device interface.
 		callWithEachP2pIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&ISupplicantP2pIfaceCallback::
-			    onUsdBasedServiceDiscoveryTerminated,
+				onUsdBasedServiceDiscoveryTerminated,
 			std::placeholders::_1, subscribe_id, aidlReasonCode));
 	} else {
 		// Notify subscribe terminated event on STA interface.
 		callWithEachStaIfaceCallback(
-		    misc_utils::charBufToString(wpa_s->ifname),
-		    std::bind(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
 			&ISupplicantStaIfaceCallback::onUsdSubscribeTerminated,
 			std::placeholders::_1, subscribe_id, aidlReasonCode));
 	}
 }
 void AidlManager::notifyNanClusterEvent(
-    struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr)
+	struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3874,29 +3874,29 @@ void AidlManager::notifyNanClusterEvent(
 	cluster_event_info.addr = macAddrToArray(peer_addr);
 
 	callWithEachNanIfaceCallback(
-	    misc_utils::charBufToString(wpa_s->ifname),
-	    std::bind(
+		misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(
 		&NanIface::ISupplicantNanIfaceEventCallback::eventClusterEvent,
 		std::placeholders::_1, cluster_event_info));
 #endif
 }
 
 void AidlManager::notifyNanMatchExpired(
-    struct wpa_supplicant* wpa_s, int subscribe_id, int peer_publish_id)
+	struct wpa_supplicant* wpa_s, int subscribe_id, int peer_publish_id)
 {
 	if (!wpa_s)
 		return;
 #ifdef MAINLINE_SUPPLICANT
 	callWithEachNanIfaceCallback(
-	    misc_utils::charBufToString(wpa_s->ifname),
-	    std::bind(
+		misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(
 		&NanIface::ISupplicantNanIfaceEventCallback::eventMatchExpired,
 		std::placeholders::_1, subscribe_id, peer_publish_id));
 #endif
 }
 
 void AidlManager::notifyNanTransmitFollowup(
-    struct wpa_supplicant* wpa_s, int cmd_id, u8 status_code)
+	struct wpa_supplicant* wpa_s, int cmd_id, u8 status_code)
 {
 	if (!wpa_s)
 		return;
@@ -3905,12 +3905,127 @@ void AidlManager::notifyNanTransmitFollowup(
 	NanStatus ret;
 	ret.status = NanStatusCode::SUCCESS;
 	callWithEachNanIfaceCallback(
-	    misc_utils::charBufToString(wpa_s->ifname),
-	    std::bind(
+		misc_utils::charBufToString(wpa_s->ifname),
+		std::bind(
 		&NanIface::ISupplicantNanIfaceEventCallback::eventTransmitFollowup,
 		std::placeholders::_1, cmd_id, ret));
 #endif
 }
+
+#ifdef MAINLINE_SUPPLICANT
+void AidlManager::notifyNanCapabilitiesResponse(
+	const std::string ifname, const char16_t id, const NanStatus status,
+	const NanCapabilities capabilities)
+{
+	callWithEachNanIfaceCallback(
+		ifname,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyCapabilitiesResponse,
+		std::placeholders::_1, id, status, capabilities));
+}
+
+void AidlManager::notifyNanConfigResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyConfigResponse,
+		std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanCreateDataInterfaceResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+				&NanIface::ISupplicantNanIfaceEventCallback::
+				notifyCreateDataInterfaceResponse,
+				std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanDeleteDataInterfaceResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+				&NanIface::ISupplicantNanIfaceEventCallback::
+				notifyDeleteDataInterfaceResponse,
+				std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanEnableResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyEnableResponse,
+		std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanDisableResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyDisableResponse,
+		std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanStartPublishResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status,
+	const int8_t session_id)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyStartPublishResponse,
+		std::placeholders::_1, id, status, session_id));
+}
+
+void AidlManager::notifyNanStartSubscribeResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status,
+	const int8_t session_id)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyStartSubscribeResponse,
+		std::placeholders::_1, id, status, session_id));
+}
+
+void AidlManager::notifyNanStopPublishResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyStopPublishResponse,
+		std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanStopSubscribeResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name,
+		std::bind(
+		&NanIface::ISupplicantNanIfaceEventCallback::notifyStopSubscribeResponse,
+		std::placeholders::_1, id, status));
+}
+
+void AidlManager::notifyNanTransmitFollowupResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+				&NanIface::ISupplicantNanIfaceEventCallback::
+				notifyTransmitFollowupResponse,
+				std::placeholders::_1, id, status));
+}
+#endif
 
 }  // namespace supplicant
 }  // namespace wifi

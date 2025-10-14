@@ -39,6 +39,11 @@ extern "C"
 #include "driver_i.h"
 }
 
+#ifdef MAINLINE_SUPPLICANT
+using aidl::android::system::wifi::mainline_supplicant::NanCapabilities;
+using aidl::android::system::wifi::mainline_supplicant::NanStatus;
+#endif
+
 namespace aidl {
 namespace android {
 namespace hardware {
@@ -232,6 +237,30 @@ public:
 		int subscribe_id, int peer_publish_id);
 	void notifyNanTransmitFollowup(struct wpa_supplicant *wpa_s,
 		int cmd_id, u8 status_code);
+#ifdef MAINLINE_SUPPLICANT
+	void notifyNanCapabilitiesResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const NanCapabilities capabilities);
+	void notifyNanConfigResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanCreateDataInterfaceResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanDeleteDataInterfaceResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanEnableResponse(const std::string iface_name, const char16_t id,
+		const NanStatus status);
+	void notifyNanDisableResponse(const std::string iface_name, const char16_t id,
+		const NanStatus status);
+	void notifyNanStartPublishResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t session_id);
+	void notifyNanStartSubscribeResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t session_id);
+	void notifyNanStopPublishResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanStopSubscribeResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanTransmitFollowupResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+#endif /* MAINLINE_SUPPLICANT */
 
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
