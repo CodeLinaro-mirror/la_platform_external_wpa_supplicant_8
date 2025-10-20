@@ -434,6 +434,9 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 
 	wpa_s->wps_scan_done = false;
 	wpas_reset_mlo_info(wpa_s);
+#ifndef CONFIG_NO_ROBUST_AV
+	wpas_scs_deinit(wpa_s);
+#endif /* CONFIG_NO_ROBUST_AV */
 
 #ifdef CONFIG_SME
 	wpa_s->sme.bss_max_idle_period = 0;
@@ -3816,6 +3819,7 @@ no_pfs:
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_IEEE8021X_SHA384) ||
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE_EXT_KEY)) &&
 		wpa_ft_is_completed(wpa_s->wpa)) {
+		wpa_s->assoc_freq = data->assoc_info.freq;
 		return 0;
 	}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
@@ -4888,6 +4892,10 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 			"pre-shared key may be incorrect");
 		if (wpas_p2p_4way_hs_failed(wpa_s) > 0)
 			return; /* P2P group removed */
+		bssid = wpa_s->bssid;
+		if (is_zero_ether_addr(bssid))
+			bssid = wpa_s->pending_bssid;
+		wpa_bssid_ignore_add(wpa_s, bssid);
 		wpas_auth_failed(wpa_s, "WRONG_KEY", wpa_s->pending_bssid);
 		wpas_notify_psk_mismatch(wpa_s);
 	}
@@ -6272,6 +6280,77 @@ static void wpas_tid_link_map(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpas_setup_link_reconfig(struct wpa_supplicant *wpa_s,
+				     struct reconfig_info *info)
+{
+	const u8 *key_data = info->resp_ie;
+	size_t key_data_len = 0;
+	const u8 *ies, *end;
+	bool success = false;
+	int i;
+
+	if (!info->added_links) {
+		wpa_printf(MSG_INFO, "No links to be added");
+		return;
+	}
+
+	if (wpa_drv_get_mlo_info(wpa_s) < 0) {
+		wpa_printf(MSG_INFO,
+			   "SETUP_LINK_RECONFIG: Failed to set reconfig info to wpa_s");
+		return;
+	}
+
+	if (wpa_sm_set_ml_info(wpa_s)) {
+		wpa_printf(MSG_ERROR,
+			   "SETUP_LINK_RECONFIG: Failed to set reconfig info to wpa_sm");
+		return;
+	}
+
+	wpa_hexdump(MSG_DEBUG, "MLD: Reconfiguration Status List",
+		    info->status_list, info->count * 3);
+	for (i = 0; i < info->count; i++) {
+		if (WPA_GET_LE16(info->status_list + i * 3 + 1) ==
+		    WLAN_STATUS_SUCCESS)
+			success = true;
+	}
+
+	if (!key_data || info->resp_ie_len == 0)
+		return;
+
+	if (success) {
+		/* Starting with Group Key Data subfield, Key Data Length
+		 * field */
+		if (info->resp_ie_len < 1U + key_data[0]) {
+			wpa_printf(MSG_INFO,
+				   "MLD: Invalid keys in the link setup response");
+			return;
+		}
+
+		key_data_len = key_data[0];
+		key_data++;
+		wpa_hexdump_key(MSG_DEBUG,
+				"MLD: Link reconfig resp - Group Key Data",
+				key_data, key_data_len);
+
+		if (wpa_sm_install_mlo_group_keys(wpa_s->wpa, key_data,
+						  key_data_len,
+						  info->added_links)) {
+			wpa_printf(MSG_ERROR,
+				   "SETUP_LINK_RECONFIG: Failed to install group keys for added links");
+			return;
+		}
+	}
+
+	ies = key_data + key_data_len;
+	end = info->resp_ie + info->resp_ie_len;
+	wpa_hexdump(MSG_DEBUG, "MLD: Link reconfig resp - IEs", ies, end - ies);
+
+	wpas_notify_mlo_info_change_reason(wpa_s, MLO_LINK_DYNAMIC_RECONFIG);
+	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_LINK_RECONFIG "valid_links=0x%x",
+		wpa_s->valid_links);
+}
+
+
 static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
 {
 	u8 bssid[ETH_ALEN];
@@ -6310,21 +6389,6 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
 		wpa_s->valid_links);
 }
 
-#ifdef MAINLINE_SUPPLICANT
-static bool is_event_allowlisted(enum wpa_event_type event) {
-	return event == EVENT_SCAN_STARTED ||
-	       event == EVENT_SCAN_RESULTS ||
-	       event == EVENT_RX_MGMT ||
-	       event == EVENT_REMAIN_ON_CHANNEL ||
-	       event == EVENT_CANCEL_REMAIN_ON_CHANNEL ||
-	       event == EVENT_TX_WAIT_EXPIRE ||
-	       event == EVENT_INTERFACE_MAC_CHANGED ||
-	       event == EVENT_INTERFACE_ENABLED ||
-	       event == EVENT_INTERFACE_DISABLED ||
-	       event == EVENT_TX_STATUS;
-}
-#endif /* MAINLINE_SUPPLICANT */
-
 
 #ifdef CONFIG_PASN
 static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
@@ -6333,9 +6397,18 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 {
 #ifdef CONFIG_P2P
 	struct ieee802_11_elems elems;
+	size_t auth_length;
 
-	if (len < 24) {
-		wpa_printf(MSG_DEBUG, "nl80211: Too short Management frame");
+	auth_length = IEEE80211_HDRLEN + sizeof(mgmt->u.auth);
+
+	if (len < auth_length) {
+		wpa_printf(MSG_DEBUG, "PASN: Too short Authentication frame");
+		return -2;
+	}
+
+	if (le_to_host16(mgmt->u.auth.auth_alg) != WLAN_AUTH_PASN) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: Not a PASN Authentication frame, skip frame parsing");
 		return -2;
 	}
 
@@ -6366,15 +6439,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
-
-#ifdef MAINLINE_SUPPLICANT
-	if (!is_event_allowlisted(event)) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"Ignore event %s (%d) which is not allowlisted",
-			event_to_string(event), event);
-		return;
-	}
-#endif /* MAINLINE_SUPPLICANT */
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED &&
 	    event != EVENT_INTERFACE_ENABLED &&
@@ -6433,6 +6497,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 				   "Ignore unexpected EVENT_ASSOC in disconnected state");
 			break;
 		}
+#ifndef CONFIG_NO_ROBUST_AV
+		if (dl_list_len(&wpa_s->active_scs_ids) > 0) {
+			wpa_printf(MSG_DEBUG,
+				   "SCS rules renegotiation required after roaming");
+			wpa_s->scs_reconfigure = true;
+		}
+#endif /* CONFIG_NO_ROBUST_AV */
 		wpa_supplicant_event_assoc(wpa_s, data);
 		wpa_s->assoc_status_code = WLAN_STATUS_SUCCESS;
 		if (data &&
@@ -7329,6 +7400,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_TID_LINK_MAP:
 		if (data)
 			wpas_tid_link_map(wpa_s, &data->t2l_map_info);
+		break;
+	case EVENT_SETUP_LINK_RECONFIG:
+		if (data)
+			wpas_setup_link_reconfig(wpa_s, &data->reconfig_info);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);

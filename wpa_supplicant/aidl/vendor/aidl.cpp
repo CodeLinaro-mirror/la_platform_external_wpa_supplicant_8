@@ -34,7 +34,13 @@ static void wpas_aidl_notify_dpp_success(struct wpa_supplicant *wpa_s, DppEventT
 void wpas_aidl_sock_handler(
 	int /* sock */, void * /* eloop_ctx */, void * /* sock_ctx */)
 {
+#ifdef MAINLINE_SUPPLICANT
+    if (__builtin_available(android __ANDROID_API_V__, *)) {
+        ABinderProcess_handlePolledCommands();
+    }
+#else
 	ABinderProcess_handlePolledCommands();
+#endif
 }
 
 struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
@@ -49,7 +55,13 @@ struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 
 	wpa_printf(MSG_DEBUG, "Initing aidl control");
 
+#ifdef MAINLINE_SUPPLICANT
+	if (__builtin_available(android __ANDROID_API_V__, *)) {
+		ABinderProcess_setupPolling(&priv->aidl_fd);
+	}
+#else
 	ABinderProcess_setupPolling(&priv->aidl_fd);
+#endif
 	if (priv->aidl_fd < 0)
 		goto err;
 
@@ -66,7 +78,7 @@ struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 		goto err;
 	}
 	// We may not need to store this aidl manager reference in the
-	// global data strucure because we've made it a singleton class.
+	// global data structure because we've made it a singleton class.
 	priv->aidl_manager = (void *)aidl_manager;
 
 	return priv;

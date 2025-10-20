@@ -151,28 +151,15 @@ static int wpas_pasn_sae_setup_pt(struct wpa_ssid *ssid, int group)
 
 
 static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
-					 struct pasn_peer *peer)
+					 struct pasn_peer *peer,
+					 struct wpa_bss *bss,
+					 struct wpa_ssid *ssid)
 {
 	int ret;
 	const u8 *rsne, *rsnxe;
-	struct wpa_bss *bss;
 	struct wpa_ie_data rsne_data;
 	int sel, key_mgmt, pairwise_cipher;
-	int network_id = 0, group = 19;
-	struct wpa_ssid *ssid = NULL;
-	size_t ssid_str_len = 0;
-	const u8 *ssid_str = NULL;
-	const u8 *peer_addr = peer->peer_addr;
-
-	bss = wpa_bss_get_bssid(wpa_s, peer_addr);
-	if (!bss) {
-		wpa_supplicant_update_scan_results(wpa_s, peer_addr);
-		bss = wpa_bss_get_bssid(wpa_s, peer_addr);
-		if (!bss) {
-			wpa_printf(MSG_DEBUG, "PASN: BSS not found");
-			return -1;
-		}
-	}
+	int group = 19;
 
 	rsne = wpa_bss_get_rsne(wpa_s, bss, NULL, false);
 	if (!rsne) {
@@ -188,22 +175,11 @@ static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
 
 	rsnxe = wpa_bss_get_rsnxe(wpa_s, bss, NULL, false);
 
-	ssid_str_len = bss->ssid_len;
-	ssid_str = bss->ssid;
-
-	/* Get the network configuration based on the obtained SSID */
-	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
-		if (!wpas_network_disabled(wpa_s, ssid) &&
-		    ssid_str_len == ssid->ssid_len &&
-		    os_memcmp(ssid_str, ssid->ssid, ssid_str_len) == 0)
-			break;
-	}
-
-	if (ssid)
-		network_id = ssid->id;
 
 	sel = rsne_data.pairwise_cipher;
-	if (ssid && ssid->pairwise_cipher)
+	if (peer->cipher && peer->cipher != WPA_CIPHER_NONE)
+		sel &= peer->cipher;
+	else if (ssid && !ssid->temporary && ssid->pairwise_cipher)
 		sel &= ssid->pairwise_cipher;
 
 	wpa_printf(MSG_DEBUG, "PASN: peer pairwise 0x%x, select 0x%x",
@@ -217,7 +193,9 @@ static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
 	}
 
 	sel = rsne_data.key_mgmt;
-	if (ssid && ssid->key_mgmt)
+	if (peer->akmp && peer->akmp != WPA_KEY_MGMT_NONE)
+		sel &= peer->akmp;
+	else if (ssid && !ssid->temporary && ssid->key_mgmt)
 		sel &= ssid->key_mgmt;
 
 	wpa_printf(MSG_DEBUG, "PASN: peer AKMP 0x%x, select 0x%x",
@@ -300,7 +278,8 @@ static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
 
 	peer->akmp = key_mgmt;
 	peer->cipher = pairwise_cipher;
-	peer->network_id = network_id;
+	if (ssid)
+		peer->network_id = ssid->id;
 	peer->group = group;
 	return 0;
 }
@@ -339,17 +318,87 @@ static int wpas_pasn_set_keys_from_cache(struct wpa_supplicant *wpa_s,
 }
 
 
+static struct wpa_ssid *
+wpas_pasn_add_temporary_network(struct wpa_supplicant *wpa_s,
+				const struct wpa_bss *bss, const char *password)
+{
+	struct wpa_ssid *ssid;
+
+	ssid = wpa_config_add_network(wpa_s->conf);
+	if (!ssid) {
+		wpa_printf(MSG_DEBUG, "PASN: Failed to allocate SSID block");
+		return NULL;
+	}
+
+	ssid->ssid = os_memdup(bss->ssid, bss->ssid_len);
+	if (!ssid->ssid)
+		return NULL;
+
+	ssid->ssid_len = bss->ssid_len;
+	ssid->passphrase = os_strdup(password);
+	if (!ssid->passphrase) {
+		wpa_config_free_ssid(ssid);
+		wpa_printf(MSG_DEBUG, "PASN: Failed to copy password");
+		return NULL;
+	}
+
+	ssid->temporary = true;
+	wpa_printf(MSG_DEBUG, "PASN: Created temporary network block for "
+		   MACSTR, MAC2STR(bss->bssid));
+
+	return ssid;
+}
+
+
+static struct wpa_bss * wpas_pasn_get_bss(struct wpa_supplicant *wpa_s,
+					  const u8 *peer_addr)
+{
+	struct wpa_bss *bss;
+
+	bss = wpa_bss_get_bssid(wpa_s, peer_addr);
+	if (!bss) {
+		wpa_supplicant_update_scan_results(wpa_s, peer_addr);
+		bss = wpa_bss_get_bssid(wpa_s, peer_addr);
+	}
+
+	return bss;
+}
+
+
+static struct wpa_ssid * wpas_pasn_get_network(struct wpa_supplicant *wpa_s,
+					       struct wpa_bss *bss)
+{
+	size_t ssid_str_len;
+	const u8 *ssid_str;
+	struct wpa_ssid *ssid;
+
+	ssid_str_len = bss->ssid_len;
+	ssid_str = bss->ssid;
+
+	/* Get the network configuration based on the obtained SSID */
+	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+		if (ssid_str_len == ssid->ssid_len &&
+		    os_memcmp(ssid_str, ssid->ssid, ssid_str_len) == 0)
+			break;
+	}
+
+	return ssid;
+}
+
+
 static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 					  struct pasn_auth *pasn_params)
 {
 	struct pasn_peer *peer;
-	u8 comeback_len = 0;
-	const u8 *comeback = NULL;
+	struct wpa_ssid *ssid;
 
 	if (!pasn_params)
 		return;
 
 	while (wpa_s->pasn_count < pasn_params->num_peers) {
+		struct wpa_bss *bss;
+		bool check_cache = true;
+
 		peer = &pasn_params->peer[wpa_s->pasn_count];
 
 		if (ether_addr_equal(wpa_s->bssid, peer->peer_addr)) {
@@ -360,7 +409,39 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 			continue;
 		}
 
-		if (wpas_pasn_set_keys_from_cache(wpa_s, peer->own_addr,
+		bss = wpas_pasn_get_bss(wpa_s, peer->peer_addr);
+		if (!bss) {
+			wpa_printf(MSG_DEBUG, "PASN: BSS not found");
+			peer->status = PASN_STATUS_FAILURE;
+			wpa_s->pasn_count++;
+			continue;
+		}
+
+		ssid = wpas_pasn_get_network(wpa_s, bss);
+		if (peer->password && peer->akmp &&
+		    peer->akmp != WPA_KEY_MGMT_NONE) {
+			ssid = wpas_pasn_add_temporary_network(wpa_s, bss,
+							       peer->password);
+
+			if (!ssid) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: Failed to create temporary network");
+				return;
+			}
+			peer->temporary_network = true;
+		}
+
+		if (ssid && ssid->temporary)
+			check_cache = false;
+
+		if (wpas_pasn_get_params_from_bss(wpa_s, peer, bss, ssid)) {
+			peer->status = PASN_STATUS_FAILURE;
+			wpa_s->pasn_count++;
+			continue;
+		}
+
+		if (check_cache &&
+		    wpas_pasn_set_keys_from_cache(wpa_s, peer->own_addr,
 						  peer->peer_addr,
 						  peer->cipher,
 						  peer->akmp) == 0) {
@@ -369,19 +450,22 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 			continue;
 		}
 
-		if (wpas_pasn_get_params_from_bss(wpa_s, peer)) {
-			peer->status = PASN_STATUS_FAILURE;
-			wpa_s->pasn_count++;
-			continue;
-		}
-
 		if (wpas_pasn_auth_start(wpa_s, peer->own_addr,
 					 peer->peer_addr, peer->akmp,
 					 peer->cipher, peer->group,
 					 peer->network_id,
-					 comeback, comeback_len)) {
+					 peer->comeback, peer->comeback_len)) {
 			peer->status = PASN_STATUS_FAILURE;
+			wpa_msg(wpa_s, MSG_INFO, PASN_AUTH_STATUS MACSTR
+				" akmp=%s, status=%u",
+				MAC2STR(peer->peer_addr),
+				wpa_key_mgmt_txt(peer->akmp, WPA_PROTO_RSN),
+				peer->status);
 			wpa_s->pasn_count++;
+			str_clear_free(peer->password);
+			os_free(peer->comeback);
+			peer->password = NULL;
+			peer->comeback = NULL;
 			continue;
 		}
 		wpa_printf(MSG_DEBUG, "PASN: Sent PASN auth start for " MACSTR,
@@ -390,8 +474,28 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 	}
 
 	if (wpa_s->pasn_count == pasn_params->num_peers) {
+		unsigned int i;
+
 		wpa_drv_send_pasn_resp(wpa_s, pasn_params);
 		wpa_printf(MSG_DEBUG, "PASN: Response sent");
+		for (i = 0; i < pasn_params->num_peers; i++) {
+			peer = &pasn_params->peer[i];
+			str_clear_free(peer->password);
+			os_free(peer->comeback);
+
+			if (peer->temporary_network) {
+				ssid = wpa_config_get_network(wpa_s->conf,
+							      peer->network_id);
+
+				if (ssid && ssid->temporary) {
+					wpa_config_remove_network(
+						wpa_s->conf, peer->network_id);
+					wpa_printf(MSG_DEBUG,
+						   "PASN: Remove temporary network block of "
+						   MACSTR, MAC2STR(peer->peer_addr));
+				}
+			}
+		}
 		os_free(wpa_s->pasn_params);
 		wpa_s->pasn_params = NULL;
 	}
@@ -422,6 +526,8 @@ static void wpas_pasn_delete_peers(struct wpa_supplicant *wpa_s,
 		peer = &pasn_params->peer[i];
 		ptksa_cache_flush(wpa_s->ptksa, peer->peer_addr,
 				  WPA_CIPHER_NONE);
+		str_clear_free(peer->password);
+		peer->password = NULL;
 	}
 }
 
@@ -774,15 +880,20 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 	u16 group = pasn->group;
 	u8 own_addr[ETH_ALEN];
 	u8 peer_addr[ETH_ALEN];
+	int network_id;
 
 	wpa_printf(MSG_DEBUG, "PASN: Immediate retry");
 	os_memcpy(own_addr, pasn->own_addr, ETH_ALEN);
 	os_memcpy(peer_addr, pasn->peer_addr, ETH_ALEN);
+
+	/* Hold network ID to avoid losing it in wpas_pasn_reset(). */
+	network_id = pasn->network_id;
+
 	wpas_pasn_reset(wpa_s);
 
 	return wpas_pasn_auth_start(wpa_s, own_addr, peer_addr, akmp, cipher,
-				    group, pasn->network_id,
-				    params->comeback, params->comeback_len);
+				    group, network_id, params->comeback,
+				    params->comeback_len);
 }
 
 
@@ -797,6 +908,33 @@ static void wpas_pasn_deauth_cb(struct ptksa_cache_entry *entry)
 	os_memcpy(own_addr, entry->own_addr, ETH_ALEN);
 	os_memcpy(peer_addr, entry->addr, ETH_ALEN);
 	wpas_pasn_deauthenticate(wpa_s, own_addr, peer_addr);
+}
+
+
+static void wpas_pasn_store_comeback_data(struct wpa_supplicant *wpa_s,
+					  const struct wpabuf *comeback,
+					  u16 comeback_after)
+{
+	struct pasn_peer *peer;
+
+	if (!wpa_s->pasn_params)
+		return;
+
+	peer = &wpa_s->pasn_params->peer[wpa_s->pasn_count];
+	if (!peer)
+		return;
+
+	os_free(peer->comeback);
+	peer->comeback = os_zalloc(wpabuf_len(comeback));
+	if (!peer->comeback) {
+		wpa_printf(MSG_ERROR,
+			   "PASN: Mem alloc failed for comeback data");
+		return;
+	}
+
+	peer->comeback_len = wpabuf_len(comeback);
+	os_memcpy(peer->comeback, wpabuf_head_u8(comeback), peer->comeback_len);
+	peer->comeback_after = comeback_after;
 }
 
 
@@ -831,6 +969,10 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 	forced_memzero(pasn_get_ptk(pasn), sizeof(pasn->ptk));
 
 	if (ret == -1) {
+		if (pasn->status == WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY &&
+		    pasn->comeback && wpabuf_len(pasn->comeback))
+			wpas_pasn_store_comeback_data(wpa_s, pasn->comeback,
+						      pasn->comeback_after);
 		wpas_pasn_auth_stop(wpa_s);
 		wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_FAILURE);
 	}
@@ -877,6 +1019,26 @@ void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 		os_memcpy(dst->peer_addr, src->peer_addr, ETH_ALEN);
 		dst->ltf_keyseed_required = src->ltf_keyseed_required;
 		dst->status = PASN_STATUS_SUCCESS;
+		dst->akmp = src->akmp;
+		dst->cipher = src->cipher;
+		if (src->password) {
+			dst->password = os_strdup(src->password);
+			if (!dst->password) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: Mem alloc failed for password");
+				return;
+			}
+		}
+		if (src->comeback_len && src->comeback) {
+			dst->comeback = os_memdup(src->comeback,
+						  src->comeback_len);
+			if (!dst->comeback) {
+				wpa_printf(MSG_DEBUG,
+					   "PASN: Mem alloc failed for comeback cookie");
+				return;
+			}
+			dst->comeback_len = src->comeback_len;
+		}
 
 		if (!is_zero_ether_addr(src->own_addr)) {
 			os_memcpy(dst->own_addr, src->own_addr, ETH_ALEN);

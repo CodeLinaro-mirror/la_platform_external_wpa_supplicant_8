@@ -27,11 +27,6 @@
 #include "sme.h"
 #include "notify.h"
 #include "aidl/vendor/aidl.h"
-#include "aidl/mainline/callback_bridge.h"
-
-#ifdef MAINLINE_SUPPLICANT
-#include "aidl/mainline/service.h"
-#endif
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global)
 {
@@ -53,12 +48,6 @@ int wpas_notify_supplicant_initialized(struct wpa_global *global)
 	}
 #endif /* CONFIG_AIDL */
 
-#ifdef MAINLINE_SUPPLICANT
-	global->aidl = mainline_aidl_init(global);
-	if (!global->aidl)
-		return -1;
-#endif /* MAINLINE_SUPPLICANT */
-
 	return 0;
 }
 
@@ -74,12 +63,6 @@ void wpas_notify_supplicant_deinitialized(struct wpa_global *global)
 	if (global->aidl)
 		wpas_aidl_deinit(global->aidl);
 #endif /* CONFIG_AIDL */
-
-#ifdef MAINLINE_SUPPLICANT
-	if (global->aidl)
-		mainline_aidl_deinit(global->aidl);
-#endif /* MAINLINE_SUPPLICANT */
-
 }
 
 
@@ -143,7 +126,7 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
 
 	if (new_state == WPA_COMPLETED) {
 		wpas_p2p_notif_connected(wpa_s);
-		if (ssid)
+		if (ssid && !wpa_s->sta_roaming_disabled)
 			wpa_drv_roaming(wpa_s, !ssid->bssid_set,
 					ssid->bssid_set ? ssid->bssid : NULL);
 	} else if (old_state >= WPA_ASSOCIATED && new_state < WPA_ASSOCIATED) {
@@ -1542,8 +1525,6 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_usd_service_discovered(wpa_s, srv_proto_type,
 		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
-	mainline_aidl_notify_usd_service_discovered(wpa_s, srv_proto_type,
-		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_discovery_result(wpa_s, srv_proto_type,
 					      subscribe_id, peer_publish_id,
@@ -1574,8 +1555,6 @@ void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_usd_publish_replied(wpa_s, srv_proto_type,
 		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
-	mainline_aidl_notify_usd_publish_replied(wpa_s, srv_proto_type,
-		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_replied(wpa_s, srv_proto_type, publish_id,
 				     peer_subscribe_id, peer_addr,
@@ -1600,8 +1579,6 @@ void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
 	os_free(ssi_hex);
 
 	wpas_aidl_notify_usd_message_received(wpa_s, id, peer_instance_id,
-		peer_addr, ssi, ssi_len);
-	mainline_aidl_notify_usd_message_received(wpa_s, id, peer_instance_id,
 		peer_addr, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_receive(wpa_s, id, peer_instance_id, peer_addr,
@@ -1633,7 +1610,6 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
 		       publish_id, nan_reason_txt(reason));
 
 	wpas_aidl_notify_usd_publish_terminated(wpa_s, publish_id, reason);
-	mainline_aidl_notify_usd_publish_terminated(wpa_s, publish_id, reason);
 
 	wpas_dbus_signal_nan_publish_terminated(wpa_s, publish_id,
 						nan_reason_txt(reason));
@@ -1649,7 +1625,6 @@ void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		       subscribe_id, nan_reason_txt(reason));
 
 	wpas_aidl_notify_usd_subscribe_terminated(wpa_s, subscribe_id, reason);
-	mainline_aidl_notify_usd_subscribe_terminated(wpa_s, subscribe_id, reason);
 
 	wpas_dbus_signal_nan_subscribe_terminated(wpa_s, subscribe_id,
 						  nan_reason_txt(reason));

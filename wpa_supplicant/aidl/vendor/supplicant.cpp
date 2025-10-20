@@ -357,7 +357,6 @@ std::pair<std::shared_ptr<ISupplicantP2pIface>, ndk::ScopedAStatus>
 Supplicant::addP2pInterfaceInternal(const std::string& name)
 {
 	std::shared_ptr<ISupplicantP2pIface> iface;
-
 	// Check if required |ifname| argument is empty.
 	if (name.empty()) {
 		return {nullptr, createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID)};

@@ -14,6 +14,7 @@
 
 extern "C"
 {
+#include "pmksa_cache.h"
 #include "wpabuf.h"
 }
 
