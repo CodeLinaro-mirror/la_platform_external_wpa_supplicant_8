@@ -3222,6 +3222,7 @@ enum dscp_policy_request_type {
 #define WFA_CAPA_QM_UNSOLIC_DSCP BIT(1)
 #define WFA_CAPA_QM_NON_EHT_SCS_TRAFFIC_DESC BIT(2)
 
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) ||   \
 	defined(CONFIG_DRIVER_NL80211_SYNA)
 #define WPA_KEY_MGMT_CROSS_AKM_ROAM (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK)
@@ -3229,6 +3230,7 @@ enum dscp_policy_request_type {
 	((key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) == WPA_KEY_MGMT_CROSS_AKM_ROAM)
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) ||
 	* CONFIG_DRIVER_NL80211_SYNA */
+#endif /* MAINLINE_SUPPLICANT */
 
 /* Wi-Fi Alliance Capabilities attributes */
 enum wfa_capa_attr_id {
