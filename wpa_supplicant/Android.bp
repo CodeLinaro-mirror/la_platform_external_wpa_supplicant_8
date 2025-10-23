@@ -286,7 +286,7 @@ filegroup {
         "interworking.c",
         "main.c",
         "mbo.c",
-        "nan_usd.c",
+        "nan_supplicant.c",
         "notify.c",
         "offchannel.c",
         "op_classes.c",
@@ -1461,7 +1461,7 @@ cc_defaults {
         "-DCONFIG_NAN_USD",
     ],
     srcs: [
-        "nan_usd.c",
+        "nan_supplicant.c",
         "src/ap/nan_usd_ap.c",
         "src/common/nan_de.c",
     ],

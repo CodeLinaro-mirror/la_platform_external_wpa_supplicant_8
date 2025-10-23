@@ -30,7 +30,7 @@
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "common/wpa_common.h"
-#include "common/nan.h"
+#include "common/nan_defs.h"
 #include "common/nan_de.h"
 #include "crypto/sha256.h"
 #include "crypto/sha384.h"
@@ -206,6 +206,9 @@ static int i802_sta_disassoc(void *priv, const u8 *own_addr, const u8 *addr,
 static int nl80211_set_td_policy(void *priv, u32 td_policy);
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
+#ifdef CONFIG_NAN
+static void wpa_driver_nl80211_nan_stop(void *priv);
+#endif /* CONFIG_NAN */
 
 /* Converts nl80211_chan_width to a common format */
 enum chan_width convert2width(int width)
@@ -249,6 +252,11 @@ static int is_p2p_net_interface(enum nl80211_iftype nlmode)
 {
 	return nlmode == NL80211_IFTYPE_P2P_CLIENT ||
 		nlmode == NL80211_IFTYPE_P2P_GO;
+}
+
+static int nl80211_is_netdev_iftype(enum nl80211_iftype t)
+{
+	return t != NL80211_IFTYPE_P2P_DEVICE && t != NL80211_IFTYPE_NAN;
 }
 
 
@@ -2174,10 +2182,10 @@ static void wpa_driver_nl80211_rfkill_blocked(void *ctx)
 	wpa_printf(MSG_DEBUG, "nl80211: RFKILL blocked");
 
 	/*
-	 * rtnetlink ifdown handler will report interfaces other than the P2P
-	 * Device interface as disabled.
+	 * rtnetlink ifdown handler will report interfaces other than the
+	 * P2P/NAN Device interfaces as disabled.
 	 */
-	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+	if (!nl80211_is_netdev_iftype(drv->nlmode))
 		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_DISABLED, NULL);
 }
 
@@ -2196,10 +2204,10 @@ static void wpa_driver_nl80211_rfkill_unblocked(void *ctx)
 		nl80211_disable_11b_rates(drv, drv->ifindex, 1);
 
 	/*
-	 * rtnetlink ifup handler will report interfaces other than the P2P
-	 * Device interface as enabled.
+	 * rtnetlink ifup handler will report interfaces other than the P2P/NAN
+	 * Device interfaces as enabled.
 	 */
-	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+	if (!nl80211_is_netdev_iftype(drv->nlmode))
 		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_ENABLED, NULL);
 }
 
@@ -2323,25 +2331,27 @@ wpa_driver_nl80211_drv_init_rfkill(struct wpa_driver_nl80211_data *drv)
 
 	rcfg->ctx = drv;
 
-	/* rfkill uses netdev sysfs for initialization. However, P2P Device is
-	 * not associated with a netdev, so use the name of some other interface
-	 * sharing the same wiphy as the P2P Device interface.
+	/* rfkill uses netdev sysfs for initialization. However, P2P/NAN Device
+	 * is not associated with a netdev, so use the name of some other
+	 * interface sharing the same wiphy as the P2P/NAN Device interface.
 	 *
-	 * Note: This is valid, as a P2P Device interface is always dynamically
-	 * created and is created only once another wpa_s interface was added.
+	 * Note: This is valid, as a P2P/NAN Device interface is always
+	 * dynamically created and is created only once another wpa_s interface
+	 * was added.
 	 */
-	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE) {
+	if (!nl80211_is_netdev_iftype(drv->nlmode)) {
 		struct nl80211_global *global = drv->global;
 		struct wpa_driver_nl80211_data *tmp1;
 
 		dl_list_for_each(tmp1, &global->interfaces,
 				 struct wpa_driver_nl80211_data, list) {
 			if (drv == tmp1 || drv->wiphy_idx != tmp1->wiphy_idx ||
-			    !tmp1->rfkill)
+			    !tmp1->rfkill ||
+			    !nl80211_is_netdev_iftype(tmp1->nlmode))
 				continue;
 
 			wpa_printf(MSG_DEBUG,
-				   "nl80211: Use (%s) to initialize P2P Device rfkill",
+				   "nl80211: Use (%s) to initialize P2P/NAN Device rfkill",
 				   tmp1->first_bss->ifname);
 			os_strlcpy(rcfg->ifname, tmp1->first_bss->ifname,
 				   sizeof(rcfg->ifname));
@@ -2578,6 +2588,42 @@ static int nl80211_register_action_frame(struct i802_bss *bss,
 }
 
 
+#define NAN_PUB_ACTION ((u8 *) "\x04\x09\x50\x6f\x9a\x13")
+
+static int nl80211_mgmt_subscribe_nan(struct i802_bss *bss)
+{
+#ifdef CONFIG_NAN
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+
+	if (!(drv->capa.nan_flags &
+	      WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE)) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: User space DE is not supported, don't subscribe to NAN public action frames");
+		return 0;
+	}
+
+	if (nl80211_alloc_mgmt_handle(bss))
+		return -1;
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: Subscribe to mgmt frames for NAN with handle %p",
+		   bss->nl_mgmt);
+
+	/* NAN SDF Public Action */
+	if (nl80211_register_action_frame2(bss, NAN_PUB_ACTION, 6, true)) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Failed to subscribe to NAN public action frames");
+		nl_destroy_handles(&bss->nl_mgmt);
+		return -1;
+	}
+
+	nl80211_mgmt_handle_register_eloop(bss);
+
+#endif /* CONFIG_NAN */
+
+	return 0;
+}
+
 static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 {
 	struct wpa_driver_nl80211_data *drv = bss->drv;
@@ -2650,7 +2696,6 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 		ret = -1;
 #endif /* CONFIG_P2P */
 #ifdef CONFIG_NAN_USD
-#define NAN_PUB_ACTION ((u8 *) "\x04\x09\x50\x6f\x9a\x13")
 	/* NAN SDF Public Action */
 	if (nl80211_register_action_frame2(bss, NAN_PUB_ACTION, 6, true) < 0) {
 		/* fallback to non-multicast */
@@ -2658,7 +2703,6 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 						   false) < 0)
 			ret = -1;
 	}
-#undef NAN_PUB_ACTION
 #endif /* CONFIG_NAN_USD */
 #ifdef CONFIG_DPP
 	/* DPP Public Action */
@@ -2961,7 +3005,7 @@ static void wpa_driver_nl80211_send_rfkill(void *eloop_ctx, void *timeout_ctx)
 }
 
 
-static void nl80211_del_p2pdev(struct i802_bss *bss)
+static void nl80211_del_non_netdev(struct i802_bss *bss)
 {
 	struct nl_msg *msg;
 	int ret;
@@ -2969,9 +3013,13 @@ static void nl80211_del_p2pdev(struct i802_bss *bss)
 	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_DEL_INTERFACE);
 	ret = send_and_recv_cmd(bss->drv, msg);
 
-	wpa_printf(MSG_DEBUG, "nl80211: Delete P2P Device %s (0x%llx): %s",
+	wpa_printf(MSG_DEBUG, "nl80211: Delete P2P/NAN Device %s (0x%llx): %s",
 		   bss->ifname, (long long unsigned int) bss->wdev_id,
 		   strerror(-ret));
+#ifdef CONFIG_NAN
+	if (bss->drv->nlmode == NL80211_IFTYPE_NAN && bss->drv->global->nl_nan)
+		nl80211_destroy_eloop_handle(&bss->drv->global->nl_nan, 0);
+#endif /* CONFIG_NAN */
 }
 
 
@@ -2991,19 +3039,39 @@ static int nl80211_set_p2pdev(struct i802_bss *bss, int start)
 	return ret;
 }
 
+static int nl80211_set_nandev(struct i802_bss *bss, int start)
+{
+#ifdef CONFIG_NAN
+	/*
+	 * We don't implicitly start NAN.
+	 * NAN is started through a dedicated API, however we do need to
+	 * stop it.
+	 * For rfkill, we rely on ENABLED/DISABLED events.
+	 */
+	if (start)
+		return 0;
+
+	wpa_driver_nl80211_nan_stop(bss);
+
+#endif /* CONFIG_NAN */
+	return 0;
+}
+
 
 static int i802_set_iface_flags(struct i802_bss *bss, int up)
 {
 	enum nl80211_iftype nlmode;
 
 	nlmode = nl80211_get_ifmode(bss);
-	if (nlmode != NL80211_IFTYPE_P2P_DEVICE) {
-		return linux_set_iface_flags(bss->drv->global->ioctl_sock,
-					     bss->ifname, up);
+	if (nlmode == NL80211_IFTYPE_P2P_DEVICE) {
+		/* P2P Device has start/stop which is equivalent */
+		return nl80211_set_p2pdev(bss, up);
+	} else if (nlmode == NL80211_IFTYPE_NAN) {
+		return nl80211_set_nandev(bss, up);
 	}
 
-	/* P2P Device has start/stop which is equivalent */
-	return nl80211_set_p2pdev(bss, up);
+	return linux_set_iface_flags(bss->drv->global->ioctl_sock,
+				     bss->ifname, up);
 }
 
 
@@ -3139,8 +3207,7 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv,
 	if (!bss->if_dynamic && nl80211_get_ifmode(bss) == NL80211_IFTYPE_AP)
 		bss->static_ap = 1;
 
-	if (first &&
-	    nl80211_get_ifmode(bss) != NL80211_IFTYPE_P2P_DEVICE &&
+	if (first && nl80211_is_netdev_iftype(nl80211_get_ifmode(bss)) &&
 	    linux_iface_up(drv->global->ioctl_sock, bss->ifname) > 0)
 		drv->start_iface_up = 1;
 
@@ -3175,7 +3242,7 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv,
 		return -1;
 	}
 
-	if (nlmode == NL80211_IFTYPE_P2P_DEVICE)
+	if (!nl80211_is_netdev_iftype(nl80211_get_ifmode(bss)))
 		nl80211_get_macaddr(bss);
 
 	wpa_driver_nl80211_drv_init_rfkill(drv);
@@ -3208,11 +3275,11 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv,
 		send_rfkill_event = 1;
 	}
 
-	if (!drv->hostapd && nlmode != NL80211_IFTYPE_P2P_DEVICE)
+	if (!drv->hostapd && nl80211_is_netdev_iftype(nlmode))
 		netlink_send_oper_ifla(drv->global->netlink, drv->ifindex,
 				       1, IF_OPER_DORMANT);
 
-	if (nlmode != NL80211_IFTYPE_P2P_DEVICE) {
+	if (nl80211_is_netdev_iftype(nlmode)) {
 		if (linux_get_ifhwaddr(drv->global->ioctl_sock, bss->ifname,
 				       bss->addr))
 			return -1;
@@ -3360,14 +3427,14 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 		}
 	}
 
-	if (drv->nlmode != NL80211_IFTYPE_P2P_DEVICE) {
+	if (nl80211_is_netdev_iftype(drv->nlmode)) {
 		if (drv->start_mode_sta)
 			wpa_driver_nl80211_set_mode(bss,
 						    NL80211_IFTYPE_STATION);
 		nl80211_mgmt_unsubscribe(bss, "deinit");
 	} else {
 		nl80211_mgmt_unsubscribe(bss, "deinit");
-		nl80211_del_p2pdev(bss);
+		nl80211_del_non_netdev(bss);
 	}
 
 	nl80211_destroy_bss(drv->first_bss);
@@ -6291,7 +6358,7 @@ const char * nl80211_iftype_str(enum nl80211_iftype mode)
 	case NL80211_IFTYPE_OCB:
 		return "OCB";
 	case NL80211_IFTYPE_NAN:
-		return "NAN";
+		return "NAN DEVICE";
 	default:
 		return "unknown";
 	}
@@ -6328,11 +6395,48 @@ static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 	if (nla_put_flag(msg, NL80211_ATTR_IFACE_SOCKET_OWNER))
 		goto fail;
 
-	if ((addr && iftype == NL80211_IFTYPE_P2P_DEVICE) &&
+	if ((addr && (iftype == NL80211_IFTYPE_P2P_DEVICE ||
+		      iftype == NL80211_IFTYPE_NAN)) &&
 	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr))
 		goto fail;
 
-	ret = send_and_recv_resp(drv, msg, handler, arg);
+	/* NAN interface is created on a dedicated socket */
+	if (iftype == NL80211_IFTYPE_NAN) {
+#ifdef CONFIG_NAN
+		if (drv->global->nl_nan) {
+			wpa_printf(MSG_ERROR,
+				   "Failed to create interface %s: socket in use",
+				   ifname);
+			goto fail;
+		}
+
+		drv->global->nl_nan = nl_create_handle(drv->global->nl_cb,
+						       "nan");
+		if (!drv->global->nl_nan)
+			goto fail;
+
+		ret = send_and_recv(drv, drv->global->nl_nan, msg,
+				    handler, arg, NULL, NULL, NULL);
+		if (ret) {
+			nl_destroy_handles(&drv->global->nl_nan);
+			goto fail;
+		}
+
+		/*
+		 * NAN events are received on a socket which is used to create
+		 * the interface. Note that after this call this socket can't be
+		 * used for sending commands anymore.
+		 */
+		nl80211_register_eloop_read(&drv->global->nl_nan,
+					    wpa_driver_nl80211_event_receive,
+					    drv->global->nl_cb, 0);
+#else
+		ret = -EOPNOTSUPP;
+#endif /* CONFIG_NAN */
+	} else {
+		ret = send_and_recv_resp(drv, msg, handler, arg);
+	}
+
 	msg = NULL;
 	if (ret) {
 	fail:
@@ -6342,7 +6446,7 @@ static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 		return ret;
 	}
 
-	if (iftype == NL80211_IFTYPE_P2P_DEVICE)
+	if (!nl80211_is_netdev_iftype(iftype))
 		return 0;
 
 	ifidx = if_nametoindex(ifname);
@@ -7822,6 +7926,10 @@ done:
 	    nl80211_mgmt_subscribe_mesh(bss))
 		return -1;
 
+	if (nlmode == NL80211_IFTYPE_NAN)
+		return nl80211_mgmt_subscribe_nan(bss);
+
+
 	if (!bss->in_deinit && !is_ap_interface(nlmode) &&
 	    !is_mesh_interface(nlmode) &&
 	    nl80211_mgmt_subscribe_non_ap(bss) < 0)
@@ -9059,6 +9167,8 @@ static enum nl80211_iftype wpa_driver_nl80211_if_type(
 		return NL80211_IFTYPE_P2P_DEVICE;
 	case WPA_IF_MESH:
 		return NL80211_IFTYPE_MESH_POINT;
+	case WPA_IF_NAN:
+		return NL80211_IFTYPE_NAN;
 	default:
 		return -1;
 	}
@@ -9144,28 +9254,28 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 	if (addr)
 		os_memcpy(if_addr, addr, ETH_ALEN);
 	nlmode = wpa_driver_nl80211_if_type(type);
-	if (nlmode == NL80211_IFTYPE_P2P_DEVICE) {
-		struct wdev_info p2pdev_info;
+	if (!nl80211_is_netdev_iftype(nlmode)) {
+		struct wdev_info nonnetdev_info;
 
-		os_memset(&p2pdev_info, 0, sizeof(p2pdev_info));
+		os_memset(&nonnetdev_info, 0, sizeof(nonnetdev_info));
 		ifidx = nl80211_create_iface(drv, ifname, nlmode, addr,
 					     0, nl80211_wdev_handler,
-					     &p2pdev_info, use_existing);
-		if (!p2pdev_info.wdev_id_set || ifidx != 0) {
-			wpa_printf(MSG_ERROR, "nl80211: Failed to create a P2P Device interface %s",
+					     &nonnetdev_info, use_existing);
+		if (!nonnetdev_info.wdev_id_set || ifidx != 0) {
+			wpa_printf(MSG_ERROR,
+				   "nl80211: Failed to create a P2P/NAN Device interface %s",
 				   ifname);
 			return -1;
 		}
 
-		drv->global->if_add_wdevid = p2pdev_info.wdev_id;
-		drv->global->if_add_wdevid_set = p2pdev_info.wdev_id_set;
-		if (!is_zero_ether_addr(p2pdev_info.macaddr)) {
-			os_memcpy(if_addr, p2pdev_info.macaddr, ETH_ALEN);
-			os_memcpy(drv->global->p2p_perm_addr, p2pdev_info.macaddr, ETH_ALEN);
-		}
-		wpa_printf(MSG_DEBUG, "nl80211: New P2P Device interface %s (0x%llx) created",
+		drv->global->if_add_wdevid = nonnetdev_info.wdev_id;
+		drv->global->if_add_wdevid_set = nonnetdev_info.wdev_id_set;
+		if (!is_zero_ether_addr(nonnetdev_info.macaddr))
+			os_memcpy(if_addr, nonnetdev_info.macaddr, ETH_ALEN);
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: New P2P/NAN Device interface %s (0x%llx) created",
 			   ifname,
-			   (long long unsigned int) p2pdev_info.wdev_id);
+			   (long long unsigned int) nonnetdev_info.wdev_id);
 	} else {
 		ifidx = nl80211_create_iface(drv, ifname, nlmode, addr,
 					     0, NULL, NULL, use_existing);
@@ -9178,7 +9288,7 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 	}
 
 	if (!addr) {
-		if (nlmode == NL80211_IFTYPE_P2P_DEVICE)
+		if (!nl80211_is_netdev_iftype(nlmode))
 			os_memcpy(if_addr, bss->addr, ETH_ALEN);
 		else if (linux_get_ifhwaddr(drv->global->ioctl_sock,
 					    ifname, if_addr) < 0) {
@@ -9477,7 +9587,8 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
 	    bss->flink->beacon_set)
 		offchanok = 0;
 
-	if (!freq && is_sta_interface(drv->nlmode))
+	if (!freq && (is_sta_interface(drv->nlmode) ||
+		      drv->nlmode == NL80211_IFTYPE_NAN))
 		offchanok = 0;
 
 	wpa_printf(MSG_DEBUG,
@@ -11380,7 +11491,7 @@ static const u8 * wpa_driver_nl80211_get_macaddr(void *priv)
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 
-	if (drv->nlmode != NL80211_IFTYPE_P2P_DEVICE)
+	if (nl80211_is_netdev_iftype(drv->nlmode))
 		return NULL;
 
 	return bss->addr;
@@ -14419,8 +14530,8 @@ static int nl80211_configure_data_frame_filters(void *priv, u32 filter_flags)
 	char path[128];
 	int ret;
 
-	/* P2P-Device has no netdev that can (or should) be configured here */
-	if (nl80211_get_ifmode(bss) == NL80211_IFTYPE_P2P_DEVICE)
+	/* P2P/NAN-Device has no netdev that can (or should) be configured here */
+	if (!nl80211_is_netdev_iftype(nl80211_get_ifmode(bss)))
 		return 0;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Data frame filter flags=0x%x",
@@ -15112,6 +15223,206 @@ wpa_driver_get_multi_hw_info(void *priv, unsigned int *num_multi_hws)
 }
 
 
+#ifdef CONFIG_NAN
+
+static int nl80211_nan_config(struct i802_bss *bss,
+			      struct wpa_driver_nl80211_data *drv,
+			      struct nan_cluster_config *params,
+			      enum nl80211_commands cmd)
+{
+	struct nl_msg *msg;
+	struct nlattr *conf, *bands_conf, *band;
+	u32 bands = 0;
+
+	if (params->dual_band > 1)
+		return -EINVAL;
+
+	bands |= BIT(NL80211_BAND_2GHZ);
+
+	if (params->dual_band) {
+		if (drv->capa.nan_flags &
+		    WPA_DRIVER_FLAGS_NAN_SUPPORT_DUAL_BAND) {
+			bands |= BIT(NL80211_BAND_5GHZ);
+		} else {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: NAN: No support for dual band");
+			return -EINVAL;
+		}
+	}
+
+	msg = nl80211_cmd_msg(bss, 0, cmd);
+	if (!msg || nla_put_u8(msg, NL80211_ATTR_NAN_MASTER_PREF,
+			       params->master_pref) ||
+	    (bands && nla_put_u32(msg, NL80211_ATTR_BANDS, bands))) {
+		wpa_printf(MSG_ERROR, "nl80211: NAN: Failed to build command");
+		goto fail;
+	}
+
+	conf = nla_nest_start(msg, NL80211_ATTR_NAN_CONFIG);
+	if (!conf)
+		goto fail;
+
+	if (params->enable_dw_notif) {
+		if (!(drv->capa.nan_flags &
+		      WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE)) {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Driver doesn't support NAN DW notifications");
+			goto fail;
+		}
+
+		if (nla_put_flag(msg, NL80211_NAN_CONF_NOTIFY_DW))
+			goto fail;
+	}
+
+	if (!is_zero_ether_addr(params->cluster_id) &&
+	    nla_put(msg, NL80211_NAN_CONF_CLUSTER_ID,
+		    ETH_ALEN, params->cluster_id))
+		goto fail;
+
+	if (params->scan_period &&
+	    nla_put_u16(msg, NL80211_NAN_CONF_SCAN_PERIOD,
+			params->scan_period))
+		goto fail;
+
+	if (params->scan_dwell_time &&
+	    nla_put_u16(msg, NL80211_NAN_CONF_SCAN_DWELL_TIME,
+			params->scan_dwell_time))
+		goto fail;
+
+	if (params->discovery_beacon_interval &&
+	    nla_put_u8(msg, NL80211_NAN_CONF_DISCOVERY_BEACON_INTERVAL,
+		       params->discovery_beacon_interval))
+		goto fail;
+
+	bands_conf = nla_nest_start(msg, NL80211_NAN_CONF_BAND_CONFIGS);
+	if (!bands_conf)
+		goto fail;
+
+	band = nla_nest_start(msg, 1);
+	if (!band)
+		goto fail;
+
+	if (nla_put_u8(msg, NL80211_NAN_BAND_CONF_BAND,
+		       NL80211_BAND_2GHZ) ||
+	    nla_put_s8(msg, NL80211_NAN_BAND_CONF_RSSI_CLOSE,
+		       params->low_band_cfg.rssi_close) ||
+	    nla_put_s8(msg, NL80211_NAN_BAND_CONF_RSSI_MIDDLE,
+		       params->low_band_cfg.rssi_middle) ||
+	    nla_put_u8(msg, NL80211_NAN_BAND_CONF_WAKE_DW,
+		       params->low_band_cfg.awake_dw_interval) ||
+	    (params->low_band_cfg.disable_scan &&
+	     nla_put_flag(msg, NL80211_NAN_BAND_CONF_DISABLE_SCAN)))
+		goto fail;
+
+	nla_nest_end(msg, band);
+
+	if (params->dual_band) {
+		band = nla_nest_start(msg, 2);
+		if (!band)
+			goto fail;
+
+		if (nla_put_u8(msg, NL80211_NAN_BAND_CONF_BAND,
+			       NL80211_BAND_5GHZ) ||
+		    nla_put_u16(msg, NL80211_NAN_BAND_CONF_FREQ,
+				params->high_band_cfg.frequency) ||
+		    nla_put_s8(msg, NL80211_NAN_BAND_CONF_RSSI_CLOSE,
+			       params->high_band_cfg.rssi_close) ||
+		    nla_put_s8(msg, NL80211_NAN_BAND_CONF_RSSI_MIDDLE,
+			       params->high_band_cfg.rssi_middle) ||
+		    nla_put_u8(msg, NL80211_NAN_BAND_CONF_WAKE_DW,
+			       params->high_band_cfg.awake_dw_interval) ||
+		    (params->high_band_cfg.disable_scan &&
+		     nla_put_flag(msg, NL80211_NAN_BAND_CONF_DISABLE_SCAN)))
+			goto fail;
+
+		nla_nest_end(msg, band);
+	}
+
+	nla_nest_end(msg, bands_conf);
+
+	if (params->extra_nan_attrs && params->extra_nan_attrs_len &&
+	    nla_put(msg, NL80211_NAN_CONF_EXTRA_ATTRS,
+		    params->extra_nan_attrs_len,
+		    params->extra_nan_attrs))
+		goto fail;
+
+	if (params->vendor_elems && params->vendor_elems_len &&
+	    nla_put(msg, NL80211_NAN_CONF_VENDOR_ELEMS,
+		    params->vendor_elems_len, params->vendor_elems))
+		goto fail;
+
+	nla_nest_end(msg, conf);
+
+	return send_and_recv_resp(drv, msg, NULL, NULL);
+fail:
+	nlmsg_free(msg);
+	return -1;
+}
+
+static int wpa_driver_nl80211_nan_start(void *priv,
+					struct nan_cluster_config *params)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	int ret;
+
+	if (drv->nlmode != NL80211_IFTYPE_NAN)
+		return -EOPNOTSUPP;
+
+	if (drv->nan_started)
+		return -EALREADY;
+
+	wpa_printf(MSG_DEBUG, "nl80211: Start/Join NAN cluster");
+	ret = nl80211_nan_config(bss, drv, params, NL80211_CMD_START_NAN);
+	if (!ret)
+		drv->nan_started = 1;
+
+	return ret;
+}
+
+
+static int
+wpa_driver_nl80211_nan_change_config(void *priv,
+				     struct nan_cluster_config *params)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+
+	if (drv->nlmode != NL80211_IFTYPE_NAN)
+		return -EOPNOTSUPP;
+
+	if (!drv->nan_started)
+		return -EINVAL;
+
+	wpa_printf(MSG_DEBUG, "nl80211: Update NAN configuration");
+	return nl80211_nan_config(bss, drv, params,
+				  NL80211_CMD_CHANGE_NAN_CONFIG);
+}
+
+
+static void wpa_driver_nl80211_nan_stop(void *priv)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+
+	if (drv->nlmode != NL80211_IFTYPE_NAN || !drv->nan_started)
+		return;
+
+	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_STOP_NAN);
+	if (!msg) {
+		wpa_printf(MSG_ERROR, "Failed to alloc NAN stop command");
+		return;
+	}
+
+	if (send_and_recv_resp(bss->drv, msg, NULL, NULL))
+		wpa_printf(MSG_ERROR, "Failed to send NAN stop command");
+
+	drv->nan_started = 0;
+}
+
+#endif /* CONFIG_NAN */
+
 const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.name = "nl80211",
 	.desc = "Linux nl80211/cfg80211",
@@ -15283,4 +15594,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.radio_disable = testing_nl80211_radio_disable,
 #endif /* CONFIG_TESTING_OPTIONS */
 	.get_multi_hw_info = wpa_driver_get_multi_hw_info,
+#ifdef CONFIG_NAN
+	.nan_start = wpa_driver_nl80211_nan_start,
+	.nan_stop = wpa_driver_nl80211_nan_stop,
+	.nan_change_config = wpa_driver_nl80211_nan_change_config,
+#endif /*CONFIG_NAN */
 };
