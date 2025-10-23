@@ -6589,7 +6589,6 @@ static int wpa_driver_nl80211_associate(
 		if (params->key_mgmt_suite == WPA_KEY_MGMT_SAE ||
 		    params->key_mgmt_suite == WPA_KEY_MGMT_FT_SAE ||
 		    wpa_key_mgmt_sae(params->allowed_key_mgmts)) {
-			nl_connect = bss->nl_connect;
 			bss->use_nl_connect = 1;
 		} else {
 			bss->use_nl_connect = 0;

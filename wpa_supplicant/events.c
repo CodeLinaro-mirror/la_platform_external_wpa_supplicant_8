@@ -33,7 +33,6 @@
 #include "common/ptksa_cache.h"
 #include "crypto/random.h"
 #include "bssid_ignore.h"
-#include "blacklist.h"
 #include "crypto/sha1.h"
 #include "wpas_glue.h"
 #include "wps_supplicant.h"
@@ -2738,7 +2737,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 	int sel;
 	const u8 *p;
 	int l, len;
-	Boolean found = FALSE;
+	bool found = false;
 	struct wpa_ie_data ie;
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
 	struct wpa_bss *bss = wpa_s->current_bss;
@@ -2762,7 +2761,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		     (p[0] == WLAN_EID_VENDOR_SPECIFIC && p[1] >= 4 &&
 		      (os_memcmp(&p[2], "\x50\x6F\x9A\x12", 4) == 0)) ||
 		     (p[0] == WLAN_EID_RSN && p[1] >= 2))) {
-			found = TRUE;
+			found = true;
 			break;
 		}
 		l -= len;
@@ -2872,7 +2871,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 	}
 
 	/* Update GTK and IGTK from AP's RSNE */
-	found = FALSE;
+	found = false;
 
 	if (wpa_s->wpa_proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) {
 		const u8 *bss_rsn;
@@ -2881,7 +2880,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		if (bss_rsn) {
 			p = bss_rsn;
 			len = 2 + bss_rsn[1];
-			found = TRUE;
+			found = true;
 		}
 	} else if (wpa_s->wpa_proto & WPA_PROTO_WPA) {
 		const u8 *bss_wpa;
@@ -2890,7 +2889,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 		if (bss_wpa) {
 			p = bss_wpa;
 			len = 2 + bss_wpa[1];
-			found = TRUE;
+			found = true;
 		}
 	}
 
