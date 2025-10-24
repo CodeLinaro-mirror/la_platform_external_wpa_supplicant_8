@@ -3816,6 +3816,7 @@ no_pfs:
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_IEEE8021X_SHA384) ||
 		(wpa_s->key_mgmt == WPA_KEY_MGMT_FT_SAE_EXT_KEY)) &&
 		wpa_ft_is_completed(wpa_s->wpa)) {
+		wpa_s->assoc_freq = data->assoc_info.freq;
 		return 0;
 	}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
@@ -4888,6 +4889,10 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 			"pre-shared key may be incorrect");
 		if (wpas_p2p_4way_hs_failed(wpa_s) > 0)
 			return; /* P2P group removed */
+		bssid = wpa_s->bssid;
+		if (is_zero_ether_addr(bssid))
+			bssid = wpa_s->pending_bssid;
+		wpa_bssid_ignore_add(wpa_s, bssid);
 		wpas_auth_failed(wpa_s, "WRONG_KEY", wpa_s->pending_bssid);
 		wpas_notify_psk_mismatch(wpa_s);
 	}
@@ -6310,21 +6315,6 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
 		wpa_s->valid_links);
 }
 
-#ifdef MAINLINE_SUPPLICANT
-static bool is_event_allowlisted(enum wpa_event_type event) {
-	return event == EVENT_SCAN_STARTED ||
-	       event == EVENT_SCAN_RESULTS ||
-	       event == EVENT_RX_MGMT ||
-	       event == EVENT_REMAIN_ON_CHANNEL ||
-	       event == EVENT_CANCEL_REMAIN_ON_CHANNEL ||
-	       event == EVENT_TX_WAIT_EXPIRE ||
-	       event == EVENT_INTERFACE_MAC_CHANGED ||
-	       event == EVENT_INTERFACE_ENABLED ||
-	       event == EVENT_INTERFACE_DISABLED ||
-	       event == EVENT_TX_STATUS;
-}
-#endif /* MAINLINE_SUPPLICANT */
-
 
 #ifdef CONFIG_PASN
 static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
@@ -6366,15 +6356,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	int level = MSG_DEBUG;
 #endif /* CONFIG_NO_STDOUT_DEBUG */
-
-#ifdef MAINLINE_SUPPLICANT
-	if (!is_event_allowlisted(event)) {
-		wpa_dbg(wpa_s, MSG_DEBUG,
-			"Ignore event %s (%d) which is not allowlisted",
-			event_to_string(event), event);
-		return;
-	}
-#endif /* MAINLINE_SUPPLICANT */
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED &&
 	    event != EVENT_INTERFACE_ENABLED &&

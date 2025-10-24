@@ -98,7 +98,7 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
 	if (!mode)
 		return eid;
 
-	ie_size = sizeof(*cap) - sizeof(cap->optional);
+	ie_size = HE_MAX_MAC_CAPAB_SIZE + HE_MAX_PHY_CAPAB_SIZE;
 	ppet_size = ieee80211_he_ppet_size(mode->he_capab[opmode].ppet[0],
 					   mode->he_capab[opmode].phy_cap);
 
