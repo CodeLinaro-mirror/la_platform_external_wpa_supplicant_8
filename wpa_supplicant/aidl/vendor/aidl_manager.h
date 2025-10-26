@@ -24,6 +24,10 @@
 #include "sta_network.h"
 #include "supplicant.h"
 
+#ifdef MAINLINE_SUPPLICANT
+#include "mainline_supplicant.h"
+#endif
+
 extern "C"
 {
 #include "utils/common.h"
