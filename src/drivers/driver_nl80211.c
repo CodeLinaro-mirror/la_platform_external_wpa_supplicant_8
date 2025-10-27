@@ -41,6 +41,7 @@
 #include "radiotap_iter.h"
 #include "rfkill.h"
 #include "driver_nl80211.h"
+#include "driver_nl80211_proxy.h"
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 #include "common/brcm_vendor.h"
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
@@ -2380,6 +2381,7 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 					  const char *driver_params,
 					  enum wpa_p2p_mode p2p_mode)
 {
+	extern const struct wpa_driver_nl80211_vendor_ops brcm_vendor_ops;
 	static unsigned int next_unique_drv_id = 0;
 	struct wpa_driver_nl80211_data *drv;
 	struct i802_bss *bss;
@@ -2444,6 +2446,9 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 	if (wpa_driver_nl80211_finish_drv_init(drv, set_addr, 1, driver_params,
 					       p2p_mode))
 		goto failed;
+
+	drv->vendor_ops = (drv->chip_vendor_id == OUI_BRCM) ?
+			   &brcm_vendor_ops : NULL;
 
 	if (drv->capa.flags2 & WPA_DRIVER_FLAGS2_CONTROL_PORT_TX_STATUS) {
 		drv->control_port_ap = 1;
@@ -3442,6 +3447,7 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 	}
 
 	nl80211_destroy_bss(drv->first_bss);
+	drv->vendor_ops = NULL;
 
 	os_free(drv->filter_ssids);
 
@@ -10973,7 +10979,7 @@ static int nl80211_set_p2p_powersave(void *priv, int legacy_ps, int opp_ps,
 
 	if (opp_ps != -1 || ctwindow != -1) {
 #ifdef ANDROID_P2P
-		wpa_driver_set_p2p_ps(priv, legacy_ps, opp_ps, ctwindow);
+		wpa_driver_set_p2p_ps_proxy(priv, legacy_ps, opp_ps, ctwindow);
 #else /* ANDROID_P2P */
 		return -1; /* Not yet supported */
 #endif /* ANDROID_P2P */
@@ -15566,13 +15572,13 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.switch_color = nl80211_switch_color,
 #endif /* CONFIG_IEEE80211AX */
 #ifdef ANDROID_P2P
-	.set_noa = wpa_driver_set_p2p_noa,
-	.get_noa = wpa_driver_get_p2p_noa,
-	.set_ap_wps_ie = wpa_driver_set_ap_wps_p2p_ie,
+	.set_noa = wpa_driver_set_p2p_noa_proxy,
+	.get_noa = wpa_driver_get_p2p_noa_proxy,
+	.set_ap_wps_ie = wpa_driver_set_ap_wps_p2p_ie_proxy,
 #endif /* ANDROID_P2P */
 #ifdef ANDROID
 #ifndef ANDROID_LIB_STUB
-	.driver_cmd = wpa_driver_nl80211_driver_cmd,
+	.driver_cmd = wpa_driver_nl80211_driver_cmd_proxy,
 #endif /* !ANDROID_LIB_STUB */
 #endif /* ANDROID */
 	.vendor_cmd = nl80211_vendor_cmd,
