@@ -11,12 +11,16 @@
 #include "aidl_return_util.h"
 #include "aidl_manager.h"
 #include "misc_utils.h"
+#include "aidl/shared/shared_utils.h"
 #include "driver_i.h"
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
 using NanStatusCode = aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
+
+const std::string kMainlineSupplicantConfigPath =
+	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
 
 NanIface::NanIface(struct wpa_global* global, const std::string& ifname)
 	: wpa_global_(global), ifname_(ifname), is_valid_(true)
@@ -214,14 +218,51 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
 	char16_t cmdId, const std::string& ifaceName)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpa_drv_if_add & wpas_supplicant_add_iface
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_]  {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		// Get the wpa supplicant of NMI
+		struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+
+		if (!wpa_s) {
+			wpa_printf(MSG_ERROR, "nl80211 parent interface not found");
+			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		if (ensureConfigFileExistsAtPath(kMainlineSupplicantConfigPath) != 0) {
+			wpa_printf(MSG_ERROR, "Conf file does not exists: %s",
+				kMainlineSupplicantConfigPath.c_str());
+			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN, ifaceName.c_str(), NULL, NULL, NULL,
+						NULL, NULL) < 0)
+		{
+			wpa_printf(MSG_ERROR, "Failed to create NAN iface");
+			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		struct wpa_interface iface_params = {};
+		iface_params.driver = kIfaceDriverName;
+		iface_params.ifname = ifaceName.c_str();
+		iface_params.confname = kMainlineSupplicantConfigPath.c_str();
+
+		if (!wpa_supplicant_add_iface(wpa_global, &iface_params, wpa_s)) {
+			wpa_printf(MSG_ERROR, "Failed to add NAN data iface");
+			wpa_drv_if_remove(wpa_s, WPA_IF_NAN, ifaceName.c_str());
+			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 	}).detach();
 	return ndk::ScopedAStatus::ok();
@@ -230,14 +271,33 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::deleteDataInterfaceRequestInternal(
 	char16_t cmdId, const std::string& ifaceName)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpa_drv_if_remove & wpas_supplicant_remove_iface
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global, ifaceName.c_str());
+		if (!wpa_s) {
+			wpa_printf(MSG_ERROR, "Failed to find NAN data iface.");
+			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		if (wpa_supplicant_remove_iface(wpa_global, wpa_s, 0) != 0) {
+			wpa_printf(MSG_ERROR, "Failed to remove NAN data iface in wpa_supplicant.");
+			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		if (wpa_drv_if_remove(wpa_global->ifaces, WPA_IF_NAN, ifaceName.c_str()) != 0) {
+			wpa_printf(MSG_ERROR, "Failed to remove NAN data iface in WPA driver.");
+			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
 		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
 	}).detach();
 	return ndk::ScopedAStatus::ok();

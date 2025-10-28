@@ -18,7 +18,8 @@ using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCa
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
 using aidl::android::system::wifi::mainline_supplicant::ISupplicantNanIface;
 
-const std::string kConfigFilePath = "/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
+const std::string kMainlineSupplicantConfigPath =
+	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
 
 MainlineSupplicant::MainlineSupplicant(struct wpa_global* global)
 	: wpa_global_(global)
@@ -96,10 +97,10 @@ MainlineSupplicant::addNanInterfaceInternal(const std::string& ifaceName)
 			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
 
-	if (ensureConfigFileExistsAtPath(kConfigFilePath) != 0) {
+	if (ensureConfigFileExistsAtPath(kMainlineSupplicantConfigPath) != 0) {
 		wpa_printf(
 			MSG_ERROR, "Conf file does not exist: %s",
-			kConfigFilePath.c_str());
+			kMainlineSupplicantConfigPath.c_str());
 		return {
 			nullptr,
 			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
@@ -117,7 +118,7 @@ MainlineSupplicant::addNanInterfaceInternal(const std::string& ifaceName)
 	struct wpa_interface iface_params = {};
 	iface_params.driver = kIfaceDriverName;
 	iface_params.ifname = nan_iface_name.c_str();
-	iface_params.confname = kConfigFilePath.c_str();
+	iface_params.confname = kMainlineSupplicantConfigPath.c_str();
 
 	struct wpa_supplicant* nan_wpa_s =
 		wpa_supplicant_add_iface(wpa_global_, &iface_params, NULL);
