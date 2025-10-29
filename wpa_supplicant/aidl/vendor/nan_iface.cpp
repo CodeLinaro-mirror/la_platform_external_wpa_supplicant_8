@@ -13,6 +13,7 @@
 #include "misc_utils.h"
 #include "aidl/shared/shared_utils.h"
 #include "driver_i.h"
+#include "nan_supplicant.h"
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
@@ -21,9 +22,32 @@ using NanStatusCode = aidl::android::system::wifi::mainline_supplicant::NanStatu
 
 const std::string kMainlineSupplicantConfigPath =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
+static constexpr int kNanIfaceCapMaxPublishSessions = 10;
+static constexpr int kNanIfaceCapMaxSubscribeSessions = kNanIfaceCapMaxPublishSessions;
+static constexpr bool kNanIfaceCapInstantCommunicationModeSupport = false;
+static constexpr bool kNanIfaceCapSupportsPeriodicRanging = false;
+static constexpr bool kNanIfaceCapSupportsSuspension = false;
+static constexpr int kNanIfaceConfBufSize = 128;
+static constexpr int kNanIfaceConfBandRssiClose = -60;
+static constexpr int kNanIfaceConfBandRssiMiddle = -75;
+static constexpr int kNanIfaceConfBandDisableScan = 0;
+static constexpr int kNanIfaceConfScanDwellTime = 150;
+static constexpr int kNanIfaceConfScanPeriod = 20;
+
+template <typename... Args>
+int setNanConfigParam(struct wpa_supplicant* wpa_s, const char* param, Args... args)
+{
+	char cmd[kNanIfaceConfBufSize];
+	int ret = snprintf(cmd, kNanIfaceConfBufSize, param, args...);
+	if (ret < 0 || ret >= sizeof(cmd)) {
+		return 1;
+	}
+	return wpas_nan_set(wpa_s, cmd);
+}
 
 NanIface::NanIface(struct wpa_global* global, const std::string& ifname)
-	: wpa_global_(global), ifname_(ifname), is_valid_(true)
+	: wpa_global_(global), ifname_(ifname), is_valid_(true), started_cluster_indication_(false),
+	  joined_cluster_indication_(false)
 {
 }
 
@@ -146,7 +170,7 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
 {
-    AidlManager* aidl_manager = AidlManager::getInstance();
+	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
 		!aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
@@ -156,16 +180,24 @@ bool NanIface::isValid()
 
 ::ndk::ScopedAStatus NanIface::getCapabilitiesRequestInternal(char16_t cmdId)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
-	NanCapabilities aidl_caps = {};
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: get capabilities from |wpa_supplicant| and |struct wpa_sdriver_capa|
+
 	std::thread([=, ifname = ifname_] {
-		aidl_manager->notifyNanCapabilitiesResponse(ifname, cmdId, nan_status, aidl_caps);
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::SUCCESS;
+		NanCapabilities aidl_caps = {};
+
+		aidl_caps.maxPublishes = kNanIfaceCapMaxPublishSessions;
+		aidl_caps.maxSubscribes = kNanIfaceCapMaxSubscribeSessions;
+		aidl_caps.instantCommunicationModeSupportFlag =
+			kNanIfaceCapInstantCommunicationModeSupport;
+		aidl_caps.supportsSuspension = kNanIfaceCapSupportsSuspension;
+		aidl_caps.supportsPeriodicRanging = kNanIfaceCapSupportsPeriodicRanging;
+		aidl_manager->notifyNanCapabilitiesResponse(
+			ifname, cmdId, nan_status, aidl_caps);
 	}).detach();
 	return ndk::ScopedAStatus::ok();
 }
@@ -173,16 +205,64 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::configRequestInternal(
 	char16_t cmdId, const NanConfigRequest& request)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_set() and wpas_nan_update_conf()
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanConfigResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		// Write the input config to the nan_config inside wpa_s instance
+		int ret = 0;
+		ret |= setNanConfigParam(wpa_s, "master_pref %d", request.masterPref);
+		ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
+		ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
+		ret |= setNanConfigParam(
+			wpa_s, "discovery_beacon_interval %d", request.discoveryBeaconIntervalMs);
+		if (!request.bandSpecificConfig.empty()) {
+			ret |= setNanConfigParam(
+				wpa_s, "low_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+				kNanIfaceConfBandRssiMiddle,
+				request.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
+					? request.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
+				kNanIfaceConfBandDisableScan);
+			if (request.bandSpecificConfig.size() > 1) {
+				ret |= setNanConfigParam(
+					wpa_s, "high_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+					kNanIfaceConfBandRssiMiddle,
+					request.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
+						? request.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
+					kNanIfaceConfBandDisableScan);
+			}
+		}
+
+		ret |= setNanConfigParam(
+			wpa_s, "cluster_id %s", MAC2STR(request.clusterId));
+		if (ret != 0) {
+			aidl_manager->notifyNanConfigResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+
+		// Update the nan_config to the NAN discovery engine level
+		ret = wpas_nan_update_conf(wpa_s);
+		if (ret != 0) {
+			aidl_manager->notifyNanConfigResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanConfigResponse(ifname, cmdId, nan_status);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -190,28 +270,97 @@ bool NanIface::isValid()
 	char16_t cmdId, const NanEnableRequest& msg1,
 	const NanConfigRequest& msg2)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_set() & wpas_nan_start()
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanEnableResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		// Default with 2.4G band
+		int8_t dual_band =
+			(msg1.operateInBand[1] || msg1.operateInBand[2]) ? 1 : 0;
+		int ret = 0;
+		ret |= setNanConfigParam(wpa_s, "master_pref %d", msg2.masterPref);
+		ret |= setNanConfigParam(wpa_s, "dual_band %d", dual_band);
+		ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
+		ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
+		ret |= setNanConfigParam(
+			wpa_s, "discovery_beacon_interval %d",
+			msg2.discoveryBeaconIntervalMs);
+		if (!msg2.bandSpecificConfig.empty()) {
+			ret |= setNanConfigParam(
+				wpa_s, "low_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+				kNanIfaceConfBandRssiMiddle,
+				msg2.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
+				? msg2.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
+				kNanIfaceConfBandDisableScan);
+			if (dual_band && msg2.bandSpecificConfig.size() > 1) {
+				ret |= setNanConfigParam(
+					wpa_s, "high_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+					kNanIfaceConfBandRssiMiddle,
+					msg2.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
+					? msg2.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
+					kNanIfaceConfBandDisableScan);
+			}
+		}
+		ret |= setNanConfigParam(
+			wpa_s, "cluster_id %s", MAC2STR(msg2.clusterId));
+
+		if (ret != 0) {
+			aidl_manager->notifyNanEnableResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+
+		ret = wpas_nan_start(wpa_s);
+		if (ret != 0) {
+			aidl_manager->notifyNanEnableResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanEnableResponse(ifname, cmdId, nan_status);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus NanIface::disableRequestInternal(char16_t cmdId)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
-	// TODO: wpas_nan_stop(nan);
-	std::thread([=, ifname = ifname_] {
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanDisableResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		int ret = wpas_nan_stop(wpa_s);
+		if (ret != 0) {
+			aidl_manager->notifyNanDisableResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanDisableResponse(ifname, cmdId, nan_status);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -381,4 +530,14 @@ bool NanIface::isValid()
 		aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
 	}).detach();
 	return ndk::ScopedAStatus::ok();
+}
+
+bool NanIface::isStartedClusterIndicationEnabled()
+{
+	return started_cluster_indication_;
+}
+
+bool NanIface::isJoinedClusterIndicationEnabled()
+{
+	return joined_cluster_indication_;
 }

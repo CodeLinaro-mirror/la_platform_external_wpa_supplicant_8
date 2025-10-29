@@ -66,7 +66,8 @@ public:
 	::ndk::ScopedAStatus transmitFollowupRequest(
 		char16_t in_cmdId,
 		const NanTransmitFollowupRequest& in_msg) override;
-
+	bool isStartedClusterIndicationEnabled();
+	bool isJoinedClusterIndicationEnabled();
 private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
 		const std::shared_ptr<ISupplicantNanIfaceEventCallback>&
@@ -97,6 +98,8 @@ private:
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
 	bool is_valid_;
+	bool started_cluster_indication_;
+	bool joined_cluster_indication_;
 };
 
 #endif	// SUPPLICANT_NAN_IFACE_H
