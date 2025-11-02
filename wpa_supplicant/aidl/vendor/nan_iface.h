@@ -68,6 +68,10 @@ public:
 		const NanTransmitFollowupRequest& in_msg) override;
 	bool isStartedClusterIndicationEnabled();
 	bool isJoinedClusterIndicationEnabled();
+	bool isDiscoveryTerminationIndicationEnabled();
+	bool isMatchExpirationIndicationEnabled();
+	bool isFollowupReceivedIndicationEnabled();
+
 private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
 		const std::shared_ptr<ISupplicantNanIfaceEventCallback>&
@@ -100,6 +104,9 @@ private:
 	bool is_valid_;
 	bool started_cluster_indication_;
 	bool joined_cluster_indication_;
+	bool discovery_termination_indication_;
+	bool match_expiration_indication_;
+	bool followup_received_indication_;
 };
 
 #endif	// SUPPLICANT_NAN_IFACE_H

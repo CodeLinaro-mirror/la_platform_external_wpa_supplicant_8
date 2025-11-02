@@ -6,18 +6,29 @@
  * See README for more details.
  */
 
-#include "nan_iface.h"
-#include <thread>
-#include "aidl_return_util.h"
 #include "aidl_manager.h"
-#include "misc_utils.h"
+#include "aidl_return_util.h"
 #include "aidl/shared/shared_utils.h"
 #include "driver_i.h"
+#include "misc_utils.h"
+#include "nan_iface.h"
 #include "nan_supplicant.h"
+#include "nan_utils.h"
+#include "src/common/nan_de.h"
+#include "src/common/nan_defs.h"
+
+#include <iomanip>
+#include <sstream>
+#include <thread>
 
 using aidl::android::hardware::wifi::supplicant::AidlManager;
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
+using aidl::android::hardware::wifi::supplicant::misc_utils::convertVectorToWpaBuf;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::validateNanPublishConfig;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::validateNanSubscribeConfig;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertAidlNanPublishConfigToInternal;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertAidlNanSubscribeConfigToInternal;
 using NanStatusCode = aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
 
 const std::string kMainlineSupplicantConfigPath =
@@ -452,83 +463,223 @@ bool NanIface::isValid()
 	return ndk::ScopedAStatus::ok();
 }
 
+static std::string vectorToHexString(const std::vector<uint8_t>& input) {
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+
+    for (uint8_t byte : input) {
+        // std::setw(2) guarantees exactly two characters per byte
+        // This ensures the total length is always even.
+        ss << std::setw(2) << static_cast<int>(byte);
+    }
+
+    return ss.str();
+}
+
 ::ndk::ScopedAStatus NanIface::startPublishRequestInternal(
 	char16_t cmdId, const NanPublishRequest& msg)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_publish
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanStartPublishResponse(
+				ifname, cmdId, nan_status, -1);
+			return;
+		}
+
+		if (!validateNanPublishConfig(msg)) {
+			aidl_manager->notifyNanStartPublishResponse(
+				ifname, cmdId, nan_status, -1);
+			return;
+		}
+
+		struct nan_publish_params params =
+			convertAidlNanPublishConfigToInternal(msg);
+		// To prevent hex_matching_xx is freed before passing it to wpas_nan_publish,
+		// it has to be assigned outside the helper function.
+		std::string hex_matching_tx = vectorToHexString(msg.baseConfig.txMatchFilter);
+		std::string hex_matching_rx = vectorToHexString(msg.baseConfig.rxMatchFilter);
+		params.match_filter_tx = hex_matching_tx.c_str();
+		params.match_filter_rx = hex_matching_rx.c_str();
+
+		discovery_termination_indication_ =
+			!msg.baseConfig.disableDiscoveryTerminationIndication;
+		match_expiration_indication_ =
+			!msg.baseConfig.disableMatchExpirationIndication;
+		followup_received_indication_ =
+			!msg.baseConfig.disableFollowupReceivedIndication;
+
+		// service name is guaranteed to be UTF-8, so it can be convert directly
+		std::string srv_name(msg.baseConfig.serviceName.begin(), msg.baseConfig.serviceName.end());
+		auto ssi_buf =
+			convertVectorToWpaBuf(msg.baseConfig.serviceSpecificInfo);
+		int publish_id = 0;
+		publish_id = wpas_nan_publish(
+			wpa_s,
+			srv_name.c_str(),
+			NAN_SRV_PROTO_GENERIC, ssi_buf.get(), &params, false);
+		if (publish_id < 0) {
+			aidl_manager->notifyNanStartPublishResponse(
+				ifname, cmdId, nan_status, -1);
+			return;
+		}
+
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status, 0);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus NanIface::stopPublishRequestInternal(
 	char16_t cmdId, int8_t sessionId)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	// TODO: wpas_nan_cancel_publish
-	std::thread([=, ifname = ifname_] {
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::SUCCESS;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname_.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanStopPublishResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		wpas_nan_cancel_publish(wpa_s, sessionId);
 		aidl_manager->notifyNanStopPublishResponse(ifname, cmdId, nan_status);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus NanIface::startSubscribeRequestInternal(
 	char16_t cmdId, const NanSubscribeRequest& msg)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_subscribe
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanStartSubscribeResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+
+		if (!validateNanSubscribeConfig(msg)) {
+			aidl_manager->notifyNanStartSubscribeResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+
+		struct nan_subscribe_params params =
+			convertAidlNanSubscribeConfigToInternal(msg);
+		// To prevent hex_matching_xx is freed before passing it to wpas_nan_publish,
+		// it has to be assigned outside the helper function.
+		std::string hex_matching_tx = vectorToHexString(msg.baseConfig.txMatchFilter);
+		std::string hex_matching_rx = vectorToHexString(msg.baseConfig.rxMatchFilter);
+		params.match_filter_tx = hex_matching_tx.c_str();
+		params.match_filter_rx = hex_matching_rx.c_str();
+
+		// service name is guaranteed to be UTF-8, so it can be convert directly
+		std::string srv_name(msg.baseConfig.serviceName.begin(), msg.baseConfig.serviceName.end());
+
+		auto ssi_buf =
+			convertVectorToWpaBuf(msg.baseConfig.serviceSpecificInfo);
+		int subscribe_id = 0;
+		subscribe_id = wpas_nan_subscribe(
+			wpa_s,
+			srv_name.c_str(),
+			NAN_SRV_PROTO_GENERIC, ssi_buf.get(), &params, false);
+		if (subscribe_id < 0) {
+			aidl_manager->notifyNanStartSubscribeResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status, 0);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus NanIface::stopSubscribeRequestInternal(
 	char16_t cmdId, int8_t sessionId)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	// TODO: wpas_nan_cancel_subscribe
-	std::thread([=, ifname = ifname_] {
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanStopSubscribeResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		nan_status.status = NanStatusCode::SUCCESS;
+		wpas_nan_cancel_subscribe(wpa_s, sessionId);
 		aidl_manager->notifyNanStopSubscribeResponse(ifname, cmdId, nan_status);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus NanIface::transmitFollowupRequestInternal(
 	char16_t cmdId, const NanTransmitFollowupRequest& msg)
 {
-	NanStatus nan_status;
-	nan_status.status = NanStatusCode::SUCCESS;
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_transmit
-	std::thread([=, ifname = ifname_] {
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		auto ssi_buf = convertVectorToWpaBuf(msg.serviceSpecificInfo);
+		auto elems = convertVectorToWpaBuf(msg.extendedServiceSpecificInfo);
+		int ret = wpas_nan_transmit(
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str()),
+			msg.discoverySessionId, ssi_buf.get(), elems.get(),
+			msg.addr.data(), msg.peerId);
+		if (ret < 0) {
+			aidl_manager->notifyNanTransmitFollowupResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
 	}).detach();
+
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -540,4 +691,19 @@ bool NanIface::isStartedClusterIndicationEnabled()
 bool NanIface::isJoinedClusterIndicationEnabled()
 {
 	return joined_cluster_indication_;
+}
+
+bool NanIface::isDiscoveryTerminationIndicationEnabled()
+{
+	return discovery_termination_indication_;
+}
+
+bool NanIface::isMatchExpirationIndicationEnabled()
+{
+	return match_expiration_indication_;
+}
+
+bool NanIface::isFollowupReceivedIndicationEnabled()
+{
+	return followup_received_indication_;
 }

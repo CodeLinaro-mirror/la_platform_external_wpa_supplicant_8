@@ -3786,8 +3786,9 @@ void AidlManager::notifyNanPublishTerminated(
 		return;
 
 #ifdef MAINLINE_SUPPLICANT
-	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-		nan_iface_object_map_.end()) {
+	auto it = nan_iface_object_map_.find(wpa_s->ifname);
+	if (it != nan_iface_object_map_.end() &&
+		it->second->isDiscoveryTerminationIndicationEnabled()) {
 		callWithEachNanIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
@@ -3829,8 +3830,9 @@ void AidlManager::notifyNanSubscribeTerminated(
 		return;
 
 #ifdef MAINLINE_SUPPLICANT
-	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-		nan_iface_object_map_.end()) {
+	auto it = nan_iface_object_map_.find(wpa_s->ifname);
+	if (it != nan_iface_object_map_.end() &&
+		it->second->isDiscoveryTerminationIndicationEnabled()) {
 		callWithEachNanIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
@@ -3904,11 +3906,15 @@ void AidlManager::notifyNanTransmitFollowup(
 	// TODO: Need to parse the actual status_code type to NanStatus
 	NanStatus ret;
 	ret.status = NanStatusCode::SUCCESS;
-	callWithEachNanIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(
-		&NanIface::ISupplicantNanIfaceEventCallback::eventTransmitFollowup,
-		std::placeholders::_1, cmd_id, ret));
+	auto it = nan_iface_object_map_.find(wpa_s->ifname);
+	if (it != nan_iface_object_map_.end() &&
+		it->second->isFollowupReceivedIndicationEnabled()) {
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventTransmitFollowup,
+			std::placeholders::_1, cmd_id, ret));
+	}
 #endif
 }
 
