@@ -1750,6 +1750,7 @@ cc_library_static {
         "aidl/vendor/certificate_utils.cpp",
         "aidl/vendor/iface_config_utils.cpp",
         "aidl/vendor/mainline_supplicant.cpp",
+        "aidl/vendor/nan_iface.cpp",
         "aidl/vendor/p2p_iface.cpp",
         "aidl/vendor/p2p_network.cpp",
         "aidl/vendor/sta_iface.cpp",
