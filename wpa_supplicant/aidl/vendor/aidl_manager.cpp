@@ -26,6 +26,8 @@ extern "C" {
 
 namespace {
 
+constexpr uint8_t kNanClusterJoined = 0;
+constexpr uint8_t kNanClusterStarted = 1;
 constexpr uint8_t kWfdDeviceInfoLen = 6;
 constexpr uint8_t kWfdR2DeviceInfoLen = 2;
 // GSM-AUTH:<RAND1>:<RAND2>[:<RAND3>]
@@ -56,7 +58,7 @@ using aidl::android::system::wifi::mainline_supplicant::NanStatus;
 using NanStatusCode =
 	aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
 using NanClusterEventType = aidl::android::system::wifi::mainline_supplicant::
-    NanClusterEventType;
+	NanClusterEventType;
 #endif
 
 /**
@@ -3472,67 +3474,6 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 	return discoveryInfo;
 }
 
-void AidlManager::notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
-		enum nan_service_protocol_type srv_proto_type,
-		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
-		bool fsd, const u8 *ssi, size_t ssi_len)
-{
-	if (!wpa_s || !peer_addr) return;
-	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	if (p2p_iface_object_map_.find(wpa_s->ifname) != p2p_iface_object_map_.end()) {
-		// Notify service discovered event on P2P device interface.
-		P2pUsdBasedServiceDiscoveryResultParams p2pServiceDiscoveryInfo =
-			createP2pUsdBasedServiceDiscoveryResult(srv_proto_type, subscribe_id,
-				peer_publish_id, peer_addr, ssi, ssi_len);
-		callWithEachP2pIfaceCallback(misc_utils::charBufToString(wpa_s->ifname),
-		std::bind(&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryResult,
-			std::placeholders::_1, p2pServiceDiscoveryInfo));
-	} else {
-		// Notify service discovered event on STA interface.
-		UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
-			srv_proto_type, subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
-		callWithEachStaIfaceCallback(
-				misc_utils::charBufToString(wpa_s->ifname), std::bind(
-					&ISupplicantStaIfaceCallback::onUsdServiceDiscovered,
-					std::placeholders::_1, discoveryInfo));
-	}
-}
-
-void AidlManager::notifyUsdPublishReplied(struct wpa_supplicant *wpa_s,
-		enum nan_service_protocol_type srv_proto_type,
-		int publish_id, int peer_subscribe_id,
-		const u8 *peer_addr, const u8 *ssi, size_t ssi_len)
-{
-	if (!wpa_s || !peer_addr || !ssi) return;
-	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
-		srv_proto_type, publish_id, peer_subscribe_id, peer_addr, false /* fsd */,
-		ssi, ssi_len);
-	callWithEachStaIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onUsdPublishReplied,
-			std::placeholders::_1, discoveryInfo));
-}
-
-void AidlManager::notifyUsdMessageReceived(struct wpa_supplicant *wpa_s, int id,
-		int peer_instance_id, const u8 *peer_addr,
-		const u8 *message, size_t message_len)
-{
-	if (!wpa_s || !peer_addr || !message) return;
-	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-
-	UsdMessageInfo messageInfo;
-	messageInfo.ownId = id;
-	messageInfo.peerId = peer_instance_id;
-	messageInfo.peerMacAddress = macAddrToArray(peer_addr);
-	messageInfo.message = byteArrToVec(message, message_len);
-
-	callWithEachStaIfaceCallback(
-		misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onUsdMessageReceived,
-			std::placeholders::_1, messageInfo));
-}
-
 UsdTerminateReasonCode convertUsdTerminateReasonCodeToAidl(nan_de_reason reason) {
 	switch (reason) {
 	case NAN_DE_REASON_TIMEOUT:
@@ -3543,50 +3484,6 @@ UsdTerminateReasonCode convertUsdTerminateReasonCodeToAidl(nan_de_reason reason)
 		return UsdTerminateReasonCode::FAILURE;
 	default:
 		return UsdTerminateReasonCode::UNKNOWN;
-	}
-}
-
-void AidlManager::notifyUsdPublishTerminated(struct wpa_supplicant *wpa_s,
-		int publish_id, enum nan_de_reason reason)
-{
-	if (!wpa_s) return;
-	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	UsdTerminateReasonCode aidlReasonCode = convertUsdTerminateReasonCodeToAidl(reason);
-	if (p2p_iface_object_map_.find(wpa_s->ifname) != p2p_iface_object_map_.end()) {
-		// Notify publish terminated event on P2P device interface.
-		callWithEachP2pIfaceCallback(
-			misc_utils::charBufToString(wpa_s->ifname),
-			std::bind(
-			&ISupplicantP2pIfaceCallback::onUsdBasedServiceAdvertisementTerminated,
-			std::placeholders::_1, publish_id, aidlReasonCode));
-	} else {
-		// Notify publish terminated event on STA interface.
-		callWithEachStaIfaceCallback(
-			misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onUsdPublishTerminated,
-			std::placeholders::_1, publish_id, aidlReasonCode));
-	}
-}
-
-void AidlManager::notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
-		int subscribe_id, enum nan_de_reason reason)
-{
-	if (!wpa_s) return;
-	if (!areAidlServiceAndClientAtLeastVersion(4)) return;
-	UsdTerminateReasonCode aidlReasonCode = convertUsdTerminateReasonCodeToAidl(reason);
-	if (p2p_iface_object_map_.find(wpa_s->ifname) != p2p_iface_object_map_.end()) {
-		// Notify subscribe terminated event on P2P device interface.
-		callWithEachP2pIfaceCallback(
-			misc_utils::charBufToString(wpa_s->ifname),
-			std::bind(
-			&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryTerminated,
-			std::placeholders::_1, subscribe_id, aidlReasonCode));
-	} else {
-		// Notify subscribe terminated event on STA interface.
-		callWithEachStaIfaceCallback(
-			misc_utils::charBufToString(wpa_s->ifname), std::bind(
-			&ISupplicantStaIfaceCallback::onUsdSubscribeTerminated,
-			std::placeholders::_1, subscribe_id, aidlReasonCode));
 	}
 }
 
@@ -3865,16 +3762,26 @@ void AidlManager::notifyNanSubscribeTerminated(
 	}
 }
 void AidlManager::notifyNanClusterEvent(
-	struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr)
+	struct wpa_supplicant* wpa_s, u8 new_cluster, const u8* peer_addr)
 {
 	if (!wpa_s || !peer_addr)
 		return;
 
 #ifdef MAINLINE_SUPPLICANT
 	NanClusterEventInd cluster_event_info;
-	// TODO: need to parse the input event_type to the NanClusterEventType
-	cluster_event_info.addr = macAddrToArray(peer_addr);
+	auto it = nan_iface_object_map_.find(wpa_s->ifname);
+	if (it == nan_iface_object_map_.end()) {
+		return;
+	}
 
+	cluster_event_info.addr = macAddrToArray(peer_addr);
+	if (new_cluster == kNanClusterStarted) {
+		cluster_event_info.eventType = NanClusterEventType::STARTED_CLUSTER;
+	} else if (new_cluster == kNanClusterJoined){
+		cluster_event_info.eventType = NanClusterEventType::JOINED_CLUSTER;
+	} else {
+		return;
+	}
 	callWithEachNanIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
 		std::bind(

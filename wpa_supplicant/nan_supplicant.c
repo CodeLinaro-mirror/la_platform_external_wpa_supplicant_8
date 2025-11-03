@@ -19,6 +19,7 @@
 #include "p2p_supplicant.h"
 #include "nan_supplicant.h"
 #include "utils/eloop.h"
+#include "aidl/vendor/aidl.h"
 
 #define DEFAULT_NAN_MASTER_PREF 2
 #define DEFAULT_NAN_DUAL_BAND   0
@@ -262,6 +263,8 @@ void wpas_nan_cluster_join(struct wpa_supplicant *wpa_s,
 		       " new=%d", MAC2STR(cluster_id), new_cluster);
 
 	nan_de_set_cluster_id(wpa_s->nan_de, cluster_id);
+
+	wpas_aidl_notify_nan_cluster_event(wpa_s, new_cluster ? 1 : 0, cluster_id);
 }
 
 
@@ -724,7 +727,7 @@ int wpas_nan_publish(struct wpa_supplicant *wpa_s, const char *service_name,
 			return -1;
 		}
 
-		if (params->proximity_ranging) {
+		if (params->close_proximity) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Sync discovery is not supported for PR");
 			return -1;
@@ -825,7 +828,7 @@ int wpas_nan_subscribe(struct wpa_supplicant *wpa_s,
 			return -1;
 		}
 
-		if (params->proximity_ranging) {
+		if (params->close_proximity) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Sync discovery is not supported for PR (subscribe)");
 			return -1;
