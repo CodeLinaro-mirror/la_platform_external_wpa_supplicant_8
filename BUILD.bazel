@@ -204,4 +204,10 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+            "user32.lib",
+        ],
+        "//conditions:default": [],
+    }),
 )
