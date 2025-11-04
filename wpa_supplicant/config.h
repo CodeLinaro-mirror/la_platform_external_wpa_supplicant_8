@@ -1754,6 +1754,17 @@ struct wpa_config {
 	int coloc_intf_reporting;
 
 	/**
+	* TODO (b/457805929): Replace the existing flag with a call to the Nl80211 attribute NL80211_ATTR_ROAM_SUPPORT.
+	*
+	* android_force_roaming_enabled - specific to some Android devices.
+	*
+	* 0 = CONFIG_NO_ROAMING will work as intended.
+	* 1 = Overrides the CONFIG_NO_ROAMING flag to force enable supplicant roaming.
+	*
+	*/
+	int android_force_roaming_enabled;
+
+	/**
 	 * p2p_device_random_mac_addr - P2P Device MAC address policy default
 	 *
 	 * 0 = use permanent MAC address (the one set by default by the device
