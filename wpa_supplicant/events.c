@@ -4901,6 +4901,10 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 		wpa_bssid_ignore_add(wpa_s, bssid);
 		wpas_auth_failed(wpa_s, "WRONG_KEY", wpa_s->pending_bssid);
 		wpas_notify_psk_mismatch(wpa_s);
+		/* Clear PMK cache after 4-way handshake timeout to avoid PMKID reuse issues */
+		wpa_dbg(wpa_s, MSG_DEBUG, "Drop PMKSA cache entry after 4-way handshake failure");
+		wpa_sm_aborted_cached(wpa_s->wpa);
+		wpa_sm_pmksa_cache_flush(wpa_s->wpa, wpa_s->current_ssid);
 	}
 	if (!wpa_s->disconnected &&
 	    (!wpa_s->auto_reconnect_disabled ||
