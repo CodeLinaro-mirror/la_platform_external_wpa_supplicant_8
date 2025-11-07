@@ -2119,8 +2119,6 @@ static void wpa_supplicant_rsn_preauth_scan_results(
 }
 
 
-#ifndef CONFIG_NO_ROAMING
-
 static int wpas_get_snr_signal_info(u32 frequency, int avg_signal, int noise)
 {
 	if (noise == WPA_INVALID_NOISE) {
@@ -2346,8 +2344,6 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
 	return ret;
 }
 
-#endif /* CONFIG_NO_ROAMING */
-
 
 static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 				       struct wpa_bss *selected,
@@ -2393,6 +2389,19 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 	return wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss,
 						      selected, true);
 #else /* CONFIG_NO_ROAMING */
+	/*
+	* If android_force_roaming_enabled is true, run the same logic
+	* as the CONFIG_NO_ROAMING not defined case.
+	*/
+	if (wpa_s && wpa_s->conf && wpa_s->conf->android_force_roaming_enabled) {
+		/* Roaming is explicitly enabled at runtime by Android setting */
+		wpa_printf(MSG_DEBUG, "CONFIG_NO_ROAMING is set, but "
+			   "android_force_roaming_enabled is TRUE. Allowing roam.");
+		return wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss,
+							     selected, true);
+	}
+
+	/* Roaming is disabled by both compile-time and runtime flags */
 	return 0;
 #endif /* CONFIG_NO_ROAMING */
 }

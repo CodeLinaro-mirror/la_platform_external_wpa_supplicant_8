@@ -1095,6 +1095,17 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
 		    wpa_supplicant_need_to_roam_within_ess(wpa_s, bss,
 							   current_bss, false))
 			return 0;
+#else /* CONFIG_NO_ROAMING */
+		/*
+		 * If android_force_roaming_enabled is true, run the same logic
+		 * as the CONFIG_NO_ROAMING not defined case.
+		 */
+		if (wpa_s && wpa_s->conf && wpa_s->conf->android_force_roaming_enabled) {
+			if (current_bss && bss != current_bss &&
+		    wpa_supplicant_need_to_roam_within_ess(wpa_s, bss,
+							   current_bss, false))
+			return 0;
+		}
 #endif /* CONFIG_NO_ROAMING */
 	}
 
@@ -1106,6 +1117,20 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
 	    !wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss, bss,
 						    true))
 		bss = current_bss;
+#else /* CONFIG_NO_ROAMING */
+		/*
+		 * If android_force_roaming_enabled is true, run the same logic
+		 * as the CONFIG_NO_ROAMING not defined case.
+		 */
+		if (wpa_s && wpa_s->conf && wpa_s->conf->android_force_roaming_enabled) {
+			/* Apply normal roaming rules if we can stay with the current BSS */
+			if (current_bss && bss != current_bss &&
+				wpa_scan_res_match(wpa_s, 0, current_bss, wpa_s->current_ssid,
+						1, 0, false) &&
+				!wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss, bss,
+									true))
+				bss = current_bss;
+		}
 #endif /* CONFIG_NO_ROAMING */
 
 	if (!bss) {
