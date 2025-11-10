@@ -1159,6 +1159,11 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 					break;
 				}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+			} else if (vinfo->vendor_id == OUI_INTEL) {
+				if (!drv->chip_vendor_id) {
+					wpa_printf(MSG_DEBUG, "nl80211: Set Intel chip vendor id");
+					drv->chip_vendor_id = vinfo->vendor_id;
+				}
 			} else if (vinfo->vendor_id == 0x001A11 || vinfo->vendor_id == 0xF4F5E8) {
 				if (!drv->os_vendor_id) {
 					wpa_printf(MSG_DEBUG, "nl80211: Set Android OS vendor id");
@@ -1166,7 +1171,7 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 				}
 			}
 			wpa_printf(MSG_DEBUG, "nl80211: Supported vendor command: vendor_id=0x%x subcmd=%u",
-				   vinfo->vendor_id, vinfo->subcmd);
+				vinfo->vendor_id, vinfo->subcmd);
 		}
 	}
 
