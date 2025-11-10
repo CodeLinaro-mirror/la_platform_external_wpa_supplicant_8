@@ -788,7 +788,30 @@ int AidlManager::notifyStateChange(struct wpa_supplicant *wpa_s)
 	// connection. Only after association state does it update the |bssid|
 	// field. So, in the AIDL callback send the appropriate bssid.
 	if (wpa_s->wpa_state <= WPA_ASSOCIATED) {
-		aidl_bssid = macAddrToArray(wpa_s->pending_bssid);
+		u8 bssid[ETH_ALEN];
+
+		// In the WPA_ASSOCIATED state, |wpa_s->pending_bssid| may not
+		// have the correct value in following cases:
+		// 1. If the BSS selection logic is offloaded to the driver,
+		//    driver may choose a different BSSID than
+		//    |wpa_s->pending_bssid| for the association during the
+		//    initial connection.
+		// 2. In the case of driver triggered roaming,
+		//    |wpa_s->pending_bssid| will be zero because the
+		//    wpa_supplicant was in connected state.
+		//
+		// To address above cases, retrieve the associated BSSID
+		// information from the driver and provide it through the AIDL
+		// callback.
+		// NOTE: |wpa_s->bssid| is not updated with the associated BSSID
+		// at this point because notifyStateChange() is invoked during
+		// the transition to the WPA_ASSOCIATED state.
+		if (wpa_s->wpa_state == WPA_ASSOCIATED &&
+		    wpa_drv_get_bssid(wpa_s, bssid) == 0) {
+			aidl_bssid = macAddrToArray(bssid);
+		} else {
+			aidl_bssid = macAddrToArray(wpa_s->pending_bssid);
+		}
 	} else {
 		aidl_bssid = macAddrToArray(wpa_s->bssid);
 	}
