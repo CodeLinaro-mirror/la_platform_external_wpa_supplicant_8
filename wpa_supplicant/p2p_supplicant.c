@@ -3136,8 +3136,7 @@ static void wpas_dev_found(void *ctx, const u8 *addr,
 	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_DEVICE_FOUND MACSTR
 		       " p2p_dev_addr=" MACSTR
 		       " pri_dev_type=%s name='%s' config_methods=0x%x "
-		       "dev_capab=0x%x group_capab=0x%x%s%s%s%s%s new=%d",
-		       "pcea_cap_info=0x%x bootstrap_methods=0x%x pasn_type=0x%x",
+		       "dev_capab=0x%x group_capab=0x%x%s%s%s%s%s new=%d pcea_cap_info=0x%x bootstrap_methods=0x%x pasn_type=0x%x",
 		       MAC2STR(addr), MAC2STR(info->p2p_device_addr),
 		       wps_dev_type_bin2str(info->pri_dev_type, devtype,
 					    sizeof(devtype)),
