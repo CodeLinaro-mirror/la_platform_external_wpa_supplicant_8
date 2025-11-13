@@ -5718,6 +5718,7 @@ static const struct global_parse_data global_fields[] = {
 	{ BIN(wfa_gen_capa_supp), 0 },
 	{ BIN(wfa_gen_capa_cert), 0 },
 	{ BOOL(disable_op_classes_80_80_mhz), 0 },
+	{ INT_RANGE(android_force_roaming_enabled, 0, 1), 0 },
 	/* NOTE: When adding new parameters here, add_interface() in
 	 * wpa_supplicant/dbus_new_introspect.c may need to be modified to
 	 * increase the size of the iface->xml buffer. */
