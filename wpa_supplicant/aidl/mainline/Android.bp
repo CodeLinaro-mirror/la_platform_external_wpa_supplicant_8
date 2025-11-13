@@ -21,7 +21,7 @@ prebuilt_etc {
 
 prebuilt_etc {
     name: "mainline_supplicant_conf",
-    src: "config/mainline_supplicant.conf",
-    filename: "mainline_supplicant.conf",
+    src: ":wpa_supplicant_mainline_conf_gen",
+    filename: "wpa_supplicant_mainline.conf",
     installable: false,
 }
