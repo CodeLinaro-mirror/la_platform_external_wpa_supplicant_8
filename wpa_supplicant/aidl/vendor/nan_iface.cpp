@@ -178,6 +178,75 @@ bool NanIface::isValid()
 	);
 }
 
+::ndk::ScopedAStatus NanIface::initiateBootstrappingRequest(
+	char16_t in_cmdId, const NanBootstrappingRequest& in_msg)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::initiateBootstrappingRequestInternal, in_cmdId, in_msg);
+}
+
+::ndk::ScopedAStatus NanIface::respondToBootstrappingIndicationRequest(
+	char16_t in_cmdId, const NanBootstrappingResponse& in_msg)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::respondToBootstrappingIndicationRequestInternal, in_cmdId,
+		in_msg);
+}
+
+::ndk::ScopedAStatus NanIface::initiatePairingRequest(
+	char16_t in_cmdId, const NanPairingRequest& in_msg)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::initiatePairingRequestInternal, in_cmdId, in_msg);
+}
+
+::ndk::ScopedAStatus NanIface::respondToPairingIndicationRequest(
+	char16_t in_cmdId, const NanRespondToPairingIndicationRequest& in_msg)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::respondToPairingIndicationRequestInternal, in_cmdId,
+		in_msg);
+}
+
+::ndk::ScopedAStatus NanIface::terminatePairingRequest(
+	char16_t in_cmdId, int32_t in_pairingInstanceId)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::terminatePairingRequestInternal, in_cmdId,
+		in_pairingInstanceId);
+}
+
+::ndk::ScopedAStatus NanIface::initiateDataPathRequest(
+	char16_t in_cmdId, const NanInitiateDataPathRequest& in_msg)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::initiateDataPathRequestInternal, in_cmdId, in_msg);
+}
+
+::ndk::ScopedAStatus NanIface::respondToDataPathIndicationRequest(
+	char16_t in_cmdId, const NanRespondToDataPathIndicationRequest& in_msg)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::respondToDataPathIndicationRequestInternal, in_cmdId,
+		in_msg);
+}
+
+::ndk::ScopedAStatus NanIface::terminateDataPathRequest(
+	char16_t in_cmdId, int32_t in_ndpInstanceId)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::terminateDataPathRequestInternal, in_cmdId,
+		in_ndpInstanceId);
+}
+
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
 {
@@ -681,6 +750,191 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	}).detach();
 
 	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::initiateBootstrappingRequestInternal(
+	char16_t cmdId, const NanBootstrappingRequest& msg)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for bootstrapping request initialization
+		nan_status.status = NanStatusCode::SUCCESS;
+		aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
+	}).detach();
+
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::respondToBootstrappingIndicationRequestInternal(
+	char16_t cmdId, const NanBootstrappingResponse& msg)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for responding bootstrapping request
+		nan_status.status = NanStatusCode::SUCCESS;
+		aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
+			ifname, cmdId, nan_status);
+	}).detach();
+
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::initiatePairingRequestInternal(
+	char16_t cmdId, const NanPairingRequest& msg)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for pairing request initialization
+		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+	}).detach();
+
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::respondToPairingIndicationRequestInternal(
+	char16_t cmdId, const NanRespondToPairingIndicationRequest& msg)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanRespondToPairingIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for responding pairing request
+		aidl_manager->notifyNanRespondToPairingIndicationResponse(
+			ifname, cmdId, nan_status);
+	}).detach();
+
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::terminatePairingRequestInternal(
+	char16_t cmdId, int32_t pairingInstanceId)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for terminating pairing request
+		aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
+	}).detach();
+
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::initiateDataPathRequestInternal(
+	char16_t cmdId, const NanInitiateDataPathRequest& msg)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for initiating data path request
+		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
+	}).detach();
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::respondToDataPathIndicationRequestInternal(
+	char16_t cmdId, const NanRespondToDataPathIndicationRequest& msg)
+{
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		// TODO(b/460750167): wpa_supplicant API for responding data path indication request
+		aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+			ifname, cmdId, nan_status);
+	}).detach();
+	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
+	char16_t cmdId, int32_t ndpInstanceId)
+{
+	// TODO(b/460750167): wpa_supplicant API for terminate data path request & AIDL for callback response
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
 
 bool NanIface::isStartedClusterIndicationEnabled()

@@ -4031,6 +4031,83 @@ void AidlManager::notifyNanTransmitFollowupResponse(
 				notifyTransmitFollowupResponse,
 				std::placeholders::_1, id, status));
 }
+
+void AidlManager::notifyNanInitiateBootstrappingResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status,
+	const int8_t bootstrapping_id)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyInitiateBootstrappingResponse,
+			std::placeholders::_1, id, status, bootstrapping_id
+		));
+}
+
+void AidlManager::notifyNanRespondToBootstrappingIndicationResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyRespondToBootstrappingIndicationResponse,
+			std::placeholders::_1, id, status
+		));
+}
+
+void AidlManager::notifyNanInitiatePairingResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status,
+	const int8_t pairing_id)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyInitiatePairingResponse,
+			std::placeholders::_1, id, status, pairing_id
+		));
+}
+
+void AidlManager::notifyNanRespondToPairingIndicationResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyRespondToPairingIndicationResponse,
+			std::placeholders::_1, id, status
+		));
+}
+void AidlManager::notifyNanTerminatePairingResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyTerminatePairingResponse,
+			std::placeholders::_1, id, status
+		));
+}
+void AidlManager::notifyNanInitiateDataPathResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status,
+	const int8_t ndp_id)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyInitiateDataPathResponse,
+			std::placeholders::_1, id, status, ndp_id
+		));
+}
+void AidlManager::notifyNanRespondToDataPathIndicationResponse(
+	const std::string iface_name, const char16_t id, const NanStatus status)
+{
+	callWithEachNanIfaceCallback(
+		iface_name, std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::
+			notifyRespondToDataPathIndicationResponse,
+			std::placeholders::_1, id, status
+		));
+}
 #endif
 
 }  // namespace supplicant

@@ -260,6 +260,20 @@ public:
 		const char16_t id, const NanStatus status);
 	void notifyNanTransmitFollowupResponse(const std::string iface_name,
 		const char16_t id, const NanStatus status);
+	void notifyNanInitiateBootstrappingResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t bootstrapping_id);
+	void notifyNanRespondToBootstrappingIndicationResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanInitiatePairingResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t pairing_id);
+	void notifyNanRespondToPairingIndicationResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanTerminatePairingResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanInitiateDataPathResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t ndp_id);
+	void notifyNanRespondToDataPathIndicationResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
 #endif /* MAINLINE_SUPPLICANT */
 
 	int getP2pIfaceAidlObjectByIfname(

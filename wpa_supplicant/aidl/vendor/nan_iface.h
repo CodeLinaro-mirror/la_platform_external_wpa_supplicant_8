@@ -33,6 +33,18 @@ public:
 	using NanSubscribeRequest = ::aidl::android::system::wifi::mainline_supplicant::NanSubscribeRequest;
 	using NanTransmitFollowupRequest =
 		::aidl::android::system::wifi::mainline_supplicant::NanTransmitFollowupRequest;
+	using NanBootstrappingRequest =
+		::aidl::android::system::wifi::mainline_supplicant::NanBootstrappingRequest;
+	using NanBootstrappingResponse =
+		::aidl::android::system::wifi::mainline_supplicant::NanBootstrappingResponse;
+	using NanPairingRequest =
+		::aidl::android::system::wifi::mainline_supplicant::NanPairingRequest;
+	using NanRespondToPairingIndicationRequest =
+		::aidl::android::system::wifi::mainline_supplicant::NanRespondToPairingIndicationRequest;
+	using NanInitiateDataPathRequest =
+		::aidl::android::system::wifi::mainline_supplicant::NanInitiateDataPathRequest;
+	using NanRespondToDataPathIndicationRequest =
+		::aidl::android::system::wifi::mainline_supplicant::NanRespondToDataPathIndicationRequest;
 	NanIface(struct wpa_global* global, const std::string& ifname);
 	~NanIface() override = default;
 
@@ -66,6 +78,30 @@ public:
 	::ndk::ScopedAStatus transmitFollowupRequest(
 		char16_t in_cmdId,
 		const NanTransmitFollowupRequest& in_msg) override;
+	::ndk::ScopedAStatus initiateBootstrappingRequest(
+		char16_t in_cmdId,
+		const NanBootstrappingRequest& in_msg) override;
+	::ndk::ScopedAStatus respondToBootstrappingIndicationRequest(
+		char16_t in_cmdId,
+		const NanBootstrappingResponse& in_msg) override;
+	::ndk::ScopedAStatus initiatePairingRequest(
+		char16_t in_cmdId,
+		const NanPairingRequest& in_msg) override;
+	::ndk::ScopedAStatus respondToPairingIndicationRequest(
+		char16_t in_cmdId,
+		const NanRespondToPairingIndicationRequest& in_msg) override;
+	::ndk::ScopedAStatus terminatePairingRequest(
+		char16_t in_cmdId,
+		int32_t in_pairingInstanceId) override;
+	::ndk::ScopedAStatus initiateDataPathRequest(
+		char16_t in_cmdId,
+		const NanInitiateDataPathRequest& in_msg) override;
+	::ndk::ScopedAStatus respondToDataPathIndicationRequest(
+		char16_t in_cmdId,
+		const NanRespondToDataPathIndicationRequest& in_msg) override;
+	::ndk::ScopedAStatus terminateDataPathRequest(
+		char16_t in_cmdId,
+		int32_t in_ndpInstanceId) override;
 	bool isStartedClusterIndicationEnabled();
 	bool isJoinedClusterIndicationEnabled();
 	bool isDiscoveryTerminationIndicationEnabled();
@@ -98,6 +134,25 @@ private:
 		char16_t cmdId, int8_t sessionId);
 	::ndk::ScopedAStatus transmitFollowupRequestInternal(
 		char16_t cmdId, const NanTransmitFollowupRequest& msg);
+	::ndk::ScopedAStatus initiateBootstrappingRequestInternal(
+		char16_t cmdId, const NanBootstrappingRequest& msg);
+	::ndk::ScopedAStatus respondToBootstrappingIndicationRequestInternal(
+		char16_t cmdId, const NanBootstrappingResponse& msg);
+	::ndk::ScopedAStatus initiatePairingRequestInternal(
+		char16_t cmdId, const NanPairingRequest& msg);
+	::ndk::ScopedAStatus respondToPairingIndicationRequestInternal(
+		char16_t cmdId,
+		const NanRespondToPairingIndicationRequest& msg);
+	::ndk::ScopedAStatus terminatePairingRequestInternal(
+		char16_t cmdId, int32_t pairingInstanceId);
+	::ndk::ScopedAStatus initiateDataPathRequestInternal(
+		char16_t cmdId, const NanInitiateDataPathRequest& msg);
+	::ndk::ScopedAStatus respondToDataPathIndicationRequestInternal(
+		char16_t cmdId,
+		const NanRespondToDataPathIndicationRequest& msg);
+	::ndk::ScopedAStatus terminateDataPathRequestInternal(
+		char16_t cmdId, int32_t ndpInstanceId);
+
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
