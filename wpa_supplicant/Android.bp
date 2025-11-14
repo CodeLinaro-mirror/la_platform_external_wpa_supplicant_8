@@ -1843,6 +1843,21 @@ genrule {
     out: ["wpa_supplicant.conf"],
 }
 
+// Genrule adapted from wpa_supplicant_conf_gen to generate the mainline supplicant conf file.
+// This uses a custom shell script to avoid the if-condition in the original script, allowing us
+// to generate the same conf file for all devices.
+genrule {
+    name: "wpa_supplicant_mainline_conf_gen",
+    srcs: [
+        // Custom script adapted from wpa_supplicant_conf.sh
+        "aidl/mainline/config/wpa_supplicant_mainline_conf.sh",
+        // Shared template file
+        "wpa_supplicant_template.conf",
+    ],
+    cmd: "bash $(location aidl/mainline/config/wpa_supplicant_mainline_conf.sh) $(location wpa_supplicant_template.conf) > $(out)",
+    out: ["wpa_supplicant_mainline.conf"],
+}
+
 // End of non-cuttlefish section
 
 genrule {
