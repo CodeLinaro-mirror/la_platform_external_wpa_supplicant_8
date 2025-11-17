@@ -4652,7 +4652,7 @@ skip_wpa_ies:
 
 #ifdef CONFIG_P2P
 	if (ies && ies_len)
-		p2p_group_notif_assoc(hapd->p2p_group, sta->addr, ies, ies_len);
+		p2p_group_notif_assoc(hapd->p2p_group, sta, ies, ies_len);
 #endif /* CONFIG_P2P */
 
 #ifdef CONFIG_HS20

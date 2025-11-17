@@ -30,3 +30,9 @@ MainlineSupplicant::MainlineSupplicant(struct wpa_global* global)
     wpa_printf(MSG_ERROR, "addNanInterface is not supported");
     return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
+
+::ndk::ScopedAStatus MainlineSupplicant::removeNanInterface(
+        const std::string& in_ifaceName) {
+    wpa_printf(MSG_ERROR, "removeNanInterface is not supported");
+    return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}

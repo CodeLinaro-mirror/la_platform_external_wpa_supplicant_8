@@ -41,6 +41,8 @@ class MainlineSupplicant : public BnMainlineSupplicant {
                 std::shared_ptr<ISupplicant>* _aidl_return) override;
         ::ndk::ScopedAStatus addNanInterface(const std::string& in_ifaceName,
                 std::shared_ptr<ISupplicantNanIface>* _aidl_return) override;
+        ::ndk::ScopedAStatus removeNanInterface(const std::string& in_ifaceName)
+                override;
 
     private:
         struct wpa_global* wpa_global_;

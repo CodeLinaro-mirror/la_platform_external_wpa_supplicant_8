@@ -41,8 +41,12 @@ const std::vector<uint8_t> kZeroBssid = {0, 0, 0, 0, 0, 0};
 int32_t aidl_service_version = 0;
 int32_t aidl_client_version = 0;
 
+using aidl::android::hardware::wifi::supplicant::ConnectionCapabilities;
 using aidl::android::hardware::wifi::supplicant::GsmRand;
 using aidl::android::hardware::wifi::supplicant::KeyMgmtMask;
+using aidl::android::hardware::wifi::supplicant::LegacyMode;
+using aidl::android::hardware::wifi::supplicant::WifiChannelWidthInMhz;
+using aidl::android::hardware::wifi::supplicant::WifiTechnology;
 
 /**
  * Check if the provided |wpa_supplicant| structure represents a P2P iface or
@@ -1579,6 +1583,26 @@ uint32_t convertSupplicantKeyMgmtForP2pGroupConnectionToAidl(int supp_key_mgmt)
 	return aidl_key_mgmt;
 }
 
+WifiChannelWidthInMhz convertSupplicantChannelWidthToAidl(int channel_width)
+{
+	switch (channel_width) {
+		case CHAN_WIDTH_20:
+			return WifiChannelWidthInMhz::WIDTH_20;
+		case CHAN_WIDTH_40:
+			return WifiChannelWidthInMhz::WIDTH_40;
+		case CHAN_WIDTH_80:
+			return WifiChannelWidthInMhz::WIDTH_80;
+		case CHAN_WIDTH_160:
+			return WifiChannelWidthInMhz::WIDTH_160;
+		case CHAN_WIDTH_80P80:
+			return WifiChannelWidthInMhz::WIDTH_80P80;
+		case CHAN_WIDTH_320:
+			return WifiChannelWidthInMhz::WIDTH_320;
+		default:
+			return WifiChannelWidthInMhz::WIDTH_20;
+	}
+}
+
 void AidlManager::notifyP2pGroupStarted(
 	struct wpa_supplicant *wpa_group_s, const struct wpa_ssid *ssid,
 	int persistent, int client, const u8 *ip)
@@ -1636,6 +1660,32 @@ void AidlManager::notifyP2pGroupStarted(
 	if (areAidlServiceAndClientAtLeastVersion(4)) {
 		params.keyMgmtMask = convertSupplicantKeyMgmtForP2pGroupConnectionToAidl(
 			wpa_group_s->key_mgmt);
+	}
+	if (areAidlServiceAndClientAtLeastVersion(5) && !aidl_is_go) {
+		ConnectionCapabilities capa;
+		capa.legacyMode = LegacyMode::UNKNOWN;
+		if (wpa_group_s->connection_eht) {
+			capa.technology = WifiTechnology::EHT;
+		} else if (wpa_group_s->connection_he) {
+			capa.technology = WifiTechnology::HE;
+		} else if (wpa_group_s->connection_vht) {
+			capa.technology = WifiTechnology::VHT;
+		} else if (wpa_group_s->connection_ht) {
+			capa.technology = WifiTechnology::HT;
+		} else {
+			capa.technology = WifiTechnology::LEGACY;
+			if (wpas_freq_to_band(aidl_freq) == BAND_2_4_GHZ) {
+				capa.legacyMode = LegacyMode::G_MODE;
+			} else {
+				capa.legacyMode = LegacyMode::A_MODE;
+			}
+		}
+		capa.channelBandwidth = static_cast<int32_t>(
+				convertSupplicantChannelWidthToAidl(wpa_group_s->connection_channel_bandwidth));
+		capa.maxNumberTxSpatialStreams = wpa_group_s->connection_max_nss_tx;
+		capa.maxNumberRxSpatialStreams = wpa_group_s->connection_max_nss_rx;
+
+		params.p2pClientConnectionCapabilities = capa;
 	}
 	callWithEachP2pIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
@@ -1812,6 +1862,38 @@ void AidlManager::notifyApStaAuthorized(
 		if (areAidlServiceAndClientAtLeastVersion(4)) {
 			// TODO Fill the field when supplicant implementation is ready
 			params.keyMgmtMask = 0;
+		}
+		if (areAidlServiceAndClientAtLeastVersion(5) && wpa_group_s->p2p_group) {
+			struct p2p_member_connection_info info = {};
+			ConnectionCapabilities capa;
+			if (p2p_group_get_member_connection_info(wpa_group_s->p2p_group, sta, &info) < 0) {
+				wpa_printf(MSG_ERROR, "p2p_group_get_member_connection_info failed!");
+			} else {
+				capa.legacyMode = LegacyMode::UNKNOWN;
+				if (info.connection_eht) {
+					capa.technology = WifiTechnology::EHT;
+				} else if (info.connection_he) {
+					capa.technology = WifiTechnology::HE;
+				} else if (info.connection_vht) {
+					capa.technology = WifiTechnology::VHT;
+				} else if (info.connection_ht) {
+					capa.technology = WifiTechnology::HT;
+				} else {
+					capa.technology = WifiTechnology::LEGACY;
+					if (wpas_freq_to_band(p2p_group_get_freq(wpa_group_s->p2p_group)) == BAND_2_4_GHZ) {
+						capa.legacyMode = LegacyMode::G_MODE;
+					} else {
+						capa.legacyMode = LegacyMode::A_MODE;
+					}
+				}
+				capa.channelBandwidth = static_cast<int32_t>(
+						convertSupplicantChannelWidthToAidl(info.connection_channel_bandwidth));
+			}
+			capa.maxNumberRxSpatialStreams = wpa_group_s->connection_max_nss_rx;
+			capa.maxNumberTxSpatialStreams = wpa_group_s->connection_max_nss_tx;
+			capa.apTidToLinkMapNegotiationSupported = wpa_group_s->ap_t2lm_negotiation_support;
+
+			params.connectionCapabilities = capa;
 		}
 		callWithEachP2pIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
