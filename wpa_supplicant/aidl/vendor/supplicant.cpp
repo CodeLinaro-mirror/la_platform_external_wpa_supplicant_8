@@ -25,17 +25,18 @@ namespace {
 // When wpa_supplicant is in its APEX, overlay/template configurations should be
 // loaded from the same APEX.
 #ifdef MAINLINE_SUPPLICANT
-// TODO (b/457455380): Change the conf directory to /data/misc/apexdata/com.android.wifi
+// Default paths. The user-specific paths will be updated in #setCurrentUserIdentityInternal.
 constexpr char kStaIfaceConfPath[] =
-    "/data/misc/wifi/mainline_supplicant/wpa_supplicant_mainline.conf";
+	"/data/misc_ce/0/apexdata/com.android.wifi/mainline_supplicant/wpa/wpa_supplicant_mainline.conf";
 constexpr char kP2pIfaceConfPath[] =
-	"/data/misc/wifi/mainline_supplicant/p2p_supplicant_mainline.conf";
+	"/data/misc_ce/0/apexdata/com.android.wifi/mainline_supplicant/wpa/p2p_supplicant_mainline.conf";
+// Template conf path.
 constexpr char kSystemTemplateConfPath[] =
-    "/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
+	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
 // If overlay conf files are provided for the mainline supplicant, they should be copied
 // to the overlay paths specified below. This is commonly done from the device.mk file.
 constexpr char kStaIfaceConfOverlayPath[] =
-    "/system_ext/etc/wifi/wpa_supplicant_mainline_overlay.conf";
+	"/system_ext/etc/wifi/wpa_supplicant_mainline_overlay.conf";
 constexpr char kP2pIfaceConfOverlayPath[] =
 	"/system_ext/etc/wifi/p2p_supplicant_mainline_overlay.conf";
 #else
@@ -56,8 +57,10 @@ constexpr char kVendorTemplateConfPath[] =
 
 constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
 constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
-// TODO (b/457455380): Handle the user-specific P2P conf file for mainline supplicant
 std::string kUserP2pIfaceConfPath;
+#ifdef MAINLINE_SUPPLICANT
+std::string kUserStaIfaceConfPath;
+#endif
 
 std::string resolveVendorConfPath(const std::string& conf_path)
 {
@@ -519,7 +522,24 @@ Supplicant::addStaInterfaceInternal(const std::string& name)
 		return {nullptr, createStatusWithMsg(
 			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
 	}
+#ifdef MAINLINE_SUPPLICANT
+	if (!kUserStaIfaceConfPath.empty()) {
+		wpa_printf(MSG_INFO, "User Conf file is configured: %s",
+			kUserStaIfaceConfPath.c_str());
+		if (ensureConfigFileExists(
+			kUserStaIfaceConfPath, kStaIfaceConfPath) != 0) {
+			wpa_printf(MSG_ERROR, "Conf file does not exists: %s",
+				kUserStaIfaceConfPath.c_str());
+			return {nullptr, createStatusWithMsg(
+			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
+		}
+		iface_params.confname = kUserStaIfaceConfPath.c_str();
+	} else {
+		iface_params.confname = kStaIfaceConfPath;
+	}
+#else
 	iface_params.confname = kStaIfaceConfPath;
+#endif
 
 	int ret = access(overlay_path.c_str(), R_OK);
 	if (ret == 0) {
@@ -670,9 +690,18 @@ ndk::ScopedAStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 
 ::ndk::ScopedAStatus Supplicant::setCurrentUserIdentityInternal(uint32_t in_userId)
 {
-    kUserP2pIfaceConfPath = "/data/vendor_ce/" + std::to_string(in_userId)
-            + "/wifi/wpa/p2p_supplicant.conf";
-    return ndk::ScopedAStatus::ok();
+#ifdef MAINLINE_SUPPLICANT
+	kUserStaIfaceConfPath = "/data/misc_ce/" + std::to_string(in_userId)
+		+ "/apexdata/com.android.wifi/mainline_supplicant/wpa/wpa_supplicant_mainline.conf";
+	kUserP2pIfaceConfPath = "/data/misc_ce/" + std::to_string(in_userId)
+		+ "/apexdata/com.android.wifi/mainline_supplicant/wpa/p2p_supplicant_mainline.conf";
+#else
+	kUserP2pIfaceConfPath = "/data/vendor_ce/" + std::to_string(in_userId)
+		+ "/wifi/wpa/p2p_supplicant.conf";
+#endif
+	wpa_printf(MSG_INFO, "User Conf file is configured via aidl: %s",
+		kUserP2pIfaceConfPath.c_str());
+	return ndk::ScopedAStatus::ok();
 }
 
 }  // namespace supplicant
