@@ -34,7 +34,6 @@
 #include "notify.h"
 #include "aidl/vendor/aidl.h"
 #include "vendor_aidl/aidl_vendor.h"
-#include "aidl/mainline/callback_bridge.h"
 
 int wpas_notify_supplicant_initialized(struct wpa_global *global)
 {
@@ -1549,8 +1548,6 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_usd_service_discovered(wpa_s, srv_proto_type,
 		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
-	mainline_aidl_notify_usd_service_discovered(wpa_s, srv_proto_type,
-		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_discovery_result(wpa_s, srv_proto_type,
 					      subscribe_id, peer_publish_id,
@@ -1581,8 +1578,6 @@ void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_usd_publish_replied(wpa_s, srv_proto_type,
 		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
-	mainline_aidl_notify_usd_publish_replied(wpa_s, srv_proto_type,
-		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_replied(wpa_s, srv_proto_type, publish_id,
 				     peer_subscribe_id, peer_addr,
@@ -1607,8 +1602,6 @@ void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
 	os_free(ssi_hex);
 
 	wpas_aidl_notify_usd_message_received(wpa_s, id, peer_instance_id,
-		peer_addr, ssi, ssi_len);
-	mainline_aidl_notify_usd_message_received(wpa_s, id, peer_instance_id,
 		peer_addr, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_receive(wpa_s, id, peer_instance_id, peer_addr,
@@ -1640,7 +1633,6 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
 		       publish_id, nan_reason_txt(reason));
 
 	wpas_aidl_notify_usd_publish_terminated(wpa_s, publish_id, reason);
-	mainline_aidl_notify_usd_publish_terminated(wpa_s, publish_id, reason);
 
 	wpas_dbus_signal_nan_publish_terminated(wpa_s, publish_id,
 						nan_reason_txt(reason));
@@ -1656,7 +1648,6 @@ void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		       subscribe_id, nan_reason_txt(reason));
 
 	wpas_aidl_notify_usd_subscribe_terminated(wpa_s, subscribe_id, reason);
-	mainline_aidl_notify_usd_subscribe_terminated(wpa_s, subscribe_id, reason);
 
 	wpas_dbus_signal_nan_subscribe_terminated(wpa_s, subscribe_id,
 						  nan_reason_txt(reason));
