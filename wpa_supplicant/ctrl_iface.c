@@ -65,6 +65,8 @@
 #include <net/ethernet.h>
 #endif
 
+#define LARGE_RESULT_SIZE 16384
+
 static int wpa_supplicant_global_iface_list(struct wpa_global *global,
 					    char *buf, int len);
 static int wpa_supplicant_global_iface_interfaces(struct wpa_global *global,
@@ -11929,8 +11931,22 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "SCAN ", 5) == 0) {
 		wpas_ctrl_scan(wpa_s, buf + 5, reply, reply_size, &reply_len);
 	} else if (os_strcmp(buf, "SCAN_RESULTS") == 0) {
-		reply_len = wpa_supplicant_ctrl_iface_scan_results(
-			wpa_s, reply, reply_size);
+		char *reply_tmp;
+
+		reply_tmp = os_malloc(LARGE_RESULT_SIZE);
+		if (reply_tmp == NULL) {
+			/* large buffer alloc failure */
+			wpa_printf(MSG_DEBUG, "large buffer alloc failure, fallback");
+			reply_len = wpa_supplicant_ctrl_iface_scan_results(wpa_s,
+									   reply,
+									   reply_size);
+		} else {
+			os_free(reply);
+			reply = reply_tmp;
+			reply_len = wpa_supplicant_ctrl_iface_scan_results(wpa_s,
+									   reply,
+									   LARGE_RESULT_SIZE);
+		}
 	} else if (os_strcmp(buf, "ABORT_SCAN") == 0) {
 		if (wpas_abort_ongoing_scan(wpa_s) < 0)
 			reply_len = -1;
