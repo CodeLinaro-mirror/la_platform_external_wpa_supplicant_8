@@ -2775,7 +2775,7 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 	struct nan_publish_params nanPublishParams =
 		convertAidlNanPublishParamsToInternal(usdPublishConfig);
 
-	int publishId = wpas_nan_usd_publish(
+	int publishId = wpas_nan_publish(
 		wpa_s, usdPublishConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
 			usdPublishConfig.usdBaseConfig.serviceProtoType),
@@ -2812,7 +2812,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	struct nan_subscribe_params nanSubscribeParams =
 		convertAidlNanSubscribeParamsToInternal(usdSubscribeConfig);
 
-	int subscribeId = wpas_nan_usd_subscribe(
+	int subscribeId = wpas_nan_subscribe(
 		wpa_s, usdSubscribeConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
 			usdSubscribeConfig.usdBaseConfig.serviceProtoType),
@@ -2844,7 +2844,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 		wpa_printf(MSG_INFO, "Unable to convert USD update SSI to buffer");
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	int status = wpas_nan_usd_update_publish(
+	int status = wpas_nan_update_publish(
 		retrieveIfacePtr(), publishId, ssiBuffer.get());
 	if (status < 0) {
 		wpa_printf(MSG_INFO, "Failed to update USD publish");
@@ -2855,13 +2855,13 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 
 ::ndk::ScopedAStatus StaIface::cancelUsdPublishInternal(int32_t publishId) {
 	// Status code is returned by the callback
-	wpas_nan_usd_cancel_publish(retrieveIfacePtr(), publishId);
+	wpas_nan_cancel_publish(retrieveIfacePtr(), publishId);
 	return ndk::ScopedAStatus::ok();
 }
 
 ::ndk::ScopedAStatus StaIface::cancelUsdSubscribeInternal(int32_t subscribeId) {
 	// Status code is returned by the callback
-	wpas_nan_usd_cancel_subscribe(retrieveIfacePtr(), subscribeId);
+	wpas_nan_cancel_subscribe(retrieveIfacePtr(), subscribeId);
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -2878,7 +2878,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	}
 	int handle = messageInfo.ownId;
 	int reqInstanceId = messageInfo.peerId;
-	int status = wpas_nan_usd_transmit(
+	int status = wpas_nan_transmit(
 		retrieveIfacePtr(), handle, msgBuffer.get(), nullptr /* elems */,
 		messageInfo.peerMacAddress.data(), reqInstanceId);
 	if (status < 0) {
