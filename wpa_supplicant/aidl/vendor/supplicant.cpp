@@ -345,6 +345,16 @@ bool Supplicant::isValid()
         &Supplicant::setCurrentUserIdentityInternal, in_userId);
 }
 
+::ndk::ScopedAStatus Supplicant::createRttController(
+	const std::string &in_ifaceName,
+	std::shared_ptr<ISupplicantWifiRttController> *_aidl_return)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&Supplicant::createRttControllerInternal, _aidl_return,
+		in_ifaceName);
+}
+
 ndk::ScopedAStatus Supplicant::addP2pDevInterface(struct wpa_interface iface_params)
 {
 	char primary_ifname[IFNAMSIZ];
@@ -674,6 +684,33 @@ ndk::ScopedAStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
             + "/wifi/wpa/p2p_supplicant.conf";
     return ndk::ScopedAStatus::ok();
 }
+
+std::pair<std::shared_ptr<ISupplicantWifiRttController>, ::ndk::ScopedAStatus>
+Supplicant::createRttControllerInternal(const std::string &ifaceName)
+{
+	// Check if required |ifname| argument is empty.
+	if (ifaceName.empty()) {
+		return {
+			nullptr,
+			createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID)};
+	}
+	struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global_, ifaceName.c_str());
+	if (!wpa_s) {
+		return {
+			nullptr,
+			createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN)};
+	}
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	std::shared_ptr<ISupplicantWifiRttController> rtt_controller;
+	if (!aidl_manager ||
+		aidl_manager->createOrGetWifiRttControllerAidlObject(
+			wpa_s->ifname, &rtt_controller)) {
+		return {rtt_controller,
+				createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
+	return {rtt_controller, ndk::ScopedAStatus::ok()};
+}
+
 
 }  // namespace supplicant
 }  // namespace wifi
