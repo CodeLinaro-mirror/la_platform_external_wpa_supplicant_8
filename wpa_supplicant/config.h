@@ -29,7 +29,7 @@
 #define DEFAULT_P2P_INTRA_BSS 1
 #define DEFAULT_P2P_GO_MAX_INACTIVITY (5 * 60)
 #define DEFAULT_P2P_OPTIMIZE_LISTEN_CHAN 0
-#define DEFAULT_BSS_MAX_COUNT 200
+#define DEFAULT_BSS_MAX_COUNT 1000
 #define DEFAULT_BSS_EXPIRATION_AGE 180
 #define DEFAULT_BSS_EXPIRATION_SCAN_COUNT 2
 #define DEFAULT_MAX_NUM_STA 128
@@ -899,8 +899,6 @@ struct wpa_config {
 	int p2p_optimize_listen_chan;
 
 	int p2p_6ghz_disable;
-	bool p2p_pairing_setup;
-	bool p2p_pairing_cache;
 	int p2p_bootstrap_methods;
 	int p2p_pasn_type;
 	int p2p_comeback_after;
@@ -1901,6 +1899,25 @@ struct wpa_config {
 	 * wfa_gen_capa_supp.
 	 */
 	struct wpabuf *wfa_gen_capa_cert;
+
+	/**
+	 * disable_op_classes_80_80_mhz - Disable advertisement of 80+80 MHz
+	 * channel capabilities in the Supported Operating Classes element
+	 *
+	 * By default, %wpa_supplicant tries to advertise 80+80 MHz channel
+	 * capabilities in the Supported Operating Classes element if the driver
+	 * supports this.
+	*/
+	bool disable_op_classes_80_80_mhz;
+
+	/* Indicates the types of PASN supported for Proximity Ranging */
+	int pr_pasn_type;
+
+	/* Indicates the preferred Proximity Ranging Role
+	 * 0: Prefer ranging initiator role (default)
+	 * 1: Prefer ranging responder role
+	 */
+	int pr_preferred_role;
 };
 
 
@@ -1965,7 +1982,8 @@ void wpa_config_debug_dump_networks(struct wpa_config *config);
 
 
 /* Prototypes for common functions from config.c */
-int wpa_config_process_global(struct wpa_config *config, char *pos, int line);
+int wpa_config_process_global(struct wpa_config *config, char *pos, int line,
+			      bool show_details);
 
 int wpa_config_get_num_global_field_names(void);
 
@@ -1979,6 +1997,7 @@ const char * wpa_config_get_global_field_name(unsigned int i, int *no_var);
  * configuration file)
  * @cfgp: Pointer to previously allocated configuration data or %NULL if none
  * @ro: Whether to mark networks from this configuration as read-only
+ * @show_details: Whether to show parsing errors and other details in debug log
  * Returns: Pointer to allocated configuration data or %NULL on failure
  *
  * This function reads configuration data, parses its contents, and allocates
@@ -1988,7 +2007,7 @@ const char * wpa_config_get_global_field_name(unsigned int i, int *no_var);
  * Each configuration backend needs to implement this function.
  */
 struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
-				    bool ro);
+				    bool ro, bool show_details);
 
 /**
  * wpa_config_write - Write or update configuration data

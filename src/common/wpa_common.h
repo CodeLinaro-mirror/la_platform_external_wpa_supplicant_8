@@ -138,6 +138,7 @@ WPA_CIPHER_BIP_CMAC_256)
 #define RSN_KEY_DATA_MLO_IGTK RSN_SELECTOR(0x00, 0x0f, 0xac, 17)
 #define RSN_KEY_DATA_MLO_BIGTK RSN_SELECTOR(0x00, 0x0f, 0xac, 18)
 #define RSN_KEY_DATA_MLO_LINK RSN_SELECTOR(0x00, 0x0f, 0xac, 19)
+#define RSN_KEY_DATA_SAE_PW_IDS RSN_SELECTOR(0x00, 0x0f, 0xac, 25)
 
 #define WFA_KEY_DATA_IP_ADDR_REQ RSN_SELECTOR(0x50, 0x6f, 0x9a, 4)
 #define WFA_KEY_DATA_IP_ADDR_ALLOC RSN_SELECTOR(0x50, 0x6f, 0x9a, 5)
@@ -614,7 +615,7 @@ struct wpa_ft_ies {
 	struct wpabuf *fte_buf;
 };
 
-/* IEEE P802.11az/D2.6 - 9.4.2.303 PASN Parameters element */
+/* IEEE Std 802.11-2024 - 9.4.2.305 PASN Parameters element */
 #define WPA_PASN_CTRL_COMEBACK_INFO_PRESENT BIT(0)
 #define WPA_PASN_CTRL_GROUP_AND_KEY_PRESENT BIT(1)
 
@@ -672,6 +673,8 @@ struct wpa_eapol_ie_parse {
 	size_t igtk_len;
 	const u8 *bigtk;
 	size_t bigtk_len;
+	const u8 *sae_pw_ids;
+	size_t sae_pw_ids_len;
 	const u8 *mdie;
 	size_t mdie_len;
 	const u8 *ftie;
@@ -810,5 +813,8 @@ int wpa_pasn_add_extra_ies(struct wpabuf *buf, const u8 *extra_ies, size_t len);
 
 void rsn_set_snonce_cookie(u8 *snonce);
 bool rsn_is_snonce_cookie(const u8 *snonce);
+
+int rsn_cipher_suite_to_wpa_cipher(u32 cipher);
+int rsn_key_mgmt_to_wpa_akm(u32 akm_suite);
 
 #endif /* WPA_COMMON_H */

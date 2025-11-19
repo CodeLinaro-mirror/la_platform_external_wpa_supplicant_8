@@ -356,10 +356,10 @@ static struct wpa_dev_ik * wpa_config_read_identity(FILE *f, int *line, int id)
 
 
 struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
-				    bool ro)
+				    bool ro, bool show_details)
 {
 	FILE *f;
-	char buf[512], *pos;
+	char buf[1024], *pos;
 	int errors = 0, line = 0;
 	struct wpa_ssid *ssid, *tail, *head;
 	struct wpa_cred *cred, *cred_tail, *cred_head;
@@ -393,14 +393,21 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
 	wpa_printf(MSG_DEBUG, "Reading configuration file '%s'", name);
 	f = fopen(name, "r");
 	if (f == NULL) {
-		wpa_printf(MSG_ERROR, "Failed to open config file '%s', "
-			   "error: %s", name, strerror(errno));
+		if (show_details)
+			wpa_printf(MSG_ERROR,
+				   "Failed to open config file '%s', error: %s",
+				   name, strerror(errno));
 		if (config != cfgp)
 			os_free(config);
 		return NULL;
 	}
 
 	while (wpa_config_get_line(buf, sizeof(buf), f, &line, &pos)) {
+#ifndef WPA_IGNORE_CONFIG_ERRORS
+		if (errors && !show_details)
+			break;
+#endif /* WPA_IGNORE_CONFIG_ERRORS */
+
 		if (os_strcmp(pos, "network={") == 0) {
 			ssid = wpa_config_read_network(f, &line, id++);
 			if (ssid == NULL) {
@@ -463,9 +470,12 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp,
 				identity_tail->next = identity;
 				identity_tail = identity;
 			}
-		} else if (wpa_config_process_global(config, pos, line) < 0) {
-			wpa_printf(MSG_ERROR, "Line %d: Invalid configuration "
-				   "line '%s'.", line, pos);
+		} else if (wpa_config_process_global(config, pos, line,
+						     show_details) < 0) {
+			if (show_details)
+				wpa_printf(MSG_ERROR,
+					   "Line %d: Invalid configuration line '%s'.",
+					   line, pos);
 			errors++;
 			continue;
 		}
@@ -777,6 +787,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(sae_password);
 	STR(sae_password_id);
 	write_int(f, "sae_pwe", ssid->sae_pwe, DEFAULT_SAE_PWE);
+	INT(sae_password_id_change);
 	write_proto(f, ssid);
 	write_key_mgmt(f, ssid);
 	INT_DEF(bg_scan_period, DEFAULT_BG_SCAN_PERIOD);
@@ -994,7 +1005,20 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(max_idle);
 	INT(ssid_protection);
 	INT_DEF(rsn_overriding, RSN_OVERRIDING_NOT_SET);
+#ifdef CONFIG_SAE
+	if (ssid->alt_sae_password_ids) {
+		struct wpabuf_array *ids = ssid->alt_sae_password_ids;
+		unsigned int idx;
+		char hex[255 * 2 + 1];
 
+		for (idx = 0; idx < ids->num; idx++) {
+			wpa_snprintf_hex(hex, sizeof(hex),
+					 wpabuf_head(ids->buf[idx]),
+					 wpabuf_len(ids->buf[idx]));
+			fprintf(f, "\talt_sae_password_ids=%s\n", hex);
+		}
+	}
+#endif /* CONFIG_SAE */
 #undef STR
 #undef INT
 #undef INT_DEF
@@ -1394,10 +1418,6 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->p2p_6ghz_disable)
 		fprintf(f, "p2p_6ghz_disable=%d\n", config->p2p_6ghz_disable);
 
-	if (config->p2p_pairing_setup)
-		fprintf(f, "p2p_pairing_setup=%d\n", config->p2p_pairing_setup);
-	if (config->p2p_pairing_cache)
-		fprintf(f, "p2p_pairing_cache=%d\n", config->p2p_pairing_cache);
 	if (config->p2p_bootstrap_methods)
 		fprintf(f, "p2p_bootstrap_methods=%d\n",
 			config->p2p_bootstrap_methods);
@@ -1757,6 +1777,13 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "wfa_gen_capa=%d\n", config->wfa_gen_capa);
 	write_global_bin(f, "wfa_gen_capa_supp", config->wfa_gen_capa_supp);
 	write_global_bin(f, "wfa_gen_capa_cert", config->wfa_gen_capa_cert);
+	if (config->disable_op_classes_80_80_mhz)
+		fprintf(f, "disable_op_classes_80_80_mhz=%d\n",
+			config->disable_op_classes_80_80_mhz);
+	if (config->pr_pasn_type)
+		fprintf(f, "pr_pasn_type=%d\n", config->pr_pasn_type);
+	if (config->pr_preferred_role)
+		fprintf(f, "pr_preferred_role=%d\n", config->pr_preferred_role);
 }
 
 static void wpa_config_write_identity(FILE *f, struct wpa_dev_ik *dev_ik)

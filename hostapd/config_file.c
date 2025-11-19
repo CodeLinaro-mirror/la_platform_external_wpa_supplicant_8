@@ -861,7 +861,7 @@ static int hostapd_parse_intlist(int **int_list, char *val)
 			break;
 		pos = end + 1;
 	}
-	list[count] = -1;
+	list[count] = 0;
 
 	*int_list = list;
 	return 0;
@@ -4379,6 +4379,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				   line);
 			return 1;
 		}
+	} else if (os_strcmp(buf, "sae_password_psk") == 0) {
+		bss->sae_password_psk = atoi(pos);
 	} else if (os_strcmp(buf, "sae_track_password") == 0) {
 		bss->sae_track_password = atoi(pos);
 #endif /* CONFIG_SAE */
@@ -4406,6 +4408,11 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->sae_confirm_immediate = atoi(pos);
 	} else if (os_strcmp(buf, "sae_pwe") == 0) {
 		bss->sae_pwe = atoi(pos);
+	} else if (os_strcmp(buf, "sae_pw_id_num") == 0) {
+		bss->sae_pw_id_num = atoi(pos);
+	} else if (os_strcmp(buf, "sae_pw_id_key") == 0) {
+		if (parse_wpabuf_hex(line, buf, &bss->sae_pw_id_key, pos))
+			return 1;
 	} else if (os_strcmp(buf, "local_pwr_constraint") == 0) {
 		int val = atoi(pos);
 		if (val < 0 || val > 255) {
@@ -4495,12 +4502,30 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			wpabuf_free(conf->lci);
 			conf->lci = NULL;
 		}
+		if (conf->lci) {
+			/* Enable LCI capability in RM Enabled Capabilities
+			 * element */
+			bss->radio_measurements[1] |=
+				WLAN_RRM_CAPS_LCI_MEASUREMENT;
+		} else {
+			bss->radio_measurements[1] &=
+				~WLAN_RRM_CAPS_LCI_MEASUREMENT;
+		}
 	} else if (os_strcmp(buf, "civic") == 0) {
 		wpabuf_free(conf->civic);
 		conf->civic = wpabuf_parse_bin(pos);
 		if (conf->civic && wpabuf_len(conf->civic) == 0) {
 			wpabuf_free(conf->civic);
 			conf->civic = NULL;
+		}
+		if (conf->civic) {
+			/* Enable civic location capability in RM Enabled
+			 * Capabilities element */
+			bss->radio_measurements[4] |=
+				WLAN_RRM_CAPS_CIVIC_LOCATION_MEASUREMENT;
+		} else {
+			bss->radio_measurements[4] &=
+				~WLAN_RRM_CAPS_CIVIC_LOCATION_MEASUREMENT;
 		}
 	} else if (os_strcmp(buf, "rrm_neighbor_report") == 0) {
 		if (atoi(pos))
@@ -4867,6 +4892,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->pasn_comeback_after = atoi(pos);
 	} else if (os_strcmp(buf, "pasn_noauth") == 0) {
 		bss->pasn_noauth = atoi(pos);
+	} else if (os_strcmp(buf, "urnm_mfpr") == 0) {
+		bss->urnm_mfpr = !!atoi(pos);
+	} else if (os_strcmp(buf, "urnm_mfpr_x20") == 0) {
+		bss->urnm_mfpr_x20 = !!atoi(pos);
 #endif /* CONFIG_PASN */
 	} else if (os_strcmp(buf, "ext_capa_mask") == 0) {
 		if (get_hex_config(bss->ext_capa_mask, EXT_CAPA_MAX_LEN,
@@ -4940,6 +4969,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->mld_indicate_disabled = atoi(pos);
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
+	} else if (os_strcmp(buf, "i2r_lmr_policy") == 0) {
+		conf->i2r_lmr_policy = atoi(pos);
 	} else {
 		wpa_printf(MSG_ERROR,
 			   "Line %d: unknown configuration item '%s'",

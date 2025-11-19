@@ -963,11 +963,11 @@ struct crypto_cipher * crypto_cipher_init(enum crypto_cipher_alg alg,
 		cipher = EVP_des_cbc();
 		break;
 #endif /* OPENSSL_NO_DES */
-#ifndef OPENSSL_NO_RC2
-	case CRYPTO_CIPHER_ALG_RC2:
-		cipher = EVP_rc2_ecb();
+#ifndef OPENSSL_NO_NULL
+	case CRYPTO_CIPHER_NULL:
+		cipher = EVP_enc_null();
 		break;
-#endif /* OPENSSL_NO_RC2 */
+#endif /* OPENSSL_NO_NULL */
 	default:
 		os_free(ctx);
 		return NULL;

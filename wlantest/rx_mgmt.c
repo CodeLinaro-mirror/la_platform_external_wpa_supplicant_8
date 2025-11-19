@@ -156,14 +156,13 @@ static void parse_basic_ml(const u8 *ie, size_t len, bool ap,
 		eml = WPA_GET_LE16(pos);
 		pos += 2;
 		wpa_printf(MSG_DEBUG,
-			   "EML Capabilities: 0x%x (EMLSR=%u EMLSR_Padding_Delay=%u EMLSR_Transition_Delay=%u EMLMR=%u EMLMR_Delay=%u Transition_Timeout=%u Reserved=%u)",
+			   "EML Capabilities: 0x%x (EMLSR=%u EMLSR_Padding_Delay=%u EMLSR_Transition_Delay=%u EMLMR=%u Transition_Timeout=%u Reserved=%u)",
 			   eml,
 			   !!(eml & EHT_ML_EML_CAPA_EMLSR_SUPP),
 			   (eml & EHT_ML_EML_CAPA_EMLSR_PADDING_DELAY_MASK) >>
 			   1,
 			   (eml & EHT_ML_EML_CAPA_EMLSR_TRANS_DELAY_MASK) >> 4,
 			   !!(eml & EHT_ML_EML_CAPA_EMLMR_SUPP),
-			   (eml & EHT_ML_EML_CAPA_EMLMR_DELAY_MASK) >> 8,
 			   (eml & EHT_ML_EML_CAPA_TRANSITION_TIMEOUT_MASK) >>
 			   11,
 			   !!(eml & BIT(15)));
@@ -481,14 +480,13 @@ static void parse_reconfig_ml(const u8 *ie, size_t len,
 		eml = WPA_GET_LE16(pos);
 		pos += 2;
 		wpa_printf(MSG_DEBUG,
-			   "EML Capabilities: 0x%x (EMLSR=%u EMLSR_Padding_Delay=%u EMLSR_Transition_Delay=%u EMLMR=%u EMLMR_Delay=%u Transition_Timeout=%u Reserved=%u)",
+			   "EML Capabilities: 0x%x (EMLSR=%u EMLSR_Padding_Delay=%u EMLSR_Transition_Delay=%u EMLMR=%u Transition_Timeout=%u Reserved=%u)",
 			   eml,
 			   !!(eml & EHT_ML_EML_CAPA_EMLSR_SUPP),
 			   (eml & EHT_ML_EML_CAPA_EMLSR_PADDING_DELAY_MASK) >>
 			   1,
 			   (eml & EHT_ML_EML_CAPA_EMLSR_TRANS_DELAY_MASK) >> 4,
 			   !!(eml & EHT_ML_EML_CAPA_EMLMR_SUPP),
-			   (eml & EHT_ML_EML_CAPA_EMLMR_DELAY_MASK) >> 8,
 			   (eml & EHT_ML_EML_CAPA_TRANSITION_TIMEOUT_MASK) >>
 			   11,
 			   !!(eml & BIT(15)));
@@ -3950,12 +3948,13 @@ void rx_mgmt(struct wlantest *wt, const u8 *data, size_t len)
 		    stype == WLAN_FC_STYPE_PROBE_RESP ||
 		    stype == WLAN_FC_STYPE_PROBE_REQ) ?
 		   MSG_EXCESSIVE : MSG_MSGDUMP,
-		   "MGMT %s%s%s DA=" MACSTR " SA=" MACSTR " BSSID=" MACSTR,
+		   "MGMT %s%s%s DA=" MACSTR " SA=" MACSTR " BSSID=" MACSTR
+		   " #%u",
 		   mgmt_stype(stype),
 		   fc & WLAN_FC_PWRMGT ? " PwrMgt" : "",
 		   fc & WLAN_FC_ISWEP ? " Prot" : "",
 		   MAC2STR(hdr->addr1), MAC2STR(hdr->addr2),
-		   MAC2STR(hdr->addr3));
+		   MAC2STR(hdr->addr3), wt->frame_num);
 
 	if ((fc & WLAN_FC_ISWEP) &&
 	    !(hdr->addr1[0] & 0x01) &&

@@ -125,17 +125,24 @@ static void wpa_gkeydone_sta(struct wpa_state_machine *sm)
 
 #ifdef CONFIG_IEEE80211BE
 
-void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
-			       int release_link_id)
+void wpa_release_link_auth_ref(struct wpa_state_machine *sm, u8 link_id,
+			       bool rejected)
 {
-	int link_id;
+	struct wpa_authenticator *wpa_auth;
+	struct mld_link *link;
 
-	if (!sm || release_link_id >= MAX_NUM_MLD_LINKS)
+	if (!sm || link_id >= MAX_NUM_MLD_LINKS)
 		return;
 
-	for_each_sm_auth(sm, link_id) {
-		if (link_id == release_link_id)
-			sm->mld_links[link_id].wpa_auth = NULL;
+	link = &sm->mld_links[link_id];
+	if (link->valid) {
+		link->valid = false;
+		link->rejected = rejected;
+		wpa_auth = link->wpa_auth;
+		if (wpa_auth) {
+			link->wpa_auth = NULL;
+			wpa_group_put(wpa_auth, wpa_auth->group);
+		}
 	}
 }
 
@@ -630,7 +637,7 @@ void wpa_auth_set_ptk_rekey_timer(struct wpa_state_machine *sm)
 			   MACSTR " (%d seconds)",
 			   MAC2STR(wpa_auth_get_spa(sm)),
 			   sm->wpa_auth->conf.wpa_ptk_rekey);
-		eloop_cancel_timeout(wpa_rekey_ptk, sm->wpa_auth, sm);
+		eloop_cancel_timeout(wpa_rekey_ptk, ELOOP_ALL_CTX, sm);
 		eloop_register_timeout(sm->wpa_auth->conf.wpa_ptk_rekey, 0,
 				       wpa_rekey_ptk, sm->wpa_auth, sm);
 	}
@@ -650,6 +657,12 @@ static void wpa_auth_pmksa_free_cb(struct rsn_pmksa_cache_entry *entry,
 {
 	struct wpa_authenticator *wpa_auth = ctx;
 	wpa_auth_for_each_sta(wpa_auth, wpa_auth_pmksa_clear_cb, entry);
+
+	/* Remove matching PMKID from the driver, if it had been added, e.g.,
+	 * by external SAE authentication */
+	if (wpa_auth->cb->remove_pmkid)
+		wpa_auth->cb->remove_pmkid(wpa_auth->cb_ctx, entry->spa,
+					   entry->pmkid);
 }
 
 
@@ -937,6 +950,7 @@ void wpa_deinit(struct wpa_authenticator *wpa_auth)
 			 * authenticator and start rekey timer.
 			 */
 			next_pa->primary_auth = true;
+			pmksa_cache_auth_set_ctx(next_pa->ml_pmksa, next_pa);
 			if (next_pa->conf.wpa_group_rekey)
 				eloop_register_timeout(
 					next_pa->conf.wpa_group_rekey,
@@ -1118,13 +1132,20 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
 	os_free(sm->rsnxe);
 	os_free(sm->rsn_selection);
 #ifdef CONFIG_IEEE80211BE
-	for_each_sm_auth(sm, link_id)
+	for_each_sm_auth(sm, link_id) {
+		struct wpa_authenticator *wpa_auth;
+
+		wpa_auth = sm->mld_links[link_id].wpa_auth;
 		sm->mld_links[link_id].wpa_auth = NULL;
+		sm->mld_links[link_id].valid = false;
+		wpa_group_put(wpa_auth, wpa_auth->group);
+	}
 #endif /* CONFIG_IEEE80211BE */
 	wpa_group_put(sm->wpa_auth, sm->group);
 #ifdef CONFIG_DPP2
 	wpabuf_clear_free(sm->dpp_z);
 #endif /* CONFIG_DPP2 */
+	wpabuf_free(sm->sae_pw_id);
 	bin_clear_free(sm, sizeof(*sm));
 }
 
@@ -1154,10 +1175,10 @@ void wpa_auth_sta_deinit(struct wpa_state_machine *sm)
 					       primary_auth, NULL);
 	}
 
-	eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+	eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 	sm->pending_1_of_4_timeout = 0;
 	eloop_cancel_timeout(wpa_sm_call_step, sm, NULL);
-	eloop_cancel_timeout(wpa_rekey_ptk, wpa_auth, sm);
+	eloop_cancel_timeout(wpa_rekey_ptk, ELOOP_ALL_CTX, sm);
 #ifdef CONFIG_IEEE80211R_AP
 	wpa_ft_sta_deinit(sm);
 #endif /* CONFIG_IEEE80211R_AP */
@@ -1870,7 +1891,7 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
 	continue_fuzz:
 #endif /* TEST_FUZZ */
 		sm->MICVerified = true;
-		eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+		eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 		sm->pending_1_of_4_timeout = 0;
 	}
 
@@ -2368,7 +2389,7 @@ void wpa_remove_ptk(struct wpa_state_machine *sm)
 		wpa_printf(MSG_DEBUG,
 			   "RSN: PTK Key ID 1 removal from the driver failed");
 	sm->pairwise_set = false;
-	eloop_cancel_timeout(wpa_rekey_ptk, sm->wpa_auth, sm);
+	eloop_cancel_timeout(wpa_rekey_ptk, ELOOP_ALL_CTX, sm);
 }
 
 
@@ -3670,6 +3691,12 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
 			return -1;
 		}
 
+		/* Skip rejected links although the non-AP MLD will send them in
+		 * M2 of the initial 4-way handshake. */
+		if (sm->mld_links[i].rejected) {
+			n_links++;
+			continue;
+		}
 		if (!sm->mld_links[i].valid || i == sm->mld_assoc_link_id) {
 			wpa_printf(MSG_DEBUG,
 				   "RSN: MLD: Invalid link ID=%u", i);
@@ -4072,7 +4099,7 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
 	}
 
 	sm->pending_1_of_4_timeout = 0;
-	eloop_cancel_timeout(wpa_send_eapol_timeout, sm->wpa_auth, sm);
+	eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 
 	if (wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) && sm->PMK != pmk) {
 		/* PSK may have changed from the previous choice, so update
@@ -4273,7 +4300,7 @@ static u8 * replace_ie(const char *name, const u8 *old_buf, size_t *len, u8 eid,
 void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 			      struct wpa_auth_ml_link_key_info *info,
 			      bool mgmt_frame_prot, bool beacon_prot,
-			      bool rekey)
+			      bool rekey, int vlan_id)
 {
 	struct wpa_group *gsm = a->group;
 	u8 rsc[WPA_KEY_RSC_LEN];
@@ -4281,6 +4308,9 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 	wpa_printf(MSG_DEBUG,
 		   "MLD: Get group key info: link_id=%u, IGTK=%u, BIGTK=%u",
 		   info->link_id, mgmt_frame_prot, beacon_prot);
+
+	if (vlan_id)
+		gsm = wpa_select_vlan_wpa_group(gsm, vlan_id);
 
 	info->gtkidx = gsm->GN & 0x03;
 	info->gtk = gsm->GTK[gsm->GN - 1];
@@ -4323,17 +4353,16 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
 
 static void wpa_auth_get_ml_key_info(struct wpa_authenticator *wpa_auth,
 				     struct wpa_auth_ml_key_info *info,
-				     bool rekey)
+				     bool rekey, int vlan_id)
 {
 	if (!wpa_auth->cb->get_ml_key_info)
 		return;
 
-	wpa_auth->cb->get_ml_key_info(wpa_auth->cb_ctx, info, rekey);
+	wpa_auth->cb->get_ml_key_info(wpa_auth->cb_ctx, info, rekey, vlan_id);
 }
 
 
-static size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm,
-					 u16 req_links)
+size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm, u16 req_links)
 {
 	struct wpa_authenticator *wpa_auth;
 	size_t kde_len = 0;
@@ -4384,8 +4413,8 @@ static size_t wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm,
 }
 
 
-static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos,
-				   u16 req_links)
+u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos,
+			    u16 req_links)
 {
 	struct wpa_auth_ml_key_info ml_key_info;
 	unsigned int i, link_id;
@@ -4413,7 +4442,8 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos,
 	}
 	ml_key_info.n_mld_links = i;
 
-	wpa_auth_get_ml_key_info(sm->wpa_auth, &ml_key_info, rekey);
+	wpa_auth_get_ml_key_info(sm->wpa_auth, &ml_key_info, rekey,
+				 sm->group->vlan_id);
 
 	/* Add MLO GTK KDEs */
 	for (i = 0; i < ml_key_info.n_mld_links; i++) {
@@ -4731,6 +4761,99 @@ static u8 * wpa_auth_ml_kdes(struct wpa_state_machine *sm, u8 *pos)
 }
 
 
+#ifdef CONFIG_SAE
+static u8 * add_sae_pw_ids(struct wpa_state_machine *sm, u8 *pos, u8 *end)
+{
+	static const size_t max_padding = 8;
+	u8 *start = pos, *len;
+	unsigned int i;
+	struct wpa_auth_config *conf = &sm->wpa_auth->conf;
+	u8 *data, *dpos;
+	unsigned int counter;
+	size_t pw_id_len = wpabuf_len(sm->sae_pw_id);
+	struct os_time t;
+	size_t kde_len;
+
+	wpa_printf(MSG_DEBUG, "RSN: Add SAE Password Identifiers KDE (num=%u)",
+		   conf->sae_pw_id_num);
+	wpa_hexdump_buf(MSG_DEBUG, "RSN: Real SAE Password Identifier",
+			sm->sae_pw_id);
+	data = os_malloc(pw_id_len + max_padding + 4 + 4);
+	if (!data)
+		return NULL;
+
+	if (end - pos < 2 + RSN_SELECTOR_LEN + 1) {
+		pos = NULL;
+		goto fail;
+	}
+	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+	len = pos++; /* Length to be filled */
+	RSN_SELECTOR_PUT(pos, RSN_KEY_DATA_SAE_PW_IDS);
+	pos += RSN_SELECTOR_LEN;
+
+	*pos++ = 0; /* Flags */
+
+	counter = sm->sae_pw_id_counter + conf->sae_pw_id_num;
+
+	os_get_time(&t);
+
+	WPA_PUT_BE32(data, t.sec);
+	os_memcpy(data + 4, wpabuf_head(sm->sae_pw_id), pw_id_len);
+
+	for (i = 0; i < conf->sae_pw_id_num; i++) {
+		size_t pad_len, dlen, elen;
+
+		pad_len = 1 + os_random() % max_padding;
+		dpos = data + 4 + pw_id_len;
+		os_memset(dpos, 0, pad_len);
+		dpos += pad_len;
+		WPA_PUT_BE32(dpos, counter);
+		dpos += 4;
+		dlen = dpos - data;
+		elen = dlen + AES_BLOCK_SIZE;
+		counter++;
+
+		kde_len = (pos - len - 1) + (1 + elen);
+		if ((size_t) (end - pos) < 1 + elen || kde_len > 255) {
+			wpa_printf(MSG_INFO,
+				   "RSN: Not enough room in the buffer for a new SAE Password Identifier - send only %u",
+				   i);
+			break;
+		}
+
+		*pos++ = elen;
+		if (aes_siv_encrypt(conf->sae_pw_id_key,
+				    sizeof(conf->sae_pw_id_key),
+				    data, dlen, 0, NULL, NULL, pos) < 0) {
+			wpa_printf(MSG_INFO,
+				   "RSN: Failed to encrypt SAE Password Identifier");
+			pos = NULL;
+			goto fail;
+		}
+		pos += elen;
+	}
+
+	kde_len = pos - len - 1;
+	if (kde_len > 255) {
+		wpa_printf(MSG_INFO,
+			   "RSN: SAE Password Identifiers do not fit in a KDE");
+		wpa_hexdump_key(MSG_DEBUG, "RSN: KDE", start, pos - start);
+		pos = NULL;
+		goto fail;
+	}
+
+	*len = kde_len;
+
+	wpa_hexdump_key(MSG_DEBUG, "RSN: SAE Password Identifiers KDE",
+			start, pos - start);
+
+fail:
+	os_free(data);
+	return pos;
+}
+#endif /* CONFIG_SAE */
+
+
 SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 {
 	u8 rsc[WPA_KEY_RSC_LEN], *_rsc, *gtk, *kde = NULL, *pos, stub_gtk[32];
@@ -4746,6 +4869,9 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 #else /* CONFIG_IEEE80211BE */
 	bool is_mld = false;
 #endif /* CONFIG_IEEE80211BE */
+#ifdef CONFIG_SAE
+	bool sae_pw_ids = false;
+#endif /* CONFIG_SAE */
 
 	SM_ENTRY_MA(WPA_PTK, PTKINITNEGOTIATING, wpa_ptk);
 	sm->TimeoutEvt = false;
@@ -4946,6 +5072,17 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 	if (sm->ssid_protection)
 		kde_len += 2 + conf->ssid_len;
 
+#ifdef CONFIG_SAE
+	if (wpa_key_mgmt_sae(sm->wpa_key_mgmt) &&
+	    conf->sae_pw_id_num &&
+	    sm->sae_pw_id &&
+	    ieee802_11_rsnx_capab(sm->rsnxe,
+				  WLAN_RSNX_CAPAB_SAE_PW_ID_CHANGE)) {
+		kde_len += 2 + 255;
+		sae_pw_ids = true;
+	}
+#endif /* CONFIG_SAE */
+
 #ifdef CONFIG_TESTING_OPTIONS
 	if (conf->eapol_m3_elements)
 		kde_len += wpabuf_len(conf->eapol_m3_elements);
@@ -5075,6 +5212,23 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
 		os_memcpy(pos, conf->ssid, conf->ssid_len);
 		pos += conf->ssid_len;
 	}
+
+#ifdef CONFIG_SAE
+	if (sae_pw_ids) {
+		u8 *npos;
+
+		npos = add_sae_pw_ids(sm, pos, kde + kde_len);
+		if (!npos) {
+			wpa_printf(MSG_DEBUG,
+				   "RSN: Failed to add SAE Password Identifiers KDE");
+			/* Ignore this since it is not a fatal error for the
+			 * Authenticator and the STA can decide whether to
+			 * proceed without getting new identifiers. */
+		} else {
+			pos = npos;
+		}
+	}
+#endif /* CONFIG_SAE */
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (conf->eapol_m3_elements) {
@@ -5429,8 +5583,9 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
 	sm->TimeoutEvt = false;
 	/* Send EAPOL(1, 1, 1, !Pair, G, RSC, GNonce, MIC(PTK), GTK[GN]) */
 	os_memset(rsc, 0, WPA_KEY_RSC_LEN);
-	if (gsm->wpa_group_state == WPA_GROUP_SETKEYSDONE)
+	if (gsm->wpa_group_state == WPA_GROUP_SETKEYSDONE && !is_mld)
 		wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN, rsc);
+
 	wpa_auth_logger(sm->wpa_auth, wpa_auth_get_spa(sm), LOGGER_DEBUG,
 			"sending 1/2 msg of Group Key Handshake");
 
@@ -6530,9 +6685,10 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
 
 int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
-			   int akmp, bool is_ml)
+			   int akmp, bool is_ml, int vlan_id)
 {
 	struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
+	struct rsn_pmksa_cache_entry *entry;
 	const u8 *aa = wpa_auth->addr;
 
 	if (wpa_auth->conf.disable_pmksa_caching)
@@ -6549,11 +6705,14 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
 	}
 #endif /* CONFIG_IEEE80211BE */
 
-	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, aa, addr,
-				 0, NULL, akmp))
-		return 0;
+	entry = pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0,
+				     aa, addr, 0, NULL, akmp);
+	if (!entry)
+		return -1;
 
-	return -1;
+	entry->sae_vlan_id = vlan_id;
+
+	return 0;
 }
 
 
@@ -7005,7 +7164,7 @@ void wpa_auth_eapol_key_tx_status(struct wpa_authenticator *wpa_auth,
 		wpa_printf(MSG_DEBUG,
 			   "WPA: Increase initial EAPOL-Key 1/4 timeout by %u ms because of acknowledged frame",
 			   timeout_ms);
-		eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+		eloop_cancel_timeout(wpa_send_eapol_timeout, ELOOP_ALL_CTX, sm);
 		eloop_register_timeout(timeout_ms / 1000,
 				       (timeout_ms % 1000) * 1000,
 				       wpa_send_eapol_timeout, wpa_auth, sm);
@@ -7580,6 +7739,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
 		struct wpa_get_link_auth_ctx ctx;
 
 		sm_link->valid = link->valid;
+		sm_link->rejected = false;
 		if (!link->valid)
 			continue;
 
@@ -7658,4 +7818,58 @@ bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
 	}
 
 	return true;
+}
+
+
+void wpa_reset_assoc_sm_info(struct wpa_state_machine *assoc_sm,
+			     struct wpa_authenticator *wpa_auth,
+			     u8 mld_assoc_link_id)
+{
+#ifdef CONFIG_IEEE80211BE
+	assoc_sm->wpa_auth = wpa_auth;
+	assoc_sm->mld_assoc_link_id = mld_assoc_link_id;
+#endif /* CONFIG_IEEE80211BE */
+}
+
+
+#ifdef CONFIG_IEEE80211BE
+/* wpa_select_vlan_wpa_group - Traverse through the wpa_group list and select
+ * the one that matches the vlan_id.
+ *
+ * @gsm: Head of wpa_group list
+ * @vlan_id: vlan_id used to search the group key state machine data that
+ *	     corresponds to the specified VLAN group
+ * Returns: Pointer to wpa_group that corresponds to the VLAN group on success,
+ *	    or pointer to the head of wpa_group list that was passed in.
+ */
+struct wpa_group * wpa_select_vlan_wpa_group(struct wpa_group *gsm, int vlan_id)
+{
+	struct wpa_group *vlan_gsm = gsm;
+
+	while (vlan_gsm) {
+		if (vlan_gsm->vlan_id == vlan_id)
+			break;
+
+		vlan_gsm = vlan_gsm->next;
+	}
+
+	if (!vlan_gsm) {
+		wpa_printf(MSG_DEBUG, "%s: VLAN group not found", __func__);
+		vlan_gsm = gsm;
+	}
+
+	return vlan_gsm;
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
+void wpa_auth_set_sae_pw_id(struct wpa_state_machine *sm,
+			    const struct wpabuf *pw_id,
+			    unsigned int counter)
+{
+	if (sm) {
+		wpabuf_free(sm->sae_pw_id);
+		sm->sae_pw_id = wpabuf_dup(pw_id);
+		sm->sae_pw_id_counter = counter;
+	}
 }

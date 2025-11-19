@@ -252,7 +252,7 @@ static struct wpabuf * pasn_get_sae_wd(struct pasn_data *pasn)
 	wpabuf_put_le16(buf, WLAN_STATUS_SAE_HASH_TO_ELEMENT);
 
 	/* Write the actual commit and update the length accordingly */
-	sae_write_commit(&pasn->sae, buf, NULL, NULL);
+	sae_write_commit(&pasn->sae, buf, NULL, NULL, 0);
 	len = wpabuf_len(buf);
 	WPA_PUT_LE16(len_ptr, len - 2);
 
@@ -331,6 +331,7 @@ static struct wpabuf * pasn_get_wrapped_data(struct pasn_data *pasn)
 		/* no wrapped data */
 		return NULL;
 	case WPA_KEY_MGMT_SAE:
+	case WPA_KEY_MGMT_SAE_EXT_KEY:
 #ifdef CONFIG_SAE
 		return pasn_get_sae_wd(pasn);
 #else /* CONFIG_SAE */
@@ -389,6 +390,7 @@ pasn_derive_keys(struct pasn_data *pasn,
 		switch (pasn->akmp) {
 #ifdef CONFIG_SAE
 		case WPA_KEY_MGMT_SAE:
+		case WPA_KEY_MGMT_SAE_EXT_KEY:
 			if (pasn->sae.state == SAE_COMMITTED) {
 				pmk_len = PMK_LEN;
 				os_memcpy(pmk, pasn->sae.pmk, PMK_LEN);
@@ -514,7 +516,8 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 	else if (pmksa) {
 		pmkid = pmksa->pmkid;
 #ifdef CONFIG_SAE
-	} else if (pasn->akmp == WPA_KEY_MGMT_SAE) {
+	} else if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+		   pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 		wpa_printf(MSG_DEBUG, "PASN: Use SAE PMKID");
 		pmkid = pasn->sae.pmkid;
 #endif /* CONFIG_SAE */
@@ -545,22 +548,23 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 		goto fail;
 	}
 
-	wpa_pasn_add_parameter_ie(buf, pasn->group,
-				  pasn->wrapped_data_format,
-				  pubkey, true, NULL, 0);
-
 	if (wpa_pasn_add_wrapped_data(buf, wrapped_data_buf) < 0)
 		goto fail;
 
 	wpabuf_free(wrapped_data_buf);
 	wrapped_data_buf = NULL;
-	wpabuf_free(pubkey);
-	pubkey = NULL;
 
 	/* Add RSNXE if needed */
 	rsnxe_ie = pasn->rsnxe_ie;
 	if (rsnxe_ie)
 		wpabuf_put_data(buf, rsnxe_ie, 2 + rsnxe_ie[1]);
+
+	wpa_pasn_add_parameter_ie(buf, pasn->group,
+				  pasn->wrapped_data_format,
+				  pubkey, true, NULL, 0);
+
+	wpabuf_free(pubkey);
+	pubkey = NULL;
 
 	if (pasn->prepare_data_element && pasn->cb_ctx)
 		pasn->prepare_data_element(pasn->cb_ctx, peer_addr);
@@ -803,6 +807,10 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 		return -1;
 	}
 
+	if (pasn->ecdh) {
+		crypto_ecdh_deinit(pasn->ecdh);
+		pasn->ecdh = NULL;
+	}
 	pasn->ecdh = crypto_ecdh_init(pasn_params.group);
 	if (!pasn->ecdh) {
 		wpa_printf(MSG_DEBUG, "PASN: Failed to init ECDH");
@@ -851,7 +859,8 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 		}
 
 #ifdef CONFIG_SAE
-		if (pasn->akmp == WPA_KEY_MGMT_SAE) {
+		if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+		    pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 			ret = pasn_wd_handle_sae_commit(pasn, own_addr,
 							peer_addr,
 							wrapped_data);
@@ -1077,7 +1086,8 @@ int handle_auth_pasn_3(struct pasn_data *pasn, const u8 *own_addr,
 		}
 
 #ifdef CONFIG_SAE
-		if (pasn->akmp == WPA_KEY_MGMT_SAE) {
+		if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+		    pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 			ret = pasn_wd_handle_sae_confirm(pasn, peer_addr,
 							 wrapped_data);
 			if (ret) {

@@ -127,6 +127,102 @@ unsigned int wpa_mic_len(int akmp, size_t pmk_len)
 }
 
 
+int rsn_cipher_suite_to_wpa_cipher(u32 cipher)
+{
+	switch (cipher) {
+	case RSN_CIPHER_SUITE_NONE:
+		return WPA_CIPHER_NONE;
+	case RSN_CIPHER_SUITE_TKIP:
+		return WPA_CIPHER_TKIP;
+	case RSN_CIPHER_SUITE_CCMP:
+		return WPA_CIPHER_CCMP;
+	case RSN_CIPHER_SUITE_AES_128_CMAC:
+		return WPA_CIPHER_AES_128_CMAC;
+	case RSN_CIPHER_SUITE_GCMP:
+		return WPA_CIPHER_GCMP;
+	case RSN_CIPHER_SUITE_CCMP_256:
+		return WPA_CIPHER_CCMP_256;
+	case RSN_CIPHER_SUITE_GCMP_256:
+		return WPA_CIPHER_GCMP_256;
+	case RSN_CIPHER_SUITE_BIP_GMAC_128:
+		return WPA_CIPHER_BIP_GMAC_128;
+	case RSN_CIPHER_SUITE_BIP_GMAC_256:
+		return WPA_CIPHER_BIP_GMAC_256;
+	case RSN_CIPHER_SUITE_BIP_CMAC_256:
+		return WPA_CIPHER_BIP_CMAC_256;
+	case RSN_CIPHER_SUITE_NO_GROUP_ADDRESSED:
+		return WPA_CIPHER_GTK_NOT_USED;
+	default:
+		return 0;
+	}
+}
+
+
+int rsn_key_mgmt_to_wpa_akm(u32 akm_suite)
+{
+	switch (akm_suite) {
+	case RSN_AUTH_KEY_MGMT_UNSPEC_802_1X:
+		return WPA_KEY_MGMT_IEEE8021X;
+	case RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X:
+		return WPA_KEY_MGMT_PSK;
+#ifdef CONFIG_IEEE80211R
+	case RSN_AUTH_KEY_MGMT_FT_802_1X:
+		return WPA_KEY_MGMT_FT_IEEE8021X;
+	case RSN_AUTH_KEY_MGMT_FT_PSK:
+		return WPA_KEY_MGMT_FT_PSK;
+#ifdef CONFIG_SHA384
+	case RSN_AUTH_KEY_MGMT_FT_802_1X_SHA384:
+		return WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
+#endif /* CONFIG_SHA384 */
+#endif /* CONFIG_IEEE80211R */
+#ifdef CONFIG_SHA384
+	case RSN_AUTH_KEY_MGMT_802_1X_SHA384:
+		return WPA_KEY_MGMT_IEEE8021X_SHA384;
+#endif /* CONFIG_SHA384 */
+	case RSN_AUTH_KEY_MGMT_802_1X_SHA256:
+		return WPA_KEY_MGMT_IEEE8021X_SHA256;
+	case RSN_AUTH_KEY_MGMT_PSK_SHA256:
+		return WPA_KEY_MGMT_PSK_SHA256;
+#ifdef CONFIG_SAE
+	case RSN_AUTH_KEY_MGMT_SAE:
+		return WPA_KEY_MGMT_SAE;
+	case RSN_AUTH_KEY_MGMT_SAE_EXT_KEY:
+		return WPA_KEY_MGMT_SAE_EXT_KEY;
+	case RSN_AUTH_KEY_MGMT_FT_SAE:
+		return WPA_KEY_MGMT_FT_SAE;
+	case RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY:
+		return WPA_KEY_MGMT_FT_SAE_EXT_KEY;
+#endif /* CONFIG_SAE */
+	case RSN_AUTH_KEY_MGMT_802_1X_SUITE_B:
+		return WPA_KEY_MGMT_IEEE8021X_SUITE_B;
+	case RSN_AUTH_KEY_MGMT_802_1X_SUITE_B_192:
+		return WPA_KEY_MGMT_IEEE8021X_SUITE_B_192;
+	case RSN_AUTH_KEY_MGMT_FILS_SHA256:
+		return WPA_KEY_MGMT_FILS_SHA256;
+	case RSN_AUTH_KEY_MGMT_FILS_SHA384:
+		return WPA_KEY_MGMT_FILS_SHA384;
+	case RSN_AUTH_KEY_MGMT_FT_FILS_SHA256:
+		return WPA_KEY_MGMT_FT_FILS_SHA256;
+	case RSN_AUTH_KEY_MGMT_FT_FILS_SHA384:
+		return WPA_KEY_MGMT_FT_FILS_SHA384;
+#ifdef CONFIG_OWE
+	case RSN_AUTH_KEY_MGMT_OWE:
+		return WPA_KEY_MGMT_OWE;
+#endif /* CONFIG_OWE */
+#ifdef CONFIG_DPP
+	case RSN_AUTH_KEY_MGMT_DPP:
+		return WPA_KEY_MGMT_DPP;
+#endif /* CONFIG_DPP */
+#ifdef CONFIG_PASN
+	case RSN_AUTH_KEY_MGMT_PASN:
+		return WPA_KEY_MGMT_PASN;
+#endif /* CONFIG_PASN */
+	default:
+		return 0;
+	}
+}
+
+
 /**
  * wpa_use_akm_defined - Is AKM-defined Key Descriptor Version used
  * @akmp: WPA_KEY_MGMT_* used in key derivation
@@ -1420,8 +1516,9 @@ void wpa_ft_parse_ies_free(struct wpa_ft_ies *parse)
  * @akmp: Authentication and key management protocol
  * @cipher: The cipher suite
  *
- * According to IEEE P802.11az/D2.7, 12.12.7, the hash algorithm to use is the
- * hash algorithm defined for the Base AKM (see Table 9-151 (AKM suite
+ * According to IEEE Std 802.11-2024, 12.13.8 (PTKSA derivation with PASN
+ * authentication), the hash algorithm to use is the
+ * hash algorithm defined for the Base AKM (see Table 9-190 (AKM suite
  * selectors)). When there is no Base AKM, the hash algorithm is selected based
  * on the pairwise cipher suite provided in the RSNE by the AP in the second
  * PASN frame. SHA-256 is used as the hash algorithm, except for the ciphers
@@ -1742,91 +1839,13 @@ int pasn_auth_frame_hash(int akmp, int cipher, const u8 *data, size_t len,
 
 static int rsn_selector_to_bitfield(const u8 *s)
 {
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_NONE)
-		return WPA_CIPHER_NONE;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_TKIP)
-		return WPA_CIPHER_TKIP;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_CCMP)
-		return WPA_CIPHER_CCMP;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_AES_128_CMAC)
-		return WPA_CIPHER_AES_128_CMAC;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_GCMP)
-		return WPA_CIPHER_GCMP;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_CCMP_256)
-		return WPA_CIPHER_CCMP_256;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_GCMP_256)
-		return WPA_CIPHER_GCMP_256;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_BIP_GMAC_128)
-		return WPA_CIPHER_BIP_GMAC_128;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_BIP_GMAC_256)
-		return WPA_CIPHER_BIP_GMAC_256;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_BIP_CMAC_256)
-		return WPA_CIPHER_BIP_CMAC_256;
-	if (RSN_SELECTOR_GET(s) == RSN_CIPHER_SUITE_NO_GROUP_ADDRESSED)
-		return WPA_CIPHER_GTK_NOT_USED;
-	return 0;
+	return rsn_cipher_suite_to_wpa_cipher(RSN_SELECTOR_GET(s));
 }
 
 
 static int rsn_key_mgmt_to_bitfield(const u8 *s)
 {
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_UNSPEC_802_1X)
-		return WPA_KEY_MGMT_IEEE8021X;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X)
-		return WPA_KEY_MGMT_PSK;
-#ifdef CONFIG_IEEE80211R
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_802_1X)
-		return WPA_KEY_MGMT_FT_IEEE8021X;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_PSK)
-		return WPA_KEY_MGMT_FT_PSK;
-#ifdef CONFIG_SHA384
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_802_1X_SHA384)
-		return WPA_KEY_MGMT_FT_IEEE8021X_SHA384;
-#endif /* CONFIG_SHA384 */
-#endif /* CONFIG_IEEE80211R */
-#ifdef CONFIG_SHA384
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_802_1X_SHA384)
-		return WPA_KEY_MGMT_IEEE8021X_SHA384;
-#endif /* CONFIG_SHA384 */
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_802_1X_SHA256)
-		return WPA_KEY_MGMT_IEEE8021X_SHA256;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_PSK_SHA256)
-		return WPA_KEY_MGMT_PSK_SHA256;
-#ifdef CONFIG_SAE
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_SAE)
-		return WPA_KEY_MGMT_SAE;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_SAE_EXT_KEY)
-		return WPA_KEY_MGMT_SAE_EXT_KEY;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_SAE)
-		return WPA_KEY_MGMT_FT_SAE;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY)
-		return WPA_KEY_MGMT_FT_SAE_EXT_KEY;
-#endif /* CONFIG_SAE */
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_802_1X_SUITE_B)
-		return WPA_KEY_MGMT_IEEE8021X_SUITE_B;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_802_1X_SUITE_B_192)
-		return WPA_KEY_MGMT_IEEE8021X_SUITE_B_192;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FILS_SHA256)
-		return WPA_KEY_MGMT_FILS_SHA256;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FILS_SHA384)
-		return WPA_KEY_MGMT_FILS_SHA384;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_FILS_SHA256)
-		return WPA_KEY_MGMT_FT_FILS_SHA256;
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_FT_FILS_SHA384)
-		return WPA_KEY_MGMT_FT_FILS_SHA384;
-#ifdef CONFIG_OWE
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_OWE)
-		return WPA_KEY_MGMT_OWE;
-#endif /* CONFIG_OWE */
-#ifdef CONFIG_DPP
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_DPP)
-		return WPA_KEY_MGMT_DPP;
-#endif /* CONFIG_DPP */
-#ifdef CONFIG_PASN
-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_PASN)
-		return WPA_KEY_MGMT_PASN;
-#endif /* CONFIG_PASN */
-	return 0;
+	return rsn_key_mgmt_to_wpa_akm(RSN_SELECTOR_GET(s));
 }
 
 
@@ -2850,6 +2869,10 @@ u32 wpa_akm_to_suite(int akm)
 		return RSN_AUTH_KEY_MGMT_OWE;
 	if (akm & WPA_KEY_MGMT_DPP)
 		return RSN_AUTH_KEY_MGMT_DPP;
+#ifdef CONFIG_PASN
+	if (akm & WPA_KEY_MGMT_PASN)
+		return RSN_AUTH_KEY_MGMT_PASN;
+#endif /* CONFIG_PASN */
 	return 0;
 }
 
@@ -3158,10 +3181,10 @@ int wpa_cipher_put_suites(u8 *start, int ciphers)
 
 int wpa_pick_pairwise_cipher(int ciphers, int none_allowed)
 {
-	if (ciphers & WPA_CIPHER_CCMP_256)
-		return WPA_CIPHER_CCMP_256;
 	if (ciphers & WPA_CIPHER_GCMP_256)
 		return WPA_CIPHER_GCMP_256;
+	if (ciphers & WPA_CIPHER_CCMP_256)
+		return WPA_CIPHER_CCMP_256;
 	if (ciphers & WPA_CIPHER_CCMP)
 		return WPA_CIPHER_CCMP;
 	if (ciphers & WPA_CIPHER_GCMP)
@@ -3176,10 +3199,10 @@ int wpa_pick_pairwise_cipher(int ciphers, int none_allowed)
 
 int wpa_pick_group_cipher(int ciphers)
 {
-	if (ciphers & WPA_CIPHER_CCMP_256)
-		return WPA_CIPHER_CCMP_256;
 	if (ciphers & WPA_CIPHER_GCMP_256)
 		return WPA_CIPHER_GCMP_256;
+	if (ciphers & WPA_CIPHER_CCMP_256)
+		return WPA_CIPHER_CCMP_256;
 	if (ciphers & WPA_CIPHER_CCMP)
 		return WPA_CIPHER_CCMP;
 	if (ciphers & WPA_CIPHER_GCMP)
@@ -3496,6 +3519,15 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
 		ie->bigtk = p;
 		ie->bigtk_len = left;
 		wpa_hexdump_key(MSG_DEBUG, "WPA: BIGTK in EAPOL-Key",
+				pos, dlen);
+		return 0;
+	}
+
+	if (left > 2 && selector == RSN_KEY_DATA_SAE_PW_IDS) {
+		ie->sae_pw_ids = p;
+		ie->sae_pw_ids_len = left;
+		wpa_hexdump_key(MSG_DEBUG,
+				"RSN: SAE Password Identifiers in EAPOL-Key",
 				pos, dlen);
 		return 0;
 	}
@@ -4078,7 +4110,7 @@ int wpa_pasn_add_wrapped_data(struct wpabuf *buf,
 	data_len -= len - 1;
 
 	while (data_len) {
-		if (wpabuf_tailroom(buf) < 1 + data_len)
+		if (wpabuf_tailroom(buf) < 2 + data_len)
 			return -1;
 		wpabuf_put_u8(buf, WLAN_EID_FRAGMENT);
 		len = data_len > 255 ? 255 : data_len;
@@ -4293,7 +4325,7 @@ int wpa_pasn_add_extra_ies(struct wpabuf *buf, const u8 *extra_ies, size_t len)
 	if (!len || !extra_ies || !buf)
 		return 0;
 
-	if (wpabuf_tailroom(buf) < sizeof(len))
+	if (wpabuf_tailroom(buf) < len)
 		return -1;
 
 	wpabuf_put_data(buf, extra_ies, len);

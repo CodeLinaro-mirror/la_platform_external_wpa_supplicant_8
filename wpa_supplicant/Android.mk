@@ -242,9 +242,9 @@ L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
 L_CFLAGS += -DCONFIG_SAE_PK
-NEED_AES_SIV=y
 OBJS += src/common/sae_pk.c
 endif
+NEED_AES_SIV=y
 NEED_ECC=y
 NEED_DH_GROUPS=y
 NEED_HMAC_SHA256_KDF=y
@@ -288,6 +288,12 @@ OBJS += src/common/nan_de.c
 OBJS += nan_usd.c
 NEED_OFFCHANNEL=y
 L_CFLAGS += -DCONFIG_NAN_USD
+endif
+
+ifdef CONFIG_PR
+OBJS += src/common/proximity_ranging.c
+OBJS += pr_supplicant.c
+L_CFLAGS += -DCONFIG_PR
 endif
 
 ifdef CONFIG_OWE

@@ -660,7 +660,10 @@ struct hostapd_bss_config {
 	enum sae_pwe sae_pwe;
 	int *sae_groups;
 	struct sae_password_entry *sae_passwords;
+	int sae_password_psk;
 	int sae_track_password;
+	struct wpabuf *sae_pw_id_key;
+	unsigned int sae_pw_id_num;
 
 	char *wowlan_triggers; /* Wake-on-WLAN triggers */
 
@@ -945,6 +948,9 @@ struct hostapd_bss_config {
 	 */
 	u16 pasn_comeback_after;
 #endif /* CONFIG_PASN */
+
+	int urnm_mfpr_x20;
+	int urnm_mfpr;
 
 	unsigned int unsol_bcast_probe_resp_interval;
 
@@ -1238,6 +1244,9 @@ struct hostapd_config {
 
 	bool channel_usage;
 	bool peer_to_peer_twt;
+
+	/* Set I2R LMR policy to allow LMR response from ISTA */
+	bool i2r_lmr_policy;
 };
 
 
@@ -1376,7 +1385,6 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf);
 void hostapd_config_free(struct hostapd_config *conf);
 int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,
 			  const u8 *addr, struct vlan_description *vlan_id);
-int hostapd_rate_found(int *list, int rate);
 const u8 * hostapd_get_psk(const struct hostapd_bss_config *conf,
 			   const u8 *addr, const u8 *p2p_dev_addr,
 			   const u8 *prev_psk, int *vlan_id);
@@ -1400,5 +1408,6 @@ int hostapd_add_acl_maclist(struct mac_acl_entry **acl, int *num,
 			    int vlan_id, const u8 *addr);
 void hostapd_remove_acl_mac(struct mac_acl_entry **acl, int *num,
 			    const u8 *addr);
+bool hostapd_config_check_bss_6g(struct hostapd_bss_config *bss);
 
 #endif /* HOSTAPD_CONFIG_H */

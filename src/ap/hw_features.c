@@ -198,10 +198,10 @@ int hostapd_prepare_rates(struct hostapd_iface *iface,
 			  struct hostapd_hw_modes *mode)
 {
 	int i, num_basic_rates = 0;
-	int basic_rates_a[] = { 60, 120, 240, -1 };
-	int basic_rates_b[] = { 10, 20, -1 };
-	int basic_rates_g[] = { 10, 20, 55, 110, -1 };
-	int *basic_rates;
+	int basic_rates_a[] = { 60, 120, 240, 0 };
+	int basic_rates_b[] = { 10, 20, 0 };
+	int basic_rates_g[] = { 10, 20, 55, 110, 0 };
+	const int *basic_rates;
 
 	if (iface->conf->basic_rates)
 		basic_rates = iface->conf->basic_rates;
@@ -221,15 +221,8 @@ int hostapd_prepare_rates(struct hostapd_iface *iface,
 		return -1;
 	}
 
-	i = 0;
-	while (basic_rates[i] >= 0)
-		i++;
-	if (i)
-		i++; /* -1 termination */
 	os_free(iface->basic_rates);
-	iface->basic_rates = os_malloc(i * sizeof(int));
-	if (iface->basic_rates)
-		os_memcpy(iface->basic_rates, basic_rates, i * sizeof(int));
+	iface->basic_rates = int_array_dup(basic_rates);
 
 	os_free(iface->current_rates);
 	iface->num_rates = 0;
@@ -246,13 +239,13 @@ int hostapd_prepare_rates(struct hostapd_iface *iface,
 		struct hostapd_rate_data *rate;
 
 		if (iface->conf->supported_rates &&
-		    !hostapd_rate_found(iface->conf->supported_rates,
+		    !int_array_includes(iface->conf->supported_rates,
 					mode->rates[i]))
 			continue;
 
 		rate = &iface->current_rates[iface->num_rates];
 		rate->rate = mode->rates[i];
-		if (hostapd_rate_found(basic_rates, rate->rate)) {
+		if (int_array_includes(basic_rates, rate->rate)) {
 			rate->flags |= HOSTAPD_RATE_BASIC;
 			num_basic_rates++;
 		}
@@ -734,10 +727,18 @@ static int ieee80211ac_supported_vht_capab(struct hostapd_iface *iface)
 #endif /* CONFIG_IEEE80211AC */
 
 
+#ifdef CONFIG_IEEE80211BE
+static int ieee80211be_supported_eht_capab(struct hostapd_iface *iface)
+{
+	return iface->current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported;
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
 #ifdef CONFIG_IEEE80211AX
 static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
 {
-	return 1;
+	return iface->current_mode->he_capab[IEEE80211_MODE_AP].he_supported;
 }
 #endif /* CONFIG_IEEE80211AX */
 
@@ -761,10 +762,19 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
 
 	if (!ieee80211n_supported_ht_capab(iface))
 		return -1;
+#ifdef CONFIG_IEEE80211BE
+	if (iface->conf->ieee80211be &&
+	    !ieee80211be_supported_eht_capab(iface)) {
+		wpa_printf(MSG_ERROR, "Driver does not support EHT");
+		return -1;
+	}
+#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 	if (iface->conf->ieee80211ax &&
-	    !ieee80211ax_supported_he_capab(iface))
+	    !ieee80211ax_supported_he_capab(iface)) {
+		wpa_printf(MSG_ERROR, "Driver does not support HE");
 		return -1;
+	}
 #endif /* CONFIG_IEEE80211AX */
 #ifdef CONFIG_IEEE80211AC
 	if (iface->conf->ieee80211ac &&

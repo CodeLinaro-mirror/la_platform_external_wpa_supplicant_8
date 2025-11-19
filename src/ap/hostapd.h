@@ -818,6 +818,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			const u8 *req_ie, size_t req_ielen, const u8 *resp_ie,
 			size_t resp_ielen, const u8 *link_addr, int reassoc);
 void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr);
+void hostapd_notif_disassoc_mld(struct hostapd_data *assoc_hapd,
+				struct sta_info *sta, const u8 *addr);
 void hostapd_event_sta_low_ack(struct hostapd_data *hapd, const u8 *addr);
 void hostapd_event_connect_failed_reason(struct hostapd_data *hapd,
 					 const u8 *addr, int reason_code);
@@ -843,6 +845,10 @@ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
 				      enum smps_mode smps_mode,
 				      enum chan_width chan_width, u8 rx_nss);
 
+int hostapd_change_config_freq(struct hostapd_data *hapd,
+			       struct hostapd_config *conf,
+			       struct hostapd_freq_params *params,
+			       struct hostapd_freq_params *old_params);
 #ifdef CONFIG_FST
 void fst_hostapd_fill_iface_obj(struct hostapd_data *hapd,
 				struct fst_wpa_obj *iface_obj);
@@ -896,5 +902,11 @@ static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
 		conf->rsn_override_mfp != NO_MGMT_FRAME_PROTECTION ||
 		conf->rsn_override_mfp_2 != NO_MGMT_FRAME_PROTECTION;
 }
+
+enum oper_chan_width
+hostapd_chan_width_from_freq_params(struct hostapd_freq_params *freq_params);
+
+struct hostapd_data *
+hostapd_get_mbssid_bss_by_idx(struct hostapd_data *hapd, size_t idx);
 
 #endif /* HOSTAPD_H */

@@ -12,6 +12,12 @@
 #ifndef PASN_COMMON_H
 #define PASN_COMMON_H
 
+#include "common/wpa_common.h"
+#ifdef CONFIG_SAE
+#include "common/sae.h"
+#endif /* CONFIG_SAE */
+#include "crypto/sha384.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -122,7 +128,6 @@ struct pasn_data {
 	bool noauth; /* Whether PASN without mutual authentication is enabled */
 	int disable_pmksa_caching;
 	int *pasn_groups;
-	struct wpabuf *wrapped_data;
 	int use_anti_clogging;
 	const u8 *rsn_ie;
 	size_t rsn_ie_len;

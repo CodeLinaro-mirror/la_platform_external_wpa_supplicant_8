@@ -126,7 +126,7 @@ static struct wpabuf * wpas_pasn_wd_sae_commit(struct pasn_data *pasn)
 	wpabuf_put_le16(buf, 1);
 	wpabuf_put_le16(buf, WLAN_STATUS_SAE_HASH_TO_ELEMENT);
 
-	sae_write_commit(&pasn->sae, buf, NULL, NULL);
+	sae_write_commit(&pasn->sae, buf, NULL, NULL, 0);
 	pasn->sae.state = SAE_COMMITTED;
 
 	return buf;
@@ -518,6 +518,7 @@ static struct wpabuf * wpas_pasn_get_wrapped_data(struct pasn_data *pasn)
 		/* no wrapped data */
 		return NULL;
 	case WPA_KEY_MGMT_SAE:
+	case WPA_KEY_MGMT_SAE_EXT_KEY:
 #ifdef CONFIG_SAE
 		if (pasn->trans_seq == 0)
 			return wpas_pasn_wd_sae_commit(pasn);
@@ -558,6 +559,7 @@ static u8 wpas_pasn_get_wrapped_data_format(struct pasn_data *pasn)
 	/* Note: Valid AKMP is expected to already be validated */
 	switch (pasn->akmp) {
 	case WPA_KEY_MGMT_SAE:
+	case WPA_KEY_MGMT_SAE_EXT_KEY:
 		return WPA_PASN_WRAPPED_DATA_SAE;
 	case WPA_KEY_MGMT_FILS_SHA256:
 	case WPA_KEY_MGMT_FILS_SHA384:
@@ -641,9 +643,6 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 	if (!wrapped_data_buf)
 		wrapped_data = WPA_PASN_WRAPPED_DATA_NO;
 
-	wpa_pasn_add_parameter_ie(buf, pasn->group, wrapped_data,
-				  pubkey, true, comeback, -1);
-
 	if (wpa_pasn_add_wrapped_data(buf, wrapped_data_buf) < 0)
 		goto fail;
 
@@ -651,6 +650,9 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 		wpabuf_put_data(buf, pasn->rsnxe_ie, 2 + pasn->rsnxe_ie[1]);
 	else
 		wpa_pasn_add_rsnxe(buf, pasn->rsnxe_capab);
+
+	wpa_pasn_add_parameter_ie(buf, pasn->group, wrapped_data,
+				  pubkey, true, comeback, -1);
 
 	wpa_pasn_add_extra_ies(buf, pasn->extra_ies, pasn->extra_ies_len);
 
@@ -710,13 +712,13 @@ static struct wpabuf * wpas_pasn_build_auth_3(struct pasn_data *pasn)
 	if (!wrapped_data_buf)
 		wrapped_data = WPA_PASN_WRAPPED_DATA_NO;
 
-	wpa_pasn_add_parameter_ie(buf, pasn->group, wrapped_data,
-				  NULL, false, NULL, -1);
-
 	if (wpa_pasn_add_wrapped_data(buf, wrapped_data_buf) < 0)
 		goto fail;
 	wpabuf_free(wrapped_data_buf);
 	wrapped_data_buf = NULL;
+
+	wpa_pasn_add_parameter_ie(buf, pasn->group, wrapped_data,
+				  NULL, false, NULL, -1);
 
 	if (pasn->prepare_data_element && pasn->cb_ctx)
 		pasn->prepare_data_element(pasn->cb_ctx, pasn->peer_addr);
@@ -895,7 +897,8 @@ static int wpas_pasn_set_pmk(struct pasn_data *pasn,
 	}
 
 #ifdef CONFIG_SAE
-	if (pasn->akmp == WPA_KEY_MGMT_SAE) {
+	if (pasn->akmp == WPA_KEY_MGMT_SAE ||
+	    pasn->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 		int ret;
 
 		ret = wpas_pasn_wd_sae_rx(pasn, wrapped_data);
@@ -1037,6 +1040,7 @@ int wpas_pasn_start(struct pasn_data *pasn, const u8 *own_addr,
 		break;
 #ifdef CONFIG_SAE
 	case WPA_KEY_MGMT_SAE:
+	case WPA_KEY_MGMT_SAE_EXT_KEY:
 
 		if (beacon_rsnxe &&
 		    !ieee802_11_rsnx_capab(beacon_rsnxe,

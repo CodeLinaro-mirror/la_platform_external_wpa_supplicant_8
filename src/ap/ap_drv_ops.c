@@ -26,6 +26,7 @@
 #include "p2p_hostapd.h"
 #include "hs20.h"
 #include "wpa_auth.h"
+#include "hw_features.h"
 #include "ap_drv_ops.h"
 
 
@@ -374,7 +375,14 @@ int hostapd_vlan_if_add(struct hostapd_data *hapd, const char *ifname)
 {
 	char force_ifname[IFNAMSIZ];
 	u8 if_addr[ETH_ALEN];
-	return hostapd_if_add(hapd, WPA_IF_AP_VLAN, ifname, hapd->own_addr,
+	const u8 *addr = hapd->own_addr;
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap)
+		addr = hapd->mld->mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+
+	return hostapd_if_add(hapd, WPA_IF_AP_VLAN, ifname, addr,
 			      NULL, NULL, force_ifname, if_addr, NULL, 0);
 }
 
@@ -793,6 +801,31 @@ int hostapd_driver_scan(struct hostapd_data *hapd,
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->conf->mld_ap)
 		params->link_id = hapd->mld_link_id;
+
+	if (!hapd->iface->scan_cb && hapd->conf->mld_ap &&
+	    hapd->iface->interfaces) {
+		/* Other links may be waiting for scan results */
+		unsigned int i;
+
+		for (i = 0; i < hapd->iface->interfaces->count; i++) {
+			struct hostapd_iface *h_iface =
+				hapd->iface->interfaces->iface[i];
+			struct hostapd_data *h_hapd;
+
+			if (!h_iface || h_iface == hapd->iface ||
+			    h_iface->num_bss == 0)
+				continue;
+
+			h_hapd = h_iface->bss[0];
+
+			if (hostapd_is_ml_partner(hapd, h_hapd) &&
+			    h_hapd->iface->state == HAPD_IFACE_ACS) {
+				wpa_printf(MSG_INFO,
+					   "ACS in progress in a partner link - try to scan later");
+				return -EBUSY;
+			}
+		}
+	}
 #endif /* CONFIG_IEEE80211BE */
 
 	if (hapd->driver && hapd->driver->scan2)
@@ -903,20 +936,23 @@ int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,
 			     const u8 *addr, int reason)
 {
 	const u8 *own_addr = hapd->own_addr;
+	int link_id = -1;
 
 #ifdef CONFIG_IEEE80211BE
 	if (hapd->conf->mld_ap) {
 		struct sta_info *sta = ap_get_sta(hapd, addr);
 
-		if (ap_sta_is_mld(hapd, sta))
+		if (ap_sta_is_mld(hapd, sta)) {
 			own_addr = hapd->mld->mld_addr;
+			link_id = hapd->mld_link_id;
+		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
 	if (!hapd->driver || !hapd->driver->sta_disassoc || !hapd->drv_priv)
 		return 0;
 	return hapd->driver->sta_disassoc(hapd->drv_priv, own_addr, addr,
-					  reason);
+					  reason, link_id);
 }
 
 
@@ -1130,6 +1166,10 @@ void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 {
 	int i;
 	bool is_no_ir = false;
+	bool allow_6g_acs = is_6ghz_op_class(hapd->iconf->op_class) &&
+		hostapd_config_check_bss_6g(hapd->conf) &&
+		(hapd->iface->conf->ieee80211ax ||
+		 hapd->iface->conf->ieee80211be);
 
 	for (i = 0; i < mode->num_channels; i++) {
 		struct hostapd_channel_data *chan = &mode->channels[i];
@@ -1150,8 +1190,7 @@ void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 		if (is_6ghz_freq(chan->freq) &&
 		    ((hapd->iface->conf->acs_exclude_6ghz_non_psc &&
 		      !is_6ghz_psc_frequency(chan->freq)) ||
-		     (!hapd->iface->conf->ieee80211ax &&
-		      !hapd->iface->conf->ieee80211be)))
+		     !allow_6g_acs))
 			continue;
 		if ((!(chan->flag & HOSTAPD_CHAN_DISABLED) || allow_disabled) &&
 		    !(hapd->iface->conf->acs_exclude_dfs &&
@@ -1365,4 +1404,26 @@ int hostapd_add_pmkid(struct hostapd_data *hapd, const u8 *bssid, const u8 *pmk,
 	params.pmk_len = pmk_len;
 
 	return hostapd_drv_add_pmkid(hapd, &params);
+}
+
+
+static int hostapd_drv_remove_pmkid(struct hostapd_data *hapd,
+				    struct wpa_pmkid_params *params)
+{
+	if (!hapd->driver || !hapd->driver->remove_pmkid || !hapd->drv_priv)
+		return 0;
+	return hapd->driver->remove_pmkid(hapd->drv_priv, params);
+}
+
+
+int hostapd_remove_pmkid(struct hostapd_data *hapd, const u8 *sta_addr,
+			 const u8 *pmkid)
+{
+	struct wpa_pmkid_params params;
+
+	os_memset(&params, 0, sizeof(params));
+	params.bssid = sta_addr;
+	params.pmkid = pmkid;
+
+	return hostapd_drv_remove_pmkid(hapd, &params);
 }

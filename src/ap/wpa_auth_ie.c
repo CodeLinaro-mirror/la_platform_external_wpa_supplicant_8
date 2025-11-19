@@ -346,9 +346,6 @@ static u8 * rsne_write_data(u8 *buf, size_t len, u8 *pos, int group,
 
 		/* Management Group Cipher Suite */
 		switch (group_mgmt_cipher) {
-		case WPA_CIPHER_AES_128_CMAC:
-			RSN_SELECTOR_PUT(pos, RSN_CIPHER_SUITE_AES_128_CMAC);
-			break;
 		case WPA_CIPHER_BIP_GMAC_128:
 			RSN_SELECTOR_PUT(pos, RSN_CIPHER_SUITE_BIP_GMAC_128);
 			break;
@@ -496,8 +493,12 @@ static u32 rsnxe_capab(struct wpa_auth_config *conf, int key_mgmt)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_LTF);
 	if (conf->secure_rtt)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
-	if (conf->prot_range_neg)
-		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+	if (conf->prot_range_neg) {
+		if (conf->urnm_mfpr)
+			capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+		if (conf->urnm_mfpr_x20)
+			capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR_X20);
+	}
 	if (conf->ssid_protection)
 		capab |= BIT(WLAN_RSNX_CAPAB_SSID_PROTECTION);
 	if (conf->spp_amsdu)
@@ -832,6 +833,7 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 	u32 selector;
 	size_t i;
 	const u8 *pmkid = NULL;
+	bool ap_pmf_enabled;
 
 	if (wpa_auth == NULL || sm == NULL)
 		return WPA_NOT_ENABLED;
@@ -1114,8 +1116,16 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 				 wpa_auth->conf.ocv : 0);
 	}
 #endif /* CONFIG_OCV */
+	if (sm->rsn_override_2)
+		ap_pmf_enabled = conf->rsn_override_mfp_2 !=
+			NO_MGMT_FRAME_PROTECTION;
+	else if (sm->rsn_override)
+		ap_pmf_enabled = conf->rsn_override_mfp !=
+			NO_MGMT_FRAME_PROTECTION;
+	else
+		ap_pmf_enabled = conf->ieee80211w != NO_MGMT_FRAME_PROTECTION;
 
-	if (!wpa_auth_pmf_enabled(conf) ||
+	if (!ap_pmf_enabled ||
 	    !(data.capabilities & WPA_CAPABILITY_MFPC))
 		sm->mgmt_frame_prot = 0;
 	else
@@ -1274,7 +1284,8 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		wpa_auth_vlogger(wpa_auth, sm->addr, LOGGER_DEBUG,
 				 "PMKID found from PMKSA cache eap_type=%d vlan=%d%s",
 				 sm->pmksa->eap_type_authsrv,
-				 vlan ? vlan->untagged : 0,
+				 vlan ? vlan->untagged :
+				 sm->pmksa->sae_vlan_id,
 				 (vlan && vlan->tagged[0]) ? "+" : "");
 		os_memcpy(wpa_auth->dot11RSNAPMKIDUsed, pmkid, PMKID_LEN);
 	}
