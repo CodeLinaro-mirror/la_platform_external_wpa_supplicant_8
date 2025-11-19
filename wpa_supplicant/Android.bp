@@ -918,6 +918,7 @@ wpa_supplicant_cc_defaults_type {
         "-Wno-unused-function",
         "-Wno-unused-parameter",
         "-Wno-unused-variable",
+        "-DCONFIG_NO_ROAMING",
     ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_use_stub_lib"), {
         true: ["-DANDROID_LIB_STUB"],
         default: [],
@@ -936,9 +937,6 @@ wpa_supplicant_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["-DCONFIG_IEEE80211BE"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant", "roaming"), {
-        true: [],
-        default: ["-DCONFIG_NO_ROAMING"],
     }) + select(soong_config_variable("wpa_supplicant", "pasn"), {
         false: [],
         default: ["-DCONFIG_PASN"],
