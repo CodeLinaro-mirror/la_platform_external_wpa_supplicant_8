@@ -60,10 +60,53 @@ int setNanConfigParam(struct wpa_supplicant* wpa_s, const char* param, Args... a
 	return wpas_nan_set(wpa_s, cmd);
 }
 
+void NanIface::enqueue(std::function<void()> task) {
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (stop_worker_) {
+			return;
+		}
+		task_queue_.push(std::move(task));
+	}
+	cv_.notify_one();
+}
+
 NanIface::NanIface(struct wpa_global* global, const std::string& ifname)
 	: wpa_global_(global), ifname_(ifname), is_valid_(true), started_cluster_indication_(false),
 	  joined_cluster_indication_(false)
 {
+	worker_thread_ = std::thread([this]() {
+		while (true) {
+			std::function<void()> task;
+			{
+				std::unique_lock<std::mutex> lock(mutex_);
+				cv_.wait(lock, [this] {
+					return !task_queue_.empty() || stop_worker_;
+				});
+				if (stop_worker_) {
+					return;
+				}
+				task = std::move(task_queue_.front());
+				task_queue_.pop();
+			}
+			task();
+		}
+	});
+	wpa_printf(MSG_INFO, "NAN: Worker thread for iface %s started", ifname_.c_str());
+}
+
+NanIface::~NanIface() {
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		stop_worker_ = true;
+	}
+	cv_.notify_one();
+	if (worker_thread_.joinable()) {
+		worker_thread_.join();
+	}
+	task_queue_ = std::queue<std::function<void()>>();
+	wpa_printf(MSG_INFO, "NAN: Worker thread for iface %s stopped", ifname_.c_str());
+	invalidate();
 }
 
 void NanIface::invalidate() { is_valid_ = false; }
@@ -269,7 +312,7 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_] {
+	enqueue([=, ifname = ifname_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::SUCCESS;
 		NanCapabilities aidl_caps = {};
@@ -287,7 +330,7 @@ bool NanIface::isValid()
 		aidl_caps.supportsPeriodicRanging = kNanIfaceCapSupportsPeriodicRanging;
 		aidl_manager->notifyNanCapabilitiesResponse(
 			ifname, cmdId, nan_status, aidl_caps);
-	}).detach();
+	});
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -299,7 +342,7 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -350,7 +393,7 @@ bool NanIface::isValid()
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanConfigResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -364,7 +407,7 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -418,7 +461,7 @@ bool NanIface::isValid()
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanEnableResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -430,7 +473,7 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -448,7 +491,7 @@ bool NanIface::isValid()
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanDisableResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -461,7 +504,7 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_]  {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_]  {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		// Get the wpa supplicant of NMI
@@ -502,7 +545,7 @@ bool NanIface::isValid()
 
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -514,7 +557,7 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global, ifaceName.c_str());
@@ -537,7 +580,7 @@ bool NanIface::isValid()
 		}
 
 		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -562,7 +605,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -612,7 +655,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status, publish_id);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -624,7 +667,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::SUCCESS;
 		struct wpa_supplicant* wpa_s =
@@ -636,7 +680,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		wpas_nan_cancel_publish(wpa_s, sessionId);
 		aidl_manager->notifyNanStopPublishResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -649,7 +693,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -692,7 +736,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status, subscribe_id);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -704,7 +748,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -717,7 +762,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		nan_status.status = NanStatusCode::SUCCESS;
 		wpas_nan_cancel_subscribe(wpa_s, sessionId);
 		aidl_manager->notifyNanStopSubscribeResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -730,7 +775,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 
@@ -754,7 +799,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -767,7 +812,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 
@@ -780,7 +825,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		// TODO(b/460750167): wpa_supplicant API for bootstrapping request initialization
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -793,7 +838,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 
@@ -808,7 +853,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
 			ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -821,7 +866,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 
@@ -833,7 +878,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		// TODO(b/460750167): wpa_supplicant API for pairing request initialization
 		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -846,7 +891,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -859,7 +904,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		// TODO(b/460750167): wpa_supplicant API for responding pairing request
 		aidl_manager->notifyNanRespondToPairingIndicationResponse(
 			ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -872,7 +917,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -883,7 +928,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		// TODO(b/460750167): wpa_supplicant API for terminating pairing request
 		aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
-	}).detach();
+	});
 
 	return ndk::ScopedAStatus::ok();
 }
@@ -896,7 +941,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		struct wpa_supplicant* wpa_s =
@@ -907,7 +952,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		// TODO(b/460750167): wpa_supplicant API for initiating data path request
 		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
-	}).detach();
+	});
 	return ndk::ScopedAStatus::ok();
 }
 
@@ -919,7 +964,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 
@@ -933,7 +978,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		// TODO(b/460750167): wpa_supplicant API for responding data path indication request
 		aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 			ifname, cmdId, nan_status);
-	}).detach();
+	});
 	return ndk::ScopedAStatus::ok();
 }
 
