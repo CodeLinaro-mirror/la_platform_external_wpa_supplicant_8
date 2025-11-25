@@ -787,6 +787,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	STR(bgscan);
 	STR(autoscan);
 	STR(scan_freq);
+	STR(freq_list);
 #ifdef IEEE8021X_EAPOL
 	write_eap(f, ssid);
 	STR(identity);
@@ -867,7 +868,9 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 #endif /* IEEE8021X_EAPOL */
 	INT(mode);
 	INT(no_auto_peer);
+#ifdef CONFIG_MESH
 	INT_DEF(mesh_fwding, DEFAULT_MESH_FWDING);
+#endif /* CONFIG_MESH */
 	INT(frequency);
 	INT(enable_edmg);
 	INT(edmg_channel);
