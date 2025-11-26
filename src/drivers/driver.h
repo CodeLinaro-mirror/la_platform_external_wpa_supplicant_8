@@ -22,7 +22,7 @@
 #include "common/defs.h"
 #include "common/ieee802_11_defs.h"
 #include "common/wpa_common.h"
-#include "common/nan.h"
+#include "common/nan_defs.h"
 #ifdef CONFIG_MACSEC
 #include "pae/ieee802_1x_kay.h"
 #endif /* CONFIG_MACSEC */
@@ -2422,14 +2422,18 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
 /** Driver supports RSN override elements */
 #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
-/** Driver supports NAN offload */
-#define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
+/** Driver supports NAN USD offload */
+#define WPA_DRIVER_FLAGS2_NAN_USD_OFFLOAD	0x0000000000800000ULL
 /** Driver/device supports SPP A-MSDUs */
 #define WPA_DRIVER_FLAGS2_SPP_AMSDU		0x0000000001000000ULL
 /** Driver supports P2P V2 */
 #define WPA_DRIVER_FLAGS2_P2P_FEATURE_V2	0x0000000002000000ULL
 /** Driver supports P2P PCC mode */
 #define WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE	0x0000000004000000ULL
+
+/** Driver supports NAN Device interface and NAN Synchronization */
+#define WPA_DRIVER_FLAGS2_SUPPORT_NAN			0x0000000080000000ULL
+
 	u64 flags2;
 /** Driver supports of adaptive 11r feature */
 #define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x8000000000000000ULL
@@ -2556,6 +2560,16 @@ struct wpa_driver_capa {
 	/* Maximum number of bytes of extra IE(s) that can be added to Probe
 	 * Request frames */
 	size_t max_probe_req_ie_len;
+
+#ifdef CONFIG_NAN
+/* Driver supports dual band NAN operation */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_DUAL_BAND		0x00000001
+/* Driver supports NAN synchronization configuration */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_SYNC_CONFIG	0x00000002
+/* Driver supports DW notifications and SDF TX/RX over NAN device interface */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE	0x00000008
+	u32 nan_flags;
+#endif /* CONFIG_NAN */
 };
 
 
@@ -3181,6 +3195,59 @@ struct driver_sta_mlo_info {
 		unsigned int freq;
 		struct t2lm_mapping t2lmap;
 	} links[MAX_NUM_MLD_LINKS];
+};
+
+/**
+ * struct nan_band_config - NAN band specific configuration
+ *
+ * For details on NAN band configuration, see the Wi-Fi Aware (TM) Specification
+ *
+ * @frequency: Frequency in MHz for the band
+ * @rssi_close: RSSI close threshold used for NAN state transition algorithm
+ * @rssi_middle: RSSI middle threshold used for NAN state transition algorithm
+ * @awake_dw_interval: committed DW information
+ * @disable_scan: Disable scan for this band
+ */
+struct nan_band_config {
+	u16 frequency;
+	s8 rssi_close;
+	s8 rssi_middle;
+	u8 awake_dw_interval;
+	bool disable_scan;
+};
+
+/**
+ * struct nan_cluster_config - NAN cluster configuration
+ *
+ * @master_pref: Master preference for the cluster
+ * @dual_band: Dual band operation enabled
+ * @enable_dw_notif: Enable discovery window notifications
+ * @cluster_id: Cluster ID for the NAN cluster
+ * @scan_period: Period for NAN scan in seconds
+ * @scan_dwell_time: Dwell time for NAN scan in TUs per channel
+ * @discovery_beacon_interval: Interval for discovery beacon in TUs
+ * @low_band_cfg: Configuration for low band NAN operation
+ * @high_band_cfg: Configuration for high band NAN operation
+ * @extra_nan_attrs: Extra NAN attributes to be included in NAN beacons
+ * @extra_nan_attrs_len: Length of the extra NAN attributes
+ * @vendor_elems: Vendor specific elements to be included in NAN beacons
+ * @vendor_elems_len: Length of the vendor specific elements
+ */
+struct nan_cluster_config {
+	u8 master_pref;
+	u8 dual_band;
+	bool enable_dw_notif;
+
+	u8 cluster_id[ETH_ALEN];
+	u16 scan_period;
+	u16 scan_dwell_time;
+	u8 discovery_beacon_interval;
+	struct nan_band_config low_band_cfg;
+	struct nan_band_config high_band_cfg;
+	u8 *extra_nan_attrs;
+	size_t extra_nan_attrs_len;
+	u8 *vendor_elems;
+	size_t vendor_elems_len;
 };
 
 /**
@@ -5529,6 +5596,34 @@ struct wpa_driver_ops {
 	 */
 	struct hostapd_multi_hw_info *
 	(*get_multi_hw_info)(void *priv, unsigned int *num_multi_hws);
+
+#ifdef CONFIG_NAN
+	/**
+	 * nan_start - start NAN operation
+	 * @priv: Private driver interface data
+	 * @conf: NAN configuration parameters
+	 * Returns 0 on success, -1 on failure
+	 *
+	 * This command joins an existing NAN cluster or starts a new one.
+	 */
+	int (*nan_start)(void *priv, struct nan_cluster_config *conf);
+
+	/**
+	 * nan_change_config - Update the NAN cluster configuration
+	 * @priv: Private driver interface data
+	 * @conf: NAN configuration parameters
+	 * Returns 0 on success, -1 on failure
+	 *
+	 * This command modifies the NAN cluster configuration.
+	 */
+	int (*nan_change_config)(void *priv, struct nan_cluster_config *conf);
+
+	/**
+	 * nan_stop - stops NAN operation
+	 * @priv: Private driver interface data
+	 */
+	void (*nan_stop)(void *priv);
+#endif
 };
 
 /**
@@ -6166,6 +6261,30 @@ enum wpa_event_type {
 	 * EVENT_SETUP_LINK_RECONFIG - Notification that new AP links added
 	 */
 	EVENT_SETUP_LINK_RECONFIG,
+
+	/**
+	 * EVENT_NAN_CLUSTER_JOIN - Notification of new cluster has been
+	 * joined or started.
+	 *
+	 * This event is used to notify wpa_supplicant that a NAN cluster
+	 * has been joined or started. The event data includes the NAN cluster
+	 * ID and a boolean indicating whether a new cluster was started or
+	 * an existing cluster was joined.
+	 *
+	 * Described in wpa_event_data.nan_cluster_join_info.
+	 */
+	EVENT_NAN_CLUSTER_JOIN,
+
+	/**
+	 * EVENT_NAN_NEXT_DW - Notification of NAN next Discovery Window
+	 *
+	 * This event is used to notify wpa_supplicant that the device/driver
+	 * is ready for the next Discovery Window (DW) frames. It may be used
+	 * to trigger transmission of multicast SDFs (active subscribe and
+	 * unsolicited publish).
+	 * The event data includes the DW frequency.
+	 */
+	EVENT_NAN_NEXT_DW,
 };
 
 
@@ -7164,6 +7283,15 @@ union wpa_event_data {
 		const u8 *resp_ie; /* Starting from Group Key Data */
 		size_t resp_ie_len;
 	} reconfig_info;
+
+	struct nan_cluster_join_info {
+		const u8 *bssid;
+		bool new_cluster;
+	} nan_cluster_join_info;
+
+	struct nan_next_dw_info {
+		int freq;
+	} nan_next_dw_info;
 };
 
 /**
