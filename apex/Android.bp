@@ -44,6 +44,8 @@ apex {
     ],
     vintf_fragment_modules: [
         "android.hardware.wifi.hostapd.xml",
+        "android.hardware.wifi.hostapd.vendor.xml",
         "android.hardware.wifi.supplicant.xml",
+        "android.hardware.wifi.supplicant.vendor.xml",
     ],
 }

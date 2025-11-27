@@ -4,8 +4,4 @@
         <version>3</version>
         <fqname>IHostapd/default</fqname>
     </hal>
-    <hal format="aidl">
-        <name>vendor.qti.hardware.wifi.hostapd</name>
-        <fqname>IHostapdVendor/default</fqname>
-    </hal>
 </manifest>

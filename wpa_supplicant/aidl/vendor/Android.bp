@@ -66,6 +66,12 @@ vintf_fragment {
     soc_specific: true,
 }
 
+vintf_fragment {
+    name: "android.hardware.wifi.supplicant.vendor.xml",
+    src: "android.hardware.wifi.supplicant.vendor.xml",
+    soc_specific: true,
+}
+
 soong_config_module_type {
     name: "libwpa_aidl_cflags_cc_defaults",
     module_type: "cc_defaults",
@@ -85,9 +91,27 @@ libwpa_aidl_cflags_cc_defaults {
     },
 }
 
-prebuilt_etc {
+soong_config_module_type {
+    name: "supplicant_manifest_prebuilt",
+    module_type: "prebuilt_etc",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "src",
+    ],
+}
+
+supplicant_manifest_prebuilt {
     name: "android.hardware.wifi.supplicant.xml.prebuilt",
-    src: "android.hardware.wifi.supplicant.xml",
     relative_install_path: "vintf",
     installable: false,
+    src: "android.hardware.wifi.supplicant.xml",
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            src: "android.hardware.wifi.supplicant.vendor.xml",
+        },
+    },
 }
+
