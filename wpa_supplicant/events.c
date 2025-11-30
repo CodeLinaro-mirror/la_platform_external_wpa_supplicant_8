@@ -51,9 +51,9 @@
 #include "mesh.h"
 #include "mesh_mpm.h"
 #include "wmm_ac.h"
-#include "nan_usd.h"
 #include "dpp_supplicant.h"
 #include "rsn_supp/wpa_i.h"
+#include "nan_supplicant.h"
 
 
 #define MAX_OWE_TRANSITION_BSS_SELECT_COUNT 5
@@ -5759,17 +5759,17 @@ static void wpas_event_rx_mgmt_action(struct wpa_supplicant *wpa_s,
 	}
 #endif /* CONFIG_FST */
 
-#ifdef CONFIG_NAN_USD
+#if defined(CONFIG_NAN_USD) || defined(CONFIG_NAN)
 	if (category == WLAN_ACTION_PUBLIC && plen >= 5 &&
 	    payload[0] == WLAN_PA_VENDOR_SPECIFIC &&
 	    WPA_GET_BE32(&payload[1]) == NAN_SDF_VENDOR_TYPE) {
 		payload += 5;
 		plen -= 5;
-		wpas_nan_usd_rx_sdf(wpa_s, mgmt->sa, mgmt->bssid, freq,
-				    payload, plen);
+		wpas_nan_de_rx_sdf(wpa_s, mgmt->sa, mgmt->bssid, freq,
+				   payload, plen, rssi);
 		return;
 	}
-#endif /* CONFIG_NAN_USD */
+#endif /* CONFIG_NAN_USD || CONFIG_NAN */
 
 #ifdef CONFIG_DPP
 	if (category == WLAN_ACTION_PUBLIC && plen >= 5 &&
@@ -7046,11 +7046,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			wpa_s, data->remain_on_channel.freq,
 			data->remain_on_channel.duration);
 #endif /* CONFIG_DPP */
-#ifdef CONFIG_NAN_USD
 		wpas_nan_usd_remain_on_channel_cb(
 			wpa_s, data->remain_on_channel.freq,
 			data->remain_on_channel.duration);
-#endif /* CONFIG_NAN_USD */
 		break;
 	case EVENT_CANCEL_REMAIN_ON_CHANNEL:
 #ifdef CONFIG_OFFCHANNEL
@@ -7063,10 +7061,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		wpas_dpp_cancel_remain_on_channel_cb(
 			wpa_s, data->remain_on_channel.freq);
 #endif /* CONFIG_DPP */
-#ifdef CONFIG_NAN_USD
 		wpas_nan_usd_cancel_remain_on_channel_cb(
 			wpa_s, data->remain_on_channel.freq);
-#endif /* CONFIG_NAN_USD */
 		break;
 	case EVENT_EAPOL_RX:
 		wpa_supplicant_rx_eapol(wpa_s, data->eapol_rx.src,
@@ -7110,7 +7106,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			else
 				wpa_sm_pmksa_cache_reconfig(wpa_s->wpa);
 			wpa_supplicant_set_default_scan_ies(wpa_s);
-			if (wpa_s->p2p_mgmt) {
+			if (wpa_s->p2p_mgmt || wpa_s->nan_mgmt) {
 				wpa_supplicant_set_state(wpa_s,
 							 WPA_DISCONNECTED);
 				break;
@@ -7133,6 +7129,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		break;
 	case EVENT_INTERFACE_DISABLED:
 		wpa_dbg(wpa_s, MSG_DEBUG, "Interface was disabled");
+		if (wpa_s->nan_mgmt) {
+			wpas_nan_flush(wpa_s);
+			wpa_supplicant_set_state(wpa_s,
+						 WPA_INTERFACE_DISABLED);
+			break;
+		}
 #ifdef CONFIG_P2P
 		if (wpa_s->p2p_group_interface == P2P_GROUP_INTERFACE_GO ||
 		    (wpa_s->current_ssid && wpa_s->current_ssid->p2p_group &&
@@ -7402,9 +7404,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifdef CONFIG_DPP
 		wpas_dpp_tx_wait_expire(wpa_s);
 #endif /* CONFIG_DPP */
-#ifdef CONFIG_NAN_USD
-		wpas_nan_usd_tx_wait_expire(wpa_s);
-#endif /* CONFIG_NAN_USD */
+		wpas_nan_tx_wait_expire(wpa_s);
 		break;
 	case EVENT_TID_LINK_MAP:
 		if (data)
@@ -7413,6 +7413,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_SETUP_LINK_RECONFIG:
 		if (data)
 			wpas_setup_link_reconfig(wpa_s, &data->reconfig_info);
+		break;
+	case EVENT_NAN_CLUSTER_JOIN:
+		wpas_nan_cluster_join(wpa_s, data->nan_cluster_join_info.bssid,
+				      data->nan_cluster_join_info.new_cluster);
+		break;
+	case EVENT_NAN_NEXT_DW:
+		wpas_nan_next_dw(wpa_s, data->nan_next_dw_info.freq);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);
