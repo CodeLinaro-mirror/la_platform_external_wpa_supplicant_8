@@ -1765,6 +1765,7 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
+        "aidl/vendor/supplicant_wifi_rtt_controller.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
@@ -1804,6 +1805,7 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
+        "aidl/vendor/supplicant_wifi_rtt_controller.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
