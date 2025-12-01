@@ -115,6 +115,7 @@ MainlineSupplicant::addNanInterfaceInternal(const std::string& ifaceName)
 	}
 
 	struct wpa_interface iface_params = {};
+	iface_params.nan_mgmt = true;
 	iface_params.driver = kIfaceDriverName;
 	iface_params.ifname = nan_iface_name.c_str();
 	iface_params.confname = kConfigFilePath.c_str();
