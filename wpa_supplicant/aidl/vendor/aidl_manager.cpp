@@ -171,6 +171,26 @@ int addNetworkCallbackAidlObjectToMap(
 }
 
 template <class CallbackType>
+int addWifiRttControllerEventCallbackAidlObjectToMap(
+	AIBinder_DeathRecipient* death_notifier,
+	const std::string &ifname, const std::shared_ptr<CallbackType> &callback,
+	std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
+	&callbacks_map)
+{
+	if (ifname.empty())
+		return 1;
+
+	auto rtt_callback_map_iter = callbacks_map.find(ifname);
+	if (rtt_callback_map_iter == callbacks_map.end())
+		return 1;
+	auto &rtt_callback_list = rtt_callback_map_iter->second;
+
+	// Register for death notification before we add it to our list.
+	return registerForDeathAndAddCallbackAidlObjectToList<CallbackType>(
+		death_notifier, callback, rtt_callback_list);
+}
+
+template <class CallbackType>
 int removeAllIfaceCallbackAidlObjectsFromMap(
 	AIBinder_DeathRecipient* death_notifier,
 	const std::string &ifname,
@@ -218,6 +238,31 @@ int removeAllNetworkCallbackAidlObjectsFromMap(
 		}
 	}
 	callbacks_map.erase(network_callback_map_iter);
+	return 0;
+}
+
+template <class CallbackType>
+int removeAllWifiRttControllerEventCallbackAidlObjectsFromMap(
+	AIBinder_DeathRecipient* death_notifier,
+	const std::string &ifname,
+	std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
+	&callbacks_map)
+{
+	auto rtt_callback_map_iter = callbacks_map.find(ifname);
+	if (rtt_callback_map_iter == callbacks_map.end())
+		return 1;
+	const auto &rtt_callback_list = rtt_callback_map_iter->second;
+	for (const auto &callback : rtt_callback_list) {
+		binder_status_t status = AIBinder_linkToDeath(callback->asBinder().get(),
+				death_notifier, nullptr /* cookie */);
+		if (status != STATUS_OK) {
+			wpa_printf(
+				MSG_ERROR,
+				"Error deregistering for death notification for "
+				"rtt callback object");
+		}
+	}
+	callbacks_map.erase(rtt_callback_map_iter);
 	return 0;
 }
 
@@ -313,6 +358,28 @@ void callWithEachNetworkCallback(
 			wpa_printf(
 				MSG_ERROR,
 				"Failed to invoke AIDL network callback");
+		}
+	}
+}
+
+template <class CallbackType>
+void callWithEachWifiRttControllerCallback(
+	const std::string &ifname,
+	const std::function<ndk::ScopedAStatus(std::shared_ptr<CallbackType>)> &method,
+	const std::map<const std::string, std::vector<std::shared_ptr<CallbackType>>>
+	&callbacks_map)
+{
+	if (ifname.empty())
+		return;
+
+	auto rtt_callback_map_iter = callbacks_map.find(ifname);
+	if (rtt_callback_map_iter == callbacks_map.end())
+		return;
+	const auto &rtt_callback_list = rtt_callback_map_iter->second;
+	for (const auto &callback : rtt_callback_list) {
+		if (!method(callback).isOk()) {
+			wpa_printf(
+				MSG_ERROR, "Failed to invoke AIDL Rtt callback");
 		}
 	}
 }
@@ -523,6 +590,10 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		}
 		sta_iface_callbacks_map_[wpa_s->ifname] =
 			std::vector<std::shared_ptr<ISupplicantStaIfaceCallback>>();
+		if (areAidlServiceAndClientAtLeastVersion(5)) {
+			wifi_rtt_controller_callbacks_map_[wpa_s->ifname] =
+			    std::vector<std::shared_ptr<ISupplicantWifiRttControllerEventCallback>>();
+		}
 		// Turn on Android specific customizations for STA interfaces
 		// here!
 		//
@@ -550,6 +621,33 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 	return 0;
 }
 
+bool AidlManager::removeWifiRttControllerIfRegistered(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s) {
+		return 1;
+	}
+	if (!areAidlServiceAndClientAtLeastVersion(5)) {
+		return 1;
+	}
+	// Remove the RTT controller object and unregister its event callback,
+	// if they were previously created and registered via |ISupplicant.createRttController| and
+	// |ISupplicantWifiRttController|ISupplicant.registerEventCallback|
+	bool is_object_removed = removeAidlObjectFromMap(wpa_s->ifname, wifi_rtt_controller_object_map_);
+	if (!is_object_removed) {
+		wpa_printf(
+			MSG_INFO,
+			"Removed RTT controller object from AIDL "
+			"interface: %s",
+			wpa_s->ifname);
+		is_object_removed = removeAllWifiRttControllerEventCallbackAidlObjectsFromMap(
+			death_notifier_, wpa_s->ifname, wifi_rtt_controller_callbacks_map_);
+		wpa_printf(MSG_INFO, "removeWifiRttControllerEventCallbackAidlObject: %s on interface: %s",
+			is_object_removed == 0 ? "succeeded" : "failed",
+			wpa_s->ifname);
+	}
+	return is_object_removed;
+}
+
 /**
  * Unregister an interface from aidl manager.
  *
@@ -562,13 +660,13 @@ int AidlManager::unregisterInterface(struct wpa_supplicant *wpa_s)
 	if (!wpa_s)
 		return 1;
 
+	bool success = removeWifiRttControllerIfRegistered(wpa_s);
 	// Check if this interface is present in P2P map first, else check in
 	// STA map.
 	// Note: We can't use isP2pIface() here because interface
 	// pointers (wpa_s->global->p2p_init_wpa_s == wpa_s) used by the helper
 	// function is cleared by the core before notifying the AIDL interface.
-	bool success =
-		!removeAidlObjectFromMap(wpa_s->ifname, p2p_iface_object_map_);
+	success = !removeAidlObjectFromMap(wpa_s->ifname, p2p_iface_object_map_);
 	if (success) {  // assumed to be P2P
 		success = !removeAllIfaceCallbackAidlObjectsFromMap(
 			death_notifier_, wpa_s->ifname, p2p_iface_callbacks_map_);
@@ -2627,6 +2725,71 @@ int AidlManager::registerNonStandardCertCallbackAidlObject(
 }
 
 /**
+ * Add a new rtt controller event callback aidl object reference to the
+ * rtt controller callback list.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param callback Aidl reference of the callback object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::addWifiRttControllerEventCallbackAidlObject(
+	const std::string &ifname,
+	const std::shared_ptr<ISupplicantWifiRttControllerEventCallback>
+		&callback)
+{
+	bool success = addWifiRttControllerEventCallbackAidlObjectToMap(
+		death_notifier_, ifname, callback, wifi_rtt_controller_callbacks_map_);
+	wpa_printf(MSG_INFO, "addWifiRttControllerEventCallbackAidlObject: %s on interface: %s",
+			success == 0 ? "succeeded" : "failed",
+			ifname.c_str());
+	return success;
+
+}
+
+/**
+ * Creates a new Wifi RTT controller AIDL object for the given interface, or
+ * retrieves the existing one.
+ *
+ * @param ifname Name of the interface.
+ * @param rtt_controller_object Aidl reference of the rtt controller object.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::createOrGetWifiRttControllerAidlObject(
+	const std::string &ifname,
+	std::shared_ptr<ISupplicantWifiRttController> *rtt_controller_object)
+{
+	const auto &rtt_controller_iter =
+		wifi_rtt_controller_object_map_.find(ifname);
+	if (rtt_controller_iter != wifi_rtt_controller_object_map_.end()) {
+		*rtt_controller_object = rtt_controller_iter->second;
+		return 0;
+	}
+	struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(
+		wpa_global_, ifname.c_str());
+	if (!wpa_s)
+		return 1;
+	std::shared_ptr<SupplicantWifiRttController> rtt_controller =
+	    SupplicantWifiRttController::create(wpa_global_, ifname.c_str());
+	if (addAidlObjectToMap<SupplicantWifiRttController>(
+		ifname, rtt_controller, wifi_rtt_controller_object_map_)) {
+		wpa_printf(
+			MSG_ERROR,
+			"Failed to register RTT controller with AIDL "
+			"control: %s",
+			ifname.c_str());
+		return 1;
+	}
+	wpa_printf(MSG_INFO,
+		"Added RTT controller object to AIDL "
+		"interface: %s",
+		wpa_s->ifname);
+	*rtt_controller_object = rtt_controller;
+	return 0;
+}
+
+/**
  * Add a new iface callback aidl object reference to our
  * interface callback list.
  *
@@ -2846,6 +3009,23 @@ void AidlManager::callWithEachStaNetworkCallback(
 {
 	callWithEachNetworkCallback(
 		ifname, network_id, method, sta_network_callbacks_map_);
+}
+
+/**
+ * Helper function to invoke the provided callback method on all the
+ * registered rtt callback aidl objects for the specified
+ * |ifname|.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @param method Pointer to the required aidl method from
+ * |ISupplicantIfaceCallback|.
+ */
+void AidlManager::callWithEachWifiRttControllerEventCallback(
+	const std::string &ifname,
+	const std::function<ndk::ScopedAStatus(std::shared_ptr<ISupplicantWifiRttControllerEventCallback>)>
+	&method)
+{
+	callWithEachWifiRttControllerCallback(ifname, method, wifi_rtt_controller_callbacks_map_);
 }
 
 void AidlManager::notifyQosPolicyReset(

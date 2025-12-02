@@ -15,6 +15,7 @@
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantP2pIfaceCallback.h>
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantStaIfaceCallback.h>
 #include <aidl/android/hardware/wifi/supplicant/ISupplicantStaNetworkCallback.h>
+#include <aidl/android/hardware/wifi/supplicant/ISupplicantWifiRttControllerEventCallback.h>
 
 #include "certificate_utils.h"
 #include "p2p_iface.h"
@@ -23,6 +24,7 @@
 #include "sta_iface.h"
 #include "sta_network.h"
 #include "supplicant.h"
+#include "supplicant_wifi_rtt_controller.h"
 
 #ifdef MAINLINE_SUPPLICANT
 #include "mainline_supplicant.h"
@@ -207,6 +209,7 @@ public:
 	void notifyExtRadioWorkStart(struct wpa_supplicant *wpa_s, uint32_t id);
 	void notifyExtRadioWorkTimeout(
 		struct wpa_supplicant *wpa_s, uint32_t id);
+	bool removeWifiRttControllerIfRegistered(struct wpa_supplicant *wpa_s);
 
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
@@ -233,6 +236,13 @@ public:
 		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
+	int createOrGetWifiRttControllerAidlObject(
+		const std::string &ifname,
+		std::shared_ptr<ISupplicantWifiRttController> *rtt_controller_object);
+	int addWifiRttControllerEventCallbackAidlObject(
+		const std::string &ifname,
+		const std::shared_ptr<ISupplicantWifiRttControllerEventCallback>
+			&callback);
 
 private:
 	AidlManager() = default;
@@ -269,6 +279,10 @@ private:
 		const std::string &ifname, int network_id,
 		const std::function<::ndk::ScopedAStatus(
 		std::shared_ptr<ISupplicantStaNetworkCallback>)> &method);
+	void callWithEachWifiRttControllerEventCallback(
+		const std::string &ifname,
+		const std::function<::ndk::ScopedAStatus(
+		std::shared_ptr<ISupplicantWifiRttControllerEventCallback>)> &method);
 
 	// Singleton instance of this class.
 	static AidlManager *instance_;
@@ -296,6 +310,11 @@ private:
 	// |ifname| & |network_id|.
 	std::map<const std::string, std::shared_ptr<StaNetwork>>
 		sta_network_object_map_;
+	// Map of all the WifiRttController specific aidl objects controlled by
+	// wpa_supplicant. This map is keyed in by the corresponding
+	// |ifname|.
+	std::map<const std::string, std::shared_ptr<SupplicantWifiRttController>>
+		wifi_rtt_controller_object_map_;
 
 	// Callbacks registered for the main aidl service object.
 	std::vector<std::shared_ptr<ISupplicantCallback>> supplicant_callbacks_;
@@ -322,6 +341,13 @@ private:
 		sta_network_callbacks_map_;
 	// NonStandardCertCallback registered by the client.
 	std::shared_ptr<INonStandardCertCallback> non_standard_cert_callback_;
+	// Map of all the callbacks registered for RTT Controller specific
+	// aidl objects controlled by wpa_supplicant. This map is keyed in by
+	// the corresponding |ifname|.
+	std::map<
+		const std::string,
+		std::vector<std::shared_ptr<ISupplicantWifiRttControllerEventCallback>>>
+		wifi_rtt_controller_callbacks_map_;
 };
 
 // The aidl interface uses some values which are the same as internal ones to
