@@ -1014,6 +1014,9 @@ ChannelBandwidth getChannelBandwidth(struct hostapd_config *iconf)
 	case CONF_OPER_CHWIDTH_160MHZ:
 		return ChannelBandwidth::BANDWIDTH_160;
 		break;
+	case CONF_OPER_CHWIDTH_320MHZ:
+		return ChannelBandwidth::BANDWIDTH_320;
+		break;
 	case CONF_OPER_CHWIDTH_USE_HT:
 		if (iconf->ieee80211n) {
 			return iconf->secondary_channel != 0 ?
