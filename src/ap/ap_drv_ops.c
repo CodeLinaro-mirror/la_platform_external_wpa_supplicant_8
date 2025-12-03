@@ -899,7 +899,9 @@ static void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 					     int **freq_list)
 {
 	int i;
+	bool allow_6g_acs = true;
 
+	allow_6g_acs = hostapd_config_check_bss_6g(hapd->conf);
 	for (i = 0; i < mode->num_channels; i++) {
 		struct hostapd_channel_data *chan = &mode->channels[i];
 
@@ -915,6 +917,8 @@ static void hostapd_get_hw_mode_any_channels(struct hostapd_data *hapd,
 		     !freq_range_list_includes(
 			     &hapd->iface->conf->acs_ch_list,
 			     chan->chan)))
+			continue;
+		if (is_6ghz_freq(chan->freq) && !allow_6g_acs)
 			continue;
 		if (is_6ghz_freq(chan->freq) &&
 		    ((hapd->iface->conf->acs_exclude_6ghz_non_psc &&
