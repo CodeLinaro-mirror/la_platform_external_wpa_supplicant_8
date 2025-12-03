@@ -431,10 +431,34 @@ int32_t AidlManager::areAidlServiceAndClientAtLeastVersion(int32_t expected_vers
 		&& isAidlClientVersionAtLeast(expected_version);
 }
 
+#ifdef MAINLINE_SUPPLICANT
+
+int AidlManager::registerAidlService(struct wpa_global *global)
+{
+    wpa_printf(MSG_INFO, "Registering the mainline supplicant as a lazy service");
+    std::string service_name = "wifi_mainline_supplicant";
+    std::shared_ptr<MainlineSupplicant> service
+		= ndk::SharedRefBase::make<MainlineSupplicant>(global);
+    if (__builtin_available(android __ANDROID_API_V__, *)) {
+        int status =
+            AServiceManager_registerLazyService(service->asBinder().get(), service_name.c_str());
+        if (status != EX_NONE) {
+            wpa_printf(MSG_ERROR, "Registration failed with status %d", status);
+            return 1;
+        }
+        // Initialize the death notifier.
+	    death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
+        return 0;
+    }
+    return 1;
+}
+
+#else
+
 int AidlManager::registerAidlService(struct wpa_global *global)
 {
 	// Create the main aidl service object and register it.
-	wpa_printf(MSG_INFO, "Starting AIDL supplicant");
+	wpa_printf(MSG_INFO, "Registering the vendor AIDL supplicant");
 	supplicant_object_ = ndk::SharedRefBase::make<Supplicant>(global);
 	if (!supplicant_object_->getInterfaceVersion(&aidl_service_version).isOk()) {
 		aidl_service_version = Supplicant::version;
@@ -452,6 +476,8 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 	death_notifier_ = AIBinder_DeathRecipient_new(onDeath);
 	return 0;
 }
+
+#endif
 
 /**
  * Register an interface to aidl manager.
