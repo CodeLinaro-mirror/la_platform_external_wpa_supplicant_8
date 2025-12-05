@@ -1005,18 +1005,31 @@ ChannelBandwidth getChannelBandwidth(struct hostapd_config *iconf)
 	wpa_printf(MSG_DEBUG, "getChannelBandwidth %d, isHT=%d, isHT40=%d",
 		   iconf->vht_oper_chwidth, iconf->ieee80211n,
 		   iconf->secondary_channel);
-	switch (iconf->vht_oper_chwidth) {
+
+	enum oper_chan_width chanwidth = iconf->vht_oper_chwidth;
+#ifdef CONFIG_IEEE80211AX
+	if (iconf->ieee80211ax) {
+		chanwidth = iconf->he_oper_chwidth;
+		wpa_printf(MSG_DEBUG, "getChannelBandwidth, he_oper_chwidth = %d",
+			iconf->he_oper_chwidth);
+	}
+#endif /* CONFIG_IEEE80211AX */
+#ifdef CONFIG_IEEE80211BE
+	if (iconf->ieee80211be) {
+		chanwidth = iconf->eht_oper_chwidth;
+        wpa_printf(MSG_DEBUG, "getChannelBandwidth, eht_oper_chwidth = %d",
+			iconf->eht_oper_chwidth);
+	}
+#endif
+	switch (chanwidth) {
 	case CONF_OPER_CHWIDTH_80MHZ:
 		return ChannelBandwidth::BANDWIDTH_80;
 	case CONF_OPER_CHWIDTH_80P80MHZ:
 		return ChannelBandwidth::BANDWIDTH_80P80;
-		break;
 	case CONF_OPER_CHWIDTH_160MHZ:
 		return ChannelBandwidth::BANDWIDTH_160;
-		break;
 	case CONF_OPER_CHWIDTH_320MHZ:
 		return ChannelBandwidth::BANDWIDTH_320;
-		break;
 	case CONF_OPER_CHWIDTH_USE_HT:
 		if (iconf->ieee80211n) {
 			return iconf->secondary_channel != 0 ?

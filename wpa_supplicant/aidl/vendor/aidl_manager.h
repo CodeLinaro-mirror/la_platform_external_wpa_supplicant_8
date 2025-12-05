@@ -28,6 +28,7 @@
 
 #ifdef MAINLINE_SUPPLICANT
 #include "mainline_supplicant.h"
+#include "nan_iface.h"
 #endif
 
 extern "C"
@@ -37,6 +38,11 @@ extern "C"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 }
+
+#ifdef MAINLINE_SUPPLICANT
+using aidl::android::system::wifi::mainline_supplicant::NanCapabilities;
+using aidl::android::system::wifi::mainline_supplicant::NanStatus;
+#endif
 
 namespace aidl {
 namespace android {
@@ -184,21 +190,6 @@ public:
 			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
 	void notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s,
 			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
-	void notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
-			enum nan_service_protocol_type srv_proto_type,
-			int subscribe_id, int peer_publish_id, const u8 *peer_addr,
-			bool fsd, const u8 *ssi, size_t ssi_len);
-	void notifyUsdPublishReplied(struct wpa_supplicant *wpa_s,
-			enum nan_service_protocol_type srv_proto_type,
-			int publish_id, int peer_subscribe_id,
-			const u8 *peer_addr, const u8 *ssi, size_t ssi_len);
-	void notifyUsdMessageReceived(struct wpa_supplicant *wpa_s, int id,
-			int peer_instance_id, const u8 *peer_addr,
-			const u8 *message, size_t message_len);
-	void notifyUsdPublishTerminated(struct wpa_supplicant *wpa_s,
-			int publish_id, enum nan_de_reason reason);
-	void notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
-			int subscribe_id, enum nan_de_reason reason);
 	void notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
 			u16 auth_type, u16 auth_transaction, u16 status_code);
 
@@ -210,6 +201,65 @@ public:
 	void notifyExtRadioWorkTimeout(
 		struct wpa_supplicant *wpa_s, uint32_t id);
 	bool removeWifiRttControllerIfRegistered(struct wpa_supplicant *wpa_s);
+	void notifyNanServiceDiscovered(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+		bool fsd, const u8 *ssi, size_t ssi_len);
+	void notifyNanPublishReplied(struct wpa_supplicant *wpa_s,
+		enum nan_service_protocol_type srv_proto_type,
+		int publish_id, int peer_subscribe_id,
+		const u8 *peer_addr, const u8 *ssi, size_t ssi_len);
+	void notifyNanMessageReceived(struct wpa_supplicant *wpa_s, int id,
+		int peer_instance_id, const u8 *peer_addr,
+		const u8 *message, size_t message_len);
+	void notifyNanPublishTerminated(struct wpa_supplicant *wpa_s,
+		int publish_id, enum nan_de_reason reason);
+	void notifyNanSubscribeTerminated(struct wpa_supplicant *wpa_s,
+		int subscribe_id, enum nan_de_reason reason);
+	void notifyNanClusterEvent(struct wpa_supplicant *wpa_s,
+		u8 event_type, const u8 *peer_addr);
+	void notifyNanMatchExpired(struct wpa_supplicant *wpa_s,
+		int subscribe_id, int peer_publish_id);
+	void notifyNanTransmitFollowup(struct wpa_supplicant *wpa_s,
+		int cmd_id, u8 status_code);
+#ifdef MAINLINE_SUPPLICANT
+	void notifyNanCapabilitiesResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const NanCapabilities capabilities);
+	void notifyNanConfigResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanCreateDataInterfaceResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanDeleteDataInterfaceResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanEnableResponse(const std::string iface_name, const char16_t id,
+		const NanStatus status);
+	void notifyNanDisableResponse(const std::string iface_name, const char16_t id,
+		const NanStatus status);
+	void notifyNanStartPublishResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t session_id);
+	void notifyNanStartSubscribeResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t session_id);
+	void notifyNanStopPublishResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanStopSubscribeResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanTransmitFollowupResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanInitiateBootstrappingResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t bootstrapping_id);
+	void notifyNanRespondToBootstrappingIndicationResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanInitiatePairingResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t pairing_id);
+	void notifyNanRespondToPairingIndicationResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanTerminatePairingResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+	void notifyNanInitiateDataPathResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status, const int8_t ndp_id);
+	void notifyNanRespondToDataPathIndicationResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
+#endif /* MAINLINE_SUPPLICANT */
 
 	int getP2pIfaceAidlObjectByIfname(
 		const std::string &ifname,
@@ -234,6 +284,11 @@ public:
 	int addStaNetworkCallbackAidlObject(
 		const std::string &ifname, int network_id,
 		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
+#ifdef MAINLINE_SUPPLICANT
+	int addNanIfaceCallbackAidlObject(
+		const std::string &ifname,
+		const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback);
+#endif
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
 	int createOrGetWifiRttControllerAidlObject(
@@ -263,7 +318,6 @@ private:
 	void removeStaNetworkCallbackAidlObject(
 		const std::string &ifname, int network_id,
 		const std::shared_ptr<ISupplicantStaNetworkCallback> &callback);
-
 	void callWithEachSupplicantCallback(
 		const std::function<ndk::ScopedAStatus(
 		std::shared_ptr<ISupplicantCallback>)> &method);
@@ -283,6 +337,12 @@ private:
 		const std::string &ifname,
 		const std::function<::ndk::ScopedAStatus(
 		std::shared_ptr<ISupplicantWifiRttControllerEventCallback>)> &method);
+#ifdef MAINLINE_SUPPLICANT
+	void callWithEachNanIfaceCallback(
+		const std::string &ifname,
+		const std::function<ndk::ScopedAStatus(
+		std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>)> &method);
+#endif
 
 	// Singleton instance of this class.
 	static AidlManager *instance_;
@@ -315,6 +375,13 @@ private:
 	// |ifname|.
 	std::map<const std::string, std::shared_ptr<SupplicantWifiRttController>>
 		wifi_rtt_controller_object_map_;
+#ifdef MAINLINE_SUPPLICANT
+	// Map of all the NAN interface specific aidl objects controlled by
+	// wpa_supplicant. This map is keyed in by the corresponding
+	// |ifname|.
+	std::map<const std::string, std::shared_ptr<NanIface>>
+		nan_iface_object_map_;
+#endif
 
 	// Callbacks registered for the main aidl service object.
 	std::vector<std::shared_ptr<ISupplicantCallback>> supplicant_callbacks_;
@@ -348,6 +415,15 @@ private:
 		const std::string,
 		std::vector<std::shared_ptr<ISupplicantWifiRttControllerEventCallback>>>
 		wifi_rtt_controller_callbacks_map_;
+#ifdef MAINLINE_SUPPLICANT
+	// Map of all the callbacks registered for NAN interface specific
+	// aidl objects controlled by wpa_supplicant. This map is keyed in by
+	// the corresponding |ifname|.
+	std::map<
+		const std::string,
+		std::vector<std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback>>>
+		nan_iface_callbacks_map_;
+#endif
 };
 
 // The aidl interface uses some values which are the same as internal ones to
