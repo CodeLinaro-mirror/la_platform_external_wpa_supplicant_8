@@ -618,6 +618,13 @@ std::string CreateHostapdConfig(
 #ifdef CONFIG_IEEE80211BE
 	if (iface_params.hwModeParams.enable80211BE && !is_60Ghz_used) {
 		eht_params_as_string = "ieee80211be=1\n";
+
+		// Enable EHT beamforming by default - driver will mask unsupported capabilities
+		eht_params_as_string +=
+			"eht_su_beamformer=1\n"
+			"eht_su_beamformee=1\n"
+			"eht_mu_beamformer=1\n";
+
 		if (areAidlServiceAndClientAtLeastVersion(2)) {
 			std::string interface_mac_addr = getInterfaceMacAddress(
 					iface_params.usesMlo ? br_name : iface_params.name);
@@ -638,7 +645,6 @@ std::string CreateHostapdConfig(
 					interface_mac_addr.c_str());
             }
 		}
-		/* TODO set eht_su_beamformer, eht_su_beamformee, eht_mu_beamformer */
 	} else {
 		eht_params_as_string = "ieee80211be=0";
 	}
