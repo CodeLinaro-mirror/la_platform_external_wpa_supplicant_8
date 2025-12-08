@@ -325,7 +325,7 @@ bool NanIface::isValid()
 		}
 
 		ret |= setNanConfigParam(
-			wpa_s, "cluster_id %s", MAC2STR(request.clusterId));
+			wpa_s, "cluster_id " MACSTR, MAC2STR(request.clusterId));
 		if (ret != 0) {
 			aidl_manager->notifyNanConfigResponse(
 				ifname, cmdId, nan_status);
@@ -393,7 +393,7 @@ bool NanIface::isValid()
 			}
 		}
 		ret |= setNanConfigParam(
-			wpa_s, "cluster_id %s", MAC2STR(msg2.clusterId));
+			wpa_s, "cluster_id " MACSTR, MAC2STR(msg2.clusterId));
 
 		if (ret != 0) {
 			aidl_manager->notifyNanEnableResponse(
