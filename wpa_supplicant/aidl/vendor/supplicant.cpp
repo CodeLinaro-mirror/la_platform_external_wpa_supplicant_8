@@ -25,11 +25,6 @@ namespace {
 // When wpa_supplicant is in its APEX, overlay/template configurations should be
 // loaded from the same APEX.
 #ifdef MAINLINE_SUPPLICANT
-// Default paths. The user-specific paths will be updated in #setCurrentUserIdentityInternal.
-constexpr char kStaIfaceConfPath[] =
-	"/data/misc_ce/0/apexdata/com.android.wifi/mainline_supplicant/wpa/wpa_supplicant_mainline.conf";
-constexpr char kP2pIfaceConfPath[] =
-	"/data/misc_ce/0/apexdata/com.android.wifi/mainline_supplicant/wpa/p2p_supplicant_mainline.conf";
 // Template conf path.
 constexpr char kSystemTemplateConfPath[] =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
@@ -441,33 +436,24 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 	struct wpa_interface iface_params = {};
 	iface_params.driver = kIfaceDriverName;
 #ifdef MAINLINE_SUPPLICANT
-	bool configFileExists = ensureMainlineSupplicantConfigFileExists(kP2pIfaceConfPath) == 0;
+	if (kUserP2pIfaceConfPath.empty()) {
+		return {nullptr, createStatusWithMsg(
+			SupplicantStatusCode::FAILURE_UNKNOWN, "Missing user Id for User Conf file")};
+	}
+	bool configFileExists = ensureMainlineSupplicantConfigFileExists(kUserP2pIfaceConfPath) == 0;
 	std::string overlay_path = kP2pIfaceConfOverlayPath;
+	iface_params.confname = kUserP2pIfaceConfPath.c_str();
 #else
 	bool configFileExists = ensureConfigFileExists(kP2pIfaceConfPath, kOldP2pIfaceConfPath) == 0;
 	std::string overlay_path = resolveVendorConfPath(kP2pIfaceConfOverlayPath);
+	iface_params.confname = kP2pIfaceConfPath;
 #endif
 	if (!configFileExists) {
 		wpa_printf(
 			MSG_ERROR, "Conf file does not exist: %s",
-			kP2pIfaceConfPath);
+			iface_params.confname);
 		return {nullptr, createStatusWithMsg(
 			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
-	}
-	if (!kUserP2pIfaceConfPath.empty()) {
-		wpa_printf(MSG_INFO, "User Conf file is configured: %s",
-			kUserP2pIfaceConfPath.c_str());
-		if (ensureConfigFileExists(
-			kUserP2pIfaceConfPath, kP2pIfaceConfPath) != 0) {
-			wpa_printf(
-				MSG_ERROR, "Conf file does not exists: %s",
-				kUserP2pIfaceConfPath.c_str());
-			return {nullptr, createStatusWithMsg(
-				SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
-		}
-		iface_params.confname = kUserP2pIfaceConfPath.c_str();
-	} else {
-		iface_params.confname = kP2pIfaceConfPath;
 	}
 	int ret = access(overlay_path.c_str(), R_OK);
 	if (ret == 0) {
@@ -519,38 +505,25 @@ Supplicant::addStaInterfaceInternal(const std::string& name)
 	struct wpa_interface iface_params = {};
 	iface_params.driver = kIfaceDriverName;
 #ifdef MAINLINE_SUPPLICANT
-	bool configFileExists = ensureMainlineSupplicantConfigFileExists(kStaIfaceConfPath) == 0;
+	if (kUserStaIfaceConfPath.empty()) {
+		return {nullptr, createStatusWithMsg(
+		SupplicantStatusCode::FAILURE_UNKNOWN, "Missing user Id for User Conf file")};
+	}
+	bool configFileExists = ensureMainlineSupplicantConfigFileExists(kUserStaIfaceConfPath) == 0;
 	std::string overlay_path = kStaIfaceConfOverlayPath;
+	iface_params.confname = kUserStaIfaceConfPath.c_str();
 #else
 	bool configFileExists = ensureConfigFileExists(kStaIfaceConfPath, kOldStaIfaceConfPath) == 0;
 	std::string overlay_path = resolveVendorConfPath(kStaIfaceConfOverlayPath);
+	iface_params.confname = kStaIfaceConfPath;
 #endif
 	if (!configFileExists) {
 		wpa_printf(
 			MSG_ERROR, "Conf file does not exist: %s",
-			kStaIfaceConfPath);
+			iface_params.confname);
 		return {nullptr, createStatusWithMsg(
-			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
+		SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
 	}
-#ifdef MAINLINE_SUPPLICANT
-	if (!kUserStaIfaceConfPath.empty()) {
-		wpa_printf(MSG_INFO, "User Conf file is configured: %s",
-			kUserStaIfaceConfPath.c_str());
-		if (ensureConfigFileExists(
-			kUserStaIfaceConfPath, kStaIfaceConfPath) != 0) {
-			wpa_printf(MSG_ERROR, "Conf file does not exists: %s",
-				kUserStaIfaceConfPath.c_str());
-			return {nullptr, createStatusWithMsg(
-			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
-		}
-		iface_params.confname = kUserStaIfaceConfPath.c_str();
-	} else {
-		iface_params.confname = kStaIfaceConfPath;
-	}
-#else
-	iface_params.confname = kStaIfaceConfPath;
-#endif
-
 	int ret = access(overlay_path.c_str(), R_OK);
 	if (ret == 0) {
 		iface_params.confanother = overlay_path.c_str();
