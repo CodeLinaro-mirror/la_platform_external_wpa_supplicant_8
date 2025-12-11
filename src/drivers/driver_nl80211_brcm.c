@@ -14,7 +14,9 @@
 #include "common.h"
 #include "linux_ioctl.h"
 #include "driver_nl80211.h"
-#include "../../wpa_supplicant/wpa_supplicant_i.h"
+#ifndef HOSTAPD
+#include "wpa_supplicant_i.h"
+#endif /* HOSTAPD */
 #include "config.h"
 #ifdef ANDROID
 #include "android_drv.h"
@@ -71,6 +73,7 @@ static int wpa_driver_nl80211_driver_cmd_brcm(void *priv, char *cmd, char *buf,
 	android_wifi_priv_cmd priv_cmd;
 	int ret = 0;
 
+#ifndef HOSTAPD
 	if (bss->ifindex <= 0 && bss->wdev_id > 0) {
 		/* DRIVER CMD received on the DEDICATED P2P Interface which doesn't
 		 * have an NETDEVICE associated with it. So we have to re-route the
@@ -87,6 +90,7 @@ static int wpa_driver_nl80211_driver_cmd_brcm(void *priv, char *cmd, char *buf,
 					      " cmd (%s)", bss->ifname, cmd);
 		}
 	}
+#endif /* HOSTAPD */
 
 	if (os_strcasecmp(cmd, "STOP") == 0) {
 		linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 0);
