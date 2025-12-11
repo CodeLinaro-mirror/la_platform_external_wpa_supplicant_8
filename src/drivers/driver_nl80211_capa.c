@@ -1334,17 +1334,12 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 	if (info->update_ft_ies_supported)
 		drv->capa.flags |= WPA_DRIVER_FLAGS_UPDATE_FT_IES;
 
-	if (!drv->capa.max_num_akms) {
-#ifndef MAINLINE_SUPPLICANT
+	if (!drv->capa.max_num_akms)
 #if defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)
 		drv->capa.max_num_akms = 1;
 #else
 		drv->capa.max_num_akms = NL80211_MAX_NR_AKM_SUITES;
 #endif /* CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM */
-#else
-		drv->capa.max_num_akms = NL80211_MAX_NR_AKM_SUITES;
-#endif /* MAINLINE_SUPPLICANT */
-	}
 
 	return 0;
 }
