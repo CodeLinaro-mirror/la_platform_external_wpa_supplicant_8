@@ -3592,7 +3592,7 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 	return num_suites;
 }
 
-
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) ||   \
 	defined(CONFIG_DRIVER_NL80211_SYNA)
 static int wpa_cross_akm_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
@@ -3612,6 +3612,7 @@ static int wpa_cross_akm_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 su
 }
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) ||
 	* CONFIG_DRIVER_NL80211_SYNA */
+#endif /* MAINLINE_SUPPLICANT */
 
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
@@ -7341,10 +7342,10 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		os_free(mgmt);
 	}
 
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) ||   \
 	defined(CONFIG_DRIVER_NL80211_SYNA)
-	if (drv->chip_vendor_id == OUI_BRCM
-	    && IS_CROSS_AKM_ROAM_KEY_MGMT(params->key_mgmt_suite)) {
+	if (IS_CROSS_AKM_ROAM_KEY_MGMT(params->key_mgmt_suite)) {
 		int num_suites;
 		u32 suites[NL80211_MAX_NR_AKM_SUITES];
 
@@ -7360,6 +7361,7 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	}
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) ||
 	* CONFIG_DRIVER_NL80211_SYNA */
+#endif /* MAINLINE_SUPPLICANT */
 	if (params->req_handshake_offload &&
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)) {
 		    wpa_printf(MSG_DEBUG, "  * WANT_1X_4WAY_HS");
