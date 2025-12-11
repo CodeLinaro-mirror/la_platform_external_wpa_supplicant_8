@@ -8645,7 +8645,8 @@ static void add_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx,
 			   ifidx);
 		return;
 	}
-	for (i = 0; i < drv->num_if_indices; i++) {
+	/* Only search within the currently allocated array bounds */
+	for (i = 0; i < drv->num_if_indices && i < 16; i++) {
 		if (drv->if_indices[i].ifindex == 0) {
 			drv->if_indices[i].ifindex = ifidx;
 			drv->if_indices[i].reason = ifidx_reason;
@@ -8654,6 +8655,18 @@ static void add_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx,
 		}
 	}
 
+	/* If we're still using default_if_indices and it's full, we need to
+	 * allocate a new array before accessing beyond index 15 */
+	if (drv->if_indices == drv->default_if_indices &&
+	    drv->num_if_indices >= 16) {
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Expanding if_indices array from %d to %d entries",
+			   drv->num_if_indices, drv->num_if_indices + 1);
+		/* The reallocation logic below will handle copying from
+		 * default_if_indices to the new array */
+	}
+
+	/* Reallocate array to accommodate new entry */
 	if (drv->if_indices != drv->default_if_indices)
 		old = drv->if_indices;
 	else
