@@ -781,7 +781,7 @@ static void nl80211_parse_mlo_info(struct wpa_driver_nl80211_data *drv,
 	if (!qca_roam_auth)
 		nl80211_parse_mlo_link_info(mlo, mlo_links);
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (drv->chip_vendor_id == OUI_QCA && qca_roam_auth)
+	if (qca_roam_auth)
 		nl80211_parse_qca_vendor_mlo_link_info(mlo, mlo_links);
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
@@ -1050,7 +1050,7 @@ static void mlme_event_connect(struct wpa_driver_nl80211_data *drv,
 				nla_get_u16(fils_erp_next_seq_num);
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-		if (drv->chip_vendor_id == OUI_QCA && drv->get_sta_info_vendor_cmd_avail) {
+		if (drv->get_sta_info_vendor_cmd_avail) {
 			enum qca_sta_connect_fail_reason_codes reason_code;
 
 			reason_code = drv_get_connect_fail_reason_code(drv);
@@ -1159,7 +1159,7 @@ static void mlme_event_connect(struct wpa_driver_nl80211_data *drv,
 	drv->sta_mlo_info.default_map = true;
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (drv->chip_vendor_id == OUI_QCA && drv->pending_t2lm_data)
+	if (drv->pending_t2lm_data)
 		qca_nl80211_tid_to_link_map_event(drv, drv->pending_t2lm_data,
 						  drv->pending_t2lm_data_len);
 	else
@@ -4183,7 +4183,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		   cmd, nl80211_command_to_string(cmd), bss->ifname);
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (drv->chip_vendor_id == OUI_QCA && cmd == NL80211_CMD_ROAM &&
+	if (cmd == NL80211_CMD_ROAM &&
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD)) {
 		if (drv->pending_roam_data) {
 			wpa_printf(MSG_DEBUG,
