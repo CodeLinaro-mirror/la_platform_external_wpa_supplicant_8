@@ -1294,12 +1294,4 @@ static inline int wpa_drv_nan_update_config(struct wpa_supplicant *wpa_s,
 
 #endif /* CONFIG_NAN */
 
-static inline int
-wpas_drv_get_chip_vendor_id(struct wpa_supplicant *wpa_s)
-{
-	if (!wpa_s->driver->get_chip_vendor_id)
-		return 0;
-
-	return wpa_s->driver->get_chip_vendor_id(wpa_s->drv_priv);
-}
 #endif /* DRIVER_I_H */

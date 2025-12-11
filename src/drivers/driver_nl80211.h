@@ -199,8 +199,6 @@ struct wpa_driver_nl80211_data {
 	unsigned int qca_do_acs:1;
 	unsigned int brcm_do_acs:1;
 	unsigned int uses_6ghz:1;
-	unsigned int chip_vendor_id;
-	unsigned int os_vendor_id;
 	unsigned int uses_s1g:1;
 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
 	unsigned int puncturing:1;

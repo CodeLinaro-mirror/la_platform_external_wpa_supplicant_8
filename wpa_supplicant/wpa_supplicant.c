@@ -70,7 +70,6 @@
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
 #endif /* CONFIG_MESH */
-#include "brcm_vendor.h"
 #include "aidl/vendor/aidl.h"
 
 const char *const wpa_supplicant_version =
@@ -2367,20 +2366,14 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) ||   \
 	defined(CONFIG_DRIVER_NL80211_SYNA)
-	if (wpas_drv_get_chip_vendor_id(wpa_s) == OUI_BRCM) {
-		if ((wpa_s->key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) &&
-			IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt) &&
-			(wpa_s->group_cipher == WPA_CIPHER_CCMP) &&
-			(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP) &&
-			(wpa_s->wpa_proto == WPA_PROTO_RSN)) {
-			    wpa_s->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK;
-			wpa_dbg(wpa_s, MSG_INFO,
-				"WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
-		}
-	} else {
-		if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
-		    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
-			wpas_update_allowed_key_mgmt(wpa_s, ssid);
+	if ((wpa_s->key_mgmt & WPA_KEY_MGMT_CROSS_AKM_ROAM) &&
+		IS_CROSS_AKM_ROAM_KEY_MGMT(ssid->key_mgmt) &&
+		(wpa_s->group_cipher == WPA_CIPHER_CCMP) &&
+		(wpa_s->pairwise_cipher == WPA_CIPHER_CCMP) &&
+		(wpa_s->wpa_proto == WPA_PROTO_RSN)) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK;
+		wpa_dbg(wpa_s, MSG_INFO,
+			"WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
 	}
 #else
 	if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&

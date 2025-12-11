@@ -29,7 +29,6 @@
 #include "scan.h"
 #include "notify.h"
 #include "wpas_kay.h"
-#include "brcm_vendor.h"
 
 
 #ifndef CONFIG_NO_CONFIG_BLOBS
@@ -324,19 +323,16 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		ieee802_1x_notify_create_actor(wpa_s, wpa_s->last_eapol_src);
 	}
 
-	if (result != EAPOL_SUPP_RESULT_SUCCESS) {
-		return;
-	}
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-	if (wpas_drv_get_chip_vendor_id(wpa_s) == OUI_BRCM) {
-		if (wpa_ft_is_ft_protocol(wpa_s->wpa)) {
-			return;
-		}
-	} else if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)) {
-		return;
-	}
-#else
-	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)) {
+	if (result != EAPOL_SUPP_RESULT_SUCCESS)                          
+#else                                                                     
+	if (result != EAPOL_SUPP_RESULT_SUCCESS ||                        
+		!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X))  
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+		return;                                                   
+
+#if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
+	if (wpa_ft_is_ft_protocol(wpa_s->wpa)) {
 		return;
 	}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
@@ -1442,7 +1438,7 @@ void wpas_transition_disable(struct wpa_supplicant *wpa_s, u8 bitmap)
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 	/* driver call for transition disable */
-	if (wpas_drv_get_chip_vendor_id(wpa_s) == OUI_BRCM) {
+	{
 		struct wpa_driver_associate_params params;
 
 		os_memset(&params, 0, sizeof(params));
