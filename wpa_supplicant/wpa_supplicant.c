@@ -960,7 +960,6 @@ const char * wpa_supplicant_state_txt(enum wpa_states state)
 }
 
 
-#ifdef CONFIG_BGSCAN
 
 static void wpa_supplicant_stop_bgscan(struct wpa_supplicant *wpa_s)
 {
@@ -1020,7 +1019,7 @@ void wpa_supplicant_reset_bgscan(struct wpa_supplicant *wpa_s)
 		wpa_s->bgscan_ssid = NULL;
 }
 
-#endif /* CONFIG_BGSCAN */
+
 
 
 static void wpa_supplicant_start_autoscan(struct wpa_supplicant *wpa_s)
@@ -1288,12 +1287,12 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		wpas_scs_reconfigure(wpa_s);
 #endif /* CONFIG_NO_ROBUST_AV */
 
-#ifdef CONFIG_BGSCAN
-	if (state == WPA_COMPLETED && wpa_s->current_ssid != wpa_s->bgscan_ssid)
-		wpa_supplicant_reset_bgscan(wpa_s);
-	else if (state < WPA_ASSOCIATED)
-		wpa_supplicant_stop_bgscan(wpa_s);
-#endif /* CONFIG_BGSCAN */
+	if (wpa_s->conf->bgscan_enabled) {
+		if (state == WPA_COMPLETED && wpa_s->current_ssid != wpa_s->bgscan_ssid)
+			wpa_supplicant_reset_bgscan(wpa_s);
+		else if (state < WPA_ASSOCIATED)
+			wpa_supplicant_stop_bgscan(wpa_s);
+	}
 
 	if (state > WPA_SCANNING)
 		wpa_supplicant_stop_autoscan(wpa_s);
@@ -8826,17 +8825,17 @@ void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s)
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_FT_PREPEND_PMKID,
 				 wpa_s->conf->ft_prepend_pmkid);
 
-#ifdef CONFIG_BGSCAN
-	/*
-	 * We default to global bgscan parameters only when per-network bgscan
-	 * parameters aren't set. Only bother resetting bgscan parameters if
-	 * this is the case.
-	 */
-	if ((wpa_s->conf->changed_parameters & CFG_CHANGED_BGSCAN) &&
-	    wpa_s->current_ssid && !wpa_s->current_ssid->bgscan &&
-	    wpa_s->wpa_state == WPA_COMPLETED)
-		wpa_supplicant_reset_bgscan(wpa_s);
-#endif /* CONFIG_BGSCAN */
+	if (wpa_s->conf->bgscan_enabled) {
+		/*
+		 * We default to global bgscan parameters only when per-network bgscan
+		 * parameters aren't set. Only bother resetting bgscan parameters if
+		 * this is the case.
+		 */
+		if ((wpa_s->conf->changed_parameters & CFG_CHANGED_BGSCAN) &&
+		    wpa_s->current_ssid && !wpa_s->current_ssid->bgscan &&
+		    wpa_s->wpa_state == WPA_COMPLETED)
+			wpa_supplicant_reset_bgscan(wpa_s);
+	}
 
 #ifdef CONFIG_WPS
 	wpas_wps_update_config(wpa_s);
