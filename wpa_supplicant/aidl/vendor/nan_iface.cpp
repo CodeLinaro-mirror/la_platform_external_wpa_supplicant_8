@@ -252,7 +252,7 @@ bool NanIface::isValid()
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
-		!aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
+		aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
