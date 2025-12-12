@@ -9270,8 +9270,12 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 
 		drv->global->if_add_wdevid = nonnetdev_info.wdev_id;
 		drv->global->if_add_wdevid_set = nonnetdev_info.wdev_id_set;
-		if (!is_zero_ether_addr(nonnetdev_info.macaddr))
+		if (!is_zero_ether_addr(nonnetdev_info.macaddr)) {
 			os_memcpy(if_addr, nonnetdev_info.macaddr, ETH_ALEN);
+			if (nlmode == NL80211_IFTYPE_P2P_DEVICE) {
+				os_memcpy(drv->global->p2p_perm_addr, nonnetdev_info.macaddr, ETH_ALEN);
+			}
+		}
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: New P2P/NAN Device interface %s (0x%llx) created",
 			   ifname,
