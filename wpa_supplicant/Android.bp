@@ -1551,7 +1551,10 @@ wpa_supplicant_cc_binary {
 
 wpa_supplicant_cc_binary {
     name: "wpa_supplicant_mainline",
-    static_libs: ["libwpa_aidl_mainline"],
+    static_libs: [
+        "libkeystore-engine",
+        "libwpa_aidl_mainline",
+    ],
     shared_libs: [
         // Shared between wpa_supplicant and wpa_supplicant_macsec
         "libc",
@@ -1757,6 +1760,7 @@ cc_library_static {
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
         "android.system.wifi.mainline_supplicant-ndk",
+        "keystore2_use_latest_aidl_ndk_shared",
         "libbase",
         "libbinder_ndk",
         "liblog",
