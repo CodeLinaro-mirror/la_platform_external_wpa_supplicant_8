@@ -475,6 +475,8 @@ filegroup {
         "wpas_glue.c",
         "wpa_supplicant.c",
         "wps_supplicant.c",
+        "bgscan.c",
+        "bgscan_simple.c",
     ],
 }
 
@@ -894,12 +896,6 @@ wpa_supplicant_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["-DCONFIG_IEEE80211BE"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant", "bgscan_simple"), {
-        true: [
-            "-DCONFIG_BGSCAN",
-            "-DCONFIG_BGSCAN_SIMPLE",
-        ],
-        default: [],
     }),
     arch: {
         arm: {
@@ -1232,17 +1228,13 @@ cc_defaults {
         "src/pasn/pasn_initiator.c",
         "src/pasn/pasn_responder.c",
         "src/pasn/pasn_common.c",
+        "bgscan.c",
+        "bgscan_simple.c",
     ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
         true: ["src/ap/ieee802_11_he.c"],
         default: [],
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["src/ap/ieee802_11_eht.c"],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant", "bgscan_simple"), {
-        true: [
-            "bgscan.c",
-            "bgscan_simple.c",
-        ],
         default: [],
     }),
     defaults: [
@@ -1448,6 +1440,8 @@ cc_defaults {
         "wpa_supplicant.c",
         "wpas_glue.c",
         "wps_supplicant.c",
+        "bgscan.c",
+        "bgscan_simple.c",
     ],
     defaults: [
         "wpa_supplicant_driver_srcs_default",

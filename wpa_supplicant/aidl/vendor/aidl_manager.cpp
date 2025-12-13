@@ -73,8 +73,7 @@ constexpr bool isP2pIface(const struct wpa_supplicant *wpa_s)
 constexpr bool isNanIface(const struct wpa_supplicant *wpa_s)
 {
 	// TODO: check if the provided wpa_supplicant represents a NAN iface.
-	// return wpa_s->nan_mgmt;
-	return false;
+	return wpa_s->nan_mgmt;
 }
 
 /**
