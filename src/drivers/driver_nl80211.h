@@ -17,6 +17,8 @@
 #include "utils/list.h"
 #include "driver.h"
 
+#define OUI_INTEL    0x1735
+
 #ifndef NL_CAPABILITY_VERSION_3_5_0
 #define nla_nest_start(msg, attrtype) \
 	nla_nest_start(msg, NLA_F_NESTED | (attrtype))
