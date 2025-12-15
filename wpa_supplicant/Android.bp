@@ -877,7 +877,6 @@ wpa_supplicant_cc_defaults_type {
         "-Wno-unused-parameter",
         "-Wno-unused-variable",
         "-DCONFIG_NO_ROAMING",
-        "-DCONFIG_PASN",
     ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_use_stub_lib"), {
         true: ["-DANDROID_LIB_STUB"],
         default: [],
@@ -896,6 +895,9 @@ wpa_supplicant_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["-DCONFIG_IEEE80211BE"],
         default: [],
+    }) + select(soong_config_variable("wpa_supplicant", "pasn"), {
+        false: [],
+        default: ["-DCONFIG_PASN"],
     }),
     arch: {
         arm: {
@@ -1224,10 +1226,6 @@ cc_defaults {
         "src/wps/wps_upnp_event.c",
         "src/wps/wps_upnp_ssdp.c",
         "src/wps/wps_upnp_web.c",
-        "pasn_supplicant.c",
-        "src/pasn/pasn_initiator.c",
-        "src/pasn/pasn_responder.c",
-        "src/pasn/pasn_common.c",
         "bgscan.c",
         "bgscan_simple.c",
     ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
@@ -1236,6 +1234,14 @@ cc_defaults {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["src/ap/ieee802_11_eht.c"],
         default: [],
+    }) + select(soong_config_variable("wpa_supplicant", "pasn"), {
+        false: [],
+        default: [
+            "pasn_supplicant.c",
+            "src/pasn/pasn_initiator.c",
+            "src/pasn/pasn_responder.c",
+            "src/pasn/pasn_common.c",
+        ],
     }),
     defaults: [
         "wpa_supplicant_driver_srcs_default",
