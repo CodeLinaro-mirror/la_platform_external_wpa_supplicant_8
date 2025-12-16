@@ -2374,6 +2374,18 @@ wpa_driver_nl80211_drv_init_rfkill(struct wpa_driver_nl80211_data *drv)
 	}
 }
 
+static void nl80211_set_vendor_ops(struct wpa_driver_nl80211_data *drv)
+{
+	extern const struct wpa_driver_nl80211_vendor_ops brcm_vendor_ops, intel_vendor_ops;
+
+	if (drv->chip_vendor_id == OUI_BRCM) {
+		drv->vendor_ops = &brcm_vendor_ops;
+	} else if (drv->chip_vendor_id == OUI_INTEL) {
+		drv->vendor_ops = &intel_vendor_ops;
+	} else {
+		drv->vendor_ops = NULL;
+	}
+}
 
 static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 					  void *global_priv, int hostapd,
@@ -2381,7 +2393,6 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 					  const char *driver_params,
 					  enum wpa_p2p_mode p2p_mode)
 {
-	extern const struct wpa_driver_nl80211_vendor_ops brcm_vendor_ops;
 	static unsigned int next_unique_drv_id = 0;
 	struct wpa_driver_nl80211_data *drv;
 	struct i802_bss *bss;
@@ -2432,6 +2443,7 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 		os_free(drv);
 		return NULL;
 	}
+
 	bss = drv->first_bss;
 	bss->drv = drv;
 	bss->ctx = ctx;
@@ -2447,8 +2459,7 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 					       p2p_mode))
 		goto failed;
 
-	drv->vendor_ops = (drv->chip_vendor_id == OUI_BRCM) ?
-			   &brcm_vendor_ops : NULL;
+	nl80211_set_vendor_ops(drv);
 
 	if (drv->capa.flags2 & WPA_DRIVER_FLAGS2_CONTROL_PORT_TX_STATUS) {
 		drv->control_port_ap = 1;
