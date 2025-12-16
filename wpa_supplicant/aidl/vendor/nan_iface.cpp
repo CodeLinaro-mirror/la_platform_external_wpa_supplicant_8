@@ -252,7 +252,7 @@ bool NanIface::isValid()
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
-		!aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
+		aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -309,14 +309,14 @@ bool NanIface::isValid()
 			wpa_s, "discovery_beacon_interval %d", request.discoveryBeaconIntervalMs);
 		if (!request.bandSpecificConfig.empty()) {
 			ret |= setNanConfigParam(
-				wpa_s, "low_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+				wpa_s, "low_band_cfg %d,%d,%d,%d", kNanIfaceConfBandRssiClose,
 				kNanIfaceConfBandRssiMiddle,
 				request.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
 					? request.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
 				kNanIfaceConfBandDisableScan);
 			if (request.bandSpecificConfig.size() > 1) {
 				ret |= setNanConfigParam(
-					wpa_s, "high_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+					wpa_s, "high_band_cfg %d,%d,%d,%d", kNanIfaceConfBandRssiClose,
 					kNanIfaceConfBandRssiMiddle,
 					request.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
 						? request.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
@@ -378,14 +378,14 @@ bool NanIface::isValid()
 			msg2.discoveryBeaconIntervalMs);
 		if (!msg2.bandSpecificConfig.empty()) {
 			ret |= setNanConfigParam(
-				wpa_s, "low_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+				wpa_s, "low_band_cfg %d,%d,%d,%d", kNanIfaceConfBandRssiClose,
 				kNanIfaceConfBandRssiMiddle,
 				msg2.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
 				? msg2.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
 				kNanIfaceConfBandDisableScan);
 			if (dual_band && msg2.bandSpecificConfig.size() > 1) {
 				ret |= setNanConfigParam(
-					wpa_s, "high_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
+					wpa_s, "high_band_cfg %d,%d,%d,%d", kNanIfaceConfBandRssiClose,
 					kNanIfaceConfBandRssiMiddle,
 					msg2.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
 					? msg2.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,

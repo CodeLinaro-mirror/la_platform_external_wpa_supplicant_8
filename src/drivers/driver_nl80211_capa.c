@@ -1078,6 +1078,10 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 			}
 			vinfo = nla_data(nl);
 			if (vinfo->vendor_id == OUI_QCA) {
+				if (!drv->chip_vendor_id) {
+					wpa_printf(MSG_DEBUG, "nl80211: Set Qualcomm chip vendor id");
+					drv->chip_vendor_id = vinfo->vendor_id;
+				}
 				switch (vinfo->subcmd) {
 				case QCA_NL80211_VENDOR_SUBCMD_TEST:
 					drv->vendor_cmd_test_avail = 1;
@@ -1134,6 +1138,10 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 				}
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 			} else if (vinfo->vendor_id == OUI_BRCM) {
+				if (!drv->chip_vendor_id) {
+					wpa_printf(MSG_DEBUG, "nl80211: Set Broadcom chip vendor id");
+					drv->chip_vendor_id = vinfo->vendor_id;
+				}
 				switch (vinfo->subcmd) {
 				case BRCM_VENDOR_SCMD_ACS:
 					drv->capa.flags |=
@@ -1151,6 +1159,11 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 					break;
 				}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+			} else if (vinfo->vendor_id == 0x001A11 || vinfo->vendor_id == 0xF4F5E8) {
+				if (!drv->os_vendor_id) {
+					wpa_printf(MSG_DEBUG, "nl80211: Set Android OS vendor id");
+					drv->os_vendor_id = vinfo->vendor_id;
+				}
 			}
 			wpa_printf(MSG_DEBUG, "nl80211: Supported vendor command: vendor_id=0x%x subcmd=%u",
 				   vinfo->vendor_id, vinfo->subcmd);
@@ -1321,12 +1334,17 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 	if (info->update_ft_ies_supported)
 		drv->capa.flags |= WPA_DRIVER_FLAGS_UPDATE_FT_IES;
 
-	if (!drv->capa.max_num_akms)
+	if (!drv->capa.max_num_akms) {
+#ifndef MAINLINE_SUPPLICANT
 #if defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)
 		drv->capa.max_num_akms = 1;
 #else
 		drv->capa.max_num_akms = NL80211_MAX_NR_AKM_SUITES;
 #endif /* CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM */
+#else
+		drv->capa.max_num_akms = NL80211_MAX_NR_AKM_SUITES;
+#endif /* MAINLINE_SUPPLICANT */
+	}
 
 	return 0;
 }
@@ -1660,19 +1678,21 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
 #endif
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (!(info.capa->flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD))
-		qca_nl80211_check_dfs_capa(drv);
-	qca_nl80211_get_features(drv);
+	if (drv->chip_vendor_id == OUI_QCA) {
+		if (!(info.capa->flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD))
+			qca_nl80211_check_dfs_capa(drv);
+		qca_nl80211_get_features(drv);
 
-	/*
-	 * To enable offchannel simultaneous support in wpa_supplicant, the
-	 * underlying driver needs to support the same along with offchannel TX.
-	 * Offchannel TX support is needed since remain_on_channel and
-	 * action_tx use some common data structures and hence cannot be
-	 * scheduled simultaneously.
-	 */
-	if (!(drv->capa.flags & WPA_DRIVER_FLAGS_OFFCHANNEL_TX))
-		drv->capa.flags &= ~WPA_DRIVER_FLAGS_OFFCHANNEL_SIMULTANEOUS;
+		/*
+		 * To enable offchannel simultaneous support in wpa_supplicant, the
+		 * underlying driver needs to support the same along with offchannel
+		 * TX. Offchannel TX support is needed since remain_on_channel and
+		 * action_tx use some common data structures and hence cannot be
+		 * scheduled simultaneously.
+		 */
+		if (!(drv->capa.flags & WPA_DRIVER_FLAGS_OFFCHANNEL_TX))
+			drv->capa.flags &= ~WPA_DRIVER_FLAGS_OFFCHANNEL_SIMULTANEOUS;
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	wpa_printf(MSG_DEBUG,

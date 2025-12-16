@@ -379,6 +379,7 @@ filegroup {
         "src/drivers/driver_common.c",
         "src/drivers/driver_nl80211_android.c",
         "src/drivers/driver_nl80211.c",
+        "src/drivers/driver_nl80211_brcm.c",
         "src/drivers/driver_nl80211_capa.c",
         "src/drivers/driver_nl80211_event.c",
         "src/drivers/driver_nl80211_monitor.c",
@@ -476,6 +477,8 @@ filegroup {
         "wpas_glue.c",
         "wpa_supplicant.c",
         "wps_supplicant.c",
+        "bgscan.c",
+        "bgscan_simple.c",
     ],
 }
 
@@ -762,6 +765,7 @@ cc_defaults {
     srcs: [
         "src/drivers/driver_nl80211.c",
         "src/drivers/driver_nl80211_android.c",
+        "src/drivers/driver_nl80211_brcm.c",
         "src/drivers/driver_nl80211_capa.c",
         "src/drivers/driver_nl80211_event.c",
         "src/drivers/driver_nl80211_monitor.c",
@@ -938,12 +942,6 @@ wpa_supplicant_cc_defaults_type {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["-DCONFIG_IEEE80211BE"],
         default: [],
-    }) + select(soong_config_variable("wpa_supplicant", "bgscan_simple"), {
-        true: [
-            "-DCONFIG_BGSCAN",
-            "-DCONFIG_BGSCAN_SIMPLE",
-        ],
-        default: [],
     }),
     arch: {
         arm: {
@@ -1057,6 +1055,9 @@ wpa_supplicant_cc_defaults_type {
         "-DPKCS12_FUNCS",
         "-DTLS_DEFAULT_CIPHERS=\"DEFAULT:!EXP:!LOW\"",
         "-DWPA_IGNORE_CONFIG_ERRORS",
+        "-DCONFIG_DRIVER_NL80211_QCA",
+        "-DCONFIG_DRIVER_NL80211_BRCM",
+        "-DCONFIG_DRIVER_NL80211_SYNA",
         "-Wall",
         "-Werror",
         "-Wno-error=sometimes-uninitialized",
@@ -1181,6 +1182,7 @@ cc_defaults {
         "src/drivers/driver_common.c",
         "src/drivers/driver_nl80211.c",
         "src/drivers/driver_nl80211_android.c",
+        "src/drivers/driver_nl80211_brcm.c",
         "src/drivers/driver_nl80211_capa.c",
         "src/drivers/driver_nl80211_event.c",
         "src/drivers/driver_nl80211_monitor.c",
@@ -1272,17 +1274,13 @@ cc_defaults {
         "src/pasn/pasn_initiator.c",
         "src/pasn/pasn_responder.c",
         "src/pasn/pasn_common.c",
+        "bgscan.c",
+        "bgscan_simple.c",
     ] + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11ax"), {
         true: ["src/ap/ieee802_11_he.c"],
         default: [],
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["src/ap/ieee802_11_eht.c"],
-        default: [],
-    }) + select(soong_config_variable("wpa_supplicant", "bgscan_simple"), {
-        true: [
-            "bgscan.c",
-            "bgscan_simple.c",
-        ],
         default: [],
     }),
     defaults: [
@@ -1393,6 +1391,7 @@ cc_defaults {
         "src/drivers/driver_common.c",
         "src/drivers/driver_nl80211.c",
         "src/drivers/driver_nl80211_android.c",
+        "src/drivers/driver_nl80211_brcm.c",
         "src/drivers/driver_nl80211_capa.c",
         "src/drivers/driver_nl80211_event.c",
         "src/drivers/driver_nl80211_monitor.c",
@@ -1487,6 +1486,8 @@ cc_defaults {
         "wpa_supplicant.c",
         "wpas_glue.c",
         "wps_supplicant.c",
+        "bgscan.c",
+        "bgscan_simple.c",
     ],
     defaults: [
         "wpa_supplicant_driver_srcs_default",
