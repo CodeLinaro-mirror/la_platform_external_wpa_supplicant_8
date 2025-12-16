@@ -81,6 +81,10 @@
 #define HOSTAPD_GLOBAL_CTRL_IFACE_PORT_LIMIT	50
 #endif /* CONFIG_CTRL_IFACE_UDP */
 
+#ifdef CONFIG_IEEE80211BE
+#define DEFAULT_ML_RECONF_COUNT 5
+#endif /* CONFIG_IEEE80211BE */
+
 static void hostapd_ctrl_iface_send(struct hostapd_data *hapd, int level,
 				    enum wpa_msg_type type,
 				    const char *buf, size_t len);
@@ -3718,16 +3722,63 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
 }
 
 
-#ifdef CONFIG_TESTING_OPTIONS
 static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
 					  char *buf, size_t buflen)
 {
 	int ret;
-	u32 count = atoi(cmd);
+	const char *p = cmd;
+	char *endptr = NULL;
+	long val = 0;
+	u32 count;
 
-	if (!count)
-		count = 1;
+	/* Link removal only support in MLO AP. */
+	if (!hapd->conf->mld_ap) {
+		wpa_printf(MSG_ERROR, "ML reconfigure is not supported in non-MLO case\n");
+		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+		return os_snprintf_error(buflen, ret)? -1 : ret;
+	}
 
+	/* Jump space before count number */
+	while (p && *p == ' ')
+		p++;
+
+	/* Transfer the count number from cmd. */
+	val = strtol(p, &endptr, 10);
+
+	/* Return FAIL if the cmd isn't numeric string. */
+	if (endptr == p) {
+		wpa_printf(MSG_ERROR, "Invalid input: not a valid number.");
+		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+		return os_snprintf_error(buflen, ret)? -1 : ret;
+	}
+
+	/* If there is a non-numeric string at the end of string, return FAIL expect spaces. */
+	while (*endptr == ' ')
+		endptr++;
+	if (*endptr != '\0') {
+		wpa_printf(MSG_ERROR, "Invalid input: trailing junk after number");
+		ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+		return os_snprintf_error(buflen, ret)? -1 : ret;
+	}
+
+	/*
+	 * As define in 802.11be-2024 9.4.2.322.4, AP removal counter should not set to zero
+	 * as zero is reserved.
+	 * If val is zero,  set to DEFAULT_ML_RECONF_COUNT.
+	 */
+	if (val == 0) {
+		count = DEFAULT_ML_RECONF_COUNT;
+	} else {
+		if (val > INT_MAX) {
+			wpa_printf(MSG_ERROR, "Invalid link removal count:%ld out of range", val);
+			ret = os_snprintf(buf, buflen, "%s\n", "FAIL");
+			return os_snprintf_error(buflen, ret)? -1 : ret;
+		}
+		count = (u32)val;
+	}
+
+	/* Send the TBTT number to run link removal. */
+	wpa_printf(MSG_INFO, "Proceeding with link removal count: %d", count);
 	ret = hostapd_link_remove(hapd, count);
 	if (ret == 0) {
 		ret = os_snprintf(buf, buflen, "%s\n", "OK");
@@ -3739,7 +3790,6 @@ static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
 
 	return ret;
 }
-#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
 
 
@@ -4041,7 +4091,7 @@ fail:
 #endif /* CONFIG_NAN_USD */
 
 
-static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 					      char *buf, char *reply,
 					      int reply_size,
 					      struct sockaddr_storage *from,
@@ -4637,12 +4687,10 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strcmp(buf, "DISABLE_MLD") == 0) {
 		if (hostapd_ctrl_iface_disable_mld(hapd->iface))
 			reply_len = -1;
-#ifdef CONFIG_TESTING_OPTIONS
 	} else if (os_strncmp(buf, "LINK_REMOVE ", 12) == 0) {
 		if (hostapd_ctrl_iface_link_remove(hapd, buf + 12,
 						   reply, reply_size))
 			reply_len = -1;
-#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);

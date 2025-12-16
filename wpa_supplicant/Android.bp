@@ -688,6 +688,42 @@ cc_library {
     },
 }
 
+cc_defaults {
+    name: "wpa_supplicant_qca_cflags",
+    cflags: [
+        "-DCONFIG_DPP3",
+        "-DCONFIG_FST",
+        "-DCONFIG_OCV",
+        "-DCONFIG_IEEE80211AX",
+        "-DCONFIG_IEEE80211BE",
+        "-DCONFIG_USE_VENDOR_AIDL",
+    ],
+}
+
+cc_defaults {
+    name: "wpa_supplicant_qca_default",
+    local_include_dirs: [
+        "src/fst",
+    ],
+    defaults: [
+        "wpa_supplicant_qca_cflags",
+    ],
+    srcs: [
+        "src/common/ocv.c",
+        "src/fst/fst.c",
+        "src/fst/fst_session.c",
+        "src/fst/fst_iface.c",
+        "src/fst/fst_group.c",
+        "src/fst/fst_ctrl_aux.c",
+        "src/fst/fst_ctrl_iface.c",
+        "src/ap/ieee802_11_he.c",
+        "src/ap/ieee802_11_eht.c",
+    ],
+    shared_libs: [
+        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
+    ],
+}
+
 // End of cuttlefish section
 
 // The section starting below is for non-cuttlefish products.
@@ -858,6 +894,7 @@ wpa_supplicant_cc_defaults_type {
         "-DEAP_WSC",
         "-DIEEE8021X_EAPOL",
         "-DNEED_AP_MLME",
+        "-DALL_DH_GROUPS",
         "-DPKCS12_FUNCS",
         "-DTLS_DEFAULT_CIPHERS=\"DEFAULT:!EXP:!LOW\"",
         "-DWPA_IGNORE_CONFIG_ERRORS",
@@ -1287,6 +1324,7 @@ cc_binary {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
@@ -1341,6 +1379,7 @@ wpa_supplicant_cc_binary {
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
         "wpa_supplicant_usd_defaults",
+        "wpa_supplicant_qca_default",
     ],
     soong_config_variables: {
         board_wpa_supplicant_private_lib: {
@@ -1419,6 +1458,7 @@ cc_library_shared {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
@@ -1482,6 +1522,8 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
+        "aidl/vendor/supplicant_vendor.cpp",
+        "aidl/vendor/vendorsta_iface.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
@@ -1496,6 +1538,7 @@ cc_library_static {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_default",
     ],
 }
 

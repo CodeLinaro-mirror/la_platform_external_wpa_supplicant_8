@@ -62,6 +62,7 @@ cc_defaults {
         "libcrypto",
         "libssl",
         "libnl",
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
     ],
     relative_install_path: "hw",
     soc_specific: true,
@@ -431,6 +432,39 @@ soong_config_module_type {
     properties: ["cflags"],
 }
 
+cc_defaults {
+    name: "hostapd_qca_default",
+    cflags: [
+        "-DCONFIG_IEEE80211AX",
+        "-DCONFIG_IEEE80211BE",
+        "-DCONFIG_OWE",
+        "-DCONFIG_FST",
+        "-DCONFIG_MBO",
+        "-DCONFIG_OCV",
+        "-DCONFIG_PASN",
+        "-DCONFIG_PTKSA_CACHE",
+        "-DCONFIG_USE_VENDOR_AIDL",
+    ],
+    local_include_dirs: [
+        "src/fst",
+    ],
+    srcs: [
+        "src/ap/ieee802_11_he.c",
+        "src/ap/ieee802_11_eht.c",
+        "src/ap/mbo_ap.c",
+        "src/common/ocv.c",
+        "src/fst/fst.c",
+        "src/fst/fst_group.c",
+        "src/fst/fst_iface.c",
+        "src/fst/fst_session.c",
+        "src/fst/fst_ctrl_aux.c",
+        "src/fst/fst_ctrl_iface.c",
+    ],
+    shared_libs: [
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
+    ],
+}
+
 // Hostap related module share the same CFLAGS
 hostapd_cc_defaults_type {
     name: "hostapd_cflags_default",
@@ -474,6 +508,7 @@ hostapd_cc_defaults_type {
         "-DCONFIG_ACS",
         "-DCONFIG_ANDROID_LOG",
         "-DCONFIG_CTRL_IFACE_AIDL",
+        "-DALL_DH_GROUPS",
     ] + select(soong_config_variable("wpa_supplicant_8", "hostapd_use_stub_lib"), {
         true: ["-DANDROID_LIB_STUB"],
         default: [],
@@ -665,6 +700,7 @@ cc_binary {
     defaults: [
         "hostapd_cflags_default",
         "hostapd_includes_default",
+        "hostapd_qca_default",
     ],
 }
 
@@ -707,6 +743,7 @@ hostapd_cc_binary {
         "hostapd_srcs_default",
         "hostapd_cflags_default",
         "hostapd_includes_default",
+        "hostapd_qca_default",
     ],
     soong_config_variables: {
         board_hostapd_private_lib: {
@@ -724,6 +761,7 @@ cc_library_static {
         "aidl/aidl.cpp",
         "aidl/hostapd.cpp",
         "src/common/ieee802_11_common.c",
+        "aidl/hostapd_vendor.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.hostapd-V3-ndk",
@@ -741,6 +779,7 @@ cc_library_static {
     defaults: [
         "hostapd_cflags_default",
         "hostapd_includes_default",
+        "hostapd_qca_default",
     ],
 }
 

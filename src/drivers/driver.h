@@ -2416,6 +2416,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
 /** Driver supports RSN override elements */
 #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
+/** Driver support ML reconfigure link removal offload */
+#define WPA_DRIVER_FLAG2_MLD_LINK_REMOVAL_OFFLOAD 0x0000000000400000ULL
 /** Driver supports NAN offload */
 #define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
 /** Driver/device supports SPP A-MSDUs */
@@ -3145,6 +3147,15 @@ struct driver_sta_mlo_info {
 		struct t2lm_mapping t2lmap;
 	} links[MAX_NUM_MLD_LINKS];
 };
+
+#ifdef CONFIG_IEEE80211BE
+struct driver_reconfig_link_removal_params {
+	u8 link_id;
+	u8 *ml_reconfig_elem;
+	size_t ml_reconfig_elem_len;
+	u32 removal_count;
+};
+#endif /* CONFIG_IEEE80211BE */
 
 /**
  * struct wpa_driver_ops - Driver interface API definition
@@ -5482,6 +5493,11 @@ struct wpa_driver_ops {
 	 */
 	struct hostapd_multi_hw_info *
 	(*get_multi_hw_info)(void *priv, unsigned int *num_multi_hws);
+
+#ifdef CONFIG_IEEE80211BE
+	int (*ml_reconfig_link_remove)(void *priv, enum wpa_driver_if_type type,
+				       const struct driver_reconfig_link_removal_params *params); 
+#endif /* CONFIG_IEEE80211BE */
 };
 
 /**
@@ -6114,6 +6130,28 @@ enum wpa_event_type {
 	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
 	 */
 	EVENT_MLD_INTERFACE_FREED,
+
+	/**
+	 * EVENT_LINK_REMOVAL_STARTED - Update link_removal_count and TSF
+	 * received
+	 *
+	 * This event is used by the driver to indicate the received link
+	 * removal count of the link that is scheduled for removal and
+	 * timestamp of the first beacon with ML reconfiguration element is
+	 * sent.
+	 */
+	EVENT_LINK_REMOVAL_STARTED,
+
+	/**
+	 * EVENT_LINK_REMOVAL_COMPLETED - Update link scheduled for removal
+	 * procedure is completed.
+	 *
+	 * This event is used by the driver to intimate userspace about the
+	 * completion of ML reconfiguration element for the TBTT count
+	 * specified and the userspace can proceed further on the cleaning up
+	 * of the respective link(s).
+	 */
+	EVENT_LINK_REMOVAL_COMPLETED,
 };
 
 
@@ -7101,6 +7139,15 @@ union wpa_event_data {
 		u8 valid_links;
 		struct t2lm_mapping t2lmap[MAX_NUM_MLD_LINKS];
 	} t2l_map_info;
+
+	/**
+	 * Data for link_removal update
+	 */
+	struct link_removal_event {
+		u8 link_id;
+		u16 link_removal_count;
+		u64 tsf;
+	} link_removal_event;
 };
 
 /**
