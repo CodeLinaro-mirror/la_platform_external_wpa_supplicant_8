@@ -39,14 +39,28 @@ cc_library_headers {
     soc_specific: true,
 }
 
+soong_config_module_type {
+    name: "hostapd_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    value_variables: [
+        "platform_version",
+    ],
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs"
+    ],
+}
 
-cc_defaults {
+hostapd_cc_defaults_type {
     name: "hostapd_defaults",
     defaults: ["hostapd_cflags_defaults"],
     srcs: [":hostapd_srcs"],
     shared_libs: [
         "android.hardware.wifi.hostapd-V1-ndk",
-        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
         "libbase",
         "libutils",
         "libbinder_ndk",
@@ -57,6 +71,13 @@ cc_defaults {
         "libssl",
         "libnl",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: [
+                "vendor.qti.hardware.wifi.hostapd-V1-ndk",
+            ],
+        },
+    },
     relative_install_path: "hw",
     soc_specific: true,
     static_libs: [
