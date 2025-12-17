@@ -17,6 +17,8 @@
 #include "utils/list.h"
 #include "driver.h"
 
+#define OUI_INTEL    0x1735
+
 #ifndef NL_CAPABILITY_VERSION_3_5_0
 #define nla_nest_start(msg, attrtype) \
 	nla_nest_start(msg, NLA_F_NESTED | (attrtype))
@@ -109,6 +111,16 @@ struct drv_nl80211_if_info {
 	int reason;
 };
 
+struct wpa_driver_nl80211_vendor_ops {
+	int (*driver_cmd)(void *priv, char *cmd, char *buf, size_t buf_len);
+	int (*set_noa)(void *priv, u8 count, int start, int duration);
+	int (*get_noa)(void *priv, u8 *buf, size_t buf_len);
+	int (*set_ps)(void *priv, int legacy_ps, int opp_ps, int ctwindow);
+	int (*set_ap_wps_ie)(void *priv, const struct wpabuf *beacon,
+			     const struct wpabuf *proberesp,
+			     const struct wpabuf *assocresp);
+};
+
 struct wpa_driver_nl80211_data {
 	struct nl80211_global *global;
 	struct dl_list list;
@@ -134,6 +146,7 @@ struct wpa_driver_nl80211_data {
 	} iface_capa[NL80211_IFTYPE_MAX];
 	unsigned int num_iface_capa;
 	unsigned int unique_drv_id;
+	const struct wpa_driver_nl80211_vendor_ops *vendor_ops;
 
 	int has_capability;
 	int has_driver_key_mgmt;
@@ -199,6 +212,8 @@ struct wpa_driver_nl80211_data {
 	unsigned int qca_do_acs:1;
 	unsigned int brcm_do_acs:1;
 	unsigned int uses_6ghz:1;
+	unsigned int chip_vendor_id;
+	unsigned int os_vendor_id;
 	unsigned int uses_s1g:1;
 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
 	unsigned int puncturing:1;

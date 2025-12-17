@@ -5624,6 +5624,13 @@ struct wpa_driver_ops {
 	 */
 	void (*nan_stop)(void *priv);
 #endif
+
+	/**
+	 * get_chip_vendor_id - Get chip vendor ID
+	 * @priv: Private driver interface data
+	 * Returns: Chip vendor ID (OUI) or 0 if not available.
+	 */
+	unsigned int (*get_chip_vendor_id)(void *priv);
 };
 
 /**

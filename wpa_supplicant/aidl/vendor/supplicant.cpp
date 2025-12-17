@@ -690,6 +690,11 @@ ndk::ScopedAStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 std::pair<std::shared_ptr<ISupplicantWifiRttController>, ::ndk::ScopedAStatus>
 Supplicant::createRttControllerInternal(const std::string &ifaceName)
 {
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager || !aidl_manager->isAidlServiceVersionAtLeast(5)) {
+		return {nullptr,
+			createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
+	}
 	// Check if required |ifname| argument is empty.
 	if (ifaceName.empty()) {
 		return {
@@ -702,13 +707,12 @@ Supplicant::createRttControllerInternal(const std::string &ifaceName)
 			nullptr,
 			createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN)};
 	}
-	AidlManager *aidl_manager = AidlManager::getInstance();
+
 	std::shared_ptr<ISupplicantWifiRttController> rtt_controller;
-	if (!aidl_manager ||
-		aidl_manager->createOrGetWifiRttControllerAidlObject(
+	if (aidl_manager->createOrGetWifiRttControllerAidlObject(
 			wpa_s->ifname, &rtt_controller)) {
 		return {rtt_controller,
-				createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
 	return {rtt_controller, ndk::ScopedAStatus::ok()};
 }

@@ -73,8 +73,7 @@ constexpr bool isP2pIface(const struct wpa_supplicant *wpa_s)
 constexpr bool isNanIface(const struct wpa_supplicant *wpa_s)
 {
 	// TODO: check if the provided wpa_supplicant represents a NAN iface.
-	// return wpa_s->nan_mgmt;
-	return false;
+	return wpa_s->nan_mgmt;
 }
 
 /**
@@ -654,10 +653,8 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 		}
 		sta_iface_callbacks_map_[wpa_s->ifname] =
 			std::vector<std::shared_ptr<ISupplicantStaIfaceCallback>>();
-		if (areAidlServiceAndClientAtLeastVersion(5)) {
-			wifi_rtt_controller_callbacks_map_[wpa_s->ifname] =
-			    std::vector<std::shared_ptr<ISupplicantWifiRttControllerEventCallback>>();
-		}
+		wifi_rtt_controller_callbacks_map_[wpa_s->ifname] =
+			std::vector<std::shared_ptr<ISupplicantWifiRttControllerEventCallback>>();
 		// Turn on Android specific customizations for STA interfaces
 		// here!
 		//
@@ -688,9 +685,6 @@ int AidlManager::registerInterface(struct wpa_supplicant *wpa_s)
 bool AidlManager::removeWifiRttControllerIfRegistered(struct wpa_supplicant *wpa_s)
 {
 	if (!wpa_s) {
-		return 1;
-	}
-	if (!areAidlServiceAndClientAtLeastVersion(5)) {
 		return 1;
 	}
 	// Remove the RTT controller object and unregister its event callback,
@@ -2827,16 +2821,19 @@ int AidlManager::createOrGetWifiRttControllerAidlObject(
 	const std::string &ifname,
 	std::shared_ptr<ISupplicantWifiRttController> *rtt_controller_object)
 {
+	struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(
+		wpa_global_, ifname.c_str());
+	if (!wpa_s) {
+		return 1;
+	}
+
 	const auto &rtt_controller_iter =
 		wifi_rtt_controller_object_map_.find(ifname);
 	if (rtt_controller_iter != wifi_rtt_controller_object_map_.end()) {
 		*rtt_controller_object = rtt_controller_iter->second;
 		return 0;
 	}
-	struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(
-		wpa_global_, ifname.c_str());
-	if (!wpa_s)
-		return 1;
+
 	std::shared_ptr<SupplicantWifiRttController> rtt_controller =
 	    SupplicantWifiRttController::create(wpa_global_, ifname.c_str());
 	if (addAidlObjectToMap<SupplicantWifiRttController>(
