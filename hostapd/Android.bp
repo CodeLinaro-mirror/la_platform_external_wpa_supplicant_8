@@ -47,7 +47,23 @@ cc_library_headers {
     soc_specific: true,
 }
 
-cc_defaults {
+soong_config_module_type {
+    name: "hostapd_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    value_variables: [
+        "platform_version",
+    ],
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs"
+    ],
+}
+
+hostapd_cc_defaults_type {
     name: "hostapd_defaults",
     defaults: ["hostapd_cflags_defaults"],
     srcs: [":hostapd_srcs"],
@@ -62,8 +78,14 @@ cc_defaults {
         "libcrypto",
         "libssl",
         "libnl",
-        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: [
+                "vendor.qti.hardware.wifi.hostapd-V1-ndk",
+            ],
+        },
+    },
     relative_install_path: "hw",
     soc_specific: true,
     static_libs: [
@@ -423,17 +445,7 @@ cc_defaults {
     }),
 }
 
-soong_config_module_type {
-    name: "hostapd_cc_defaults_type",
-    module_type: "cc_defaults",
-    config_namespace: "wpa_supplicant_8",
-    value_variables: [
-        "platform_version",
-    ],
-    properties: ["cflags"],
-}
-
-cc_defaults {
+hostapd_cc_defaults_type {
     name: "hostapd_qca_default",
     cflags: [
         "-DCONFIG_IEEE80211AX",
@@ -444,7 +456,6 @@ cc_defaults {
         "-DCONFIG_OCV",
         "-DCONFIG_PASN",
         "-DCONFIG_PTKSA_CACHE",
-        "-DCONFIG_USE_VENDOR_AIDL",
     ],
     local_include_dirs: [
         "src/fst",
@@ -461,9 +472,12 @@ cc_defaults {
         "src/fst/fst_ctrl_aux.c",
         "src/fst/fst_ctrl_iface.c",
     ],
-    shared_libs: [
-        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
-    ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            cflags: ["-DCONFIG_USE_VENDOR_AIDL"],
+            shared_libs: ["vendor.qti.hardware.wifi.hostapd-V1-ndk"],
+        },
+    },
 }
 
 // Hostap related module share the same CFLAGS
@@ -753,13 +767,24 @@ hostapd_cc_binary {
     },
 }
 
-cc_library_static {
+soong_config_module_type {
+    name: "hostapd_cc_library_static_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "srcs",
+    ],
+}
+
+hostapd_cc_library_static_type {
     name: "libhostapd_aidl",
     soc_specific: true,
     srcs: [
         "aidl/aidl.cpp",
         "aidl/hostapd.cpp",
-        "aidl/hostapd_vendor.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.hostapd-V3-ndk",
@@ -779,6 +804,13 @@ cc_library_static {
         "hostapd_includes_default",
         "hostapd_qca_default",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            srcs: [
+                "aidl/hostapd_vendor.cpp",
+            ],
+        },
+    },
 }
 
 // End of non-cuttlefish section

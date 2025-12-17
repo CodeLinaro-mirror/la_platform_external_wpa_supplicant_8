@@ -690,30 +690,21 @@ cc_library {
     },
 }
 
-// End of cuttlefish section
+soong_config_module_type {
+    name: "wpa_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs",
+        "srcs",
+    ],
+}
 
-// The section starting below is for non-cuttlefish products.
-// For cuttlefish series please update the section starting from `wpa_supplicant_headers`.
-
-// If you need to add a new build setting based on a product config, ex:
-// ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
-//   L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
-// endif
-
-// In order to export the Makefile variable to soong, you will need to use a `soong_config_set` method
-// under `build/core/board_config_wpa_supplicant.mk`. Ex:
-// ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
-//   $(call soong_config_set_bool,wpa_supplicant_8,wifi_priv_cmd_update_mbo_cell_status,true)
-// endif
-
-// And then use the select statement in Android.bp to reflect the condition you need, ex:
-// select(soong_config_variable("wpa_supplicant_8", "wifi_priv_cmd_update_mbo_cell_status"), {
-//     true: ["-DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS"],
-//     default: [],
-// })
-
-// Start of non-cuttlefish section
-cc_defaults {
+wpa_cc_defaults_type {
     name: "wpa_supplicant_qca_cflags",
     cflags: [
         "-DCONFIG_DPP3",
@@ -721,11 +712,30 @@ cc_defaults {
         "-DCONFIG_OCV",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
-        "-DCONFIG_USE_VENDOR_AIDL",
+    ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            cflags: [
+                "-DCONFIG_USE_VENDOR_AIDL",
+            ],
+        },
+    },
+}
+
+soong_config_module_type {
+    name: "hostapd_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs"
     ],
 }
 
-cc_defaults {
+hostapd_cc_defaults_type {
     name: "wpa_supplicant_qca_default",
     local_include_dirs: [
         "src/fst",
@@ -744,9 +754,12 @@ cc_defaults {
         "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_eht.c",
     ],
-    shared_libs: [
-        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
-    ],
+    shared_libs: [],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: ["vendor.qti.hardware.wifi.supplicant-V2-ndk"],
+        },
+    },
 }
 
 cc_defaults {
@@ -1533,7 +1546,21 @@ cc_fuzz {
 
 //## Aidl service library ###
 //#######################
-cc_library_static {
+soong_config_module_type {
+    name: "wpa_cc_library_static_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cppflags",
+        "srcs",
+        "shared_libs"
+    ],
+}
+
+wpa_cc_library_static_type {
     name: "libwpa_aidl",
     vendor: true,
     cppflags: [
@@ -1554,8 +1581,6 @@ cc_library_static {
         "aidl/vendor/sta_iface.cpp",
         "aidl/vendor/sta_network.cpp",
         "aidl/vendor/supplicant.cpp",
-        "aidl/vendor/supplicant_vendor.cpp",
-        "aidl/vendor/vendorsta_iface.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.supplicant-V4-ndk",
@@ -1572,6 +1597,14 @@ cc_library_static {
         "wpa_supplicant_includes_default",
         "wpa_supplicant_qca_default",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            srcs: [
+                "aidl/vendor/supplicant_vendor.cpp",
+                "aidl/vendor/vendorsta_iface.cpp",
+            ],
+        },
+    },
 }
 
 // End of non-cuttlefish section
