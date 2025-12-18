@@ -80,8 +80,8 @@ inline bool validateNanPublishConfig(NanPublishRequest publishRequest)
 	}
 
 	if (!isValidEnumValue(
-		publishRequest.txType, NanPublishRequest::NanTxType::UNICAST,
-		NanPublishRequest::NanTxType::BROADCAST)) {
+		publishRequest.txType, NanPublishRequest::NanTxType::BROADCAST,
+		NanPublishRequest::NanTxType::UNICAST)) {
 		return false;
 	}
 	return true;

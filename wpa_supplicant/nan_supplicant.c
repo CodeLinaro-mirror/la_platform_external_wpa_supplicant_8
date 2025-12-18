@@ -204,7 +204,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 			return -1;                                              \
 		}                                                               \
 										\
-		if (a < NAN_MIN_RSSI_CLOSE || b < NAN_MIN_RSSI_MIDDLE ||        \
+		if (a <= NAN_MIN_RSSI_CLOSE || b <= NAN_MIN_RSSI_MIDDLE ||      \
 		    a <= b) {							\
 			wpa_printf(MSG_DEBUG, "NAN: Invalid value for " #_str); \
 			return -1;						\
