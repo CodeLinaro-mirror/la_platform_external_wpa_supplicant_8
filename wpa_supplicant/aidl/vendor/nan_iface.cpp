@@ -615,7 +615,6 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_cancel_publish
 	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::SUCCESS;
@@ -696,7 +695,6 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_cancel_subscribe
 	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
