@@ -674,8 +674,12 @@ ndk::ScopedAStatus Supplicant::setConcurrencyPriorityInternal(IfaceType type)
 ::ndk::ScopedAStatus Supplicant::setCurrentUserIdentityInternal(uint32_t in_userId)
 {
 #ifdef MAINLINE_SUPPLICANT
-	kUserStaIfaceConfPath = "/data/misc_ce/" + std::to_string(in_userId)
+	// Use user_de storage since there is no user data in supplicant.conf and
+	// supplicant may need access before user unlock device. (i.e. wifi is on)
+	kUserStaIfaceConfPath = "/data/misc_de/" + std::to_string(in_userId)
 		+ "/apexdata/com.android.wifi/mainline_supplicant/wpa/wpa_supplicant_mainline.conf";
+	// Use user_ce storage since p2p configuration file stores user's data.
+	// This data should not be accessible before user unlock device.
 	kUserP2pIfaceConfPath = "/data/misc_ce/" + std::to_string(in_userId)
 		+ "/apexdata/com.android.wifi/mainline_supplicant/wpa/p2p_supplicant_mainline.conf";
 #else
