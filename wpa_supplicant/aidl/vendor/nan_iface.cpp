@@ -35,6 +35,10 @@ const std::string kMainlineSupplicantConfigPath =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
 static constexpr int kNanIfaceCapMaxPublishSessions = 10;
 static constexpr int kNanIfaceCapMaxSubscribeSessions = kNanIfaceCapMaxPublishSessions;
+static constexpr int kNanMaxServiceNameLen = 255;
+static constexpr int kNanMaxServiceSpecificInfoLen = 255;
+static constexpr int kNanMaxMatchFilterLen = 255;
+static constexpr int kNanMaxExtendedServiceSpecificInfoLen = 1280;
 static constexpr bool kNanIfaceCapInstantCommunicationModeSupport = false;
 static constexpr bool kNanIfaceCapSupportsPeriodicRanging = false;
 static constexpr bool kNanIfaceCapSupportsSuspension = false;
@@ -272,6 +276,11 @@ bool NanIface::isValid()
 
 		aidl_caps.maxPublishes = kNanIfaceCapMaxPublishSessions;
 		aidl_caps.maxSubscribes = kNanIfaceCapMaxSubscribeSessions;
+		aidl_caps.maxServiceNameLen = kNanMaxServiceNameLen;
+		aidl_caps.maxServiceSpecificInfoLen = kNanMaxServiceSpecificInfoLen;
+		aidl_caps.maxMatchFilterLen = kNanMaxMatchFilterLen;
+		aidl_caps.maxExtendedServiceSpecificInfoLen =
+			kNanMaxExtendedServiceSpecificInfoLen;
 		aidl_caps.instantCommunicationModeSupportFlag =
 			kNanIfaceCapInstantCommunicationModeSupport;
 		aidl_caps.supportsSuspension = kNanIfaceCapSupportsSuspension;
