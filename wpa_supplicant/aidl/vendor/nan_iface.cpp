@@ -602,7 +602,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 
 		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status, publish_id);
 	}).detach();
 
 	return ndk::ScopedAStatus::ok();
@@ -683,7 +683,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			return;
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status, subscribe_id);
 	}).detach();
 
 	return ndk::ScopedAStatus::ok();
