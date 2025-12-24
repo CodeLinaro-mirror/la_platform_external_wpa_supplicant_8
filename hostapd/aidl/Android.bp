@@ -25,11 +25,26 @@ cc_library_headers {
     soc_specific: true,
 }
 
-cc_library_static {
+soong_config_module_type {
+    name: "hostapd_cc_library_static_aidl_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "srcs",
+    ],
+}
+
+hostapd_cc_library_static_aidl_type {
     name: "libhostapd_aidl_bp",
-    srcs: ["*.cpp"],
     defaults: ["hostapd_cflags_defaults"],
     soc_specific: true,
+    srcs: [
+        "aidl.cpp",
+        "hostapd.cpp",
+    ],
     shared_libs: [
         "android.hardware.wifi.hostapd-V3-ndk",
         "libbinder_ndk",
@@ -45,4 +60,11 @@ cc_library_static {
         "hostapd_headers",
         "libhostapd_aidl_headers",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            srcs: [
+                "hostapd_vendor.cpp",
+            ],
+        },
+    },
 }
