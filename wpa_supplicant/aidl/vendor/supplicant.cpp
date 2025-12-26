@@ -24,24 +24,39 @@ namespace {
 // Note: This may differ for other OEM's. So, modify this accordingly.
 // When wpa_supplicant is in its APEX, overlay/template configurations should be
 // loaded from the same APEX.
+#ifdef MAINLINE_SUPPLICANT
+// TODO (b/457455380): Change the conf directory to /data/misc/apexdata/com.android.wifi
+constexpr char kStaIfaceConfPath[] =
+    "/data/misc/wifi/mainline_supplicant/wpa_supplicant_mainline.conf";
+constexpr char kP2pIfaceConfPath[] =
+	"/data/misc/wifi/mainline_supplicant/p2p_supplicant_mainline.conf";
+constexpr char kSystemTemplateConfPath[] =
+    "/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
+// If overlay conf files are provided for the mainline supplicant, they should be copied
+// to the overlay paths specified below. This is commonly done from the device.mk file.
+constexpr char kStaIfaceConfOverlayPath[] =
+    "/system_ext/etc/wifi/wpa_supplicant_mainline_overlay.conf";
+constexpr char kP2pIfaceConfOverlayPath[] =
+	"/system_ext/etc/wifi/p2p_supplicant_mainline_overlay.conf";
+#else
 constexpr char kStaIfaceConfPath[] =
 	"/data/vendor/wifi/wpa/wpa_supplicant.conf";
 constexpr char kStaIfaceConfOverlayPath[] =
     "/etc/wifi/wpa_supplicant_overlay.conf";
-
+constexpr char kSystemTemplateConfPath[] =
+    "/system/etc/wifi/wpa_supplicant.conf";
 constexpr char kP2pIfaceConfPath[] =
 	"/data/vendor/wifi/wpa/p2p_supplicant.conf";
 constexpr char kP2pIfaceConfOverlayPath[] =
-    "/etc/wifi/p2p_supplicant_overlay.conf";
+	"/etc/wifi/p2p_supplicant_overlay.conf";
+#endif
 
-// Migrate conf files for existing devices.
-constexpr char kSystemTemplateConfPath[] =
-    "/system/etc/wifi/wpa_supplicant.conf";
 constexpr char kVendorTemplateConfPath[] =
     "/etc/wifi/wpa_supplicant.conf";
 
 constexpr char kOldStaIfaceConfPath[] = "/data/misc/wifi/wpa_supplicant.conf";
 constexpr char kOldP2pIfaceConfPath[] = "/data/misc/wifi/p2p_supplicant.conf";
+// TODO (b/457455380): Handle the user-specific P2P conf file for mainline supplicant
 std::string kUserP2pIfaceConfPath;
 
 std::string resolveVendorConfPath(const std::string& conf_path)
@@ -156,6 +171,39 @@ int ensureConfigFileExists(
 	} else if (ret == -1) {
 		unlink(config_file_path.c_str());
 		return -1;
+	}
+
+	// Did not create the conf file.
+	return -1;
+}
+
+/**
+ * Ensure that the specified mainline supplicant config file exists at |config_file_path|.
+ * a) If the |config_file_path| exists with the correct permissions, return.
+ * b) Otherwise, try to copy over the contents of the template config file.
+ */
+int ensureMainlineSupplicantConfigFileExists(const std::string& config_file_path)
+{
+	wpa_printf(MSG_INFO, "Checking if the config file exists at %s",
+			config_file_path.c_str());
+	int ret = ensureConfigFileExistsAtPath(config_file_path);
+	if (ret == 0) {
+		wpa_printf(MSG_INFO, "Config file was found at the provided path");
+		return 0;
+	} else if (ret != ENOENT) {
+        wpa_printf(MSG_ERROR, "Find failed with code %d", ret);
+		return -1;
+	}
+
+	wpa_printf(MSG_INFO, "Trying to copy the template conf file from %s to %s",
+			kSystemTemplateConfPath, config_file_path.c_str());
+	ret = copyFileIfItExists(kSystemTemplateConfPath, config_file_path);
+	if (ret == 0) {
+		wpa_printf(MSG_INFO, "Template conf file was copied successfully");
+		return 0;
+	} else if (ret == -1) {
+        wpa_printf(MSG_ERROR, "Template file copy failed with unexpected error code");
+		unlink(config_file_path.c_str());
 	}
 
 	// Did not create the conf file.
@@ -379,10 +427,16 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 
 	struct wpa_interface iface_params = {};
 	iface_params.driver = kIfaceDriverName;
-	if (ensureConfigFileExists(
-		kP2pIfaceConfPath, kOldP2pIfaceConfPath) != 0) {
+#ifdef MAINLINE_SUPPLICANT
+	bool configFileExists = ensureMainlineSupplicantConfigFileExists(kP2pIfaceConfPath) == 0;
+	std::string overlay_path = kP2pIfaceConfOverlayPath;
+#else
+	bool configFileExists = ensureConfigFileExists(kP2pIfaceConfPath, kOldP2pIfaceConfPath) == 0;
+	std::string overlay_path = resolveVendorConfPath(kP2pIfaceConfOverlayPath);
+#endif
+	if (!configFileExists) {
 		wpa_printf(
-			MSG_ERROR, "Conf file does not exists: %s",
+			MSG_ERROR, "Conf file does not exist: %s",
 			kP2pIfaceConfPath);
 		return {nullptr, createStatusWithMsg(
 			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
@@ -402,7 +456,6 @@ Supplicant::addP2pInterfaceInternal(const std::string& name)
 	} else {
 		iface_params.confname = kP2pIfaceConfPath;
 	}
-	std::string overlay_path = resolveVendorConfPath(kP2pIfaceConfOverlayPath);
 	int ret = access(overlay_path.c_str(), R_OK);
 	if (ret == 0) {
 		iface_params.confanother = overlay_path.c_str();
@@ -452,16 +505,22 @@ Supplicant::addStaInterfaceInternal(const std::string& name)
 
 	struct wpa_interface iface_params = {};
 	iface_params.driver = kIfaceDriverName;
-	if (ensureConfigFileExists(
-		kStaIfaceConfPath, kOldStaIfaceConfPath) != 0) {
+#ifdef MAINLINE_SUPPLICANT
+	bool configFileExists = ensureMainlineSupplicantConfigFileExists(kStaIfaceConfPath) == 0;
+	std::string overlay_path = kStaIfaceConfOverlayPath;
+#else
+	bool configFileExists = ensureConfigFileExists(kStaIfaceConfPath, kOldStaIfaceConfPath) == 0;
+	std::string overlay_path = resolveVendorConfPath(kStaIfaceConfOverlayPath);
+#endif
+	if (!configFileExists) {
 		wpa_printf(
-			MSG_ERROR, "Conf file does not exists: %s",
+			MSG_ERROR, "Conf file does not exist: %s",
 			kStaIfaceConfPath);
 		return {nullptr, createStatusWithMsg(
 			SupplicantStatusCode::FAILURE_UNKNOWN, "Conf file does not exist")};
 	}
 	iface_params.confname = kStaIfaceConfPath;
-	std::string overlay_path = resolveVendorConfPath(kStaIfaceConfOverlayPath);
+
 	int ret = access(overlay_path.c_str(), R_OK);
 	if (ret == 0) {
 		iface_params.confanother = overlay_path.c_str();
