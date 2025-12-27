@@ -27,14 +27,36 @@ cc_library_headers {
     soc_specific: true,
 }
 
-cc_library_static {
-    name: "libwpa_aidl_bp",
-    srcs: ["*.cpp"],
+soong_config_module_type {
+    name: "wpa_cc_library_static_aidl_vendor_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "srcs",
+    ],
+}
+
+wpa_cc_library_static_aidl_vendor_type {
+     name: "libwpa_aidl_bp",
+     soc_specific: true,
+     srcs: [
+        "aidl.cpp",
+        "aidl_manager.cpp",
+        "certificate_utils.cpp",
+        "iface_config_utils.cpp",
+        "p2p_iface.cpp",
+        "p2p_network.cpp",
+        "sta_iface.cpp",
+        "sta_network.cpp",
+        "supplicant.cpp",
+    ],
     defaults: [
         "libwpa_aidl_cflags_defaults",
         "wpa_supplicant_cflags_defaults",
     ],
-    soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.supplicant-V5-ndk",
         "android.system.keystore2-V1-ndk",
@@ -58,6 +80,14 @@ cc_library_static {
         "libwpa_aidl_headers",
         "libwpa_shared_aidl_headers_vendor",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            srcs: [
+                "supplicant_vendor.cpp",
+                "vendorsta_iface.cpp",
+            ],
+        },
+    },
 }
 
 vintf_fragment {
