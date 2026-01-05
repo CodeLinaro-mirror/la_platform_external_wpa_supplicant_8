@@ -189,6 +189,30 @@ extern "C"
 	void wpas_aidl_notify_nan_match_expired(
 		struct wpa_supplicant* wpa_s, int subscribe_id,
 		int peer_publish_id);
+	void wpas_aidl_notify_nan_bootstrap_request(
+		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
+		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id);
+	void wpas_aidl_notify_nan_bootstrap_confirmed(
+		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id, u8 bootstrap_method,
+		bool is_success, u8 reason, const u8* cookie, size_t cookie_len);
+	void wpas_aidl_notify_nan_pairing_request(
+		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
+		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
+		bool is_enable_cache, const u8* nonce, const u8* tag);
+	void wpas_aidl_notify_nan_pairing_confirmed(
+		struct wpa_supplicant* wpa_s, u8 pairing_id,
+		bool is_success, u8 status_code, bool is_setup,
+		bool is_enable_cache, const u8* peer_nik, const u8* local_nik,
+		const u8* npk, u8 akm, u8 cipher_type);
+	void wpas_aidl_notify_nan_ndp_request(
+		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
+		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len);
+	void wpas_aidl_notify_nan_ndp_confirmed(
+		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
+		bool is_success, u8 reason, const u8* app_info, size_t app_info_len);
+	void wpas_aidl_notify_nan_ndp_terminated(struct wpa_supplicant* wpa_s, u8 ndp_id);
+	// TODO(b/460750167): Add NAN NDP Schedule Update Event notification
+	// TODO(b/460750167): Add NAN Pairing Event notification
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -418,6 +442,28 @@ static void wpas_aidl_notify_nan_cluster_event(
     struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr) {}
 static void wpas_aidl_notify_nan_match_expired(
     struct wpa_supplicant* wpa_s, int subscribe_id, int peer_publish_id) {}
+static void wpas_aidl_notify_nan_bootstrap_request(
+		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
+		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id) {}
+static void wpas_aidl_notify_nan_bootstrap_confirmed(
+		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id, u8 bootstrap_method,
+		bool is_success, u8 reason, const u8* cookie, size_t cookie_len) {}
+static void wpas_aidl_notify_nan_pairing_request(
+		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
+		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
+		bool is_enable_cache, const u8* nonce, const u8* tag) {}
+static void wpas_aidl_notify_nan_pairing_confirmed(
+		struct wpa_supplicant* wpa_s, u8 pairing_id,
+		bool is_success, u8 status_code, bool is_setup,
+		bool is_enable_cache, const u8* peer_nik, const u8* local_nik,
+		const u8* npk, u8 akm, u8 cipher_type) {}
+static void wpas_aidl_notify_nan_ndp_request(
+		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
+		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len) {}
+static void wpas_aidl_notify_nan_ndp_confirmed(
+		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
+		bool is_success, u8 reason, const u8* app_info, size_t app_info_len) {}
+static void wpas_aidl_notify_nan_ndp_terminated(struct wpa_supplicant* wpa_s, u8 ndp_id) {}
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus

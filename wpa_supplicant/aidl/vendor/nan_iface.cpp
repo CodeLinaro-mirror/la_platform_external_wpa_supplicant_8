@@ -292,6 +292,7 @@ bool NanIface::isValid()
 		in_ndpInstanceId);
 }
 
+#ifdef CONFIG_NAN
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
 {
@@ -1000,6 +1001,127 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	// TODO(b/460750167): wpa_supplicant API for terminate data path request & AIDL for callback response
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
+#else
+::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
+	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::getCapabilitiesRequestInternal(char16_t cmdId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::configRequestInternal(
+	char16_t cmdId, const NanConfigRequest& request)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::enableRequestInternal(
+	char16_t cmdId, const NanEnableRequest& msg1,
+	const NanConfigRequest& msg2)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::disableRequestInternal(char16_t cmdId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
+	char16_t cmdId, const std::string& ifaceName)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::deleteDataInterfaceRequestInternal(
+	char16_t cmdId, const std::string& ifaceName)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::startPublishRequestInternal(
+	char16_t cmdId, const NanPublishRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::stopPublishRequestInternal(
+	char16_t cmdId, int8_t sessionId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::startSubscribeRequestInternal(
+	char16_t cmdId, const NanSubscribeRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::stopSubscribeRequestInternal(
+	char16_t cmdId, int8_t sessionId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::transmitFollowupRequestInternal(
+	char16_t cmdId, const NanTransmitFollowupRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::initiateBootstrappingRequestInternal(
+	char16_t cmdId, const NanBootstrappingRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::respondToBootstrappingIndicationRequestInternal(
+	char16_t cmdId, const NanBootstrappingResponse& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::initiatePairingRequestInternal(
+	char16_t cmdId, const NanPairingRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::respondToPairingIndicationRequestInternal(
+	char16_t cmdId, const NanRespondToPairingIndicationRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::terminatePairingRequestInternal(
+	char16_t cmdId, int32_t pairingInstanceId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::initiateDataPathRequestInternal(
+	char16_t cmdId, const NanInitiateDataPathRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::respondToDataPathIndicationRequestInternal(
+	char16_t cmdId, const NanRespondToDataPathIndicationRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
+	char16_t cmdId, int32_t ndpInstanceId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+#endif
 
 bool NanIface::isStartedClusterIndicationEnabled()
 {
