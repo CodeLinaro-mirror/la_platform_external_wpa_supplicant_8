@@ -996,8 +996,46 @@ skip_wpa_check:
 
 #ifdef CONFIG_P2P
 	if (req_ies) {
-		p2p_group_notif_assoc(hapd->p2p_group, sta->addr,
-				      req_ies, req_ies_len);
+		if (elems.ht_capabilities) {
+			if (!sta->ht_capabilities) {
+				sta->ht_capabilities = os_zalloc(sizeof(struct ieee80211_ht_capabilities));
+				if (!sta->ht_capabilities) {
+					wpa_printf(MSG_ERROR, "Failed to allocate memory for HT capabilities");
+					return 0;
+				}
+			}
+			os_memcpy(sta->ht_capabilities,
+				(const struct ieee80211_ht_capabilities *) elems.ht_capabilities,
+				sizeof(struct ieee80211_ht_capabilities));
+		}
+
+		if (elems.vht_capabilities) {
+			if (!sta->vht_capabilities) {
+				sta->vht_capabilities = os_zalloc(sizeof(struct ieee80211_vht_capabilities));
+				if (!sta->vht_capabilities) {
+					wpa_printf(MSG_ERROR, "Failed to allocate memory for VHT capabilities");
+					return 0;
+				}
+			}
+			os_memcpy(sta->vht_capabilities,
+				(const struct ieee80211_vht_capabilities *) elems.vht_capabilities,
+				sizeof(struct ieee80211_vht_capabilities));
+		}
+
+		if (elems.he_capabilities) {
+			if (!sta->he_capab) {
+				sta->he_capab = os_zalloc(sizeof(struct ieee80211_he_capabilities));
+				if (!sta->he_capab) {
+					wpa_printf(MSG_ERROR, "Failed to allocate memory for HE capabilities");
+					return 0;
+				}
+			}
+			os_memcpy(sta->he_capab,
+				(const struct ieee80211_he_capabilities *) elems.he_capabilities,
+				sizeof(struct ieee80211_he_capabilities));
+		}
+		p2p_group_notif_assoc(hapd->p2p_group, sta,
+				req_ies, req_ies_len);
 	}
 #endif /* CONFIG_P2P */
 

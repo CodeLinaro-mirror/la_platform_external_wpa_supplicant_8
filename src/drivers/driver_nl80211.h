@@ -37,6 +37,10 @@ struct nl80211_global {
 	int ioctl_sock; /* socket for ioctl() use */
 	struct nl_sock *nl_event;
 	u8 p2p_perm_addr[ETH_ALEN];
+#ifdef CONFIG_NAN
+	/* dedicated socket for NAN interface creation and events */
+	struct nl_sock *nl_nan;
+#endif
 };
 
 struct nl80211_wiphy_data {
@@ -270,6 +274,10 @@ struct wpa_driver_nl80211_data {
 	u8 *pending_link_reconfig_data;
 	size_t pending_link_reconfig_data_len;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
+
+#ifdef CONFIG_NAN
+	unsigned int nan_started:1;
+#endif /* CONFIG_NAN */
 };
 
 struct nl_msg;

@@ -65,7 +65,7 @@
 #include "wpas_kay.h"
 #include "mesh.h"
 #include "dpp_supplicant.h"
-#include "nan_usd.h"
+#include "nan_supplicant.h"
 #ifdef CONFIG_MESH
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
@@ -809,9 +809,7 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s) {
   wpa_s->dpp = NULL;
 #endif /* CONFIG_DPP */
 
-#ifdef CONFIG_NAN_USD
-  wpas_nan_usd_deinit(wpa_s);
-#endif /* CONFIG_NAN_USD */
+	wpas_nan_de_deinit(wpa_s);
 
 #ifdef CONFIG_PASN
   wpas_pasn_auth_stop(wpa_s);
@@ -1303,7 +1301,8 @@ int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s) {
   int old_ap_scan;
 
   if (wpa_s->confname == NULL) return -1;
-  conf = wpa_config_read(wpa_s->confname, NULL, false);
+  conf = wpa_config_read(wpa_s->confname, NULL, false,
+                         wpa_s->global->params.show_details);
   if (conf == NULL) {
     wpa_msg(wpa_s, MSG_ERROR,
             "Failed to parse the configuration "
@@ -1311,7 +1310,9 @@ int wpa_supplicant_reload_configuration(struct wpa_supplicant *wpa_s) {
             wpa_s->confname);
     return -1;
   }
-  if (wpa_s->confanother && !wpa_config_read(wpa_s->confanother, conf, true)) {
+  if (wpa_s->confanother &&
+      !wpa_config_read(wpa_s->confanother, conf, true,
+                       wpa_s->global->params.show_details)) {
     wpa_msg(wpa_s, MSG_ERROR,
             "Failed to parse the configuration file '%s' - exiting",
             wpa_s->confanother);
@@ -7019,7 +7020,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 #else  /* CONFIG_BACKEND_FILE */
     wpa_s->confname = os_strdup(iface->confname);
 #endif /* CONFIG_BACKEND_FILE */
-    wpa_s->conf = wpa_config_read(wpa_s->confname, NULL, false);
+    wpa_s->conf = wpa_config_read(wpa_s->confname, NULL, false,
+                           wpa_s->global->params.show_details);
     if (wpa_s->conf == NULL) {
       wpa_printf(MSG_ERROR,
                  "Failed to read or parse "
@@ -7029,7 +7031,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
     }
     wpa_s->confanother = os_rel2abs_path(iface->confanother);
     if (wpa_s->confanother &&
-        !wpa_config_read(wpa_s->confanother, wpa_s->conf, true)) {
+        !wpa_config_read(wpa_s->confanother, wpa_s->conf, true,
+                         wpa_s->global->params.show_details)) {
       wpa_printf(MSG_ERROR, "Failed to read or parse configuration '%s'.",
                  wpa_s->confanother);
       return -1;
@@ -7218,12 +7221,16 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
   if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE)
     wpa_s->p2p_mgmt = iface->p2p_mgmt;
 
-  if (wpa_s->num_multichan_concurrent == 0) wpa_s->num_multichan_concurrent = 1;
+	wpa_s->nan_mgmt = iface->nan_mgmt;
+
+	if (wpa_s->num_multichan_concurrent == 0)
+		wpa_s->num_multichan_concurrent = 1;
 
   if (wpa_supplicant_driver_init(wpa_s) < 0) return -1;
 
 #ifdef CONFIG_TDLS
-  if (!iface->p2p_mgmt && wpa_tdls_init(wpa_s->wpa)) return -1;
+	if (!iface->p2p_mgmt && !iface->nan_mgmt && wpa_tdls_init(wpa_s->wpa))
+		return -1;
 #endif /* CONFIG_TDLS */
 
   if (wpa_s->conf->country[0] && wpa_s->conf->country[1] &&
@@ -7265,9 +7272,12 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
   if (wpas_dpp_init(wpa_s) < 0) return -1;
 #endif /* CONFIG_DPP */
 
-#ifdef CONFIG_NAN_USD
-  if (wpas_nan_usd_init(wpa_s) < 0) return -1;
-#endif /* CONFIG_NAN_USD */
+	if (wpas_nan_de_init(wpa_s) < 0)
+		return -1;
+
+#ifdef CONFIG_NAN
+	wpa_s->nan_drv_flags = capa.nan_flags;
+#endif /* CONFIG_NAN */
 
   if (wpa_supplicant_init_eapol(wpa_s) < 0) return -1;
   wpa_sm_set_eapol(wpa_s->wpa, wpa_s->eapol);
@@ -7359,7 +7369,12 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 
   wpa_supplicant_set_default_scan_ies(wpa_s);
 
-  return 0;
+	if (wpa_s->nan_mgmt && wpas_nan_init(wpa_s) < 0) {
+		wpa_msg(wpa_s, MSG_ERROR, "Failed to init NAN");
+		return -1;
+	}
+
+	return 0;
 }
 
 static void wpa_supplicant_deinit_iface(struct wpa_supplicant *wpa_s,
@@ -7406,8 +7421,10 @@ static void wpa_supplicant_deinit_iface(struct wpa_supplicant *wpa_s,
   wpa_supplicant_cleanup(wpa_s);
   wpas_p2p_deinit_iface(wpa_s);
 
-  wpas_ctrl_radio_work_flush(wpa_s);
-  radio_remove_interface(wpa_s);
+	wpas_nan_deinit(wpa_s);
+
+	wpas_ctrl_radio_work_flush(wpa_s);
+	radio_remove_interface(wpa_s);
 
 #ifdef CONFIG_FST
   if (wpa_s->fst) {
@@ -7564,16 +7581,16 @@ struct wpa_supplicant *wpa_supplicant_add_iface(struct wpa_global *global,
     return NULL;
   }
 
-  /* Notify the control interfaces about new networks */
-  for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
-    if (iface->p2p_mgmt == 0) {
-      wpas_notify_network_added(wpa_s, ssid);
-    } else if (ssid->ssid_len > P2P_WILDCARD_SSID_LEN &&
-               os_strncmp((const char *)ssid->ssid, P2P_WILDCARD_SSID,
-                          P2P_WILDCARD_SSID_LEN) == 0) {
-      wpas_notify_persistent_group_added(wpa_s, ssid);
-    }
-  }
+	/* Notify the control interfaces about new networks */
+	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+		if (iface->p2p_mgmt == 0 && iface->nan_mgmt == 0) {
+			wpas_notify_network_added(wpa_s, ssid);
+		} else if (ssid->ssid_len > P2P_WILDCARD_SSID_LEN
+				&& os_strncmp((const char *) ssid->ssid,
+					P2P_WILDCARD_SSID, P2P_WILDCARD_SSID_LEN) == 0) {
+			wpas_notify_persistent_group_added(wpa_s, ssid);
+		}
+	}
 
   wpa_s->next = global->ifaces;
   global->ifaces = wpa_s;
@@ -7582,14 +7599,15 @@ struct wpa_supplicant *wpa_supplicant_add_iface(struct wpa_global *global,
   wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 
 #ifdef CONFIG_P2P
-  if (wpa_s->global->p2p == NULL && !wpa_s->global->p2p_disabled &&
-      !wpa_s->conf->p2p_disabled &&
-      (wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) &&
-      wpas_p2p_add_p2pdev_interface(wpa_s, wpa_s->global->params.conf_p2p_dev) <
-          0) {
-    wpa_printf(MSG_INFO, "P2P: Failed to enable P2P Device interface");
-    /* Try to continue without. P2P will be disabled. */
-  }
+	if (!wpa_s->global->p2p && !iface->nan_mgmt &&
+	    !wpa_s->global->p2p_disabled && !wpa_s->conf->p2p_disabled &&
+	    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) &&
+	    wpas_p2p_add_p2pdev_interface(
+		    wpa_s, wpa_s->global->params.conf_p2p_dev) < 0) {
+		wpa_printf(MSG_INFO,
+			   "P2P: Failed to enable P2P Device interface");
+		/* Try to continue without. P2P will be disabled. */
+	}
 #endif /* CONFIG_P2P */
 
   return wpa_s;
@@ -7774,6 +7792,7 @@ struct wpa_global *wpa_supplicant_init(struct wpa_params *params) {
   global->params.daemonize = params->daemonize;
   global->params.wait_for_monitor = params->wait_for_monitor;
   global->params.dbus_ctrl_interface = params->dbus_ctrl_interface;
+  global->params.show_details = params->show_details;
 
   if (params->pid_file) {
     global->params.pid_file = os_strdup(params->pid_file);
@@ -8011,6 +8030,23 @@ void wpa_supplicant_deinit(struct wpa_global *global) {
   wpa_debug_close_syslog();
   wpa_debug_close_file();
   wpa_debug_close_linux_tracing();
+}
+
+int wpa_supplicant_parse_config(const char *fname)
+{
+  struct wpa_config *conf;
+  int ret = -1;
+
+  wpa_printf(MSG_INFO, "Validating parsing of %s", fname);
+  conf = wpa_config_read(fname, NULL, false, true);
+  if (conf) {
+    wpa_printf(MSG_INFO, "Parsing succeeded");
+    ret = 0;
+    wpa_config_free(conf);
+  } else {
+    wpa_printf(MSG_INFO, "Parsing failed");
+  }
+  return ret;
 }
 
 void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s) {

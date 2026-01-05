@@ -131,6 +131,9 @@ static void wiphy_info_supported_iftypes(struct wiphy_info_data *info,
 		case NL80211_IFTYPE_P2P_CLIENT:
 			info->p2p_client_supported = 1;
 			break;
+		case NL80211_IFTYPE_NAN:
+			info->capa->flags2 |= WPA_DRIVER_FLAGS2_SUPPORT_NAN;
+			break;
 		}
 	}
 }
@@ -1194,6 +1197,48 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 	if (tb[NL80211_ATTR_MLO_SUPPORT])
 		capa->flags2 |= WPA_DRIVER_FLAGS2_MLO;
 
+#ifdef CONFIG_NAN
+	if (tb[NL80211_ATTR_BANDS]) {
+		u32 bands;
+
+		bands = nla_get_u32(tb[NL80211_ATTR_BANDS]);
+		wpa_printf(MSG_DEBUG, "nl80211: NAN supported bands 0x%x",
+			   bands);
+		if ((bands & BIT(NL80211_BAND_2GHZ)) &&
+		    (bands & BIT(NL80211_BAND_5GHZ)))
+			capa->nan_flags |=
+				WPA_DRIVER_FLAGS_NAN_SUPPORT_DUAL_BAND;
+	}
+
+	if (tb[NL80211_ATTR_NAN_CAPABILITIES]) {
+		static struct nla_policy nan_capa_policy[NL80211_NAN_CAPABILITIES_MAX + 1] = {
+			[NL80211_NAN_CAPA_CONFIGURABLE_SYNC] = { .type = NLA_FLAG },
+			[NL80211_NAN_CAPA_USERSPACE_DE] = { .type = NLA_FLAG },
+		};
+		struct nlattr *tb_nan_capa[NL80211_NAN_CAPABILITIES_MAX + 1];
+
+		if (nla_parse_nested(tb_nan_capa,
+				     NL80211_NAN_CAPABILITIES_MAX,
+				     tb[NL80211_ATTR_NAN_CAPABILITIES],
+				     nan_capa_policy)) {
+			wpa_printf(MSG_DEBUG, "nl80211: Failed to parse NAN capabilities");
+			return NL_SKIP;
+		}
+
+		if (tb_nan_capa[NL80211_NAN_CAPA_CONFIGURABLE_SYNC]) {
+			wpa_printf(MSG_DEBUG, "nl80211: NAN sync offload supported");
+			capa->nan_flags |=
+				WPA_DRIVER_FLAGS_NAN_SUPPORT_SYNC_CONFIG;
+		}
+
+		if (tb_nan_capa[NL80211_NAN_CAPA_USERSPACE_DE]) {
+			wpa_printf(MSG_DEBUG, "nl80211: NAN user space DE is supported");
+			capa->nan_flags |=
+				WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE;
+		}
+	}
+#endif /* CONFIG_NAN */
+
 	return NL_SKIP;
 }
 
@@ -1474,7 +1519,7 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
 	}
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_NAN_USD_OFFLOAD, &info))
-		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_NAN_OFFLOAD;
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_NAN_USD_OFFLOAD;
 
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_P2P_V2, &info))
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_V2;

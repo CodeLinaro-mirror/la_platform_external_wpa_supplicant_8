@@ -144,6 +144,11 @@ struct wpa_interface {
 		WPA_IFACE_MATCHED
 	} matched;
 #endif /* CONFIG_MATCH_IFACE */
+
+	/**
+	 * nan_mgmt - Interface used for NAN management (NAN Device operations)
+	 */
+	bool nan_mgmt;
 };
 
 /**
@@ -276,6 +281,11 @@ struct wpa_params {
 	 */
 	char *aidl_service_name;
 #endif /* CONFIG_AIDL */
+
+	/**
+	 * show_details - Whether to show config parsing details in debug log
+	 */
+	bool show_details;
 };
 
 struct p2p_srv_bonjour {
@@ -1666,7 +1676,7 @@ struct wpa_supplicant {
 #ifdef CONFIG_NAN_USD
 	struct nan_de *nan_de;
 	struct wpa_radio_work *nan_usd_listen_work;
-	struct wpa_radio_work *nan_usd_tx_work;
+	struct wpa_radio_work *nan_tx_work;
 #endif /* CONFIG_NAN_USD */
 
 	bool ssid_verified;
@@ -1676,6 +1686,14 @@ struct wpa_supplicant {
 	unsigned int next_beacon_check;
 
 	bool scs_reconfigure;
+
+	bool nan_mgmt;
+
+#ifdef CONFIG_NAN
+	u32 nan_drv_flags;
+	struct nan_data *nan;
+	struct nan_cluster_config nan_config;
+#endif
 };
 
 
@@ -1773,6 +1791,7 @@ struct wpa_supplicant * wpa_supplicant_get_iface(struct wpa_global *global,
 struct wpa_global * wpa_supplicant_init(struct wpa_params *params);
 int wpa_supplicant_run(struct wpa_global *global);
 void wpa_supplicant_deinit(struct wpa_global *global);
+int wpa_supplicant_parse_config(const char *fname);
 
 int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 			      struct wpa_ssid *ssid);

@@ -327,11 +327,21 @@ L_CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
+ifdef CONFIG_NAN
+NEED_NAN=y
+L_CFLAGS += -DCONFIG_NAN
+endif
+
 ifdef CONFIG_NAN_USD
-OBJS += src/common/nan_de.c
-OBJS += nan_usd.c
 NEED_OFFCHANNEL=y
+NEED_NAN=y
 L_CFLAGS += -DCONFIG_NAN_USD
+endif
+
+ifdef NEED_NAN
+OBJS += nan_supplicant.o
+OBJS += src/nan/nan.o
+OBJS += src/common/nan_de.c
 endif
 
 ifeq ($(CONFIG_OWE),y)

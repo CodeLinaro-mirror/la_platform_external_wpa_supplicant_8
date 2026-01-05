@@ -9,6 +9,7 @@
 #ifndef P2P_H
 #define P2P_H
 
+#include "ap/sta_info.h"
 #include "common/ieee802_11_defs.h"
 #include "wps/wps.h"
 #include "common/wpa_common.h"
@@ -2128,12 +2129,12 @@ void p2p_group_deinit(struct p2p_group *group);
 /**
  * p2p_group_notif_assoc - Notification of P2P client association with GO
  * @group: P2P group context from p2p_group_init()
- * @addr: Interface address of the P2P client
+ * @sta: Pointer to sta info from P2P client
  * @ie: IEs from the (Re)association Request frame
  * @len: Length of the ie buffer in octets
  * Returns: 0 on success, -1 on failure
  */
-int p2p_group_notif_assoc(struct p2p_group *group, const u8 *addr,
+int p2p_group_notif_assoc(struct p2p_group *group, struct sta_info *sta,
 			  const u8 *ie, size_t len);
 
 /**

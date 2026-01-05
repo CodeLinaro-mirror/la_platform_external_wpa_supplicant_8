@@ -1522,7 +1522,7 @@ void wpas_notify_hs20_t_c_acceptance(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_HS20 */
 }
 
-#ifdef CONFIG_NAN_USD
+#if defined(CONFIG_NAN) || defined(CONFIG_NAN_USD)
 
 void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 				      enum nan_service_protocol_type
@@ -1546,7 +1546,7 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 		       fsd, fsd_gas, srv_proto_type, ssi_hex);
 	os_free(ssi_hex);
 
-	wpas_aidl_notify_usd_service_discovered(wpa_s, srv_proto_type,
+	wpas_aidl_notify_nan_service_discovered(wpa_s, srv_proto_type,
 		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_discovery_result(wpa_s, srv_proto_type,
@@ -1576,7 +1576,7 @@ void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 		       srv_proto_type, ssi_hex);
 	os_free(ssi_hex);
 
-	wpas_aidl_notify_usd_publish_replied(wpa_s, srv_proto_type,
+	wpas_aidl_notify_nan_publish_replied(wpa_s, srv_proto_type,
 		publish_id, peer_subscribe_id, peer_addr, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_replied(wpa_s, srv_proto_type, publish_id,
@@ -1601,7 +1601,7 @@ void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
 		       id, peer_instance_id, MAC2STR(peer_addr), ssi_hex);
 	os_free(ssi_hex);
 
-	wpas_aidl_notify_usd_message_received(wpa_s, id, peer_instance_id,
+	wpas_aidl_notify_nan_message_received(wpa_s, id, peer_instance_id,
 		peer_addr, ssi, ssi_len);
 
 	wpas_dbus_signal_nan_receive(wpa_s, id, peer_instance_id, peer_addr,
@@ -1632,7 +1632,7 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
 		       "publish_id=%d reason=%s",
 		       publish_id, nan_reason_txt(reason));
 
-	wpas_aidl_notify_usd_publish_terminated(wpa_s, publish_id, reason);
+	wpas_aidl_notify_nan_publish_terminated(wpa_s, publish_id, reason);
 
 	wpas_dbus_signal_nan_publish_terminated(wpa_s, publish_id,
 						nan_reason_txt(reason));
@@ -1647,10 +1647,10 @@ void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		       "subscribe_id=%d reason=%s",
 		       subscribe_id, nan_reason_txt(reason));
 
-	wpas_aidl_notify_usd_subscribe_terminated(wpa_s, subscribe_id, reason);
+	wpas_aidl_notify_nan_subscribe_terminated(wpa_s, subscribe_id, reason);
 
 	wpas_dbus_signal_nan_subscribe_terminated(wpa_s, subscribe_id,
 						  nan_reason_txt(reason));
 }
 
-#endif /* CONFIG_NAN_USD */
+#endif /* CONFIG_NAN || CONFIG_NAN_USD */
