@@ -46,11 +46,13 @@ class MainlineSupplicant : public BnMainlineSupplicant {
                 std::shared_ptr<ISupplicantNanIface>* _aidl_return) override;
         ::ndk::ScopedAStatus removeNanInterface(const std::string& in_ifaceName)
                 override;
+        ::ndk::ScopedAStatus setCurrentUserIdentity(int32_t in_userId) override;
 
     private:
         std::pair<std::shared_ptr<ISupplicant>, ndk::ScopedAStatus> getVendorSupplicantInternal();
         std::pair<std::shared_ptr<ISupplicantNanIface>, ndk::ScopedAStatus> addNanInterfaceInternal(
                 const std::string& ifaceName);
+        ndk::ScopedAStatus setCurrentUserIdentityInternal(uint32_t userId);
         struct wpa_global* wpa_global_;
         std::shared_ptr<Supplicant> vendor_supplicant_;
         std::map<std::string, std::shared_ptr<ISupplicantNanIface>> active_nan_ifaces_;
