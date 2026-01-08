@@ -978,7 +978,6 @@ cc_defaults {
 wpa_supplicant_cc_defaults_type {
     name: "wpa_supplicant_mainline_cflags_default",
     cflags: [
-        "-DANDROID_LIB_STUB",
         "-DANDROID_LOG_NAME=\"wpa_supplicant\"",
         "-DANDROID_P2P",
         "-DCONFIG_ACS",

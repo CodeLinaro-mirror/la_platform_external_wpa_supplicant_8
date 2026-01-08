@@ -542,8 +542,16 @@ int32_t AidlManager::isAidlClientVersionAtLeast(int32_t expected_version)
 
 int32_t AidlManager::areAidlServiceAndClientAtLeastVersion(int32_t expected_version)
 {
+#ifdef MAINLINE_SUPPLICANT
+	/**
+	 * The mainline supplicant does not have interface version,
+	 * so we only check the client version.
+	 */
+	return isAidlClientVersionAtLeast(expected_version);
+#else
 	return isAidlServiceVersionAtLeast(expected_version)
 		&& isAidlClientVersionAtLeast(expected_version);
+#endif
 }
 
 #ifdef MAINLINE_SUPPLICANT
@@ -3548,8 +3556,6 @@ void AidlManager::notifyNanServiceDiscovered(
 {
 	if (!wpa_s || !peer_addr)
 		return;
-	if (!areAidlServiceAndClientAtLeastVersion(4))
-		return;
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
@@ -3565,6 +3571,9 @@ void AidlManager::notifyNanServiceDiscovered(
 		return;
 	}
 #endif
+
+	if (!areAidlServiceAndClientAtLeastVersion(4))
+		return;
 
 	if (p2p_iface_object_map_.find(wpa_s->ifname) !=
 		p2p_iface_object_map_.end()) {
@@ -3601,8 +3610,6 @@ void AidlManager::notifyNanPublishReplied(
 {
 	if (!wpa_s || !peer_addr)
 		return;
-	if (!areAidlServiceAndClientAtLeastVersion(4))
-		return;
 
 #ifdef MAINLINE_SUPPLICANT
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
@@ -3619,6 +3626,9 @@ void AidlManager::notifyNanPublishReplied(
 	}
 #endif
 
+	if (!areAidlServiceAndClientAtLeastVersion(4))
+		return;
+
 	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
 		srv_proto_type, publish_id, peer_subscribe_id, peer_addr,
 		false /* fsd */, ssi, ssi_len);
@@ -3634,8 +3644,6 @@ void AidlManager::notifyNanMessageReceived(
 	const u8* peer_addr, const u8* message, size_t message_len)
 {
 	if (!wpa_s || !peer_addr)
-		return;
-	if (!areAidlServiceAndClientAtLeastVersion(4))
 		return;
 
 #ifdef MAINLINE_SUPPLICANT
@@ -3658,6 +3666,9 @@ void AidlManager::notifyNanMessageReceived(
 	}
 #endif
 
+	if (!areAidlServiceAndClientAtLeastVersion(4))
+		return;
+
 	UsdMessageInfo messageInfo;
 	messageInfo.ownId = id;
 	messageInfo.peerId = peer_instance_id;
@@ -3676,8 +3687,6 @@ void AidlManager::notifyNanPublishTerminated(
 {
 	if (!wpa_s)
 		return;
-	if (!areAidlServiceAndClientAtLeastVersion(4))
-		return;
 
 #ifdef MAINLINE_SUPPLICANT
 	auto it = nan_iface_object_map_.find(wpa_s->ifname);
@@ -3693,6 +3702,9 @@ void AidlManager::notifyNanPublishTerminated(
 		return;
 	}
 #endif
+
+	if (!areAidlServiceAndClientAtLeastVersion(4))
+		return;
 
 	UsdTerminateReasonCode aidlReasonCode =
 		convertUsdTerminateReasonCodeToAidl(reason);
@@ -3720,8 +3732,6 @@ void AidlManager::notifyNanSubscribeTerminated(
 {
 	if (!wpa_s)
 		return;
-	if (!areAidlServiceAndClientAtLeastVersion(4))
-		return;
 
 #ifdef MAINLINE_SUPPLICANT
 	auto it = nan_iface_object_map_.find(wpa_s->ifname);
@@ -3737,6 +3747,9 @@ void AidlManager::notifyNanSubscribeTerminated(
 		return;
 	}
 #endif
+
+	if (!areAidlServiceAndClientAtLeastVersion(4))
+		return;
 
 	UsdTerminateReasonCode aidlReasonCode =
 		convertUsdTerminateReasonCodeToAidl(reason);
