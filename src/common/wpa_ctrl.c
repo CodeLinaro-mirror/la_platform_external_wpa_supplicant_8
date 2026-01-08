@@ -164,6 +164,14 @@ try_again:
 		os_free(ctrl);
 		return NULL;
 	}
+#ifndef ANDROID
+	/*
+	 * Set client socket file permissions to make sure the server
+	 * side (wpa_supplicant or hostapd) can reply to the control
+	 * interface messages.
+	 */
+	chmod(ctrl->local.sun_path, S_IRWXU | S_IRWXG | S_IRWXO);
+#endif /* ANDROID */
 
 	/*
 	 * Set client socket file permissions to make sure the server
@@ -489,7 +497,7 @@ int wpa_ctrl_request(struct wpa_ctrl *ctrl, const char *cmd, size_t cmd_len,
 		     void (*msg_cb)(char *msg, size_t len))
 {
 	struct timeval tv;
-	struct os_reltime started_at;
+	struct os_reltime started_at, ending_at;
 	int res;
 	fd_set rfds;
 	const char *_cmd;
@@ -545,9 +553,19 @@ retry_send:
 	}
 	os_free(cmd_buf);
 
+	os_get_reltime(&ending_at);
+	ending_at.sec += 10;
+
 	for (;;) {
-		tv.tv_sec = 10;
-		tv.tv_usec = 0;
+		struct os_reltime diff;
+
+		os_get_reltime(&started_at);
+		if (os_reltime_before(&ending_at, &started_at))
+			return -2;
+		os_reltime_sub(&ending_at, &started_at, &diff);
+		tv.tv_sec = diff.sec;
+		tv.tv_usec = diff.usec;
+
 		FD_ZERO(&rfds);
 		FD_SET(ctrl->s, &rfds);
 		res = select(ctrl->s + 1, &rfds, NULL, NULL, &tv);
