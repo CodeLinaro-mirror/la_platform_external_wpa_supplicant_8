@@ -1373,10 +1373,12 @@ soong_config_module_type {
     ],
     bool_variables: [
         "wifi_hidl_unified_supplicant_service_rc_entry",
+        "enable_vendor_aidl",
     ],
     properties: [
         "init_rc",
         "static_libs",
+        "required",
     ],
 }
 
@@ -1424,6 +1426,9 @@ wpa_supplicant_cc_binary {
         // init_rc: wpa_supplicant only
         wifi_hidl_unified_supplicant_service_rc_entry: {
             init_rc: ["aidl/vendor/android.hardware.wifi.supplicant-service.rc"],
+        },
+        enable_vendor_aidl: {
+            required: ["android.hardware.wifi.supplicant.vendor.xml"],
         },
     },
     vintf_fragment_modules: ["android.hardware.wifi.supplicant.xml"],

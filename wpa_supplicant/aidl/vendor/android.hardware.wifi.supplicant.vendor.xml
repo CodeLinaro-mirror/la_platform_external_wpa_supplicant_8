@@ -1,0 +1,12 @@
+<!--
+Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+SPDX-License-Identifier: BSD-3-Clause-Clear
+-->
+
+<manifest version="1.0" type="device">
+	<hal format="aidl">
+		<name>vendor.qti.hardware.wifi.supplicant</name>
+		<version>2</version>
+		<fqname>ISupplicantVendor/default</fqname>
+	</hal>
+</manifest>
