@@ -1967,6 +1967,16 @@ struct wpa_config {
 	 * 1: Prefer ranging responder role
 	 */
 	int pr_preferred_role;
+	/**
+	 * use_priv_cmd_mbo_cell_status - Use vendor private command for MBO cellular data status update
+	 *
+	 * This flag controls how the MBO cellular data is updated.
+	 * If set to 1, a vendor-specific driver command is used.
+	 * If set to 0, the standard wpas_mbo_update_cell_capa() function is called.
+	 * This allows runtime switching of the update mechanism via the wpa_supplicant
+	 * configuration file.
+	 */
+	int use_priv_cmd_mbo_cell_status;
 };
 
 
