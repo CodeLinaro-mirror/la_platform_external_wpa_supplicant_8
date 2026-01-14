@@ -63,6 +63,19 @@ MainlineSupplicant::getVendorSupplicantInternal()
 	return {vendor_supplicant_, ndk::ScopedAStatus::ok()};
 }
 
+::ndk::ScopedAStatus MainlineSupplicant::setCurrentUserIdentity(int32_t in_userId)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&MainlineSupplicant::setCurrentUserIdentityInternal, in_userId);
+}
+
+::ndk::ScopedAStatus MainlineSupplicant::setCurrentUserIdentityInternal(
+	uint32_t userId)
+{
+	return vendor_supplicant_->setCurrentUserIdentity(userId);
+}
+
 std::pair<std::shared_ptr<ISupplicantNanIface>, ndk::ScopedAStatus>
 MainlineSupplicant::addNanInterfaceInternal(const std::string& ifaceName)
 {
