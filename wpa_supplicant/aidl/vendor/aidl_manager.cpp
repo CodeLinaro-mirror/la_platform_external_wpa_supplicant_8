@@ -3500,7 +3500,9 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 	discoveryInfo.peerId = peer_id;
 	discoveryInfo.peerMacAddress = macAddrToArray(peer_addr);
 	discoveryInfo.protoType = convertUsdServiceProtoTypeToAidl(srv_proto_type);
-	discoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	if (ssi != NULL) {
+		discoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	}
 	discoveryInfo.isFsd = fsd;
 	return discoveryInfo;
 }
