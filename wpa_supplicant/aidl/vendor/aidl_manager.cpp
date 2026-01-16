@@ -39,6 +39,10 @@ constexpr char kUmtsAuthRegex[] = "UMTS-AUTH:([0-9a-f]+):([0-9a-f]+)";
 constexpr size_t kGsmRandLenBytes = GSM_RAND_LEN;
 constexpr size_t kUmtsRandLenBytes = EAP_AKA_RAND_LEN;
 constexpr size_t kUmtsAutnLenBytes = EAP_AKA_AUTN_LEN;
+constexpr size_t kNiraNonceLenBytes = 8;
+constexpr size_t kNiraTagLenBytes = 8;
+constexpr size_t kNikLenBytes = 16;
+constexpr size_t kNpkLenBytes = 32;
 const std::vector<uint8_t> kZeroBssid = {0, 0, 0, 0, 0, 0};
 int32_t aidl_service_version = 0;
 int32_t aidl_client_version = 0;
@@ -59,6 +63,27 @@ using NanStatusCode =
 	aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
 using NanClusterEventType = aidl::android::system::wifi::mainline_supplicant::
 	NanClusterEventType;
+using NanBootstrappingRequestInd =
+	aidl::android::system::wifi::mainline_supplicant::NanBootstrappingRequestInd;
+using NanBootstrappingMethod =
+	aidl::android::system::wifi::mainline_supplicant::NanBootstrappingMethod;
+using NanBootstrappingConfirmInd =
+	aidl::android::system::wifi::mainline_supplicant::NanBootstrappingConfirmInd;
+using NanBootstrappingResponseCode =
+	aidl::android::system::wifi::mainline_supplicant::NanBootstrappingConfirmInd::
+	NanBootstrappingResponseCode;
+using NanPairingRequestInd =
+	aidl::android::system::wifi::mainline_supplicant::NanPairingRequestInd;
+using NanPairingConfirmInd =
+	aidl::android::system::wifi::mainline_supplicant::NanPairingConfirmInd;
+using NanDataPathRequestInd =
+	aidl::android::system::wifi::mainline_supplicant::NanDataPathRequestInd;
+using NanDataPathChannelInfo =
+	aidl::android::system::wifi::mainline_supplicant::NanDataPathChannelInfo;
+using NanDataPathConfirmInd =
+	aidl::android::system::wifi::mainline_supplicant::NanDataPathConfirmInd;
+using NanDataPathScheduleUpdateInd =
+	aidl::android::system::wifi::mainline_supplicant::NanDataPathScheduleUpdateInd;
 #endif
 
 /**
@@ -3836,6 +3861,274 @@ void AidlManager::notifyNanTransmitFollowup(
 }
 
 #ifdef MAINLINE_SUPPLICANT
+static int translateBootstrappingMethod(int method) {
+	static const std::map<int, NanBootstrappingMethod> method_map = {
+		{1 << 0, NanBootstrappingMethod::OPPORTUNISTIC_MASK},
+		{1 << 1, NanBootstrappingMethod::PIN_CODE_DISPLAY_MASK},
+		{1 << 2, NanBootstrappingMethod::PASSPHRASE_DISPLAY_MASK},
+		{1 << 3, NanBootstrappingMethod::QR_DISPLAY_MASK},
+		{1 << 4, NanBootstrappingMethod::NFC_TAG_MASK},
+		{1 << 5, NanBootstrappingMethod::PIN_CODE_KEYPAD_MASK},
+		{1 << 6, NanBootstrappingMethod::PASSPHRASE_KEYPAD_MASK},
+		{1 << 7, NanBootstrappingMethod::QR_SCAN_MASK},
+		{1 << 8, NanBootstrappingMethod::NFC_READER_MASK},
+		{1 << 14, NanBootstrappingMethod::SERVICE_MANAGED_MASK},
+		{1 << 15, NanBootstrappingMethod::HANDSHAKE_SKIPPED_MASK},
+	};
+
+	auto it = method_map.find(method);
+	if (it != method_map.end()) {
+		return static_cast<int>(it->second);
+	}
+	return -1;
+}
+
+void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int discovery_id, int peer_id, const u8* peer_nmi_addr,
+	int bootstrapping_id, int bootstrapping_method)
+{
+	if (!wpa_s || !peer_nmi_addr) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanBootstrappingRequestInd request_ind;
+		request_ind.discoverySessionId = discovery_id;
+		request_ind.peerId = peer_id;
+		request_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
+		request_ind.bootstrappingInstanceId = bootstrapping_id;
+		// TODO: check if the bootstrapping_method is a bitmap or an enum type
+		int request_method = translateBootstrappingMethod(bootstrapping_method);
+		if (request_method == -1) {
+			wpa_printf(
+				MSG_ERROR,
+				"Error translating bootstrapping method.");
+			return;
+		}
+		request_ind.requestBootstrappingMethod =
+			static_cast<NanBootstrappingMethod>(request_method);
+
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventBootstrappingRequest,
+			std::placeholders::_1, request_ind)
+		);
+	}
+}
+void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int bootstrapping_id, int response_code, u8 status_code,
+	int come_back_delay_sec, const u8 *cookie, size_t cookie_size)
+{
+	if (!wpa_s) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanBootstrappingConfirmInd confirm_ind;
+		confirm_ind.bootstrappingInstanceId = bootstrapping_id;
+		// TODO: parse response_code and status_code when it's defined in the wpa_supplicant
+		confirm_ind.comeBackDelaySec = come_back_delay_sec;
+
+		if (cookie) {
+			confirm_ind.cookie = byteArrToVec(cookie, cookie_size);
+		}
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventBootstrappingConfirm,
+			std::placeholders::_1, confirm_ind));
+	}
+}
+void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int discovery_id, int peer_id, const u8* peer_nmi_addr,
+	int pairing_id, int request_type, bool enable_cache, const u8* nonce,
+	const u8* tag)
+{
+	if (!wpa_s || !peer_nmi_addr || !nonce || !tag) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanPairingRequestInd request_ind;
+
+		request_ind.discoverySessionId = discovery_id;
+		request_ind.peerId = peer_id;
+		request_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
+		request_ind.pairingInstanceId = pairing_id;
+		// TODO: parse the request_type after it's defined in wpa_supplicant
+		request_ind.enablePairingCache = enable_cache;
+		std::array<uint8_t, kNiraNonceLenBytes> arr_nonce;
+		std::copy(nonce, nonce + kNiraNonceLenBytes, std::begin(arr_nonce));
+		request_ind.peerNira.nonce = arr_nonce;
+		std::array<uint8_t, kNiraTagLenBytes> arr_tag;
+		std::copy(tag, tag + kNiraTagLenBytes, std::begin(arr_tag));
+		request_ind.peerNira.tag = arr_tag;
+
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventPairingRequest,
+			std::placeholders::_1, request_ind));
+	}
+}
+void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int pairing_id, bool success, u8 status_code,
+	int request_type, bool enable_cache, const u8* peer_nik,
+	const u8* local_nik, const u8* npk, int akm, int cipher_type)
+{
+	if (!wpa_s || !peer_nik || !local_nik || !npk) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanPairingConfirmInd confirm_ind;
+
+		confirm_ind.pairingInstanceId = pairing_id;
+		confirm_ind.pairingSuccess = success;
+		// TODO: parse status_code and request_type after they're defined
+		confirm_ind.enablePairingCache = enable_cache;
+		std::array<uint8_t, kNikLenBytes> arr_peer_nik;
+		std::copy(peer_nik, peer_nik + kNikLenBytes, std::begin(arr_peer_nik));
+		confirm_ind.npksa.peerNanIdentityKey = arr_peer_nik;
+		std::array<uint8_t, kNikLenBytes> arr_local_nik;
+		std::copy(local_nik, local_nik + kNikLenBytes, std::begin(arr_local_nik));
+		confirm_ind.npksa.localNanIdentityKey = arr_local_nik;
+		std::array<uint8_t, kNpkLenBytes> arr_npk;
+		std::copy(npk, npk + kNpkLenBytes, std::begin(arr_npk));
+		confirm_ind.npksa.npk = arr_npk;
+		// TODO: parse akm and cipher_type later we got the definition
+
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventPairingConfirm,
+			std::placeholders::_1, confirm_ind));
+	}
+}
+void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	bool security_required, const u8* app_info, size_t app_info_len)
+{
+	if (!wpa_s || !peer_nmi_addr) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanDataPathRequestInd request_ind;
+		request_ind.discoverySessionId = discovery_id;
+		request_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
+		request_ind.ndpInstanceId = ndp_id;
+		request_ind.securityRequired = security_required;
+		if (app_info && app_info_len > 0) {
+			request_ind.appInfo = byteArrToVec(app_info, app_info_len);
+		}
+
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(&NanIface::ISupplicantNanIfaceEventCallback::eventDataPathRequest,
+				std::placeholders::_1, request_ind));
+	}
+}
+
+void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
+	size_t app_info_len, u8 status_code, const int* channel_freq_mhz, const int* bandwidth,
+	const int* num_spatial_stream, size_t num_configs)
+{
+	if (!wpa_s || !peer_ndi_addr) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanDataPathConfirmInd confirm_ind;
+		confirm_ind.ndpInstanceId = ndp_id;
+		confirm_ind.dataPathSetupSuccess = success;
+		confirm_ind.peerNdiMacAddr = macAddrToArray(peer_ndi_addr);
+		if (app_info && app_info_len > 0) {
+			confirm_ind.appInfo = byteArrToVec(app_info, app_info_len);
+		}
+		// TODO: parse the status_code
+		std::vector<NanDataPathChannelInfo> channel_info;
+		if (num_configs > 0 && (!channel_freq_mhz || !bandwidth || !num_spatial_stream)) {
+			wpa_printf(MSG_ERROR, "Invalid channel info in data path confirm event");
+			return;
+		}
+		for (size_t i = 0; i < num_configs; ++i) {
+			NanDataPathChannelInfo info;
+			info.channelFreqMhz = channel_freq_mhz[i];
+			info.channelBandwidth = convertSupplicantChannelWidthToAidl(bandwidth[i]);
+			info.numSpatialStreams = num_spatial_stream[i];
+			channel_info.push_back(info);
+		}
+		confirm_ind.channelInfo = channel_info;
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventDataPathConfirm,
+			std::placeholders::_1, confirm_ind));
+	}
+}
+void AidlManager::notifyNanDataPathScheduleUpdateEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, const u8* peer_nmi_addr, const int* channel_freq_mhz,
+	const int* bandwidth, const int* num_spatial_stream, const int* ndp_ids,
+	size_t num_configs)
+{
+	if (!wpa_s || !peer_nmi_addr || !ndp_ids) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		NanDataPathScheduleUpdateInd schedule_update_ind;
+		schedule_update_ind.peerDiscoveryAddress = macAddrToArray(peer_nmi_addr);
+
+		std::vector<NanDataPathChannelInfo> channel_info;
+		if (num_configs > 0 && (!channel_freq_mhz || !bandwidth || !num_spatial_stream)) {
+			wpa_printf(MSG_ERROR, "Invalid channel info in data path schedule update event");
+			return;
+		}
+		for (size_t i = 0; i < num_configs; ++i) {
+			NanDataPathChannelInfo info;
+			info.channelFreqMhz = channel_freq_mhz[i];
+			info.channelBandwidth = convertSupplicantChannelWidthToAidl(bandwidth[i]);
+			info.numSpatialStreams = num_spatial_stream[i];
+			channel_info.push_back(info);
+		}
+		schedule_update_ind.channelInfo = channel_info;
+		schedule_update_ind.ndpInstanceIds.assign(ndp_ids, ndp_ids + num_configs);
+
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(&NanIface::ISupplicantNanIfaceEventCallback::eventDataPathScheduleUpdate,
+				std::placeholders::_1, schedule_update_ind));
+	}
+
+}
+void AidlManager::notifyNanDataPathTerminatedEvent(struct wpa_supplicant *wpa_s,
+	int cmd_id, int ndp_id)
+{
+	if (!wpa_s) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end()) {
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventDataPathTerminated,
+			std::placeholders::_1, ndp_id)
+		);
+	}
+}
+
 void AidlManager::notifyNanCapabilitiesResponse(
 	const std::string ifname, const char16_t id, const NanStatus status,
 	const NanCapabilities capabilities)

@@ -10,8 +10,12 @@
 #define SUPPLICANT_NAN_IFACE_H
 
 #include <aidl/android/hardware/wifi/supplicant/SupplicantStatusCode.h>
-
 #include <aidl/android/system/wifi/mainline_supplicant/BnSupplicantNanIface.h>
+
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
 
 extern "C"
 {
@@ -46,11 +50,17 @@ public:
 	using NanRespondToDataPathIndicationRequest =
 		::aidl::android::system::wifi::mainline_supplicant::NanRespondToDataPathIndicationRequest;
 	NanIface(struct wpa_global* global, const std::string& ifname);
-	~NanIface() override = default;
+	~NanIface() override;
 
 	// Refer to |StaIface::invalidate()|.
 	void invalidate();
 	bool isValid();
+	void enqueue(std::function<void()> task);
+	bool isStartedClusterIndicationEnabled();
+	bool isJoinedClusterIndicationEnabled();
+	bool isDiscoveryTerminationIndicationEnabled();
+	bool isMatchExpirationIndicationEnabled();
+	bool isFollowupReceivedIndicationEnabled();
 
 	::ndk::ScopedAStatus registerEventCallback(
 		const std::shared_ptr<ISupplicantNanIfaceEventCallback>&
@@ -102,11 +112,6 @@ public:
 	::ndk::ScopedAStatus terminateDataPathRequest(
 		char16_t in_cmdId,
 		int32_t in_ndpInstanceId) override;
-	bool isStartedClusterIndicationEnabled();
-	bool isJoinedClusterIndicationEnabled();
-	bool isDiscoveryTerminationIndicationEnabled();
-	bool isMatchExpirationIndicationEnabled();
-	bool isFollowupReceivedIndicationEnabled();
 
 private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
@@ -156,6 +161,11 @@ private:
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
 	const std::string ifname_;
+	std::thread worker_thread_;
+	std::mutex mutex_;
+	std::condition_variable cv_;
+	std::queue<std::function<void()>> task_queue_;
+	bool stop_worker_ = false;
 	bool is_valid_;
 	bool started_cluster_indication_;
 	bool joined_cluster_indication_;
