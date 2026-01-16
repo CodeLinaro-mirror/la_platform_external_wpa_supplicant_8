@@ -1,6 +1,6 @@
 /*
  * NAN Discovery Engine
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -60,6 +60,10 @@ struct nan_callbacks {
 	void (*process_p2p_usd_elems)(void *ctx, const u8 *buf,
 				      u16 buf_len, const u8 *peer_addr,
 				      unsigned int freq);
+
+	void (*process_pr_usd_elems)(void *ctx, const u8 *buf,
+				     u16 buf_len, const u8 *peer_addr,
+				     unsigned int freq);
 };
 
 bool nan_de_is_nan_network_id(const u8 *addr);
@@ -124,6 +128,8 @@ struct nan_publish_params {
 
 	/* RSSI range limit */
 	bool close_proximity;
+	/* Proximity ranging flag */
+	bool proximity_ranging;
 };
 
 /* Returns -1 on failure or >0 publish_id */
@@ -182,6 +188,8 @@ struct nan_subscribe_params {
 
 	/* RSSI range limit */
 	bool close_proximity;
+	/* Proximity ranging flag */
+	bool proximity_ranging;
 };
 
 /* Returns -1 on failure or >0 subscribe_id */
@@ -199,5 +207,7 @@ int nan_de_transmit(struct nan_de *de, int handle,
 		    const u8 *peer_addr, u8 req_instance_id);
 void nan_de_dw_trigger(struct nan_de *de, int freq);
 void nan_de_set_cluster_id(struct nan_de *de, const u8 *cluster_id);
+
+int nan_de_stop_listen(struct nan_de *de, int handle);
 
 #endif /* NAN_DE_H */
