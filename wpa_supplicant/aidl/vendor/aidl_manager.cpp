@@ -587,6 +587,7 @@ int AidlManager::registerAidlService(struct wpa_global *global)
 	std::string service_name = "wifi_mainline_supplicant";
 	std::shared_ptr<MainlineSupplicant> service
 		= ndk::SharedRefBase::make<MainlineSupplicant>(global);
+	wpa_global_ = global;
 	if (__builtin_available(android __ANDROID_API_V__, *)) {
 	int status =
 	AServiceManager_registerLazyService(service->asBinder().get(), service_name.c_str());
@@ -3499,7 +3500,9 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 	discoveryInfo.peerId = peer_id;
 	discoveryInfo.peerMacAddress = macAddrToArray(peer_addr);
 	discoveryInfo.protoType = convertUsdServiceProtoTypeToAidl(srv_proto_type);
-	discoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	if (ssi != NULL) {
+		discoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	}
 	discoveryInfo.isFsd = fsd;
 	return discoveryInfo;
 }

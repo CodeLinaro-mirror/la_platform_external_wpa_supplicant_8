@@ -1134,7 +1134,7 @@ void wpas_aidl_notify_nan_service_discovered(struct wpa_supplicant *wpa_s,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
 		bool fsd, const u8 *ssi, size_t ssi_len)
 {
-	if (!wpa_s || !peer_addr || !ssi)
+	if (!wpa_s || !peer_addr)
 		return;
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
@@ -1151,7 +1151,7 @@ void wpas_aidl_notify_nan_publish_replied(struct wpa_supplicant *wpa_s,
 		int publish_id, int peer_subscribe_id,
 		const u8 *peer_addr, const u8 *ssi, size_t ssi_len)
 {
-	if (!wpa_s || !peer_addr || !ssi)
+	if (!wpa_s || !peer_addr)
 		return;
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
