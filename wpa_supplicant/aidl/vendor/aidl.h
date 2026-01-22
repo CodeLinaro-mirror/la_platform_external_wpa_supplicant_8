@@ -178,6 +178,10 @@ extern "C"
 		int publish_id, enum nan_de_reason reason);
 	void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		int subscribe_id, enum nan_de_reason reason);
+#ifdef CONFIG_USE_VENDOR_AIDL
+	void wpas_aidl_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s,
+		const char* msg);
+#endif
 #else   // CONFIG_CTRL_IFACE_AIDL
 static inline int wpas_aidl_register_interface(struct wpa_supplicant *wpa_s)
 {
@@ -401,6 +405,10 @@ static void wpas_aidl_notify_usd_publish_terminated(struct wpa_supplicant *wpa_s
 		int publish_id, enum nan_de_reason reason) {}
 static void wpas_aidl_notify_usd_subscribe_terminated(struct wpa_supplicant *wpa_s,
 		int subscribe_id, enum nan_de_reason reason) {}
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_aidl_notify_vendor_ctrl_evet(struct wpa_supplicant *wpas, const char *msg)
+{}
+#endif
 #endif  // CONFIG_CTRL_IFACE_AIDL
 
 #ifdef _cplusplus

@@ -62,6 +62,7 @@ cc_defaults {
         "libcrypto",
         "libssl",
         "libnl",
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
     ],
     relative_install_path: "hw",
     soc_specific: true,
@@ -443,6 +444,7 @@ cc_defaults {
         "-DCONFIG_OCV",
         "-DCONFIG_PASN",
         "-DCONFIG_PTKSA_CACHE",
+        "-DCONFIG_USE_VENDOR_AIDL",
     ],
     local_include_dirs: [
         "src/fst",
@@ -458,6 +460,9 @@ cc_defaults {
         "src/fst/fst_session.c",
         "src/fst/fst_ctrl_aux.c",
         "src/fst/fst_ctrl_iface.c",
+    ],
+    shared_libs: [
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
     ],
 }
 
@@ -754,6 +759,7 @@ cc_library_static {
     srcs: [
         "aidl/aidl.cpp",
         "aidl/hostapd.cpp",
+        "aidl/hostapd_vendor.cpp",
     ],
     shared_libs: [
         "android.hardware.wifi.hostapd-V3-ndk",
