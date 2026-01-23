@@ -35,12 +35,14 @@ const std::string kMainlineSupplicantConfigPath =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
 static constexpr int kNanIfaceCapMaxPublishSessions = 10;
 static constexpr int kNanIfaceCapMaxSubscribeSessions = kNanIfaceCapMaxPublishSessions;
+static constexpr int kNanMaxServiceNameLen = 255;
+static constexpr int kNanMaxServiceSpecificInfoLen = 255;
+static constexpr int kNanMaxMatchFilterLen = 255;
+static constexpr int kNanMaxExtendedServiceSpecificInfoLen = 1280;
 static constexpr bool kNanIfaceCapInstantCommunicationModeSupport = false;
 static constexpr bool kNanIfaceCapSupportsPeriodicRanging = false;
 static constexpr bool kNanIfaceCapSupportsSuspension = false;
 static constexpr int kNanIfaceConfBufSize = 128;
-static constexpr int kNanIfaceConfBandRssiClose = -60;
-static constexpr int kNanIfaceConfBandRssiMiddle = -75;
 static constexpr int kNanIfaceConfBandDisableScan = 0;
 static constexpr int kNanIfaceConfScanDwellTime = 150;
 static constexpr int kNanIfaceConfScanPeriod = 20;
@@ -252,7 +254,7 @@ bool NanIface::isValid()
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager ||
-		!aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
+		aidl_manager->addNanIfaceCallbackAidlObject(ifname_, callback)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	return ndk::ScopedAStatus::ok();
@@ -272,6 +274,11 @@ bool NanIface::isValid()
 
 		aidl_caps.maxPublishes = kNanIfaceCapMaxPublishSessions;
 		aidl_caps.maxSubscribes = kNanIfaceCapMaxSubscribeSessions;
+		aidl_caps.maxServiceNameLen = kNanMaxServiceNameLen;
+		aidl_caps.maxServiceSpecificInfoLen = kNanMaxServiceSpecificInfoLen;
+		aidl_caps.maxMatchFilterLen = kNanMaxMatchFilterLen;
+		aidl_caps.maxExtendedServiceSpecificInfoLen =
+			kNanMaxExtendedServiceSpecificInfoLen;
 		aidl_caps.instantCommunicationModeSupportFlag =
 			kNanIfaceCapInstantCommunicationModeSupport;
 		aidl_caps.supportsSuspension = kNanIfaceCapSupportsSuspension;
@@ -303,25 +310,32 @@ bool NanIface::isValid()
 		// Write the input config to the nan_config inside wpa_s instance
 		int ret = 0;
 		ret |= setNanConfigParam(wpa_s, "master_pref %d", request.masterPref);
-		ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
-		ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
 		ret |= setNanConfigParam(
 			wpa_s, "discovery_beacon_interval %d", request.discoveryBeaconIntervalMs);
 		if (!request.bandSpecificConfig.empty()) {
 			ret |= setNanConfigParam(
-				wpa_s, "low_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
-				kNanIfaceConfBandRssiMiddle,
+				wpa_s, "low_band_cfg %d,%d,%d,%d",
+				-request.bandSpecificConfig[0].rssiClose,
+				-request.bandSpecificConfig[0].rssiMiddle,
 				request.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
 					? request.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
 				kNanIfaceConfBandDisableScan);
+			ret |= setNanConfigParam(wpa_s, "scan_period %d",
+				request.bandSpecificConfig[0].scanPeriodSec);
+			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d",
+				request.bandSpecificConfig[0].dwellTimeMs);
 			if (request.bandSpecificConfig.size() > 1) {
 				ret |= setNanConfigParam(
-					wpa_s, "high_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
-					kNanIfaceConfBandRssiMiddle,
+					wpa_s, "high_band_cfg %d,%d,%d,%d",
+					-request.bandSpecificConfig[1].rssiClose,
+					-request.bandSpecificConfig[1].rssiMiddle,
 					request.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
 						? request.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
 					kNanIfaceConfBandDisableScan);
 			}
+		} else {
+			ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
+			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
 		}
 
 		ret |= setNanConfigParam(
@@ -371,26 +385,33 @@ bool NanIface::isValid()
 		int ret = 0;
 		ret |= setNanConfigParam(wpa_s, "master_pref %d", msg2.masterPref);
 		ret |= setNanConfigParam(wpa_s, "dual_band %d", dual_band);
-		ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
-		ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
 		ret |= setNanConfigParam(
 			wpa_s, "discovery_beacon_interval %d",
 			msg2.discoveryBeaconIntervalMs);
 		if (!msg2.bandSpecificConfig.empty()) {
 			ret |= setNanConfigParam(
-				wpa_s, "low_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
-				kNanIfaceConfBandRssiMiddle,
+				wpa_s, "low_band_cfg %d,%d,%d,%d",
+				-msg2.bandSpecificConfig[0].rssiClose,
+				-msg2.bandSpecificConfig[0].rssiMiddle,
 				msg2.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
 				? msg2.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
 				kNanIfaceConfBandDisableScan);
+			ret |= setNanConfigParam(wpa_s, "scan_period %d",
+				msg2.bandSpecificConfig[0].scanPeriodSec);
+			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d",
+				msg2.bandSpecificConfig[0].dwellTimeMs);
 			if (dual_band && msg2.bandSpecificConfig.size() > 1) {
 				ret |= setNanConfigParam(
-					wpa_s, "high_band_cfg %d %d %d %d", kNanIfaceConfBandRssiClose,
-					kNanIfaceConfBandRssiMiddle,
+					wpa_s, "high_band_cfg %d,%d,%d,%d",
+					-msg2.bandSpecificConfig[1].rssiClose,
+					-msg2.bandSpecificConfig[1].rssiMiddle,
 					msg2.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
 					? msg2.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
 					kNanIfaceConfBandDisableScan);
 			}
+		} else {
+			ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
+			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
 		}
 		ret |= setNanConfigParam(
 			wpa_s, "cluster_id " MACSTR, MAC2STR(msg2.clusterId));
@@ -602,7 +623,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 
 		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status, publish_id);
 	}).detach();
 
 	return ndk::ScopedAStatus::ok();
@@ -615,7 +636,6 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_cancel_publish
 	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::SUCCESS;
@@ -683,7 +703,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			return;
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status, subscribe_id);
 	}).detach();
 
 	return ndk::ScopedAStatus::ok();
@@ -696,7 +716,6 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
-	// TODO: wpas_nan_cancel_subscribe
 	std::thread([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;

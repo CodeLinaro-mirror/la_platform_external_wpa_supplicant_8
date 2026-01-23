@@ -173,14 +173,23 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 
 	*param++ = '\0';
 
-#define NAN_PARSE_INT(_str, _min, _max)                              \
+#define NAN_PARSE_INT(_str, _min, _max, _def)                        \
 	if (os_strcmp(#_str, cmd) == 0) {                            \
-		int val = atoi(param);                               \
-								     \
-		if (val < (_min) || val > (_max)) {                  \
+		char *endptr;                                        \
+		int val = strtol(param, &endptr, 10);                \
+		if (*endptr != '\0' || param == endptr) {            \
 			wpa_printf(MSG_DEBUG,                        \
-				   "NAN: Invalid value for " #_str); \
+			   "NAN: Invalid number format for " #_str); \
 			return -1;                                   \
+		}                                                    \
+		if (val < (_min) || val > (_max)) {                  \
+			if (val == 0 && _def != -1) {                \
+				val = _def;                          \
+			} else {                                     \
+				wpa_printf(MSG_DEBUG,                \
+				  "NAN: value out of range " #_str); \
+				return -1;                           \
+			}                                            \
 		}                                                    \
 		config->_str = val;                                  \
 		return 0;                                            \
@@ -195,7 +204,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 			return -1;                                              \
 		}                                                               \
 										\
-		if (a < NAN_MIN_RSSI_CLOSE || b < NAN_MIN_RSSI_MIDDLE ||        \
+		if (a <= NAN_MIN_RSSI_CLOSE || b <= NAN_MIN_RSSI_MIDDLE ||      \
 		    a <= b) {							\
 			wpa_printf(MSG_DEBUG, "NAN: Invalid value for " #_str); \
 			return -1;						\
@@ -208,11 +217,12 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 	}
 
 	/* 0 and 255 are reserved */
-	NAN_PARSE_INT(master_pref, 1, 254);
-	NAN_PARSE_INT(dual_band, 0, 1);
-	NAN_PARSE_INT(scan_period, 0, 0xffff);
-	NAN_PARSE_INT(scan_dwell_time, 10, 150);
-	NAN_PARSE_INT(discovery_beacon_interval, 50, 200);
+	NAN_PARSE_INT(master_pref, 1, 254, DEFAULT_NAN_MASTER_PREF);
+	NAN_PARSE_INT(dual_band, 0, 1, -1);
+	NAN_PARSE_INT(scan_period, 0, 0xffff, -1);
+	NAN_PARSE_INT(scan_dwell_time, 10, 150, DEFAULT_NAN_SCAN_DWELL_TIME);
+	NAN_PARSE_INT(discovery_beacon_interval, 50, 200,
+				DEFAULT_NAN_DISCOVERY_BEACON_INTERVAL);
 
 	NAN_PARSE_BAND(low_band_cfg);
 	NAN_PARSE_BAND(high_band_cfg);

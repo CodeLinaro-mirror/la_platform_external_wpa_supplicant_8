@@ -1765,6 +1765,18 @@ struct wpa_config {
 	int android_force_roaming_enabled;
 
 	/**
+	*
+	* bgscan_enabled - Enable background scan
+	*
+	*  0: Disable background scan.
+	*  1: Enable background scan.
+	*
+	* By default, bgscan_enabled is disabled, equal 0.
+	*/
+	int bgscan_enabled;
+
+
+	/**
 	 * p2p_device_random_mac_addr - P2P Device MAC address policy default
 	 *
 	 * 0 = use permanent MAC address (the one set by default by the device

@@ -896,7 +896,6 @@ const char *wpa_supplicant_state_txt(enum wpa_states state) {
   }
 }
 
-#ifdef CONFIG_BGSCAN
 
 static void wpa_supplicant_stop_bgscan(struct wpa_supplicant *wpa_s) {
   if (wpa_s->bgscan_ssid) {
@@ -951,7 +950,7 @@ void wpa_supplicant_reset_bgscan(struct wpa_supplicant *wpa_s) {
     wpa_s->bgscan_ssid = NULL;
 }
 
-#endif /* CONFIG_BGSCAN */
+
 
 static void wpa_supplicant_start_autoscan(struct wpa_supplicant *wpa_s) {
   if (autoscan_init(wpa_s, 0))
@@ -1194,12 +1193,13 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		wpas_scs_reconfigure(wpa_s);
 #endif /* CONFIG_NO_ROBUST_AV */
 
-#ifdef CONFIG_BGSCAN
-  if (state == WPA_COMPLETED && wpa_s->current_ssid != wpa_s->bgscan_ssid)
-    wpa_supplicant_reset_bgscan(wpa_s);
-  else if (state < WPA_ASSOCIATED)
-    wpa_supplicant_stop_bgscan(wpa_s);
-#endif /* CONFIG_BGSCAN */
+  if (wpa_s->conf->bgscan_enabled) {
+    if (state == WPA_COMPLETED && wpa_s->current_ssid != wpa_s->bgscan_ssid)
+      wpa_supplicant_reset_bgscan(wpa_s);
+    else if (state < WPA_ASSOCIATED)
+      wpa_supplicant_stop_bgscan(wpa_s);
+  }
+
 
   if (state > WPA_SCANNING) wpa_supplicant_stop_autoscan(wpa_s);
 
@@ -2228,6 +2228,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
     wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DENY_PTK0_REKEY, 0);
   }
 
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) &&        \
      !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) || \
     defined(CONFIG_DRIVER_NL80211_SYNA)
@@ -2240,12 +2241,17 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
     wpa_dbg(wpa_s, MSG_INFO,
             "WPA: Updating to KEY_MGMT SAE+PSK for seamless roaming");
   }
+
 #else
   if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
       !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
     wpas_update_allowed_key_mgmt(wpa_s, ssid);
-#endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) || \
-        * CONFIG_DRIVER_NL80211_SYNA */
+#endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
+#else
+  if (wpa_key_mgmt_cross_akm(wpa_s->key_mgmt) &&
+      !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
+    wpas_update_allowed_key_mgmt(wpa_s, ssid);
+#endif /* MAINLINE_SUPPLICANT */
 
   return 0;
 }
@@ -4400,6 +4406,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit) {
 #endif /* CONFIG_WEP */
 
   if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK) &&
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) &&        \
      !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) || \
     defined(CONFIG_DRIVER_NL80211_SYNA)
@@ -4418,6 +4425,11 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit) {
        (params.allowed_key_mgmts & (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_FT_PSK)))) {
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) || \
         * CONFIG_DRIVER_NL80211_SYNA */
+#else
+      (params.key_mgmt_suite == WPA_KEY_MGMT_PSK ||
+       params.key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
+       (params.allowed_key_mgmts & (WPA_KEY_MGMT_PSK | WPA_KEY_MGMT_FT_PSK)))) {
+#endif /* MAINLINE_SUPPLICANT */
     params.passphrase = ssid->passphrase;
     if (wpa_supplicant_get_psk(wpa_s, bss, ssid, psk) == 0) params.psk = psk;
   }
@@ -4442,6 +4454,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit) {
     else
       params.req_key_mgmt_offload = 1;
 
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) &&        \
      !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) || \
     defined(CONFIG_DRIVER_NL80211_SYNA)
@@ -4453,6 +4466,10 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit) {
          wpa_key_mgmt_wpa_psk_no_sae(params.allowed_key_mgmts)) &&
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) || \
         * CONFIG_DRIVER_NL80211_SYNA */
+#else
+    if ((wpa_key_mgmt_wpa_psk_no_sae(params.key_mgmt_suite) ||
+         wpa_key_mgmt_wpa_psk_no_sae(params.allowed_key_mgmts)) &&
+#endif /* MAINLINE_SUPPLICANT */
         wpa_supplicant_get_psk(wpa_s, bss, ssid, psk) == 0)
       params.psk = psk;
   }
@@ -8086,17 +8103,17 @@ void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s) {
     wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_FT_PREPEND_PMKID,
                      wpa_s->conf->ft_prepend_pmkid);
 
-#ifdef CONFIG_BGSCAN
-  /*
-   * We default to global bgscan parameters only when per-network bgscan
-   * parameters aren't set. Only bother resetting bgscan parameters if
-   * this is the case.
-   */
-  if ((wpa_s->conf->changed_parameters & CFG_CHANGED_BGSCAN) &&
-      wpa_s->current_ssid && !wpa_s->current_ssid->bgscan &&
-      wpa_s->wpa_state == WPA_COMPLETED)
-    wpa_supplicant_reset_bgscan(wpa_s);
-#endif /* CONFIG_BGSCAN */
+  if (wpa_s->conf->bgscan_enabled) {
+    /*
+     * We default to global bgscan parameters only when per-network bgscan
+     * parameters aren't set. Only bother resetting bgscan parameters if
+     * this is the case.
+     */
+    if ((wpa_s->conf->changed_parameters & CFG_CHANGED_BGSCAN) &&
+        wpa_s->current_ssid && !wpa_s->current_ssid->bgscan &&
+        wpa_s->wpa_state == WPA_COMPLETED)
+      wpa_supplicant_reset_bgscan(wpa_s);
+  }
 
 #ifdef CONFIG_WPS
   wpas_wps_update_config(wpa_s);

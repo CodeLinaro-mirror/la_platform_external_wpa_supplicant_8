@@ -1444,9 +1444,8 @@ static int tls_is_pin_error(unsigned int err)
 #endif /* OPENSSL_NO_ENGINE */
 
 
-// Imported from system/security/keystore-engine. This method
-// is not used by the mainline supplicant.
-#if defined(ANDROID) && !defined(MAINLINE_SUPPLICANT)
+// Imported from system/security/keystore-engine
+#if defined(ANDROID)
 EVP_PKEY * EVP_PKEY_from_keystore(const char *key_id);
 #endif /* ANDROID */
 
@@ -1454,7 +1453,7 @@ static int tls_engine_init(struct tls_connection *conn, const char *engine_id,
 			   const char *pin, const char *key_id,
 			   const char *cert_id, const char *ca_cert_id)
 {
-#if defined(ANDROID) && !defined(MAINLINE_SUPPLICANT) && defined(OPENSSL_IS_BORINGSSL)
+#if defined(ANDROID) && defined(OPENSSL_IS_BORINGSSL)
 #if !defined(OPENSSL_NO_ENGINE)
 #error "This code depends on OPENSSL_NO_ENGINE being defined by BoringSSL."
 #endif

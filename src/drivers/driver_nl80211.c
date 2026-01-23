@@ -41,6 +41,7 @@
 #include "radiotap_iter.h"
 #include "rfkill.h"
 #include "driver_nl80211.h"
+#include "driver_nl80211_proxy.h"
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
 #include "common/brcm_vendor.h"
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
@@ -289,12 +290,14 @@ void nl80211_mark_disconnected(struct wpa_driver_nl80211_data *drv)
 	os_memset(drv->bssid, 0, ETH_ALEN);
 	drv->first_bss->flink->freq = 0;
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	os_free(drv->pending_roam_data);
-	drv->pending_roam_data = NULL;
-	os_free(drv->pending_t2lm_data);
-	drv->pending_t2lm_data = NULL;
-	os_free(drv->pending_link_reconfig_data);
-	drv->pending_link_reconfig_data = NULL;
+	if (drv->chip_vendor_id == OUI_QCA) {
+		os_free(drv->pending_roam_data);
+		drv->pending_roam_data = NULL;
+		os_free(drv->pending_t2lm_data);
+		drv->pending_t2lm_data = NULL;
+		os_free(drv->pending_link_reconfig_data);
+		drv->pending_link_reconfig_data = NULL;
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	drv->auth_mld = false;
@@ -2371,6 +2374,18 @@ wpa_driver_nl80211_drv_init_rfkill(struct wpa_driver_nl80211_data *drv)
 	}
 }
 
+static void nl80211_set_vendor_ops(struct wpa_driver_nl80211_data *drv)
+{
+	extern const struct wpa_driver_nl80211_vendor_ops brcm_vendor_ops, intel_vendor_ops;
+
+	if (drv->chip_vendor_id == OUI_BRCM) {
+		drv->vendor_ops = &brcm_vendor_ops;
+	} else if (drv->chip_vendor_id == OUI_INTEL) {
+		drv->vendor_ops = &intel_vendor_ops;
+	} else {
+		drv->vendor_ops = NULL;
+	}
+}
 
 static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 					  void *global_priv, int hostapd,
@@ -2428,6 +2443,7 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 		os_free(drv);
 		return NULL;
 	}
+
 	bss = drv->first_bss;
 	bss->drv = drv;
 	bss->ctx = ctx;
@@ -2442,6 +2458,8 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
 	if (wpa_driver_nl80211_finish_drv_init(drv, set_addr, 1, driver_params,
 					       p2p_mode))
 		goto failed;
+
+	nl80211_set_vendor_ops(drv);
 
 	if (drv->capa.flags2 & WPA_DRIVER_FLAGS2_CONTROL_PORT_TX_STATUS) {
 		drv->control_port_ap = 1;
@@ -3248,8 +3266,10 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv,
 	wpa_driver_nl80211_drv_init_rfkill(drv);
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (nlmode == NL80211_IFTYPE_P2P_GO)
-		nl80211_set_p2p_mode(bss, p2p_mode);
+	if (drv->chip_vendor_id == OUI_QCA) {
+		if (nlmode == NL80211_IFTYPE_P2P_GO)
+			nl80211_set_p2p_mode(bss, p2p_mode);
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	if (!rfkill_is_blocked(drv->rfkill)) {
@@ -3438,6 +3458,7 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 	}
 
 	nl80211_destroy_bss(drv->first_bss);
+	drv->vendor_ops = NULL;
 
 	os_free(drv->filter_ssids);
 
@@ -3455,7 +3476,9 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 	}
 	os_free(drv->first_bss);
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	os_free(drv->pending_roam_data);
+	if (drv->chip_vendor_id == OUI_QCA) {
+		os_free(drv->pending_roam_data);
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	os_free(drv);
 }
@@ -3586,7 +3609,7 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
 	return num_suites;
 }
 
-
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) ||   \
 	defined(CONFIG_DRIVER_NL80211_SYNA)
 static int wpa_cross_akm_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
@@ -3606,10 +3629,11 @@ static int wpa_cross_akm_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 su
 }
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) ||
 	* CONFIG_DRIVER_NL80211_SYNA */
+#endif /* MAINLINE_SUPPLICANT */
 
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
+static int qca_vendor_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 				  const u8 *key, size_t key_len)
 {
 	struct nl_msg *msg;
@@ -3640,8 +3664,8 @@ static int issue_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
 
 
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-static int key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
-				  const u8 *key, size_t key_len)
+static int dhd_vendor_key_mgmt_set_key(struct wpa_driver_nl80211_data *drv,
+				       const u8 *key, size_t key_len)
 {
 	struct nl_msg *msg;
 	int ret;
@@ -3747,12 +3771,14 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 	}
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if ((key_flag & KEY_FLAG_PMK) &&
-	    (drv->capa.flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD)) {
-		wpa_printf(MSG_DEBUG, "%s: calling issue_key_mgmt_set_key",
-			   __func__);
-		ret = issue_key_mgmt_set_key(drv, key, key_len);
-		return ret;
+	if (drv->chip_vendor_id == OUI_QCA) {
+		if (key_flag & KEY_FLAG_PMK &&
+			(drv->capa.flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD)) {
+			wpa_printf(MSG_DEBUG, "%s: calling issue_key_mgmt_set_key",
+				   __func__);
+			ret = qca_vendor_key_mgmt_set_key(drv, key, key_len);
+			return ret;
+		}
 	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
@@ -3760,9 +3786,13 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 		if (drv->capa.flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)
 			return nl80211_set_pmk(drv, key, key_len, addr);
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-		if (drv->vendor_set_pmk) {
-			wpa_printf(MSG_INFO, "nl80211: key_mgmt_set_key with key_len %lu", (unsigned long) key_len);
-			return key_mgmt_set_key(drv, key, key_len);
+		if (drv->chip_vendor_id == OUI_BRCM) {
+			if (drv->vendor_set_pmk) {
+				wpa_printf(MSG_INFO,
+					   "nl80211: key_mgmt_set_key with key_len %lu",
+					   (unsigned long) key_len);
+				return dhd_vendor_key_mgmt_set_key(drv, key, key_len);
+			}
 		}
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
@@ -5725,11 +5755,13 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	}
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (cmd == NL80211_CMD_NEW_BEACON && params->allowed_freqs)
-		qca_set_allowed_ap_freqs(bss, params->allowed_freqs,
-					 int_array_len(params->allowed_freqs),
-					 params->mld_ap ? params->mld_link_id :
-					 NL80211_DRV_LINK_ID_NA);
+	if (drv->chip_vendor_id == OUI_QCA) {
+		if (cmd == NL80211_CMD_NEW_BEACON && params->allowed_freqs)
+			qca_set_allowed_ap_freqs(bss, params->allowed_freqs,
+						 int_array_len(params->allowed_freqs),
+						 params->mld_ap ? params->mld_link_id :
+						 NL80211_DRV_LINK_ID_NA);
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 	if (nla_put_flag(msg, NL80211_ATTR_SOCKET_OWNER))
@@ -7156,18 +7188,20 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		if (params->wpa_proto & WPA_PROTO_WPA)
 			ver |= NL80211_WPA_VERSION_1;
 		if (params->wpa_proto & WPA_PROTO_RSN) {
-#if !defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(CONFIG_DRIVER_NL80211_SYNA)
-			/*
-			 * NL80211_ATTR_SAE_PASSWORD is related and was added
-			 * at the same time as NL80211_WPA_VERSION_3.
-			 */
-			if (nl80211_attr_supported(drv,
-						   NL80211_ATTR_SAE_PASSWORD) &&
-			    wpa_key_mgmt_sae(params->key_mgmt_suite))
-				ver |= NL80211_WPA_VERSION_3;
-			else
-#endif
+			if (drv->chip_vendor_id != OUI_BRCM) {
+				/*
+				 * NL80211_ATTR_SAE_PASSWORD is related and was added
+				 * at the same time as NL80211_WPA_VERSION_3.
+				 */
+				if (nl80211_attr_supported(drv,
+						NL80211_ATTR_SAE_PASSWORD) &&
+					    wpa_key_mgmt_sae(params->key_mgmt_suite))
+					ver |= NL80211_WPA_VERSION_3;
+				else
+					ver |= NL80211_WPA_VERSION_2;
+			} else {
 				ver |= NL80211_WPA_VERSION_2;
+			}
 		}
 
 		wpa_printf(MSG_DEBUG, "  * WPA Versions 0x%x", ver);
@@ -7325,6 +7359,7 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		os_free(mgmt);
 	}
 
+#ifndef MAINLINE_SUPPLICANT
 #if (defined(CONFIG_DRIVER_NL80211_BRCM) && !defined(WIFI_BRCM_OPEN_SOURCE_MULTI_AKM)) ||   \
 	defined(CONFIG_DRIVER_NL80211_SYNA)
 	if (IS_CROSS_AKM_ROAM_KEY_MGMT(params->key_mgmt_suite)) {
@@ -7343,6 +7378,7 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 	}
 #endif /* (CONFIG_DRIVER_NL80211_BRCM && !WIFI_BRCM_OPEN_SOURCE_MULTI_AKM) ||
 	* CONFIG_DRIVER_NL80211_SYNA */
+#endif /* MAINLINE_SUPPLICANT */
 	if (params->req_handshake_offload &&
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X)) {
 		    wpa_printf(MSG_DEBUG, "  * WANT_1X_4WAY_HS");
@@ -7443,6 +7479,10 @@ static int nl80211_connect_ext(struct wpa_driver_nl80211_data *drv,
 	struct nlattr *attr;
 	u8 features[(NUM_QCA_CONNECT_EXT_FEATURES + 7) / 8] = {};
 
+	if (drv->chip_vendor_id != OUI_QCA) {
+		return -1;
+	}
+
 	if (!drv->connect_ext_vendor_cmd_avail)
 		return -1;
 
@@ -7509,13 +7549,15 @@ static int wpa_driver_nl80211_try_connect(
 	int algs;
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	if (params->req_key_mgmt_offload && params->psk &&
-	    (wpa_key_mgmt_wpa_psk_no_sae(params->key_mgmt_suite) ||
-	     wpa_key_mgmt_wpa_psk_no_sae(params->allowed_key_mgmts))) {
-		wpa_printf(MSG_DEBUG, "nl80211: Key management set PSK");
-		ret = issue_key_mgmt_set_key(drv, params->psk, 32);
-		if (ret)
-			return ret;
+	if (drv->chip_vendor_id == OUI_QCA) {
+		if (params->req_key_mgmt_offload && params->psk &&
+		    (wpa_key_mgmt_wpa_psk_no_sae(params->key_mgmt_suite) ||
+		     wpa_key_mgmt_wpa_psk_no_sae(params->allowed_key_mgmts))) {
+			wpa_printf(MSG_DEBUG, "nl80211: Key management set PSK");
+			ret = qca_vendor_key_mgmt_set_key(drv, params->psk, 32);
+			if (ret)
+				return ret;
+		}
 	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
@@ -7606,7 +7648,9 @@ skip_auth_type:
 			   "(%s)", ret, strerror(-ret));
 	} else {
 #ifdef CONFIG_DRIVER_NL80211_QCA
+	if (drv->chip_vendor_id == OUI_QCA) {
 		drv->roam_indication_done = false;
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Connect request send successfully");
@@ -9270,8 +9314,12 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 
 		drv->global->if_add_wdevid = nonnetdev_info.wdev_id;
 		drv->global->if_add_wdevid_set = nonnetdev_info.wdev_id_set;
-		if (!is_zero_ether_addr(nonnetdev_info.macaddr))
+		if (!is_zero_ether_addr(nonnetdev_info.macaddr)) {
 			os_memcpy(if_addr, nonnetdev_info.macaddr, ETH_ALEN);
+			if (nlmode == NL80211_IFTYPE_P2P_DEVICE) {
+				os_memcpy(drv->global->p2p_perm_addr, nonnetdev_info.macaddr, ETH_ALEN);
+			}
+		}
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: New P2P/NAN Device interface %s (0x%llx) created",
 			   ifname,
@@ -10946,7 +10994,7 @@ static int nl80211_set_p2p_powersave(void *priv, int legacy_ps, int opp_ps,
 
 	if (opp_ps != -1 || ctwindow != -1) {
 #ifdef ANDROID_P2P
-		wpa_driver_set_p2p_ps(priv, legacy_ps, opp_ps, ctwindow);
+		wpa_driver_set_p2p_ps_proxy(priv, legacy_ps, opp_ps, ctwindow);
 #else /* ANDROID_P2P */
 		return -1; /* Not yet supported */
 #endif /* ANDROID_P2P */
@@ -11038,6 +11086,12 @@ nl80211_tdls_set_discovery_resp_link(struct wpa_driver_nl80211_data *drv,
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	struct nl_msg *msg;
 	struct nlattr *params;
+
+	if (drv->chip_vendor_id != OUI_QCA) {
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Setting TX link for TDLS Discovery Response not supported");
+		return -1;
+	}
 
 	wpa_printf(MSG_DEBUG, "nl80211: TDLS Discovery Response Tx link ID %u",
 		   link_id);
@@ -11232,16 +11286,18 @@ static int driver_nl80211_scan2(void *priv,
 	struct i802_bss *bss = priv;
 #ifdef CONFIG_DRIVER_NL80211_QCA
 	struct wpa_driver_nl80211_data *drv = bss->drv;
+	if (drv->chip_vendor_id == OUI_QCA) {
 
-	/*
-	 * Do a vendor specific scan if possible. If only_new_results is
-	 * set, do a normal scan since a kernel (cfg80211) BSS cache flush
-	 * cannot be achieved through a vendor scan. The below condition may
-	 * need to be modified if new scan flags are added in the future whose
-	 * functionality can only be achieved through a normal scan.
-	 */
-	if (drv->scan_vendor_cmd_avail && !params->only_new_results)
-		return wpa_driver_nl80211_vendor_scan(bss, params);
+		/*
+		 * Do a vendor specific scan if possible. If only_new_results is
+		 * set, do a normal scan since a kernel (cfg80211) BSS cache flush
+		 * cannot be achieved through a vendor scan. The below condition may
+		 * need to be modified if new scan flags are added in the future whose
+		 * functionality can only be achieved through a normal scan.
+		 */
+		if (drv->scan_vendor_cmd_avail && !params->only_new_results)
+			return wpa_driver_nl80211_vendor_scan(bss, params);
+	}
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	return wpa_driver_nl80211_scan(bss, params);
 }
@@ -12491,6 +12547,9 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
 		return -1;
 	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE) {
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
+		if (drv->chip_vendor_id != OUI_BRCM) {
+			return -ENOTSUP;
+		}
 		if (!addr ) {
 			addr = drv->global->p2p_perm_addr;
 		}
@@ -14432,6 +14491,17 @@ static int nl80211_do_acs(void *priv, struct drv_acs_params *params)
 }
 
 
+static unsigned int nl80211_get_chip_vendor_id(void *priv)
+{
+	struct i802_bss *bss = priv;
+
+	if (!bss || !bss->drv)
+		return 0;
+
+	return bss->drv->chip_vendor_id;
+}
+
+
 #ifdef CONFIG_MBO
 static struct wpa_bss_candidate_info *
 nl80211_get_bss_transition_status(void *priv, struct wpa_bss_trans_info *params)
@@ -14478,7 +14548,11 @@ nl80211_get_bss_transition_status(void *priv, struct wpa_bss_trans_info *params)
 #endif /* defined(WPA_TRACE_BFD) && defined(CONFIG_TESTING_OPTIONS) */
 
 #ifdef CONFIG_DRIVER_NL80211_QCA
-	return qca_get_bss_transition_status(priv, params);
+	if (nl80211_get_chip_vendor_id(priv) == OUI_QCA) {
+		return qca_get_bss_transition_status(priv, params);
+	} else {
+		return NULL;
+	}
 #else /* CONFIG_DRIVER_NL80211_QCA */
 	return NULL;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
@@ -14680,7 +14754,7 @@ static int nl80211_update_connection_params(
 
 	/* Handle any connection param update here which might receive kernel handling in future */
 #if defined(CONFIG_DRIVER_NL80211_BRCM) || defined(CONFIG_DRIVER_NL80211_SYNA)
-	if (mask & WPA_DRV_UPDATE_TD_POLICY) {
+	if (drv->chip_vendor_id == OUI_BRCM && mask & WPA_DRV_UPDATE_TD_POLICY) {
 		ret = nl80211_set_td_policy(priv, params->td_policy);
 		if (ret) {
 			wpa_dbg(drv->ctx, MSG_DEBUG,
@@ -15448,6 +15522,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.get_country = wpa_driver_nl80211_get_country,
 	.set_ap = wpa_driver_nl80211_set_ap,
 	.set_acl = wpa_driver_nl80211_set_acl,
+	.get_chip_vendor_id = nl80211_get_chip_vendor_id,
 	.if_add = wpa_driver_nl80211_if_add,
 	.if_remove = driver_nl80211_if_remove,
 	.send_mlme = driver_nl80211_send_mlme,
@@ -15512,13 +15587,13 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.switch_color = nl80211_switch_color,
 #endif /* CONFIG_IEEE80211AX */
 #ifdef ANDROID_P2P
-	.set_noa = wpa_driver_set_p2p_noa,
-	.get_noa = wpa_driver_get_p2p_noa,
-	.set_ap_wps_ie = wpa_driver_set_ap_wps_p2p_ie,
+	.set_noa = wpa_driver_set_p2p_noa_proxy,
+	.get_noa = wpa_driver_get_p2p_noa_proxy,
+	.set_ap_wps_ie = wpa_driver_set_ap_wps_p2p_ie_proxy,
 #endif /* ANDROID_P2P */
 #ifdef ANDROID
 #ifndef ANDROID_LIB_STUB
-	.driver_cmd = wpa_driver_nl80211_driver_cmd,
+	.driver_cmd = wpa_driver_nl80211_driver_cmd_proxy,
 #endif /* !ANDROID_LIB_STUB */
 #endif /* ANDROID */
 	.vendor_cmd = nl80211_vendor_cmd,
