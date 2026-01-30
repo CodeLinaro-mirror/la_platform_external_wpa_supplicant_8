@@ -190,6 +190,21 @@ public:
 			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
 	void notifyUsdSubscribeConfigFailed(struct wpa_supplicant *wpa_s,
 			int cmd_id, ISupplicantStaIfaceCallback::UsdConfigErrorCode error_code);
+	void notifyUsdServiceDiscovered(struct wpa_supplicant *wpa_s,
+			enum nan_service_protocol_type srv_proto_type,
+			int subscribe_id, int peer_publish_id, const u8 *peer_addr,
+			bool fsd, const u8 *ssi, size_t ssi_len);
+	void notifyUsdPublishReplied(struct wpa_supplicant *wpa_s,
+			enum nan_service_protocol_type srv_proto_type,
+			int publish_id, int peer_subscribe_id,
+			const u8 *peer_addr, const u8 *ssi, size_t ssi_len);
+	void notifyUsdMessageReceived(struct wpa_supplicant *wpa_s, int id,
+			int peer_instance_id, const u8 *peer_addr,
+			const u8 *message, size_t message_len);
+	void notifyUsdPublishTerminated(struct wpa_supplicant *wpa_s,
+			int publish_id, enum nan_de_reason reason);
+	void notifyUsdSubscribeTerminated(struct wpa_supplicant *wpa_s,
+			int subscribe_id, enum nan_de_reason reason);
 	void notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
 			u16 auth_type, u16 auth_transaction, u16 status_code);
 
