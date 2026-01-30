@@ -230,7 +230,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 			wpa_printf(MSG_DEBUG, "NAN: Invalid cluster ID format");
 			return -1;
 		}
-		os_memcpy(config->cluster_id, cluster_id, ETH_ALEN);
+
 		return 0;
 	}
 
@@ -872,7 +872,7 @@ int wpas_nan_subscribe(struct wpa_supplicant *wpa_s,
 	if (p2p) {
 		elems = wpas_p2p_usd_elems(wpa_s, service_name);
 		addr = wpa_s->global->p2p_dev_addr;
-	}
+	} 
 
 	subscribe_id = nan_de_subscribe(wpa_s->nan_de, service_name,
 					srv_proto_type, ssi, elems, params,
