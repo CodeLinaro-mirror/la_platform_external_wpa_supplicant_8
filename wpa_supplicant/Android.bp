@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// The wpa_supplicant related modules are split into 2 sections:
+// 1. For cuttlefish series products, start from `wpa_supplicant_headers` to `libpasn`.
+// 2. For non-cuttlefish series products, ex: physical devices created by oems,
+//    the section starts from `wpa_supplicant_driver_srcs_default` to the end of this file.
+
 package {
     default_applicable_licenses: [
         // Inherits SPDX-license-identifier-BSD-3-Clause
@@ -36,6 +41,9 @@ filegroup {
     ],
 }
 
+// The section below is for cuttlefish series products. For non-cuttlefish
+// products please update the section starting at `wpa_supplicant_driver_srcs_default`.
+// Start of cuttlefish section
 cc_library_headers {
     name: "wpa_supplicant_headers",
     export_include_dirs: [
@@ -87,14 +95,25 @@ filegroup {
     srcs: ["wpa_supplicant_template.conf"],
 }
 
-cc_defaults {
+soong_config_module_type {
+    name: "wpa_supplicant_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "shared_libs",
+    ],
+}
+
+wpa_supplicant_defaults_type {
     name: "wpa_supplicant_defaults",
     defaults: ["wpa_supplicant_cflags_defaults"],
     srcs: [":wpa_supplicant_add_main_srcs"],
     shared_libs: [
-        "android.hardware.wifi.supplicant-V3-ndk",
+        "android.hardware.wifi.supplicant-V4-ndk",
         "android.system.keystore2-V1-ndk",
-        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbase",
         "libbinder_ndk",
         "libc",
@@ -106,48 +125,15 @@ cc_defaults {
         "libssl",
         "libutils",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: ["vendor.qti.hardware.wifi.supplicant-V2-ndk"],
+        },
+    },
     relative_install_path: "hw",
     soc_specific: true,
     static_libs: [
         "libwpa_aidl_bp",
-    ],
-    header_libs: [
-        "wpa_supplicant_headers",
-        "libwpa_aidl_headers",
-    ],
-}
-
-cc_fuzz {
-    name: "wpa_supplicant_aidl_fuzzer",
-    defaults: ["wpa_supplicant_cflags_defaults"],
-    cflags: [
-        "-DCONFIG_AIDL_FUZZING",
-    ],
-    srcs: [
-        ":wpa_supplicant_srcs",
-        "fuzzer/fuzzer.cpp"
-    ],
-    shared_libs: [
-        "android.hardware.wifi.supplicant-V3-ndk",
-        "android.system.keystore2-V1-ndk",
-        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
-        "libbase",
-        "libbinder_ndk",
-        "libc",
-        "libcrypto",
-        "libcutils",
-        "libkeystore-engine-wifi-hidl",
-        "liblog",
-        "libnl",
-        "libssl",
-        "libutils",
-        "libbinder",
-    ],
-    relative_install_path: "hw",
-    soc_specific: true,
-    static_libs: [
-        "libwpa_aidl_bp",
-        "libbinder_random_parcel",
     ],
     header_libs: [
         "wpa_supplicant_headers",
@@ -199,7 +185,6 @@ wpa_supplicant_cflags_cc_defaults {
         "-DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"",
         "-DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"",
         "-DCONFIG_CTRL_IFACE_AIDL",
-        "-DCONFIG_USE_VENDOR_AIDL",
         "-DCONFIG_CTRL_IFACE_UNIX",
         "-DCONFIG_DPP",
         "-DCONFIG_DPP2",
@@ -770,19 +755,53 @@ cc_library {
     },
 }
 
-cc_defaults {
+soong_config_module_type {
+    name: "wpa_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs",
+        "srcs",
+    ],
+}
+
+wpa_cc_defaults_type {
     name: "wpa_supplicant_qca_cflags",
     cflags: [
         "-DCONFIG_DPP3",
         "-DCONFIG_FST",
         "-DCONFIG_OCV",
-        "-DCONFIG_USE_VENDOR_AIDL",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            cflags: [
+                "-DCONFIG_USE_VENDOR_AIDL",
+            ],
+        },
+    },
 }
 
-cc_defaults {
+soong_config_module_type {
+    name: "hostapd_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs",
+        "srcs"
+    ],
+}
+
+hostapd_cc_defaults_type {
     name: "wpa_supplicant_qca_default",
     local_include_dirs: [
         "src/fst",
@@ -800,18 +819,45 @@ cc_defaults {
         "src/fst/fst_ctrl_iface.c",
         "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_eht.c",
-        "aidl/supplicant_vendor.cpp",
-        "aidl/vendorsta_iface.cpp",
     ],
-    shared_libs: [
-        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
-    ],
+    shared_libs: [],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: ["vendor.qti.hardware.wifi.supplicant-V2-ndk"],
+            srcs: [
+                "aidl/supplicant_vendor.cpp",
+                "aidl/vendorsta_iface.cpp",
+            ],
+        },
+    },
     export_include_dirs: [
         "aidl/vendor",
     ],
 }
 
-// For converting the default to soong
+// End of cuttlefish section
+
+// The section starting below is for non-cuttlefish products.
+// For cuttlefish series please update the section starting from `wpa_supplicant_headers`.
+
+// If you need to add a new build setting based on a product config, ex:
+// ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
+//   L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
+// endif
+
+// In order to export the Makefile variable to soong, you will need to use a `soong_config_set` method
+// under `build/core/board_config_wpa_supplicant.mk`. Ex:
+// ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
+//   $(call soong_config_set_bool,wpa_supplicant_8,wifi_priv_cmd_update_mbo_cell_status,true)
+// endif
+
+// And then use the select statement in Android.bp to reflect the condition you need, ex:
+// select(soong_config_variable("wpa_supplicant_8", "wifi_priv_cmd_update_mbo_cell_status"), {
+//     true: ["-DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS"],
+//     default: [],
+// })
+
+// Start of non-cuttlefish section
 cc_defaults {
     name: "wpa_supplicant_driver_srcs_default",
     srcs: [
@@ -1364,10 +1410,12 @@ soong_config_module_type {
     ],
     bool_variables: [
         "wifi_hidl_unified_supplicant_service_rc_entry",
+        "enable_vendor_aidl",
     ],
     properties: [
         "init_rc",
         "static_libs",
+        "required",
     ],
 }
 
@@ -1415,7 +1463,11 @@ wpa_supplicant_cc_binary {
         wifi_hidl_unified_supplicant_service_rc_entry: {
             init_rc: ["aidl/vendor/android.hardware.wifi.supplicant-service.rc"],
         },
+        enable_vendor_aidl: {
+            required: ["android.hardware.wifi.supplicant.vendor.xml"],
+        },
     },
+    vintf_fragment_modules: ["android.hardware.wifi.supplicant.xml"],
 }
 
 wpa_supplicant_cc_binary {
@@ -1556,7 +1608,21 @@ cc_fuzz {
 
 //## Aidl service library ###
 //#######################
-cc_library_static {
+soong_config_module_type {
+    name: "wpa_cc_library_static_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cppflags",
+        "srcs",
+        "shared_libs"
+    ],
+}
+
+wpa_cc_library_static_type {
     name: "libwpa_aidl",
     vendor: true,
     cppflags: [
@@ -1593,3 +1659,62 @@ cc_library_static {
         "wpa_supplicant_qca_default",
     ],
 }
+
+soong_config_module_type {
+    name: "wpa_supplicant_cc_fuzz",
+    module_type: "cc_fuzz",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "shared_libs",
+        "cflags"
+    ],
+}
+
+wpa_supplicant_cc_fuzz {
+    name: "wpa_supplicant_aidl_fuzzer",
+    defaults: ["wpa_supplicant_cflags_defaults"],
+    cflags: [
+        "-DCONFIG_AIDL_FUZZING",
+    ],
+    srcs: [
+        ":wpa_supplicant_srcs",
+        "fuzzer/fuzzer.cpp"
+    ],
+    shared_libs: [
+        "android.hardware.wifi.supplicant-V4-ndk",
+        "android.system.keystore2-V1-ndk",
+        "libbase",
+        "libbinder_ndk",
+        "libc",
+        "libcrypto",
+        "libcutils",
+        "libkeystore-engine-wifi-hidl",
+        "liblog",
+        "libnl",
+        "libssl",
+        "libutils",
+        "libbinder",
+    ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: ["vendor.qti.hardware.wifi.supplicant-V2-ndk"],
+            cflags: ["-DCONFIG_USE_VENDOR_AIDL"],
+        },
+    },
+    relative_install_path: "hw",
+    soc_specific: true,
+    static_libs: [
+        "libwpa_aidl_bp",
+        "libbinder_random_parcel",
+    ],
+    header_libs: [
+        "wpa_supplicant_headers",
+        "libwpa_aidl_headers",
+    ],
+}
+
+// End of non-cuttlefish section
+
