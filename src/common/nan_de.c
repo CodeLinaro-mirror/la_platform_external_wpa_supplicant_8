@@ -1948,8 +1948,6 @@ int nan_de_transmit(struct nan_de *de, int handle,
 
 	if (srv->is_p2p)
 		network_id = p2p_network_id;
-	else if (srv->sync)
-		network_id = de->cluster_id;
 	else
 		network_id = nan_network_id;
 
