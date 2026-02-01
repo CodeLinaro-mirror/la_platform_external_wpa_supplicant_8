@@ -12,6 +12,13 @@
 #include "common/nan_defs.h"
 #include "common/wpa_common.h"
 
+
+#ifdef ANDROID
+// NAN implementation depends on ffs being available but there is no ffs in
+// Android's version of libc so let's use compiler builtins.
+#define ffs __builtin_ffs
+#endif
+
 struct nan_cluster_config;
 enum nan_reason;
 struct ieee80211_mgmt;
