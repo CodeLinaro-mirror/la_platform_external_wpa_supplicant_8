@@ -137,11 +137,6 @@ struct wpa_interface {
 		WPA_IFACE_MATCHED
 	} matched;
 #endif /* CONFIG_MATCH_IFACE */
-
-	/**
-	 * nan_mgmt - Interface used for NAN management (NAN Device operations)
-	 */
-	bool nan_mgmt;
 };
 
 /**
@@ -1673,7 +1668,6 @@ struct wpa_supplicant {
 #ifdef CONFIG_NAN_USD
 	struct nan_de *nan_de;
 	struct wpa_radio_work *nan_usd_listen_work;
-	struct wpa_radio_work *nan_tx_work;
 	struct wpa_radio_work *nan_usd_tx_work;
 #endif /* CONFIG_NAN_USD */
 
@@ -1684,14 +1678,6 @@ struct wpa_supplicant {
 	unsigned int next_beacon_check;
 
 	bool scs_reconfigure;
-
-	bool nan_mgmt;
-
-#ifdef CONFIG_NAN
-	u32 nan_drv_flags;
-	struct nan_data *nan;
-	struct nan_cluster_config nan_config;
-#endif
 };
 
 

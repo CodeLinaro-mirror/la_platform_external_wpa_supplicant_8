@@ -31,7 +31,7 @@ extern "C"
 #include "wpa_supplicant_i.h"
 #include "config.h"
 #include "driver_i.h"
-#include "nan_supplicant.h"
+#include "nan_usd.h"
 #include "wpa.h"
 }
 

@@ -2179,7 +2179,7 @@ P2pIface::startUsdBasedServiceDiscoveryInternal(
 		if (serviceDiscoveryConfig.frequencyListMhz.size() > 1)
 			params.freq_list = serviceDiscoveryConfig.frequencyListMhz.data() + 1;
 	}
-	sessionId = wpas_nan_subscribe(wpa_s, serviceDiscoveryConfig.serviceName.c_str(),
+	sessionId = wpas_nan_usd_subscribe(wpa_s, serviceDiscoveryConfig.serviceName.c_str(),
 					      (enum nan_service_protocol_type)
 						  serviceDiscoveryConfig.serviceProtocolType,
 						  service_specific_info, &params, true);
@@ -2197,7 +2197,7 @@ ndk::ScopedAStatus P2pIface::stopUsdBasedServiceDiscoveryInternal(
 	uint32_t sessionId)
 {
 #ifdef CONFIG_NAN_USD
-	wpas_nan_cancel_subscribe(retrieveIfacePtr(), sessionId);
+	wpas_nan_usd_cancel_subscribe(retrieveIfacePtr(), sessionId);
 	return ndk::ScopedAStatus::ok();
 #else
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
@@ -2226,7 +2226,7 @@ P2pIface::startUsdBasedServiceAdvertisementInternal(
 	params.solicited = true;
 	params.ttl = serviceAdvertisementConfig.timeoutInSeconds;
 	params.freq = serviceAdvertisementConfig.frequencyMHz;
-	sessionId = wpas_nan_publish(wpa_s, serviceAdvertisementConfig.serviceName.c_str(),
+	sessionId = wpas_nan_usd_publish(wpa_s, serviceAdvertisementConfig.serviceName.c_str(),
 					      (enum nan_service_protocol_type)
 						  serviceAdvertisementConfig.serviceProtocolType,
 						  service_specific_info, &params, true);
@@ -2244,7 +2244,7 @@ ndk::ScopedAStatus P2pIface::stopUsdBasedServiceAdvertisementInternal(
 	uint32_t sessionId)
 {
 #ifdef CONFIG_NAN_USD
-	wpas_nan_cancel_publish(retrieveIfacePtr(), sessionId);
+	wpas_nan_usd_cancel_publish(retrieveIfacePtr(), sessionId);
 	return ndk::ScopedAStatus::ok();
 #else
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);

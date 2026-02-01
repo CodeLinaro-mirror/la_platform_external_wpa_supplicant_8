@@ -6,8 +6,8 @@
  * See README for more details.
  */
 
-#ifndef NAN_DEFS_H
-#define NAN_DEFS_H
+#ifndef NAN_H
+#define NAN_H
 
 enum nan_attr_id {
 	NAN_ATTR_MASTER_INDICATION = 0x00,
@@ -37,7 +37,7 @@ enum nan_attr_id {
 	NAN_ATTR_FTM_RANGING_REPORT = 0x1C,
 	NAN_ATTR_ELEM_CONTAINER = 0x1D,
 	NAN_ATTR_EXT_WLAN_INFRA = 0x1E,
-	NAN_ATTR_EXT_P2P_OPER = 0x1F,
+	NAN_ATTR_EXT_P2P_OPER = 0x1FE,
 	NAN_ATTR_EXT_IBSS = 0x20,
 	NAN_ATTR_EXT_MESH = 0x21,
 	NAN_ATTR_CSIA = 0x22, /* Cipher Suite Info attribute */
@@ -90,16 +90,9 @@ enum nan_service_protocol_type {
 	NAN_SRV_PROTO_CSA_MATTER = 3,
 };
 
-/* SRF control field */
-#define NAN_SRF_CTRL_BF 	BIT(0)
-#define NAN_SRF_CTRL_INCLUDE 	BIT(1)
-
-#define NAN_SRF_CTRL_BF_IDX_MSK (BIT(0) | BIT(1))
-#define NAN_SRF_CTRL_BF_IDX_POS 2
-
 #define NAN_ATTR_HDR_LEN 3
 #define NAN_SERVICE_ID_LEN 6
 
 #define NAN_USD_DEFAULT_FREQ 2437
 
-#endif /* NAN_DEFS_H */
+#endif /* NAN_H */

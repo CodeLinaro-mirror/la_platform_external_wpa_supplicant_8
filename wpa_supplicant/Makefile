@@ -317,21 +317,11 @@ CFLAGS += -DCONFIG_DPP3
 endif
 endif
 
-ifdef CONFIG_NAN
-NEED_NAN=y
-CFLAGS += -DCONFIG_NAN
-endif
-
 ifdef CONFIG_NAN_USD
-NEED_OFFCHANNEL=y
-NEED_NAN=y
-CFLAGS += -DCONFIG_NAN_USD
-endif
-
-ifdef NEED_NAN
-OBJS += nan_supplicant.o
-OBJS += ../src/nan/nan.o
 OBJS += ../src/common/nan_de.o
+OBJS += nan_usd.o
+NEED_OFFCHANNEL=y
+CFLAGS += -DCONFIG_NAN_USD
 endif
 
 ifdef CONFIG_PR
