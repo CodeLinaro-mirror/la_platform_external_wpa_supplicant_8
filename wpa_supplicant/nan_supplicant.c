@@ -22,6 +22,7 @@
 #include "utils/eloop.h"
 #include "common/ieee802_11_common.h"
 #include "bitfield.h"
+#include "aidl/vendor/aidl.h"
 
 #define DEFAULT_NAN_MASTER_PREF 2
 #define DEFAULT_NAN_DUAL_BAND   0
@@ -2862,6 +2863,8 @@ void wpas_nan_cluster_join(struct wpa_supplicant *wpa_s,
 
 	nan_de_set_cluster_id(wpa_s->nan_de, cluster_id);
 	nan_set_cluster_id(wpa_s->nan, cluster_id);
+
+	wpas_aidl_notify_nan_cluster_event(wpa_s, new_cluster ? 1 : 0, cluster_id);
 }
 
 
