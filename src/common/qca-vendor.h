@@ -1468,6 +1468,13 @@ enum qca_radiotap_vendor_ids {
  *
  *     The attributes used with this command are defined in
  *     enum qca_wlan_vendor_attr_dcs.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_QSH_GET_STATS: Retrieve Qualcomm Sensing Hub (QSH)
+ *	related Wi-Fi statistics from the sensor. Currently supports scan count;
+ *	might be extended in the future.
+ *
+ *	No attributes are used in the request. The response includes attributes
+ *	defined in enum qca_wlan_vendor_attr_qsh_stats.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1721,6 +1728,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_GET_COEX_STATS = 267,
 	QCA_NL80211_VENDOR_SUBCMD_ATF_OFFLOAD_OPS = 268,
 	QCA_NL80211_VENDOR_SUBCMD_DCS_CONFIG = 269,
+	QCA_NL80211_VENDOR_SUBCMD_QSH_GET_STATS = 270,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -2524,6 +2532,19 @@ enum qca_wlan_vendor_acs_hw_mode {
  *	immediately after receiving a Channel Switch Announcement from the
  *	connected DFS AP on its STA interface.
  *
+ * @QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GO_CANCEL_ONE_SHOT_NOA: Flag indicates
+ * that the device supports cancellation of firmware-initiated one-shot NoA
+ * schedules on a P2P GO interface. This capability allows the P2P GO to cancel
+ * NoA early when a local STA interface (sharing the same radio) completes a
+ * connection or roaming operation.
+ *
+ * @QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA:
+ * Flag indicates that the device in P2P Client mode supports staying awake
+ * during one-shot NoA periods instead of entering sleep. This allows the
+ * group client to immediately receive frames when the P2P GO cancels an NoA
+ * early (using QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA), without
+ * waiting for the originally configured NoA duration to expire.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits
  */
 enum qca_wlan_vendor_features {
@@ -2562,6 +2583,8 @@ enum qca_wlan_vendor_features {
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_STA_INDOOR_CH_SCC = 32,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_STA_DFS_CH_SCC_P2P = 33,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_ASSISTED_DFS = 34,
+	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GO_CANCEL_ONE_SHOT_NOA = 35,
+	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA = 36,
 	NUM_QCA_WLAN_VENDOR_FEATURES /* keep last */
 };
 
@@ -4156,6 +4179,10 @@ enum qca_wlan_vendor_attr_config {
 	 * channel and either remain on the current channel or switch to other
 	 * valid channel, depending on regulatory and underlying driver policy.
 	 * 1 - Enable, 0 - Disable.
+	 *
+	 * See
+	 * @QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_PEER_PROTOCOL_INDOOR_CH_STA_SCC
+	 * for a more granular configuration of this per peer protocol.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_STA_INDOOR_CH_SCC = 139,
 
@@ -4181,6 +4208,40 @@ enum qca_wlan_vendor_attr_config {
 	 * 1 - Enable, 0 - Disable.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_STA_DFS_CH_SCC_P2P = 140,
+
+	/*
+	 * 8-bit unsigned value to enable or disable QSH-initiated Wi-Fi scans,
+	 * providing a mechanism to optimize power consumption. By default, this
+	 * feature is enabled.
+	 *
+	 * Valid values:
+	 * 0 - Disable
+	 * 1 - Enable
+	 *
+	 * Values other than 0 or 1 are invalid and shall be rejected.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_QSH_SCAN_CTRL = 141,
+
+	/* 8-bit bitmap to enable the feature to allow SCC with STA connected
+	 * indoor channel per peer protocol to the driver in STA mode. This
+	 * configuration is applicable only when a STA interface is in
+	 * connected state.
+	 * When the STA disconnects, any peer protocol interface present in
+	 * SCC with STA connected indoor channel will re-evaluate its operating
+	 * channel and either remain on the current channel or switch to other
+	 * valid channel, depending on regulatory and underlying driver policy.
+	 *
+	 * Either @QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_STA_INDOOR_CH_SCC attribute
+	 * or @QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_PEER_PROTOCOL_INDOOR_CH_STA_SCC
+	 * attribute can be used by userspace at a time to allow indoor channel
+	 * SCC with STA.
+	 *
+	 * bit 0: Setting bit0 indicates to allow SCC with STA connected indoor
+	 *        channel for P2P
+	 * bit 1: Setting bit1 indicates to allow SCC with STA connected indoor
+	 *        channel for NAN
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_PEER_PROTOCOL_INDOOR_CH_STA_SCC = 142,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
@@ -10617,6 +10678,14 @@ enum qca_wlan_vendor_attr_omi_tx {
   * @QCA_WLAN_VENDOR_PHY_MODE_11AX_HE80: HE80
   * @QCA_WLAN_VENDOR_PHY_MODE_11AX_HE80P80: HE 80P80
   * @QCA_WLAN_VENDOR_PHY_MODE_11AX_HE160: HE160
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT20: EHT20
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT40: EHT40
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT40PLUS: EHT40 (ext ch +1)
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT40MINUS: EHT40 (ext ch -1)
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT80: EHT80
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT80P80: EHT 80P80
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT160: EHT160
+  * @QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT320: EHT320
   */
 enum qca_wlan_vendor_phy_mode {
 	QCA_WLAN_VENDOR_PHY_MODE_AUTO = 0,
@@ -10648,6 +10717,14 @@ enum qca_wlan_vendor_phy_mode {
 	QCA_WLAN_VENDOR_PHY_MODE_11AX_HE80 = 26,
 	QCA_WLAN_VENDOR_PHY_MODE_11AX_HE80P80 = 27,
 	QCA_WLAN_VENDOR_PHY_MODE_11AX_HE160 = 28,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT20 = 29,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT40 = 30,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT40PLUS = 31,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT40MINUS = 32,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT80 = 33,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT80P80 = 34,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT160 = 35,
+	QCA_WLAN_VENDOR_PHY_MODE_11BE_EHT320 = 36,
 };
 
 /* Attributes for data used by
@@ -20534,10 +20611,18 @@ enum qca_wlan_vendor_iq_inference_cmd_type {
  *
  * @QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_SECOND_PASS: Represents the second
  * pass in inference stage.
+ *
+ * @QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_THIRD_PASS: Represents the third
+ * pass in inference stage.
+ *
+ * @QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_FOURTH_PASS: Represents the fourth
+ * pass in inference stage.
  */
 enum qca_wlan_vendor_iq_inference_stage {
 	QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_FIRST_PASS = 0,
 	QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_SECOND_PASS = 1,
+	QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_THIRD_PASS = 2,
+	QCA_WLAN_VENDOR_IQ_INFERENCE_STAGE_FOURTH_PASS = 3,
 };
 
 /**
@@ -20583,6 +20668,62 @@ enum qca_wlan_vendor_iq_inference_status {
  * specifies the start offset time (in milliseconds) of the first absence period
  * after the beacon advertising the NoA. If this attribute not present, the
  * driver will use the default start offset value.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA: Optional u8 attribute
+ * for use with QCA_NL80211_VENDOR_SUBCMD_P2P_SET_NOA on a P2P GO interface.
+ *
+ * In multi-channel concurrency (MCC) scenarios, when a local STA interface
+ * sharing the same radio with the P2P GO performs a connection or roaming
+ * operation on a different channel, the firmware automatically initiates a
+ * one-shot NoA schedule on the P2P GO to facilitate the STA's channel
+ * operations. This attribute controls whether the firmware should automatically
+ * cancel this one-shot NoA schedule when the STA operation completes.
+ *
+ * This feature should only be enabled when all connected P2P Clients support
+ * staying awake during one-shot NoA (see
+ * QCA_WLAN_VENDOR_ATTR_P2P_SET_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA). Peer device
+ * capability should be determined through vendor-specific mechanisms such as
+ * device model/OUI whitelists or capability handshake via Bluetooth.
+ *
+ * Values:
+ * 1 - Enable: The firmware will cancel the current firmware-initiated one-shot
+ *     NoA schedule when the local STA interface completes its connection or
+ *     roaming operation. The cancellation will be reflected in subsequent
+ *     Beacon frames (typically the next Beacon frame, though timing may vary
+ *     based on beacon scheduling). This allows immediate resumption of P2P data
+ *     transmission.
+ * 0 - Disable (default): NoA schedules are not automatically cancelled and
+ *     will run for their full configured duration.
+ *
+ * Note: This attribute only affects firmware-initiated one-shot NoA schedules
+ * created for MCC STA operations. It does not affect NoA schedules explicitly
+ * configured by userspace through other attributes of this command.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_P2P_SET_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA: Optional
+ * u8 attribute for use with QCA_NL80211_VENDOR_SUBCMD_P2P_SET_NOA on a P2P
+ * Client interface.
+ *
+ * This attribute controls whether the P2P Client should stay awake during
+ * one-shot NoA periods instead of entering sleep. This is designed to work in
+ * conjunction with QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA on the
+ * P2P GO side.
+ *
+ * This feature should only be enabled when the peer P2P GO supports early NoA
+ * cancellation (see QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA).
+ * Peer device capability should be determined through vendor-specific
+ * mechanisms such as device model/OUI whitelists or capability handshake via
+ * Bluetooth.
+ *
+ * Values:
+ * 1 - Enable: The P2P Client will stay awake during one-shot NoA periods
+ *     instead of entering sleep. This allows the client to immediately receive
+ *     frames when the P2P GO cancels a one-shot NoA early, without waiting for
+ *     the originally configured NoA duration to expire.
+ * 0 - Disable (default): The P2P Client enters sleep during NoA periods as
+ *     specified in the NoA schedule received from the P2P GO.
+ *
+ * Note: This attribute only affects behavior during one-shot NoA periods. It
+ * does not affect behavior during continuous NoA schedules.
  */
 enum qca_wlan_vendor_attr_p2p_set_noa {
 	QCA_WLAN_VENDOR_ATTR_P2P_SET_NOA_INVALID = 0,
@@ -20590,6 +20731,8 @@ enum qca_wlan_vendor_attr_p2p_set_noa {
 	QCA_WLAN_VENDOR_ATTR_P2P_SET_NOA_DURATION = 2,
 	QCA_WLAN_VENDOR_ATTR_P2P_SET_NOA_INTERVAL = 3,
 	QCA_WLAN_VENDOR_ATTR_P2P_SET_NOA_START = 4,
+	QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA = 5,
+	QCA_WLAN_VENDOR_ATTR_P2P_SET_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA = 6,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_P2P_SET_NOA_AFTER_LAST,
@@ -23111,6 +23254,24 @@ enum qca_wlan_vendor_attr_dcs {
 	QCA_WLAN_VENDOR_ATTR_DCS_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_DCS_MAX =
 	QCA_WLAN_VENDOR_ATTR_DCS_AFTER_LAST - 1
+};
+
+/**
+ * enum qca_wlan_vendor_attr_qsh_stats - Attributes used by
+ * %QCA_NL80211_VENDOR_SUBCMD_QSH_GET_STATS.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_QSH_STATS_SCAN_COUNT: 32-bit unsigned value
+ *     representing the Wi-Fi scan count from the sensor. This attribute is
+ *     mandatory. It's a response-only attribute.
+ */
+enum qca_wlan_vendor_attr_qsh_stats {
+	QCA_WLAN_VENDOR_ATTR_QSH_STATS_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_QSH_STATS_SCAN_COUNT = 1,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_QSH_STATS_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_QSH_STATS_MAX =
+	QCA_WLAN_VENDOR_ATTR_QSH_STATS_AFTER_LAST - 1
 };
 
 #endif /* QCA_VENDOR_H */
