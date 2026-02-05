@@ -906,7 +906,7 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
                  * message. Give the peer some time to install the key before
                  * sending the NIK.
                  */
-                os_sleep(0, 10000);
+                os_sleep(0, 50000);
 		if (nan_send_nik(nan, peer) < 0) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Pairing: Failed to send NIK");
