@@ -768,6 +768,8 @@ static u8 * hostapd_eid_eht_reconf_ml(struct hostapd_data *hapd, u8 *eid)
 
 	/* First check if the element needs to be added */
 	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+		if (!hapd->iface->interfaces->iface[i])
+			continue;
 		other_hapd = hapd->iface->interfaces->iface[i]->bss[0];
 
 		wpa_printf(MSG_DEBUG, "MLD: Reconfiguration ML: %u",
@@ -798,6 +800,8 @@ static u8 * hostapd_eid_eht_reconf_ml(struct hostapd_data *hapd, u8 *eid)
 
 	/* Add the per station profiles */
 	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+		if (!hapd->iface->interfaces->iface[i])
+			continue;
 		other_hapd = hapd->iface->interfaces->iface[i]->bss[0];
 		if (!other_hapd->eht_mld_link_removal_count)
 			continue;
