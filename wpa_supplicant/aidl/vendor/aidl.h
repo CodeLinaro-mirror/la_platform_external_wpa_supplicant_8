@@ -193,7 +193,8 @@ extern "C"
 		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
 		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id);
 	void wpas_aidl_notify_nan_bootstrap_confirmed(
-		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id, u8 bootstrap_method,
+		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
+		const u8* peer_nmi_addr, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len);
 	void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
@@ -448,7 +449,8 @@ static void wpas_aidl_notify_nan_bootstrap_request(
 		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
 		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id) {}
 static void wpas_aidl_notify_nan_bootstrap_confirmed(
-		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id, u8 bootstrap_method,
+		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
+		const u8* peer_nmi_addr, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len) {}
 static void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,

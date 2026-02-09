@@ -3941,7 +3941,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 }
 
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, bool success, u8 status_code, const u8 *cookie, size_t cookie_size)
+	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 status_code,
+	const u8 *cookie, size_t cookie_size)
 {
 	if (!wpa_s) {
 		return;
@@ -3950,6 +3951,7 @@ void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_
 		nan_iface_object_map_.end()) {
 		NanBootstrappingConfirmInd confirm_ind;
 		confirm_ind.bootstrappingInstanceId = bootstrapping_id;
+		confirm_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
 		// TODO: parse status_code from enum nan_reason
 		confirm_ind.responseCode = success ?
 			NanBootstrappingResponseCode::REQUEST_ACCEPT :
@@ -4414,7 +4416,7 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, bool success, u8 status_code,
+	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 status_code,
 	const u8 *cookie, size_t cookie_size) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
@@ -4495,7 +4497,7 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, bool success, u8 status_code,
+	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 status_code,
 	const u8 *cookie, size_t cookie_size) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,

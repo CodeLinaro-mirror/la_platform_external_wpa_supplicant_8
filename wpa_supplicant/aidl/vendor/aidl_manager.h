@@ -226,7 +226,7 @@ public:
 		int discovery_id, int peer_id, const u8* peer_nmi_addr,
 		int bootstrapping_id, int bootstrapping_method);
 	void notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-		int bootstrapping_id, bool is_success, u8 status_code,
+		int bootstrapping_id, const u8* peer_nmi_addr, bool is_success, u8 status_code,
 		const u8* cookie, size_t cookie_size);
 	void notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 		int discovery_id, int peer_id, const u8* peer_nmi_addr,
