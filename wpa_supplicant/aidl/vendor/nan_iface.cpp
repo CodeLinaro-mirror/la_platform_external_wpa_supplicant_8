@@ -712,6 +712,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		std::string hex_matching_rx = vectorToHexString(msg.baseConfig.rxMatchFilter);
 		params.match_filter_tx = hex_matching_tx.c_str();
 		params.match_filter_rx = hex_matching_rx.c_str();
+		params.pbm = static_cast<uint16_t>(pairing_config.supportedBootstrappingMethods);
 
 		discovery_termination_indication_ =
 			!msg.baseConfig.disableDiscoveryTerminationIndication;
