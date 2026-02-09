@@ -3589,6 +3589,25 @@ NanStatus convertNanTerminateReasonCodeToAidl(nan_de_reason reason)
 	}
 	return ret;
 }
+
+NanStatus convertNanReasonToAidl(enum nan_reason reason)
+{
+	NanStatus ret;
+	switch (reason) {
+	case NAN_REASON_RESOURCE_LIMITATION:
+		ret.status = NanStatusCode::NO_RESOURCES_AVAILABLE;
+		return ret;
+	case NAN_REASON_INVALID_PARAMETERS:
+		ret.status = NanStatusCode::INVALID_ARGS;
+		return ret;
+	case NAN_REASON_FTM_PARAMETERS_INCAPABLE:
+		ret.status = NanStatusCode::NOT_SUPPORTED;
+		return ret;
+	default:
+		ret.status = NanStatusCode::INTERNAL_FAILURE;
+		return ret;
+	}
+}
 #endif
 #endif
 
@@ -3941,7 +3960,7 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 }
 
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 status_code,
+	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
 	const u8 *cookie, size_t cookie_size)
 {
 	if (!wpa_s) {
@@ -3952,10 +3971,13 @@ void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_
 		NanBootstrappingConfirmInd confirm_ind;
 		confirm_ind.bootstrappingInstanceId = bootstrapping_id;
 		confirm_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
-		// TODO: parse status_code from enum nan_reason
 		confirm_ind.responseCode = success ?
 			NanBootstrappingResponseCode::REQUEST_ACCEPT :
 			NanBootstrappingResponseCode::REQUEST_REJECT;
+		if (!success) {
+			confirm_ind.failureReasonCode =
+				convertNanReasonToAidl(static_cast<enum nan_reason>(reason));
+		}
 		if (cookie_size > 0 && cookie) {
 			confirm_ind.cookie = byteArrToVec(cookie, cookie_size);
 		}
@@ -4005,9 +4027,20 @@ void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	}
 }
 
+static NanPairingRequestType convertIntToNanPairingRequestType(int request_type) {
+	switch (request_type) {
+		case 0:
+			return NanPairingRequestType::NAN_PAIRING_SETUP;
+		case 1:
+			return NanPairingRequestType::NAN_PAIRING_VERIFICATION;
+		default:
+			return NanPairingRequestType::NAN_PAIRING_UNSPECIFIED_REQUEST_TYPE;
+	}
+}
+
 void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int pairing_id, bool success, u8 status_code, bool is_setup,
-	bool is_npk_cache_enabled, const u8* npk)
+	int pairing_id, bool success, u8 reason, int request_type,
+	bool is_npk_cache_enabled)
 {
 	if (!wpa_s) {
 		return;
@@ -4019,16 +4052,13 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 
 		confirm_ind.pairingInstanceId = pairing_id;
 		confirm_ind.pairingSuccess = success;
-		confirm_ind.requestType = is_setup ?
-			NanPairingRequestType::NAN_PAIRING_SETUP :
-			NanPairingRequestType::NAN_PAIRING_VERIFICATION;
-		confirm_ind.enablePairingCache = is_npk_cache_enabled;
-		if (npk) {
-			std::array<uint8_t, kNpkLenBytes> arr_npk;
-			std::copy(npk, npk + kNpkLenBytes, std::begin(arr_npk));
-			confirm_ind.npksa.npk = arr_npk;
+		if (!success) {
+			confirm_ind.status =
+				convertNanReasonToAidl(static_cast<enum nan_reason>(reason));
 		}
-		// TODO: parse status_code after they're defined in wpa_supplicant
+		confirm_ind.requestType = convertIntToNanPairingRequestType(request_type);
+		confirm_ind.enablePairingCache = is_npk_cache_enabled;
+
 		callWithEachNanIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
@@ -4115,7 +4145,7 @@ void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 
 void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 	int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
-	size_t app_info_len, u8 status_code, const int* channel_freq_mhz, const int* bandwidth,
+	size_t app_info_len, u8 reason, const int* channel_freq_mhz, const int* bandwidth,
 	const int* num_spatial_stream, size_t num_configs)
 {
 	if (!wpa_s || !peer_ndi_addr) {
@@ -4127,11 +4157,14 @@ void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 		NanDataPathConfirmInd confirm_ind;
 		confirm_ind.ndpInstanceId = ndp_id;
 		confirm_ind.dataPathSetupSuccess = success;
+		if (!success) {
+			confirm_ind.status =
+				convertNanReasonToAidl(static_cast<enum nan_reason>(reason));
+		}
 		confirm_ind.peerNdiMacAddr = macAddrToArray(peer_ndi_addr);
 		if (app_info && app_info_len > 0) {
 			confirm_ind.appInfo = byteArrToVec(app_info, app_info_len);
 		}
-		// TODO: parse the status_code from enum nan_reason
 		std::vector<NanDataPathChannelInfo> channel_info;
 		if (num_configs > 0 && (!channel_freq_mhz || !bandwidth || !num_spatial_stream)) {
 			wpa_printf(MSG_ERROR, "Invalid channel info in data path confirm event");
@@ -4416,7 +4449,7 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 status_code,
+	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
 	const u8 *cookie, size_t cookie_size) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
@@ -4424,7 +4457,7 @@ void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	const u8* tag) {}
 void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int pairing_id, bool success, u8 status_code,
-	bool is_setup, bool is_npk_cache_enabled, const u8* npk) {}
+	int request_type, bool is_npk_cache_enabled) {}
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
@@ -4497,7 +4530,7 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 status_code,
+	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
 	const u8 *cookie, size_t cookie_size) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
@@ -4505,7 +4538,7 @@ void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	const u8* tag) {}
 void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int pairing_id, bool success, u8 status_code,
-	bool is_setup, bool is_npk_cache_enabled, const u8* npk) {}
+	int request_type, bool is_npk_cache_enabled) {}
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}

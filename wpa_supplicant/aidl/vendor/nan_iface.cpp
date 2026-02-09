@@ -919,17 +919,19 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
 			"NAN_BOOTSTRAP " MACSTR " handle=%d req_instance_id=%d method=%d",
-			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
+			MAC2STR(msg.peerDiscMacAddr.data()), msg.discoverySessionId,
 			msg.peerId, msg.requestBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateBootstrappingResponse(
 				ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for bootstrapping request initialization
-		// int ret = wpas_nan_bootstrap_request(wpa_s, cmd);
-		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
+		if (wpas_nan_bootstrap_request(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
+		// supplicant reuses the discvoery session id as bootstrapping session id
+		aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId,
+			nan_status, msg.discoverySessionId);
 	});
 
 	return ndk::ScopedAStatus::ok();
@@ -964,9 +966,9 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for responding bootstrapping request
-		// int ret = wpas_nan_bootstrap_request(wpa_s, cmd);
-		nan_status.status = NanStatusCode::SUCCESS;
+		if (wpas_nan_bootstrap_request(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
 			ifname, cmdId, nan_status);
 	});
@@ -1039,9 +1041,9 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for pairing request initialization
-		// int ret = wpas_nan_pairing_start(wpa_s, cmd);
-		nan_status.status = NanStatusCode::SUCCESS;
+		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
 	});
 
@@ -1068,7 +1070,13 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 
 		if (!msg.acceptRequest) {
-			// TODO: wpas_nan_pairing_abort(wpa_s, MAC2STR(msg.peerDiscMacAddr));
+			char cmd[kNanIfaceConfBufSize];
+			int ret = snprintf(cmd, kNanIfaceConfBufSize,
+				MACSTR, MAC2STR(msg.peerDiscMacAddr));
+			if (ret > 0 && ret < kNanIfaceConfBufSize &&
+				wpas_nan_pairing_abort(wpa_s, cmd) >= 0) {
+				nan_status.status = NanStatusCode::SUCCESS;
+			}
 			aidl_manager->notifyNanRespondToPairingIndicationResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -1119,7 +1127,9 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for responding pairing request
+		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanRespondToPairingIndicationResponse(
 			ifname, cmdId, nan_status);
 	});
@@ -1144,7 +1154,11 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for terminating pairing request
+		char cmd[kNanIfaceConfBufSize];
+		int ret = snprintf(cmd, kNanIfaceConfBufSize, MACSTR, MAC2STR(peerDiscMacAddr));
+		if (ret > 0 && ret < kNanIfaceConfBufSize && wpas_nan_pairing_abort(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
 	});
 
@@ -1211,9 +1225,9 @@ static int appendSecurityConfigToCmd(
 				ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for initiating data path request
-		// int ret = wpas_nan_initiate_data_path(wpa_s, cmd);
-		nan_status.status = NanStatusCode::SUCCESS;
+		if (wpas_nan_ndp_request(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
 	});
 	return ndk::ScopedAStatus::ok();
@@ -1261,8 +1275,9 @@ static int appendSecurityConfigToCmd(
 			return;
 		}
 
-		// TODO(b/460750167): wpa_supplicant API for responding data path indication request
-		nan_status.status = NanStatusCode::SUCCESS;
+		if (wpas_nan_ndp_response(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 			ifname, cmdId, nan_status);
 	});
@@ -1296,9 +1311,9 @@ static int appendSecurityConfigToCmd(
 			aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for terminate data path request & AIDL
-		// for callback response
-		nan_status.status = NanStatusCode::SUCCESS;
+		if (wpas_nan_ndp_terminate(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
 	});
 	return ndk::ScopedAStatus::ok();

@@ -234,7 +234,7 @@ public:
 		const u8* nonce, const u8* tag);
 	void notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 		int pairing_id, bool success, u8 status_code,
-		bool is_setup, bool is_npk_cache_enabled, const u8* npk);
+		int request_type, bool is_npk_cache_enabled);
 	void notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
 		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id);

@@ -198,11 +198,11 @@ extern "C"
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len);
 	void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
-		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
+		const u8* peer_nmi_addr, int pairing_id, bool is_setup,
 		const u8* nonce, const u8* tag);
 	void wpas_aidl_notify_nan_pairing_confirmed(
-		struct wpa_supplicant* wpa_s, u8 pairing_id, const u8 *peer_addr,
-		bool is_success, u8 status_code, bool is_setup, const u8 *nd_pmk);
+		struct wpa_supplicant* wpa_s, int pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, int request_type);
 	void wpas_aidl_notify_nan_nik_received(
 		struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
 		int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
@@ -454,11 +454,11 @@ static void wpas_aidl_notify_nan_bootstrap_confirmed(
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len) {}
 static void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
-		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
+		const u8* peer_nmi_addr, int pairing_id, bool is_setup,
 		const u8* nonce, const u8* tag) {}
 static void wpas_aidl_notify_nan_pairing_confirmed(
-		struct wpa_supplicant* wpa_s, u8 pairing_id, const u8 *peer_addr,
-		bool is_success, u8 status_code, bool is_setup, const u8 *nd_pmk) {}
+		struct wpa_supplicant* wpa_s, int pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, int request_type) {}
 static void wpas_aidl_notify_nan_nik_received(
 		struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
 		int cipher_ver, int akmp, const u8 *npk, size_t npk_len,

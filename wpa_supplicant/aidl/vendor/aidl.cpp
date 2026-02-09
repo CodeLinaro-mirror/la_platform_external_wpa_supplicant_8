@@ -1284,7 +1284,7 @@ bool getIsNpkCacheEnabled(struct wpa_supplicant* wpa_s, const u8* addr) {
 
 void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
-		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
+		const u8* peer_nmi_addr, int pairing_id, bool is_setup,
 		const u8* nonce, const u8* tag)
 {
 	if (!wpa_s || !peer_nmi_addr)
@@ -1302,10 +1302,10 @@ void wpas_aidl_notify_nan_pairing_request(
 }
 
 void wpas_aidl_notify_nan_pairing_confirmed(
-		struct wpa_supplicant* wpa_s, u8 pairing_id, const u8 *peer_addr,
-		bool is_success, u8 status_code, bool is_setup, const u8 *nd_pmk)
+		struct wpa_supplicant* wpa_s, int pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, int request_type)
 {
-	if (!wpa_s || !peer_addr || (nd_pmk == nullptr && is_success))
+	if (!wpa_s || !peer_addr)
 		return;
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
@@ -1314,8 +1314,7 @@ void wpas_aidl_notify_nan_pairing_confirmed(
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN pairing confirmed");
 	aidl_manager->notifyNanPairingConfirmEvent(wpa_s, pairing_id,
-		is_success, status_code, is_setup, getIsNpkCacheEnabled(wpa_s, peer_addr),
-		nd_pmk);
+		is_success, status_code, request_type, getIsNpkCacheEnabled(wpa_s, peer_addr));
 }
 
 void wpas_aidl_notify_nan_nik_received(
