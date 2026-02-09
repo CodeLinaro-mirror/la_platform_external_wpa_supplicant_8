@@ -1028,11 +1028,11 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		// Only support PUBLIC_KEY_PASN_128_MASK and PUBLIC_KEY_PASN_256_MASK for pairing
 		if (msg.securityConfig.cipherType == NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK) {
-			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher_suite=CCMP");
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher=CCMP");
 		} else if (msg.securityConfig.cipherType ==
 				NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK) {
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
-				" cipher_suite=GCMP-256");
+				" cipher=GCMP-256");
 		} else {
 			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
 			aidl_manager->notifyNanInitiatePairingResponse(
@@ -1114,11 +1114,11 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		// Only support PUBLIC_KEY_PASN_128_MASK and PUBLIC_KEY_PASN_256_MASK for pairing
 		if (msg.securityConfig.cipherType == NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK) {
-			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher_suite=CCMP");
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher=CCMP");
 		} else if (msg.securityConfig.cipherType ==
 				NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK) {
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
-				" cipher_suite=GCMP-256");
+				" cipher=GCMP-256");
 		} else {
 			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
 			aidl_manager->notifyNanInitiatePairingResponse(
