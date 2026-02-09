@@ -1694,6 +1694,9 @@ void wpas_notify_nan_bootstrap_request(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_REQUEST
 		       "peer_nmi=" MACSTR " pbm=0x%04x handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, handle, requestor_instance_id);
+	wpas_aidl_notify_nan_bootstrap_request(wpa_s, peer_nmi, pbm,
+		handle/*discovery session id*/, requestor_instance_id,
+		handle/*bootstrapping id*/);
 }
 
 
@@ -1705,6 +1708,8 @@ void wpas_notify_nan_bootstrap_success(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_SUCCESS
 		       "peer_nmi=" MACSTR " pbm=0x%04x handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, handle, requestor_instance_id);
+	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, peer_nmi, pbm,
+		true, 0/*No Reason*/, nullptr, 0);
 }
 
 
@@ -1716,6 +1721,8 @@ void wpas_notify_nan_bootstrap_failure(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_FAILURE
 		       "peer_nmi=" MACSTR " pbm=0x%04x reason=%u handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, reason, handle, requestor_instance_id);
+	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, peer_nmi, pbm,
+		false, reason, nullptr, 0);
 }
 
 
@@ -1746,6 +1753,10 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 		       wpa_key_mgmt_txt(akmp, WPA_PROTO_RSN),
 		       npk_hex, nik_lifetime, identity_id);
 
+	wpas_aidl_notify_nan_nik_received(
+		wpa_s, nik, nik_len, cipher_ver, akmp, npk, npk_len,
+		nik_lifetime, identity_id);
+
 	os_memset(nik_hex, 0, 2 * nik_len + 1);
 	os_memset(npk_hex, 0, 2 * npk_len + 1);
 out:
@@ -1764,6 +1775,9 @@ void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
 		       MAC2STR(peer_nmi), csid, instance_id,
 		       wpa_key_mgmt_txt(key_mgmt, WPA_PROTO_RSN),
 		       verify);
+	wpas_aidl_notify_nan_pairing_request(wpa_s, instance_id,
+	-1/*peer_id*/, peer_nmi, -1/*pairing_id*/, !verify,
+	nullptr, nullptr);
 }
 
 
@@ -1788,6 +1802,9 @@ void wpas_notify_nan_ndp_request(struct wpa_supplicant *wpa_s,
 		       MAC2STR(init_ndi),
 		       ndp_id, publish_inst_id,
 		       ssi_hex ? ssi_hex : "", csid);
+
+	wpas_aidl_notify_nan_ndp_request(wpa_s, ndp_id, peer_nmi,
+		publish_inst_id, csid, nullptr, 0);
 
 	os_free(ssi_hex);
 }
@@ -1842,6 +1859,9 @@ void wpas_notify_nan_ndp_connected(struct wpa_supplicant *wpa_s,
 		       MAC2STR(local_ndi), MAC2STR(peer_ndi),
 		       ssi_hex ? ssi_hex : "");
 
+	wpas_aidl_notify_nan_ndp_confirmed(wpa_s, ndp_id, peer_ndi,
+		true/*is_success*/, 0/*No Reason*/, nullptr, 0);
+
 	os_free(ssi_hex);
 }
 
@@ -1859,6 +1879,8 @@ void wpas_notify_nan_ndp_disconnected(struct wpa_supplicant *wpa_s,
 		       MAC2STR(peer_nmi), ndp_id,
 		       MAC2STR(local_ndi), MAC2STR(peer_ndi), reason,
 		       locally_generated);
+	// TODO: need more arguments to decide using either
+	// wpas_aidl_notify_nan_ndp_confirmed or wpas_aidl_notify_nan_ndp_terminated
 }
 
 
@@ -1891,6 +1913,9 @@ void wpas_notify_nan_pairing_status(struct wpa_supplicant *wpa_s,
 		       status == WLAN_STATUS_SUCCESS ? "success" : "failure",
 		       nd_pmk ? " nd_pmk=" : "",
 		       nd_pmk ? nd_pmk_hex : "");
+
+	wpas_aidl_notify_nan_pairing_confirmed(wpa_s, -1, peer_addr,
+		status == WLAN_STATUS_SUCCESS, status, -1);
 }
 
 #endif /* CONFIG_NAN || CONFIG_NAN_USD */
