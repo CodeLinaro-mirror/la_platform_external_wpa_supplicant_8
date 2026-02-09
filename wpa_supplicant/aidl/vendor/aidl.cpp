@@ -10,6 +10,7 @@
 #include <android/binder_manager.h>
 
 #include "aidl_manager.h"
+#include "src/nan/nan.h"
 
 extern "C"
 {
@@ -1254,7 +1255,7 @@ void wpas_aidl_notify_nan_bootstrap_confirmed(
 		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len)
 {
-	// bootstrap_method is not used by AIDL but provided by core supplicant	
+	// bootstrap_method is not used by AIDL but provided by core supplicant
 	if (!wpa_s || (cookie_len > 0 && !cookie))
 		return;
 
@@ -1267,10 +1268,23 @@ void wpas_aidl_notify_nan_bootstrap_confirmed(
 		bootstrapping_instance_id, is_success, reason, cookie, cookie_len);
 }
 
+#ifdef CONFIG_NAN
+bool getIsNpkCacheEnabled(struct wpa_supplicant* wpa_s, const u8* addr) {
+	if (!wpa_s || !addr)
+		return false;
+	// TODO: use API from nan.h nan_peer_npk_nik_caching_supported(wpa_s->nan, addr);
+	return true;
+}
+#else
+bool getIsNpkCacheEnabled(struct wpa_supplicant* wpa_s, const u8* addr) {
+	return false;
+}
+#endif
+
 void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
 		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
-		bool is_enable_cache, const u8* nonce, const u8* tag)
+		const u8* nonce, const u8* tag)
 {
 	if (!wpa_s || !peer_nmi_addr)
 		return;
@@ -1282,16 +1296,15 @@ void wpas_aidl_notify_nan_pairing_request(
 	wpa_printf(MSG_DEBUG, "Notifying NAN pairing request");
 	aidl_manager->notifyNanPairingRequestEvent(wpa_s,
 		discovery_session_id, peer_id, peer_nmi_addr,
-		pairing_id, is_setup, is_enable_cache, nonce, tag);
+		pairing_id, is_setup, getIsNpkCacheEnabled(wpa_s, peer_nmi_addr),
+		nonce, tag);
 }
 
 void wpas_aidl_notify_nan_pairing_confirmed(
-		struct wpa_supplicant* wpa_s, u8 pairing_id,
-		bool is_success, u8 status_code, bool is_setup,
-		bool is_enable_cache, const u8* peer_nik, const u8* local_nik,
-		const u8* npk, u8 akm, u8 cipher_type)
+		struct wpa_supplicant* wpa_s, u8 pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, bool is_setup, const u8 *nd_pmk)
 {
-	if (!wpa_s || (is_enable_cache && (!peer_nik || !local_nik || !npk)))
+	if (!wpa_s || !peer_addr || (nd_pmk == nullptr && is_success))
 		return;
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
@@ -1300,8 +1313,25 @@ void wpas_aidl_notify_nan_pairing_confirmed(
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN pairing confirmed");
 	aidl_manager->notifyNanPairingConfirmEvent(wpa_s, pairing_id,
-		is_success, status_code, is_setup, is_enable_cache,
-		peer_nik, local_nik, npk, akm, cipher_type);
+		is_success, status_code, is_setup, getIsNpkCacheEnabled(wpa_s, peer_addr),
+		nd_pmk);
+}
+
+void wpas_aidl_notify_nan_nik_received(
+	struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
+	int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
+	int nik_lifetime, int identity_id)
+{
+	if (!wpa_s || (nik_len > 0 && !nik) || (npk_len > 0 && !npk))
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN identity key received");
+	aidl_manager->notifyPairingSecurityAssociationReceivedEvent(wpa_s,
+		nik, nik_len, cipher_ver, akmp, npk, npk_len, nik_lifetime, identity_id);
 }
 
 void wpas_aidl_notify_nan_ndp_request(

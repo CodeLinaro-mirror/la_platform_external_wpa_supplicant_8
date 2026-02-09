@@ -230,12 +230,14 @@ public:
 		const u8* cookie, size_t cookie_size);
 	void notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 		int discovery_id, int peer_id, const u8* peer_nmi_addr,
-		int pairing_id, bool is_setup, bool enable_cache, const u8* nonce,
-		const u8* tag);
+		int pairing_id, bool is_setup, bool is_npk_cache_enabled,
+		const u8* nonce, const u8* tag);
 	void notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 		int pairing_id, bool success, u8 status_code,
-		bool is_setup, bool enable_cache, const u8* peer_nik,
-		const u8* local_nik, const u8* npk, int akm, int cipher_type);
+		bool is_setup, bool is_npk_cache_enabled, const u8* npk);
+	void notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
+		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
+		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id);
 	void notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 		int discovery_id, const u8* peer_nmi_addr, int npd_id,
 		bool security_required, const u8* app_info, size_t app_info_len);

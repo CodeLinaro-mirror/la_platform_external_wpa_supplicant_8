@@ -22,6 +22,10 @@ extern "C" {
 #include "scan.h"
 #include "src/eap_common/eap_sim_common.h"
 #include "list.h"
+#ifdef CONFIG_NAN
+#include "src/nan/nan_i.h"
+#include "src/nan/nan.h"
+#endif
 }
 
 namespace {
@@ -91,6 +95,8 @@ using NanPairingRequestType =
 	aidl::android::system::wifi::mainline_supplicant::NanPairingRequestType;
 using NanPairingAkm =
 	aidl::android::system::wifi::mainline_supplicant::NanPairingAkm;
+using NpkSecurityAssociation =
+	aidl::android::system::wifi::mainline_supplicant::NpkSecurityAssociation;
 #endif
 #endif
 
@@ -3125,7 +3131,7 @@ void AidlManager::callWithEachNanIfaceCallback(
  *
  * @param ifname Name of the corresponding interface.
  * @param network_id ID of the corresponding network.
- * @param method Pointer to the required aidl method from 
+ * @param method Pointer to the required aidl method from
  * |ISupplicantStaNetworkCallback|.
  */
 void AidlManager::callWithEachStaNetworkCallback(
@@ -3962,7 +3968,7 @@ void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_
 
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
-	int pairing_id, bool is_setup, bool enable_cache, const u8* nonce,
+	int pairing_id, bool is_setup, bool is_npk_cache_enabled, const u8* nonce,
 	const u8* tag)
 {
 	if (!wpa_s || !peer_nmi_addr) {
@@ -3979,7 +3985,7 @@ void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 		request_ind.requestType = is_setup ?
 			NanPairingRequestType::NAN_PAIRING_SETUP :
 			NanPairingRequestType::NAN_PAIRING_VERIFICATION;
-		request_ind.enablePairingCache = enable_cache;
+		request_ind.enablePairingCache = is_npk_cache_enabled;
 		if (nonce && tag) {
 			std::array<uint8_t, kNiraNonceLenBytes> arr_nonce;
 			std::copy(nonce, nonce + kNiraNonceLenBytes, std::begin(arr_nonce));
@@ -3998,9 +4004,8 @@ void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 }
 
 void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int pairing_id, bool success, u8 status_code,
-	bool is_setup, bool enable_cache, const u8* peer_nik,
-	const u8* local_nik, const u8* npk, int akm, int cipher_type)
+	int pairing_id, bool success, u8 status_code, bool is_setup,
+	bool is_npk_cache_enabled, const u8* npk)
 {
 	if (!wpa_s) {
 		return;
@@ -4015,41 +4020,68 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 		confirm_ind.requestType = is_setup ?
 			NanPairingRequestType::NAN_PAIRING_SETUP :
 			NanPairingRequestType::NAN_PAIRING_VERIFICATION;
-		confirm_ind.enablePairingCache = enable_cache;
-		if (peer_nik && local_nik && npk) {
-			std::array<uint8_t, kNikLenBytes> arr_peer_nik;
-			std::copy(peer_nik, peer_nik + kNikLenBytes, std::begin(arr_peer_nik));
-			confirm_ind.npksa.peerNanIdentityKey = arr_peer_nik;
-			std::array<uint8_t, kNikLenBytes> arr_local_nik;
-			std::copy(local_nik, local_nik + kNikLenBytes, std::begin(arr_local_nik));
-			confirm_ind.npksa.localNanIdentityKey = arr_local_nik;
+		confirm_ind.enablePairingCache = is_npk_cache_enabled;
+		if (npk) {
 			std::array<uint8_t, kNpkLenBytes> arr_npk;
 			std::copy(npk, npk + kNpkLenBytes, std::begin(arr_npk));
 			confirm_ind.npksa.npk = arr_npk;
-			if (akm == WPA_KEY_MGMT_PASN) {
-				confirm_ind.npksa.akm = NanPairingAkm::PASN;
-			} else if (akm == WPA_KEY_MGMT_SAE) {
-				confirm_ind.npksa.akm = NanPairingAkm::SAE;
-			} else {
-				wpa_printf(MSG_ERROR, "Invalid AKM type in pairing confirm event");
-				return;
-			}
-			if (cipher_type == WPA_CIPHER_GCMP_256) {
-				confirm_ind.npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK;
-			} else if (cipher_type == WPA_CIPHER_CCMP) {
-				confirm_ind.npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK;
-			} else {
-				wpa_printf(MSG_ERROR, "Invalid cipher type in pairing confirm event");
-				return;
-			}
 		}
-
 		// TODO: parse status_code after they're defined in wpa_supplicant
 		callWithEachNanIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::eventPairingConfirm,
 			std::placeholders::_1, confirm_ind));
+	}
+}
+
+void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
+		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
+		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id)
+{
+	if (!wpa_s || !peer_nik || !npk || nik_len > kNikLenBytes || npk_len > kNpkLenBytes) {
+		return;
+	}
+
+	if (nan_iface_object_map_.find(wpa_s->ifname) !=
+		nan_iface_object_map_.end() && peer_nik && npk) {
+		NpkSecurityAssociation npksa;
+		std::array<uint8_t, kNikLenBytes> arr_peer_nik;
+		std::copy(peer_nik, peer_nik + nik_len, std::begin(arr_peer_nik));
+		npksa.peerNanIdentityKey = arr_peer_nik;
+		npksa.peerNanIdentityKeyLifetimeSec = peer_nik_lifetime;
+#ifdef CONFIG_NAN
+		std::array<uint8_t, kNikLenBytes> arr_local_nik;
+		std::copy(wpa_s->nan->cfg->nik, wpa_s->nan->cfg->nik + kNikLenBytes,
+			std::begin(arr_local_nik));
+		npksa.localNanIdentityKey = arr_local_nik;
+		npksa.localNanIdentityKeyLifetimeSec = wpa_s->nan->cfg->nik_lifetime;
+#endif
+		std::array<uint8_t, kNpkLenBytes> arr_npk;
+		std::copy(npk, npk + npk_len, std::begin(arr_npk));
+		npksa.npk = arr_npk;
+		if (akmp == WPA_KEY_MGMT_PASN) {
+			npksa.akm = NanPairingAkm::PASN;
+		} else if (akmp == WPA_KEY_MGMT_SAE) {
+			npksa.akm = NanPairingAkm::SAE;
+		} else {
+			wpa_printf(MSG_ERROR, "Invalid AKM type in pairing confirm event");
+			return;
+		}
+		if (cipher_ver == WPA_CIPHER_GCMP_256) {
+			npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK;
+		} else if (cipher_ver == WPA_CIPHER_CCMP) {
+			npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK;
+		} else {
+			wpa_printf(MSG_ERROR, "Invalid cipher type in pairing confirm event");
+			return;
+		}
+
+		callWithEachNanIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&NanIface::ISupplicantNanIfaceEventCallback::eventPairingSecurityAssociationReceived,
+			std::placeholders::_1, npksa));
 	}
 }
 
@@ -4386,12 +4418,14 @@ void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_
 	const u8 *cookie, size_t cookie_size) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
-	int pairing_id, bool is_setup, bool enable_cache, const u8* nonce,
+	int pairing_id, bool is_setup, bool is_npk_cache_enabled, const u8* nonce,
 	const u8* tag) {}
 void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int pairing_id, bool success, u8 status_code,
-	bool is_setup, bool enable_cache, const u8* peer_nik,
-	const u8* local_nik, const u8* npk, int akm, int cipher_type) {}
+	bool is_setup, bool is_npk_cache_enabled, const u8* npk) {}
+void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
+	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
+	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
@@ -4469,8 +4503,10 @@ void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	const u8* tag) {}
 void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int pairing_id, bool success, u8 status_code,
-	bool is_setup, bool enable_cache, const u8* peer_nik,
-	const u8* local_nik, const u8* npk, int akm, int cipher_type) {}
+	bool is_setup, bool is_npk_cache_enabled, const u8* npk) {}
+void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
+	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
+	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}

@@ -198,12 +198,14 @@ extern "C"
 	void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
 		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
-		bool is_enable_cache, const u8* nonce, const u8* tag);
+		const u8* nonce, const u8* tag);
 	void wpas_aidl_notify_nan_pairing_confirmed(
-		struct wpa_supplicant* wpa_s, u8 pairing_id,
-		bool is_success, u8 status_code, bool is_setup,
-		bool is_enable_cache, const u8* peer_nik, const u8* local_nik,
-		const u8* npk, u8 akm, u8 cipher_type);
+		struct wpa_supplicant* wpa_s, u8 pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, bool is_setup, const u8 *nd_pmk);
+	void wpas_aidl_notify_nan_nik_received(
+		struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
+		int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
+		int nik_lifetime, int identity_id);
 	void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
 		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len);
@@ -451,12 +453,14 @@ static void wpas_aidl_notify_nan_bootstrap_confirmed(
 static void wpas_aidl_notify_nan_pairing_request(
 		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
 		const u8* peer_nmi_addr, u8 pairing_id, bool is_setup,
-		bool is_enable_cache, const u8* nonce, const u8* tag) {}
+		const u8* nonce, const u8* tag) {}
 static void wpas_aidl_notify_nan_pairing_confirmed(
-		struct wpa_supplicant* wpa_s, u8 pairing_id,
-		bool is_success, u8 status_code, bool is_setup,
-		bool is_enable_cache, const u8* peer_nik, const u8* local_nik,
-		const u8* npk, u8 akm, u8 cipher_type) {}
+		struct wpa_supplicant* wpa_s, u8 pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, bool is_setup, const u8 *nd_pmk) {}
+static void wpas_aidl_notify_nan_nik_received(
+		struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
+		int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
+		int nik_lifetime, int identity_id) {}
 static void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
 		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len) {}

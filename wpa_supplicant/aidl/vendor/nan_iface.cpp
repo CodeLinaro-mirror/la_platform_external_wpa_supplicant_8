@@ -60,7 +60,7 @@ static constexpr int kNanIfaceConfBufSize = 128;
 static constexpr int kNanIfaceConfBandDisableScan = 0;
 static constexpr int kNanIfaceConfScanDwellTime = 150;
 static constexpr int kNanIfaceConfScanPeriod = 20;
-static constexpr int kNanIfaceConfBootstrapCombackTimeoutTus = 1024;
+static constexpr int kNanIfaceConfBootstrapComebackTimeoutTus = 1024;
 static constexpr uint16_t kNanIfaceConfAutoAcceptedBm = BIT(0);
 static constexpr int kNanIfaceConfMaxBandwidth = 160;  // in MHz
 
@@ -288,12 +288,13 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::terminatePairingRequest(
-	char16_t in_cmdId, int32_t in_pairingInstanceId)
+	char16_t in_cmdId, int32_t in_pairingInstanceId,
+	const std::array<uint8_t, 6>& in_peerDiscMacAddr)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&NanIface::terminatePairingRequestInternal, in_cmdId,
-		in_pairingInstanceId);
+		in_pairingInstanceId, in_peerDiscMacAddr);
 }
 
 ::ndk::ScopedAStatus NanIface::initiateDataPathRequest(
@@ -778,7 +779,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		setNanConfigParam(wpa_s, "pairing_verification %d", pairing_config.enablePairingVerification ? 1 : 0);
 		setNanConfigParam(wpa_s, "bootstrap_config %hx,%hx,%hu",
 			static_cast<uint16_t>(pairing_config.supportedBootstrappingMethods),
-			kNanIfaceConfAutoAcceptedBm, kNanIfaceConfBootstrapCombackTimeoutTus);
+			kNanIfaceConfAutoAcceptedBm, kNanIfaceConfBootstrapComebackTimeoutTus);
 		if (!msg.identityKey.empty()) {
 			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.identityKey.data(),
 				msg.identityKey.size()).c_str());
@@ -1108,7 +1109,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 }
 
 ::ndk::ScopedAStatus NanIface::terminatePairingRequestInternal(
-	char16_t cmdId, int32_t pairingInstanceId)
+	char16_t cmdId, int32_t pairingInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr)
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -1380,7 +1381,8 @@ static int appendSecurityConfigToCmd(
 }
 
 ::ndk::ScopedAStatus NanIface::terminatePairingRequestInternal(
-	char16_t cmdId, int32_t pairingInstanceId)
+	char16_t cmdId, int32_t pairingInstanceId,
+	const std::array<uint8_t, 6>& peerDiscMacAddr)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }

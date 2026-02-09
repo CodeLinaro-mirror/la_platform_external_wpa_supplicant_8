@@ -102,7 +102,8 @@ public:
 		const NanRespondToPairingIndicationRequest& in_msg) override;
 	::ndk::ScopedAStatus terminatePairingRequest(
 		char16_t in_cmdId,
-		int32_t in_pairingInstanceId) override;
+		int32_t in_pairingInstanceId,
+		const std::array<uint8_t, 6>& in_peerDiscMacAddr) override;
 	::ndk::ScopedAStatus initiateDataPathRequest(
 		char16_t in_cmdId,
 		const NanInitiateDataPathRequest& in_msg) override;
@@ -150,7 +151,8 @@ private:
 		char16_t cmdId,
 		const NanRespondToPairingIndicationRequest& msg);
 	::ndk::ScopedAStatus terminatePairingRequestInternal(
-		char16_t cmdId, int32_t pairingInstanceId);
+		char16_t cmdId, int32_t pairingInstanceId,
+		const std::array<uint8_t, 6>& peerDiscMacAddr);
 	::ndk::ScopedAStatus initiateDataPathRequestInternal(
 		char16_t cmdId, const NanInitiateDataPathRequest& msg);
 	::ndk::ScopedAStatus respondToDataPathIndicationRequestInternal(
