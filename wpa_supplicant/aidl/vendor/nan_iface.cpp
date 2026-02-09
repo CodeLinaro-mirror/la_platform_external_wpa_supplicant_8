@@ -63,6 +63,8 @@ static constexpr int kNanIfaceConfScanPeriod = 20;
 static constexpr int kNanIfaceConfBootstrapComebackTimeoutTus = 1024;
 static constexpr uint16_t kNanIfaceConfAutoAcceptedBm = BIT(0);
 static constexpr int kNanIfaceConfMaxBandwidth = 160;  // in MHz
+static constexpr int kNanIfaceCapMaxNdiInterfaces = 4;
+static constexpr int kNanIfaceCapMaxNdpSessions = 10;
 
 template <typename... Args>
 int setNanConfigParam(struct wpa_supplicant* wpa_s, const char* param, Args... args)
@@ -347,6 +349,13 @@ bool NanIface::isValid()
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::SUCCESS;
 		NanCapabilities aidl_caps = {};
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global_, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanCapabilitiesResponse(ifname, cmdId,
+				nan_status, aidl_caps);
+			return;
+		}
 
 		aidl_caps.maxPublishes = kNanIfaceCapMaxPublishSessions;
 		aidl_caps.maxSubscribes = kNanIfaceCapMaxSubscribeSessions;
@@ -360,6 +369,16 @@ bool NanIface::isValid()
 		aidl_caps.supportsSuspension = kNanIfaceCapSupportsSuspension;
 		aidl_caps.supportsPeriodicRanging = kNanIfaceCapSupportsPeriodicRanging;
 		aidl_caps.maxSupportedBandwidth = convertIntegerToRttBw(kNanIfaceConfMaxBandwidth);
+		aidl_caps.maxNdiInterfaces = kNanIfaceCapMaxNdiInterfaces;
+		aidl_caps.maxNdpSessions = kNanIfaceCapMaxNdpSessions;
+		aidl_caps.supportedCipherSuites = wpa_s->nan_supported_csids;
+#ifdef CONFIG_PASN
+		if (wpa_s->nan_capa.drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP) {
+			aidl_caps.supportsPairing = true;
+		}
+#endif
+		// the upper nibble represents RX
+		aidl_caps.maxNumRxChainsSupported = (wpa_s->nan_capa.num_antennas >> 4) & 0x0f;
 		aidl_manager->notifyNanCapabilitiesResponse(
 			ifname, cmdId, nan_status, aidl_caps);
 	});
