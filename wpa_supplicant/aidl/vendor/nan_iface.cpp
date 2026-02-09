@@ -920,8 +920,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_BOOTSTRAP " MACSTR " handle=%d req_instance_id=%d method=%d",
-			MAC2STR(msg.peerDiscMacAddr.data()), msg.discoverySessionId,
+			MACSTR " handle=%d req_instance_id=%d method=%d",
+			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.peerId, msg.requestBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateBootstrappingResponse(
@@ -960,7 +960,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_BOOTSTRAP " MACSTR " handle=%d method=%d auth",
+			MACSTR " handle=%d method=%d auth",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.responseBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
@@ -1005,7 +1005,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_PAIRING " MACSTR " handle=%d peer_instance_id=%d auth=%d",
+			MACSTR " handle=%d peer_instance_id=%d auth=%d",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.peerId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
@@ -1092,7 +1092,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_PAIRING " MACSTR " handle=%d peer_instance_id=%d auth=%d responder",
+			MACSTR " handle=%d peer_instance_id=%d auth=%d responder",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.peerId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
