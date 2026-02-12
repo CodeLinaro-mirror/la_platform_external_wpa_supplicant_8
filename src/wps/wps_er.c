@@ -1195,14 +1195,11 @@ static void wps_er_http_notify(struct wps_er *er, struct http_request *req)
 		if (event_id != er->event_id) {
 			wpa_printf(MSG_DEBUG, "WPS ER: HTTP event for an "
 				   "unknown event id %u", event_id);
-			http_request_deinit(req);
 			return;
 		}
 		pos = os_strchr(uri + 7, '/');
-		if (!pos) {
-			http_request_deinit(req);
+		if (pos == NULL)
 			return;
-		}
 		pos++;
 		wps_er_http_event(er, req, atoi(pos));
 	} else {

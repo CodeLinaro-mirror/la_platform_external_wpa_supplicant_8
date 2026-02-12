@@ -2,7 +2,7 @@
  * wpa_supplicant - DPP
  * Copyright (c) 2017, Qualcomm Atheros, Inc.
  * Copyright (c) 2018-2020, The Linux Foundation
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -335,17 +335,17 @@ static char * wpas_dpp_scan_channel_list(struct wpa_supplicant *wpa_s)
 	u8 last_op_class = 0;
 	int res;
 
-	len = int_array_len(wpa_s->last_scan_freqs);
-	if (!len)
+	if (!wpa_s->last_scan_freqs || !wpa_s->num_last_scan_freqs)
 		return NULL;
 
-	str = os_zalloc(len * 8);
+	len = wpa_s->num_last_scan_freqs * 8;
+	str = os_zalloc(len);
 	if (!str)
 		return NULL;
 	end = str + len;
 	pos = str;
 
-	for (i = 0; wpa_s->last_scan_freqs[i]; i++) {
+	for (i = 0; i < wpa_s->num_last_scan_freqs; i++) {
 		enum hostapd_hw_mode mode;
 		u8 op_class, channel;
 

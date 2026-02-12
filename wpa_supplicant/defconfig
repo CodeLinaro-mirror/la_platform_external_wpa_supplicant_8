@@ -507,7 +507,10 @@ CONFIG_IEEE80211AX=y
 
 # IEEE 802.11be EHT support (mainly for AP mode)
 # CONFIG_IEEE80211AX is mandatory for setting CONFIG_IEEE80211BE.
-CONFIG_IEEE80211BE=y
+# Note: This is experimental and work in progress. The definitions are still
+# subject to change and this should not be expected to interoperate with the
+# final IEEE 802.11be version.
+#CONFIG_IEEE80211BE=y
 
 # Wireless Network Management (IEEE Std 802.11v-2011)
 # Note: This is experimental and not complete implementation.
@@ -629,7 +632,8 @@ CONFIG_IBSS_RSN=y
 #CONFIG_BGSCAN_LEARN=y
 
 # Opportunistic Wireless Encryption (OWE)
-CONFIG_OWE=y
+# Experimental implementation of draft-harkins-owe-07.txt
+#CONFIG_OWE=y
 
 # Device Provisioning Protocol (DPP) (also known as Wi-Fi Easy Connect)
 CONFIG_DPP=y

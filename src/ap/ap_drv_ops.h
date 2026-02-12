@@ -399,7 +399,7 @@ static inline int hostapd_drv_vendor_cmd(struct hostapd_data *hapd,
 
 static inline int hostapd_drv_stop_ap(struct hostapd_data *hapd)
 {
-	int link_id = -1, ret;
+	int link_id = -1;
 
 	if (!hapd->driver || !hapd->driver->stop_ap || !hapd->drv_priv)
 		return 0;
@@ -407,13 +407,7 @@ static inline int hostapd_drv_stop_ap(struct hostapd_data *hapd)
 	if (hapd->conf->mld_ap)
 		link_id = hapd->mld_link_id;
 #endif /* CONFIG_IEEE80211BE */
-
-	ret = hapd->driver->stop_ap(hapd->drv_priv, link_id);
-	if (ret)
-		return ret;
-
-	hapd->beacon_set_done = 0;
-	return 0;
+	return hapd->driver->stop_ap(hapd->drv_priv, link_id);
 }
 
 static inline int hostapd_drv_channel_info(struct hostapd_data *hapd,

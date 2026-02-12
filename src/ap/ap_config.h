@@ -295,9 +295,6 @@ struct hostapd_bss_config {
 
 	int max_num_sta; /* maximum number of STAs in station table */
 
-	enum beacon_rate_type rate_type;
-	unsigned int beacon_rate;
-
 	int dtim_period;
 	unsigned int bss_load_update_period;
 	unsigned int chan_util_avg_period;
@@ -329,9 +326,6 @@ struct hostapd_bss_config {
 	size_t radius_das_shared_secret_len;
 
 	struct hostapd_ssid ssid;
-
-	int *supported_rates;
-	int *basic_rates;
 
 	char *eap_req_id_text; /* optional displayable message sent with
 				* EAP Request-Identity */
@@ -668,8 +662,6 @@ struct hostapd_bss_config {
 	struct sae_password_entry *sae_passwords;
 	int sae_password_psk;
 	int sae_track_password;
-	struct wpabuf *sae_pw_id_key;
-	unsigned int sae_pw_id_num;
 
 	char *wowlan_triggers; /* Wake-on-WLAN triggers */
 
@@ -955,9 +947,6 @@ struct hostapd_bss_config {
 	u16 pasn_comeback_after;
 #endif /* CONFIG_PASN */
 
-	int urnm_mfpr_x20;
-	int urnm_mfpr;
-
 	unsigned int unsol_bcast_probe_resp_interval;
 
 	u8 ext_capa_mask[EXT_CAPA_MAX_LEN];
@@ -1065,6 +1054,11 @@ struct hostapd_config {
 		LONG_PREAMBLE = 0,
 		SHORT_PREAMBLE = 1
 	} preamble;
+
+	int *supported_rates;
+	int *basic_rates;
+	unsigned int beacon_rate;
+	enum beacon_rate_type rate_type;
 
 	const struct wpa_driver_ops *driver;
 	char *driver_params;
@@ -1247,9 +1241,6 @@ struct hostapd_config {
 
 	bool channel_usage;
 	bool peer_to_peer_twt;
-
-	/* Set I2R LMR policy to allow LMR response from ISTA */
-	bool i2r_lmr_policy;
 };
 
 
@@ -1388,6 +1379,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf);
 void hostapd_config_free(struct hostapd_config *conf);
 int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,
 			  const u8 *addr, struct vlan_description *vlan_id);
+int hostapd_rate_found(int *list, int rate);
 const u8 * hostapd_get_psk(const struct hostapd_bss_config *conf,
 			   const u8 *addr, const u8 *p2p_dev_addr,
 			   const u8 *prev_psk, int *vlan_id);

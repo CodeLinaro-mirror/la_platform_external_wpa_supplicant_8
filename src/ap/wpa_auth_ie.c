@@ -493,12 +493,8 @@ static u32 rsnxe_capab(struct wpa_auth_config *conf, int key_mgmt)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_LTF);
 	if (conf->secure_rtt)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
-	if (conf->prot_range_neg) {
-		if (conf->urnm_mfpr)
-			capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
-		if (conf->urnm_mfpr_x20)
-			capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR_X20);
-	}
+	if (conf->prot_range_neg)
+		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
 	if (conf->ssid_protection)
 		capab |= BIT(WLAN_RSNX_CAPAB_SSID_PROTECTION);
 	if (conf->spp_amsdu)
@@ -1409,7 +1405,8 @@ int wpa_auth_uses_ocv(struct wpa_state_machine *sm)
 
 #ifdef CONFIG_OWE
 u8 * wpa_auth_write_assoc_resp_owe(struct wpa_state_machine *sm,
-				   u8 *pos, size_t max_len)
+				   u8 *pos, size_t max_len,
+				   const u8 *req_ies, size_t req_ies_len)
 {
 	int res;
 	struct wpa_auth_config *conf;
@@ -1442,7 +1439,8 @@ u8 * wpa_auth_write_assoc_resp_owe(struct wpa_state_machine *sm,
 #ifdef CONFIG_FILS
 
 u8 * wpa_auth_write_assoc_resp_fils(struct wpa_state_machine *sm,
-				    u8 *pos, size_t max_len)
+				    u8 *pos, size_t max_len,
+				    const u8 *req_ies, size_t req_ies_len)
 {
 	int res;
 

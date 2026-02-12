@@ -521,9 +521,9 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 			list[0] = 60;
 			list[1] = 120;
 			list[2] = 240;
-			list[3] = 0;
+			list[3] = -1;
 		}
-		bss->basic_rates = list;
+		conf->basic_rates = list;
 
 		list = os_malloc(9 * sizeof(int));
 		if (list) {
@@ -535,9 +535,9 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 			list[5] = 360;
 			list[6] = 480;
 			list[7] = 540;
-			list[8] = 0;
+			list[8] = -1;
 		}
-		bss->supported_rates = list;
+		conf->supported_rates = list;
 	}
 
 	bss->isolate = !wpa_s->conf->p2p_intra_bss;
@@ -585,7 +585,6 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 		bss->wpa_pairwise = WPA_CIPHER_CCMP;
 		bss->rsn_override_pairwise = WPA_CIPHER_CCMP;
 		bss->rsn_override_mfp = 2;
-		bss->rsn_override_omit_rsnxe = 1;
 	}
 #endif /* CONFIG_P2P */
 
@@ -1844,8 +1843,6 @@ int ap_switch_channel(struct wpa_supplicant *wpa_s,
 	if (!iface || !iface->bss[0])
 		return -1;
 
-	hostapd_chan_switch_config(iface->bss[0], &settings->freq_params);
-
 	return hostapd_switch_channel(iface->bss[0], settings);
 #else /* NEED_AP_MLME */
 	return -1;
@@ -1857,22 +1854,8 @@ int ap_switch_channel(struct wpa_supplicant *wpa_s,
 int ap_ctrl_iface_chanswitch(struct wpa_supplicant *wpa_s, const char *pos)
 {
 	struct csa_settings settings;
-	struct hostapd_iface *iface = NULL;
-	int ret;
+	int ret = hostapd_parse_csa_settings(pos, &settings);
 
-#ifdef CONFIG_AP
-	if (wpa_s->ap_iface)
-		iface = wpa_s->ap_iface;
-#endif /* CONFIG_AP */
-#ifdef CONFIG_MESH
-	if (!iface && wpa_s->ifmsh)
-		iface = wpa_s->ifmsh;
-#endif /* CONFIG_MESH */
-
-	if (!iface)
-		return -1;
-
-	ret = hostapd_parse_csa_settings(iface, pos, &settings);
 	if (ret)
 		return ret;
 

@@ -1,7 +1,6 @@
 /*
  * wpa_supplicant - Robust AV procedures
  * Copyright (c) 2020, The Linux Foundation
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -207,8 +206,8 @@ skip_tclas_elem:
 			qos_elem->mask &=
 				~SCS_QOS_BIT_SERVICE_START_TIME_LINKID;
 
-		/* IEEE Std 802.11be-2024, 9.4.2.326 QoS Characteristics
-		 * element, Figure 9-1074bd (Control Info field format)
+		/* IEEE P802.11be/D4.0, 9.4.2.316 QoS Characteristics element,
+		 * Figure 9-1001av (Control Info field format)
 		 */
 		control_info = ((u32) qos_elem->direction <<
 				EHT_QOS_CONTROL_INFO_DIRECTION_OFFSET);
@@ -322,13 +321,6 @@ int wpas_send_mscs_req(struct wpa_supplicant *wpa_s)
 	if (!wpa_bss_ext_capab(wpa_s->current_bss, WLAN_EXT_CAPAB_MSCS)) {
 		wpa_dbg(wpa_s, MSG_INFO,
 			"AP does not support MSCS - could not send MSCS Req");
-		return -1;
-	}
-
-	if (wpa_s->mscs_setup_done &&
-	    wpa_s->robust_av.request_type == SCS_REQ_ADD) {
-		wpa_msg(wpa_s, MSG_INFO,
-			"MSCS: Failed to send MSCS ADD request: MSCS session already active");
 		return -1;
 	}
 
@@ -904,8 +896,7 @@ event_mscs_result:
 
 
 void wpas_handle_robust_av_recv_action(struct wpa_supplicant *wpa_s,
-				       const u8 *dst, const u8 *src,
-				       const u8 *buf, size_t len)
+				       const u8 *src, const u8 *buf, size_t len)
 {
 	u8 dialog_token;
 	u16 status_code;
@@ -928,14 +919,6 @@ void wpas_handle_robust_av_recv_action(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_INFO,
 			   "MSCS: Drop received frame due to dialog token mismatch: received:%u expected:%u",
 			   dialog_token, wpa_s->robust_av.dialog_token);
-		return;
-	}
-
-	if (is_multicast_ether_addr(dst)) {
-		wpa_printf(MSG_DEBUG,
-			   "MSCS: Ignore group-addressed MSCS Response frame (A1="
-			   MACSTR " A2=" MACSTR ")",
-			   MAC2STR(dst), MAC2STR(src));
 		return;
 	}
 
@@ -1019,8 +1002,8 @@ void wpas_handle_assoc_resp_qos_mgmt(struct wpa_supplicant *wpa_s,
 
 
 void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
-					   const u8 *dst, const u8 *src,
-					   const u8 *buf, size_t len)
+					   const u8 *src, const u8 *buf,
+					   size_t len)
 {
 	u8 dialog_token;
 	unsigned int i, count, num_active_scs, j = 0;
@@ -1032,14 +1015,6 @@ void wpas_handle_robust_av_scs_recv_action(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->ongoing_scs_req) {
 		wpa_printf(MSG_INFO,
 			   "SCS: Drop received response due to no ongoing request");
-		return;
-	}
-
-	if (is_multicast_ether_addr(dst)) {
-		wpa_printf(MSG_DEBUG,
-			   "SCS: Ignore group-addressed SCS Response frame (A1="
-			   MACSTR " A2=" MACSTR ")",
-			   MAC2STR(dst), MAC2STR(src));
 		return;
 	}
 
@@ -1673,7 +1648,7 @@ static void wpas_fill_dscp_policy(struct dscp_policy_data *policy, u8 attr_id,
 
 
 void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
-				      const u8 *dst, const u8 *src,
+				      const u8 *src,
 				      const u8 *buf, size_t len)
 {
 	int rem_len;
@@ -1708,14 +1683,6 @@ void wpas_handle_qos_mgmt_recv_action(struct wpa_supplicant *wpa_s,
 	if (buf[0] != QM_DSCP_POLICY_REQ) {
 		wpa_printf(MSG_ERROR, "QM: Received unexpected QoS action frame %d",
 			   buf[0]);
-		return;
-	}
-
-	if (is_multicast_ether_addr(dst)) {
-		wpa_printf(MSG_DEBUG,
-			   "QM: Ignore group-addressed DSCP Policy Request frame (A1="
-			   MACSTR " A2=" MACSTR ")",
-			   MAC2STR(dst), MAC2STR(src));
 		return;
 	}
 
