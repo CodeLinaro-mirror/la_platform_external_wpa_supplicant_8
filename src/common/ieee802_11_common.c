@@ -3542,7 +3542,8 @@ static int parse_mcs_map_for_max_nss (u16 mcs_map, int max_streams_allowed)
 
 
 /* Parse capabilities IEs to get maximum number of supported spatial streams */
-int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx)
+int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx,
+			   enum chan_width bw)
 {
 	int max_nss = 1;
 	struct ieee80211_ht_capabilities *htcaps =
@@ -3553,9 +3554,21 @@ int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx)
 		(struct ieee80211_he_capabilities *) elems->he_capabilities;
 	le16 mcs_map;
 	if (hecaps) {
-		mcs_map = (parse_for_rx) ? hecaps->he_basic_supported_mcs_set.rx_map :
-			hecaps->he_basic_supported_mcs_set.tx_map;
-		int max_nss_he = parse_mcs_map_for_max_nss(
+		int max_nss_he;
+		const u8 *optional = hecaps->optional;
+
+		if (bw == CHAN_WIDTH_160) {
+			const le16 *mcs_160 = (const le16 *) &optional[0];
+			mcs_map = parse_for_rx ? mcs_160[0] : mcs_160[1];
+		} else if (bw == CHAN_WIDTH_80P80) {
+			const le16 *mcs_80p80 = (const le16 *) &optional[4];
+			mcs_map = parse_for_rx ? mcs_80p80[0] : mcs_80p80[1];
+		} else {
+			mcs_map = parse_for_rx ?
+				hecaps->he_basic_supported_mcs_set.rx_map :
+				hecaps->he_basic_supported_mcs_set.tx_map;
+		}
+		max_nss_he = parse_mcs_map_for_max_nss(
 			le_to_host16(mcs_map), HE_NSS_MAX_STREAMS);
 		if (max_nss_he > max_nss)
 			max_nss = max_nss_he;
