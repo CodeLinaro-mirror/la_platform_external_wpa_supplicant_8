@@ -194,18 +194,17 @@ int hostapd_get_hw_features(struct hostapd_iface *iface)
 }
 
 
-int hostapd_prepare_rates(struct hostapd_data *hapd,
+int hostapd_prepare_rates(struct hostapd_iface *iface,
 			  struct hostapd_hw_modes *mode)
 {
-	struct hostapd_bss_config *conf = hapd->conf;
 	int i, num_basic_rates = 0;
-	int basic_rates_a[] = { 60, 120, 240, 0 };
-	int basic_rates_b[] = { 10, 20, 0 };
-	int basic_rates_g[] = { 10, 20, 55, 110, 0 };
-	const int *basic_rates;
+	int basic_rates_a[] = { 60, 120, 240, -1 };
+	int basic_rates_b[] = { 10, 20, -1 };
+	int basic_rates_g[] = { 10, 20, 55, 110, -1 };
+	int *basic_rates;
 
-	if (conf->basic_rates)
-		basic_rates = conf->basic_rates;
+	if (iface->conf->basic_rates)
+		basic_rates = iface->conf->basic_rates;
 	else switch (mode->mode) {
 	case HOSTAPD_MODE_IEEE80211A:
 		basic_rates = basic_rates_a;
@@ -222,15 +221,22 @@ int hostapd_prepare_rates(struct hostapd_data *hapd,
 		return -1;
 	}
 
-	os_free(hapd->basic_rates);
-	hapd->basic_rates = int_array_dup(basic_rates);
+	i = 0;
+	while (basic_rates[i] >= 0)
+		i++;
+	if (i)
+		i++; /* -1 termination */
+	os_free(iface->basic_rates);
+	iface->basic_rates = os_malloc(i * sizeof(int));
+	if (iface->basic_rates)
+		os_memcpy(iface->basic_rates, basic_rates, i * sizeof(int));
 
-	os_free(hapd->current_rates);
-	hapd->num_rates = 0;
+	os_free(iface->current_rates);
+	iface->num_rates = 0;
 
-	hapd->current_rates =
+	iface->current_rates =
 		os_calloc(mode->num_rates, sizeof(struct hostapd_rate_data));
-	if (!hapd->current_rates) {
+	if (!iface->current_rates) {
 		wpa_printf(MSG_ERROR, "Failed to allocate memory for rate "
 			   "table.");
 		return -1;
@@ -239,26 +245,27 @@ int hostapd_prepare_rates(struct hostapd_data *hapd,
 	for (i = 0; i < mode->num_rates; i++) {
 		struct hostapd_rate_data *rate;
 
-		if (conf->supported_rates &&
-		    !int_array_includes(conf->supported_rates, mode->rates[i]))
+		if (iface->conf->supported_rates &&
+		    !hostapd_rate_found(iface->conf->supported_rates,
+					mode->rates[i]))
 			continue;
 
-		rate = &hapd->current_rates[hapd->num_rates];
+		rate = &iface->current_rates[iface->num_rates];
 		rate->rate = mode->rates[i];
-		if (int_array_includes(basic_rates, rate->rate)) {
+		if (hostapd_rate_found(basic_rates, rate->rate)) {
 			rate->flags |= HOSTAPD_RATE_BASIC;
 			num_basic_rates++;
 		}
 		wpa_printf(MSG_DEBUG, "RATE[%d] rate=%d flags=0x%x",
-			   hapd->num_rates, rate->rate, rate->flags);
-		hapd->num_rates++;
+			   iface->num_rates, rate->rate, rate->flags);
+		iface->num_rates++;
 	}
 
-	if ((hapd->num_rates == 0 || num_basic_rates == 0) &&
-	    (!hapd->iconf->ieee80211n || !hapd->iconf->require_ht)) {
+	if ((iface->num_rates == 0 || num_basic_rates == 0) &&
+	    (!iface->conf->ieee80211n || !iface->conf->require_ht)) {
 		wpa_printf(MSG_ERROR, "No rates remaining in supported/basic "
 			   "rate sets (%d,%d).",
-			   hapd->num_rates, num_basic_rates);
+			   iface->num_rates, num_basic_rates);
 		return -1;
 	}
 
@@ -720,23 +727,9 @@ static int ieee80211ac_supported_vht_capab(struct hostapd_iface *iface)
 #endif /* CONFIG_IEEE80211AC */
 
 
-#ifdef CONFIG_IEEE80211BE
-static int ieee80211be_supported_eht_capab(struct hostapd_iface *iface)
-{
-	return iface->current_mode->eht_capab[IEEE80211_MODE_AP].eht_supported;
-}
-#endif /* CONFIG_IEEE80211BE */
-
-
 #ifdef CONFIG_IEEE80211AX
 static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
 {
-	// TODO: iface->current_mode->he_capab[IEEE80211_MODE_AP].he_supported
-	//       appears to cause connection failures for some legacy devices
-	//       when enabling the hotspot. As a temporary workaround,
-	//       we are always returning 1 to avoid this issue.
-	//       Need to find a way to enable HE features without
-	//       impacting legacy clients.
 	return 1;
 }
 #endif /* CONFIG_IEEE80211AX */
@@ -761,19 +754,10 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
 
 	if (!ieee80211n_supported_ht_capab(iface))
 		return -1;
-#ifdef CONFIG_IEEE80211BE
-	if (iface->conf->ieee80211be &&
-	    !ieee80211be_supported_eht_capab(iface)) {
-		wpa_printf(MSG_ERROR, "Driver does not support EHT");
-		return -1;
-	}
-#endif /* CONFIG_IEEE80211BE */
 #ifdef CONFIG_IEEE80211AX
 	if (iface->conf->ieee80211ax &&
-	    !ieee80211ax_supported_he_capab(iface)) {
-		wpa_printf(MSG_ERROR, "Driver does not support HE");
+	    !ieee80211ax_supported_he_capab(iface))
 		return -1;
-	}
 #endif /* CONFIG_IEEE80211AX */
 #ifdef CONFIG_IEEE80211AC
 	if (iface->conf->ieee80211ac &&

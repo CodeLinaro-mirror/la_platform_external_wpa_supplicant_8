@@ -1,7 +1,6 @@
 /*
  * hostapd / IEEE 802.11 Management
  * Copyright (c) 2002-2017, Jouni Malinen <j@w1.fi>
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -18,8 +17,6 @@
 #include "crypto/sha384.h"
 #include "crypto/sha512.h"
 #include "crypto/random.h"
-#include "crypto/aes.h"
-#include "crypto/aes_siv.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "common/wpa_ctrl.h"
@@ -125,12 +122,12 @@ static size_t hostapd_supp_rates(struct hostapd_data *hapd, u8 *buf)
 	u8 *pos = buf;
 	int i;
 
-	if (!hapd->current_rates)
+	if (!hapd->iface->current_rates)
 		return 0;
 
-	for (i = 0; i < hapd->num_rates; i++) {
-		*pos = hapd->current_rates[i].rate / 5;
-		if (hapd->current_rates[i].flags & HOSTAPD_RATE_BASIC)
+	for (i = 0; i < hapd->iface->num_rates; i++) {
+		*pos = hapd->iface->current_rates[i].rate / 5;
+		if (hapd->iface->current_rates[i].flags & HOSTAPD_RATE_BASIC)
 			*pos |= 0x80;
 		pos++;
 	}
@@ -406,7 +403,7 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 #ifdef CONFIG_SAE
 	if (hapd->conf->sae_confirm_immediate == 2 &&
 	    auth_alg == WLAN_AUTH_SAE) {
-		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT && sta &&
+		if (auth_transaction == 1 && sta &&
 		    (resp == WLAN_STATUS_SUCCESS ||
 		     resp == WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
 		     resp == WLAN_STATUS_SAE_PK)) {
@@ -418,8 +415,7 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
 			return WLAN_STATUS_SUCCESS;
 		}
 
-		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_CONFIRM &&
-		    sta && sta->sae_postponed_commit) {
+		if (auth_transaction == 2 && sta && sta->sae_postponed_commit) {
 			wpa_printf(MSG_DEBUG,
 				   "TESTING: Send postponed SAE Commit first, immediately followed by SAE Confirm");
 			if (hostapd_drv_send_mlme(hapd,
@@ -663,7 +659,7 @@ int sae_password_bind(struct hostapd_data *hapd, const u8 *addr,
 
 const char * sae_get_password(struct hostapd_data *hapd,
 			      struct sta_info *sta,
-			      const u8 *rx_id, size_t rx_id_len,
+			      const char *rx_id,
 			      struct sae_password_entry **pw_entry,
 			      struct sae_pt **s_pt,
 			      const struct sae_pk **s_pk)
@@ -721,8 +717,7 @@ const char * sae_get_password(struct hostapd_data *hapd,
 		if ((rx_id && !pw->identifier) || (!rx_id && pw->identifier))
 			continue;
 		if (rx_id && pw->identifier &&
-		    (rx_id_len != os_strlen(pw->identifier) ||
-		     os_memcmp(rx_id, pw->identifier, rx_id_len) != 0))
+		    os_strcmp(rx_id, pw->identifier) != 0)
 			continue;
 		password = pw->password;
 		pt = pw->pt;
@@ -744,73 +739,6 @@ const char * sae_get_password(struct hostapd_data *hapd,
 		}
 	}
 
-	/* Try to decrypt the received password identifier if no plaintext
-	 * identifier match was found. */
-	if (!password && rx_id && rx_id_len > 4 + 4 + AES_BLOCK_SIZE &&
-	    hapd->conf->sae_pw_id_key) {
-		u8 *plain, *pos, *counter;
-		size_t plain_len;
-		const u8 *id;
-		size_t id_len;
-
-		plain = os_malloc(rx_id_len);
-		if (!plain)
-			goto fail;
-		if (aes_siv_decrypt(
-			    wpabuf_head(hapd->conf->sae_pw_id_key),
-			    wpabuf_len(hapd->conf->sae_pw_id_key),
-			    rx_id, rx_id_len, 0, NULL, NULL, plain) < 0)
-			goto fail;
-		plain_len = rx_id_len - AES_BLOCK_SIZE;
-		wpa_hexdump_ascii(MSG_DEBUG,
-				  "SAE: Decrypted password identifier info",
-				  plain, plain_len);
-		/* 4 octet date | Password ID | <padding> | 4 octet counter */
-		counter = plain + plain_len - 4;
-		wpa_printf(MSG_DEBUG, "SAE: Generation time %u counter %u",
-			   WPA_GET_BE32(plain), WPA_GET_BE32(counter));
-		id = pos = plain + 4;
-		while (pos < counter) {
-			if (*pos == 0x00)
-				break;
-			pos++;
-		}
-		id_len = pos - id;
-		wpa_hexdump_ascii(MSG_DEBUG,
-				  "SAE: Decrypted password identifier",
-				  id, id_len);
-		for (pw = hapd->conf->sae_passwords; pw; pw = pw->next) {
-			if (!is_broadcast_ether_addr(pw->peer_addr) &&
-			    (!sta ||
-			     !ether_addr_equal(pw->peer_addr, sta->addr)))
-				continue;
-			if (!pw->identifier ||
-			    os_strlen(pw->identifier) != id_len ||
-			    os_memcmp(id, pw->identifier, id_len) != 0)
-				continue;
-			password = pw->password;
-			if (!(hapd->conf->mesh & MESH_ENABLED))
-				pk = pw->pk;
-			if (sta && sta->sae && sta->sae->tmp) {
-				os_free(sta->sae->tmp->dec_pw_id);
-				sta->sae->tmp->dec_pw_id =
-					os_zalloc(id_len + 1);
-				if (sta->sae->tmp->dec_pw_id) {
-					os_memcpy(sta->sae->tmp->dec_pw_id,
-						  id, id_len);
-					sta->sae->tmp->dec_pw_id_len = id_len;
-					sta->sae->tmp->pw_id_counter =
-						WPA_GET_BE32(counter);
-					wpa_printf(MSG_DEBUG,
-						   "SAE: Bound decrypted password identifier to STA");
-				}
-			}
-			break;
-		}
-	fail:
-		os_free(plain);
-	}
-
 found:
 	if (pw_entry)
 		*pw_entry = pw;
@@ -830,8 +758,7 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 	struct wpabuf *buf;
 	const char *password = NULL;
 	struct sae_password_entry *pw;
-	const u8 *rx_id = NULL;
-	size_t rx_id_len = 0;
+	const char *rx_id = NULL;
 	int use_pt = 0;
 	struct sae_pt *pt = NULL;
 	const struct sae_pk *pk = NULL;
@@ -845,9 +772,6 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 	if (sta->sae->tmp) {
 		rx_id = sta->sae->tmp->parsed_pw_id ?
 			sta->sae->tmp->parsed_pw_id : sta->sae->tmp->pw_id;
-		rx_id_len = sta->sae->tmp->parsed_pw_id ?
-			sta->sae->tmp->parsed_pw_id_len :
-			sta->sae->tmp->pw_id_len;
 		use_pt = sta->sae->h2e;
 #ifdef CONFIG_SAE_PK
 		os_memcpy(sta->sae->tmp->own_addr, own_addr, ETH_ALEN);
@@ -863,49 +787,16 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 		 status_code == WLAN_STATUS_SAE_PK)
 		use_pt = 1;
 
-	password = sae_get_password(hapd, sta, rx_id, rx_id_len, &pw, &pt, &pk);
-	if (!password) {
+	password = sae_get_password(hapd, sta, rx_id, &pw, &pt, &pk);
+	if (!password || (use_pt && !pt)) {
 		wpa_printf(MSG_DEBUG, "SAE: No password available");
 		return NULL;
 	}
 
-	if (use_pt) {
-		struct sae_pt *tmp_pt = NULL;
-		bool failed = false;
-
-		if (!pt && pw) {
-			int groups[2] = { sta->sae->group, 0 };
-
-			wpa_printf(MSG_DEBUG,
-				   "SAE: Derive PT for encrypted PW ID");
-			tmp_pt = sae_derive_pt(groups, hapd->conf->ssid.ssid,
-					       hapd->conf->ssid.ssid_len,
-					       (const u8 *) pw->password,
-					       os_strlen(pw->password),
-					       rx_id, rx_id_len);
-			if (!tmp_pt) {
-				wpa_printf(MSG_DEBUG,
-					   "SAE: Could not derive PT");
-				return NULL;
-			}
-			pt = tmp_pt;
-			update = 1;
-		}
-
-		if (!pt) {
-			wpa_printf(MSG_DEBUG, "SAE: No PT available");
-			return NULL;
-		}
-
-		if (update &&
-		    sae_prepare_commit_pt(sta->sae, pt, own_addr, sta->addr,
-					  NULL, pk) < 0)
-			failed = true;
-
-		sae_deinit_pt(tmp_pt);
-		if (failed)
-			return NULL;
-	}
+	if (update && use_pt &&
+	    sae_prepare_commit_pt(sta->sae, pt, own_addr, sta->addr,
+				  NULL, pk) < 0)
+		return NULL;
 
 	if (update && !use_pt &&
 	    sae_prepare_commit(own_addr, sta->addr,
@@ -928,11 +819,11 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
 	}
 
 	buf = wpabuf_alloc(SAE_COMMIT_MAX_LEN +
-			   (rx_id ? 3 + rx_id_len : 0));
+			   (rx_id ? 3 + os_strlen(rx_id) : 0));
 	if (buf &&
 	    sae_write_commit(sta->sae, buf, sta->sae->tmp ?
 			     sta->sae->tmp->anti_clogging_token : NULL,
-			     rx_id, rx_id_len) < 0) {
+			     rx_id) < 0) {
 		wpabuf_free(buf);
 		buf = NULL;
 	}
@@ -1250,20 +1141,6 @@ void sae_accept_sta(struct hostapd_data *hapd, struct sta_info *sta)
 			       sta->sae->pmkid, sta->sae->akmp,
 			       ap_sta_is_mld(hapd, sta), sta->vlan_id);
 	sae_sme_send_external_auth_status(hapd, sta, WLAN_STATUS_SUCCESS);
-	if (sta->sae->tmp) {
-		struct sae_temporary_data *tmp = sta->sae->tmp;
-
-		wpabuf_free(sta->sae_pw_id);
-		sta->sae_pw_id = NULL;
-		if (tmp->dec_pw_id) {
-			sta->sae_pw_id = wpabuf_alloc_copy(
-				tmp->dec_pw_id, tmp->dec_pw_id_len);
-			sta->sae_pw_id_counter = tmp->pw_id_counter;
-		} else if (tmp->pw_id) {
-			sta->sae_pw_id = wpabuf_alloc_copy(
-				tmp->pw_id, tmp->pw_id_len);
-		}
-	}
 }
 
 
@@ -1275,16 +1152,14 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 
 	*sta_removed = 0;
 
-	if (auth_transaction != WLAN_AUTH_TR_SEQ_SAE_COMMIT &&
-	    auth_transaction != WLAN_AUTH_TR_SEQ_SAE_CONFIRM)
+	if (auth_transaction != 1 && auth_transaction != 2)
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 
 	wpa_printf(MSG_DEBUG, "SAE: Peer " MACSTR " state=%s auth_trans=%u",
 		   MAC2STR(sta->addr), sae_state_txt(sta->sae->state),
 		   auth_transaction);
 
-	if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT &&
-	    sae_proto_instance_disabled(sta)) {
+	if (auth_transaction == 1 && sae_proto_instance_disabled(sta)) {
 		wpa_printf(MSG_DEBUG,
 			   "SAE: Protocol instance temporarily disabled - discard received SAE commit");
 		return WLAN_STATUS_SUCCESS;
@@ -1292,7 +1167,7 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 
 	switch (sta->sae->state) {
 	case SAE_NOTHING:
-		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+		if (auth_transaction == 1) {
 			struct sae_temporary_data *tmp = sta->sae->tmp;
 			bool immediate_confirm;
 
@@ -1315,12 +1190,10 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 
 			if (tmp && tmp->parsed_pw_id && !tmp->pw_id) {
 				tmp->pw_id = tmp->parsed_pw_id;
-				tmp->pw_id_len = tmp->parsed_pw_id_len;
 				tmp->parsed_pw_id = NULL;
-				tmp->parsed_pw_id_len = 0;
-				wpa_hexdump_ascii(MSG_DEBUG,
-						  "SAE: Known Password Identifier bound to this STA",
-						  tmp->pw_id, tmp->pw_id_len);
+				wpa_printf(MSG_DEBUG,
+					   "SAE: Known Password Identifier bound to this STA: '%s'",
+					   tmp->pw_id);
 			}
 
 			sae_set_state(sta, SAE_COMMITTED, "Sent Commit");
@@ -1385,7 +1258,7 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 		break;
 	case SAE_COMMITTED:
 		sae_clear_retransmit_timer(hapd, sta);
-		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+		if (auth_transaction == 1) {
 			if (sae_process_commit(sta->sae) < 0)
 				return WLAN_STATUS_UNSPECIFIED_FAILURE;
 
@@ -1432,7 +1305,7 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 		break;
 	case SAE_CONFIRMED:
 		sae_clear_retransmit_timer(hapd, sta);
-		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+		if (auth_transaction == 1) {
 			if (sae_check_big_sync(hapd, sta))
 				return WLAN_STATUS_SUCCESS;
 			sta->sae->sync++;
@@ -1455,7 +1328,7 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 		}
 		break;
 	case SAE_ACCEPTED:
-		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT &&
+		if (auth_transaction == 1 &&
 		    (hapd->conf->mesh & MESH_ENABLED)) {
 			wpa_printf(MSG_DEBUG, "SAE: remove the STA (" MACSTR
 				   ") doing reauthentication",
@@ -1463,7 +1336,7 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 			wpa_auth_pmksa_remove(hapd->wpa_auth, sta->addr);
 			ap_free_sta(hapd, sta);
 			*sta_removed = 1;
-		} else if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+		} else if (auth_transaction == 1) {
 			wpa_printf(MSG_DEBUG, "SAE: Start reauthentication");
 			ret = auth_sae_send_commit(hapd, sta, 1, status_code);
 			if (ret)
@@ -1662,8 +1535,7 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 
 #ifdef CONFIG_TESTING_OPTIONS
-	if (hapd->conf->sae_reflection_attack &&
-	    auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+	if (hapd->conf->sae_reflection_attack && auth_transaction == 1) {
 		wpa_printf(MSG_DEBUG, "SAE: TESTING - reflection attack");
 		pos = mgmt->u.auth.variable;
 		end = ((const u8 *) mgmt) + len;
@@ -1675,8 +1547,7 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 		goto remove_sta;
 	}
 
-	if (hapd->conf->sae_commit_override &&
-	    auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+	if (hapd->conf->sae_commit_override && auth_transaction == 1) {
 		wpa_printf(MSG_DEBUG, "SAE: TESTING - commit override");
 		send_auth_reply(hapd, sta, sta->addr,
 				WLAN_AUTH_SAE,
@@ -1688,7 +1559,7 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
 	if (!sta->sae) {
-		if (auth_transaction != WLAN_AUTH_TR_SEQ_SAE_COMMIT ||
+		if (auth_transaction != 1 ||
 		    !sae_status_success(hapd, status_code)) {
 			wpa_printf(MSG_DEBUG, "SAE: Unexpected Status Code %u",
 				   status_code);
@@ -1713,7 +1584,7 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 		sta->mesh_sae_pmksa_caching = 0;
 	}
 
-	if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
+	if (auth_transaction == 1) {
 		const u8 *token = NULL;
 		size_t token_len = 0;
 		int allow_reuse = 0;
@@ -1895,7 +1766,7 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 
 		resp = sae_sm_step(hapd, sta, auth_transaction,
 				   status_code, allow_reuse, &sta_removed);
-	} else if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_CONFIRM) {
+	} else if (auth_transaction == 2) {
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_DEBUG,
 			       "SAE authentication (RX confirm, status=%u (%s))",
@@ -1981,7 +1852,7 @@ reply:
 	}
 
 remove_sta:
-	if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT)
+	if (auth_transaction == 1)
 		success_status = sae_status_success(hapd, status_code);
 	else
 		success_status = status_code == WLAN_STATUS_SUCCESS;
@@ -2181,8 +2052,7 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
 	struct wpa_ie_data rsn;
 	struct rsn_pmksa_cache_entry *pmksa = NULL;
 
-	if (auth_transaction != WLAN_AUTH_TR_SEQ_SAE_COMMIT ||
-	    status_code != WLAN_STATUS_SUCCESS)
+	if (auth_transaction != 1 || status_code != WLAN_STATUS_SUCCESS)
 		return;
 
 	end = pos + len;
@@ -2820,7 +2690,7 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 			      wpabuf_len(pasn->secret),
 			      pasn_get_ptk(sta->pasn), pasn_get_akmp(sta->pasn),
 			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len,
-			      sta->pasn->kek_len, &sta->pasn->hash_alg);
+			      sta->pasn->kek_len);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
 		goto fail;
@@ -3008,8 +2878,7 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 	pasn_set_peer_addr(pasn, sta->addr);
 	pasn_set_wpa_key_mgmt(pasn, hapd->conf->wpa_key_mgmt);
 	pasn_set_rsn_pairwise(pasn, hapd->conf->rsn_pairwise);
-	os_free(pasn->pasn_groups);
-	pasn->pasn_groups = int_array_dup(hapd->conf->pasn_groups);
+	pasn->pasn_groups = hapd->conf->pasn_groups;
 	pasn->noauth = hapd->conf->pasn_noauth;
 	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP)
 		pasn_enable_kdk_derivation(pasn);
@@ -3020,7 +2889,7 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 		pasn_enable_kdk_derivation(pasn);
 #endif /* CONFIG_TESTING_OPTIONS */
 	pasn->use_anti_clogging = use_anti_clogging(hapd);
-	pasn_set_password(pasn, sae_get_password(hapd, sta, NULL, 0, NULL,
+	pasn_set_password(pasn, sae_get_password(hapd, sta, NULL, NULL,
 						 &pasn->pt, NULL));
 	pasn->rsn_ie = wpa_auth_get_wpa_ie(hapd->wpa_auth, &pasn->rsn_ie_len);
 	pasn_set_rsnxe_ie(pasn, hostapd_wpa_ie(hapd, WLAN_EID_RSNX));
@@ -3194,7 +3063,7 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
 	wpa_printf(MSG_INFO, "PASN authentication: sta=" MACSTR,
 		   MAC2STR(sta->addr));
 
-	if (trans_seq == WLAN_AUTH_TR_SEQ_PASN_AUTH1) {
+	if (trans_seq == 1) {
 		if (sta->pasn) {
 			wpa_printf(MSG_DEBUG,
 				   "PASN: Not expecting transaction == 1");
@@ -3227,7 +3096,7 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
 							   NULL, 0, NULL, 1);
 			ap_free_sta(hapd, sta);
 		}
-	} else if (trans_seq == WLAN_AUTH_TR_SEQ_PASN_AUTH3) {
+	} else if (trans_seq == 3) {
 		if (!sta->pasn) {
 			wpa_printf(MSG_DEBUG,
 				   "PASN: Not expecting transaction == 3");
@@ -3383,14 +3252,9 @@ static void handle_auth(struct hostapd_data *hapd,
 		goto fail;
 	}
 
-	if (!(auth_transaction == 1 ||
-#ifdef CONFIG_SAE
-	      (auth_alg == WLAN_AUTH_SAE &&
-	       auth_transaction == WLAN_AUTH_TR_SEQ_SAE_CONFIRM) ||
-#endif /* CONFIG_SAE */
+	if (!(auth_transaction == 1 || auth_alg == WLAN_AUTH_SAE ||
 #ifdef CONFIG_PASN
-	      (auth_alg == WLAN_AUTH_PASN &&
-	       auth_transaction == WLAN_AUTH_TR_SEQ_PASN_AUTH3) ||
+	      (auth_alg == WLAN_AUTH_PASN && auth_transaction == 3) ||
 #endif /* CONFIG_PASN */
 	      (auth_alg == WLAN_AUTH_SHARED_KEY && auth_transaction == 3))) {
 		wpa_printf(MSG_INFO, "Unknown authentication transaction number (%d)",
@@ -3504,9 +3368,8 @@ static void handle_auth(struct hostapd_data *hapd,
 
 #ifdef CONFIG_SAE
 	if (auth_alg == WLAN_AUTH_SAE && !from_queue &&
-	    (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT ||
-	     (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_CONFIRM &&
-	      auth_sae_queued_addr(hapd, sa)))) {
+	    (auth_transaction == 1 ||
+	     (auth_transaction == 2 && auth_sae_queued_addr(hapd, sa)))) {
 		/* Handle SAE Authentication commit message through a queue to
 		 * provide more control for postponing the needed heavy
 		 * processing under a possible DoS attack scenario. In addition,
@@ -4276,7 +4139,8 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
 	status = owe_process_assoc_req(hapd, sta, owe_dh, owe_dh_len);
 	if (status != WLAN_STATUS_SUCCESS)
 		goto end;
-	owe_buf = wpa_auth_write_assoc_resp_owe(sta->wpa_sm, ie, sizeof(ie));
+	owe_buf = wpa_auth_write_assoc_resp_owe(sta->wpa_sm, ie, sizeof(ie),
+						NULL, 0);
 	if (!owe_buf) {
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto end;
@@ -4404,56 +4268,56 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
 static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			     const u8 *ies, size_t ies_len,
 			     struct ieee802_11_elems *elems,
-			     enum link_parse_type type,
-			     struct wpa_state_machine *assoc_wpa_sm)
+			     enum link_parse_type type, bool link)
 {
 	int resp;
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;
 	const u8 *p2p_dev_addr = NULL;
+	struct hostapd_data *assoc_hapd;
+	struct sta_info *assoc_sta = NULL;
 
 	if (type != LINK_PARSE_RECONF) {
 		resp = check_ssid(hapd, sta, elems->ssid, elems->ssid_len);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 	}
 
 	resp = check_wmm(hapd, sta, elems->wmm, elems->wmm_len);
 	if (resp != WLAN_STATUS_SUCCESS)
-		goto out;
+		return resp;
 	resp = check_ext_capab(hapd, sta, elems->ext_capab,
 			       elems->ext_capab_len);
 	if (resp != WLAN_STATUS_SUCCESS)
-		goto out;
+		return resp;
 	resp = copy_supp_rates(hapd, sta, elems);
 	if (resp != WLAN_STATUS_SUCCESS)
-		goto out;
+		return resp;
 
 	resp = check_multi_ap(hapd, sta, elems->multi_ap, elems->multi_ap_len);
 	if (resp != WLAN_STATUS_SUCCESS)
-		goto out;
+		return resp;
 
 	resp = copy_sta_ht_capab(hapd, sta, elems->ht_capabilities);
 	if (resp != WLAN_STATUS_SUCCESS)
-		goto out;
+		return resp;
 	if (hapd->iconf->ieee80211n && hapd->iconf->require_ht &&
 	    !(sta->flags & WLAN_STA_HT)) {
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_INFO, "Station does not support "
 			       "mandatory HT PHY - reject association");
-		resp = WLAN_STATUS_ASSOC_DENIED_NO_HT;
-		goto out;
+		return WLAN_STATUS_ASSOC_DENIED_NO_HT;
 	}
 
 #ifdef CONFIG_IEEE80211AC
 	if (hapd->iconf->ieee80211ac) {
 		resp = copy_sta_vht_capab(hapd, sta, elems->vht_capabilities);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 
 		resp = set_sta_vht_opmode(hapd, sta, elems->opmode_notif);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 	}
 
 	if (hapd->iconf->ieee80211ac && hapd->iconf->require_vht &&
@@ -4461,15 +4325,14 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_INFO, "Station does not support "
 			       "mandatory VHT PHY - reject association");
-		resp = WLAN_STATUS_ASSOC_DENIED_NO_VHT;
-		goto out;
+		return WLAN_STATUS_ASSOC_DENIED_NO_VHT;
 	}
 
 	if (hapd->conf->vendor_vht && !elems->vht_capabilities) {
 		resp = copy_sta_vendor_vht(hapd, sta, elems->vendor_vht,
 					   elems->vendor_vht_len);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 	}
 #endif /* CONFIG_IEEE80211AC */
 #ifdef CONFIG_IEEE80211AX
@@ -4478,15 +4341,14 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					 elems->he_capabilities,
 					 elems->he_capabilities_len);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 
 		if (hapd->iconf->require_he && !(sta->flags & WLAN_STA_HE)) {
 			hostapd_logger(hapd, sta->addr,
 				       HOSTAPD_MODULE_IEEE80211,
 				       HOSTAPD_LEVEL_INFO,
 				       "Station does not support mandatory HE PHY - reject association");
-			resp = WLAN_STATUS_DENIED_HE_NOT_SUPPORTED;
-			goto out;
+			return WLAN_STATUS_DENIED_HE_NOT_SUPPORTED;
 		}
 
 		if (is_6ghz_op_class(hapd->iconf->op_class)) {
@@ -4495,13 +4357,12 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					       HOSTAPD_MODULE_IEEE80211,
 					       HOSTAPD_LEVEL_INFO,
 					       "Station does not support mandatory HE PHY - reject association");
-				resp = WLAN_STATUS_DENIED_HE_NOT_SUPPORTED;
-				goto out;
+				return WLAN_STATUS_DENIED_HE_NOT_SUPPORTED;
 			}
 			resp = copy_sta_he_6ghz_capab(hapd, sta,
 						      elems->he_6ghz_band_cap);
 			if (resp != WLAN_STATUS_SUCCESS)
-				goto out;
+				return resp;
 		}
 	}
 #endif /* CONFIG_IEEE80211AX */
@@ -4513,20 +4374,19 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					  elems->eht_capabilities,
 					  elems->eht_capabilities_len);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 
 		if (hapd->iconf->require_eht && !(sta->flags & WLAN_STA_EHT)) {
 			hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 				       HOSTAPD_LEVEL_INFO, "Station does not support "
 				       "mandatory EHT PHY - reject association");
-			resp = WLAN_STATUS_DENIED_EHT_NOT_SUPPORTED;
-			goto out;
+			return WLAN_STATUS_DENIED_EHT_NOT_SUPPORTED;
 		}
 
-		if (!assoc_wpa_sm) {
+		if (!link) {
 			resp = hostapd_process_ml_assoc_req(hapd, elems, sta);
 			if (resp != WLAN_STATUS_SUCCESS)
-				goto out;
+				return resp;
 		}
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -4583,8 +4443,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		if (sta->wps_ie && wps_validate_assoc_req(sta->wps_ie) < 0) {
 			wpa_printf(MSG_DEBUG, "WPS: Invalid WPS IE in "
 				   "(Re)Association Request - reject");
-			resp = WLAN_STATUS_INVALID_IE;
-			goto out;
+			return WLAN_STATUS_INVALID_IE;
 		}
 	} else if (hapd->conf->wps_state && wpa_ie == NULL) {
 		wpa_printf(MSG_DEBUG, "STA did not include WPA/RSN IE in "
@@ -4596,8 +4455,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_INFO,
 			       "No WPA/RSN IE in association request");
-		resp = WLAN_STATUS_INVALID_IE;
-		goto out;
+		return WLAN_STATUS_INVALID_IE;
 	}
 
 	if (hapd->conf->wpa && wpa_ie) {
@@ -4611,10 +4469,10 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		wpa_ie_len += 2;
 
 		if (!sta->wpa_sm) {
-			/* NOTE: For links other than the assoc-link the
-			 * separate wpa_sm is only allocated internally to this
-			 * function.
-			 */
+			if (!link)
+				assoc_sta = hostapd_ml_get_assoc_sta(
+					hapd, sta, &assoc_hapd);
+
 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
 							sta->addr,
 							p2p_dev_addr);
@@ -4622,8 +4480,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			if (!sta->wpa_sm) {
 				wpa_printf(MSG_WARNING,
 					   "Failed to initialize RSN state machine");
-				resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-				goto out;
+				return WLAN_STATUS_UNSPECIFIED_FAILURE;
 			}
 		}
 
@@ -4639,9 +4496,6 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 #endif /* CONFIG_IEEE80211BE */
 
 		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
-		if (sta->auth_alg == WLAN_AUTH_SAE)
-			wpa_auth_set_sae_pw_id(sta->wpa_sm, sta->sae_pw_id,
-					       sta->sae_pw_id_counter);
 		wpa_auth_set_rsn_selection(sta->wpa_sm, elems->rsn_selection,
 					   elems->rsn_selection_len);
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
@@ -4653,11 +4507,11 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					  0,
 					  elems->mdie, elems->mdie_len,
 					  elems->owe_dh, elems->owe_dh_len,
-					  assoc_wpa_sm,
+					  assoc_sta ? assoc_sta->wpa_sm : NULL,
 					  ap_sta_is_mld(hapd, sta));
 		resp = wpa_res_to_status_code(res);
 		if (resp != WLAN_STATUS_SUCCESS)
-			goto out;
+			return resp;
 
 		if (wpa_auth_uses_mfp(sta->wpa_sm))
 			sta->flags |= WLAN_STA_MFP;
@@ -4676,18 +4530,17 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					   "to use association (not "
 					   "re-association) with FT auth_alg",
 					   MAC2STR(sta->addr));
-				resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-				goto out;
+				return WLAN_STATUS_UNSPECIFIED_FAILURE;
 			}
 
 			resp = wpa_ft_validate_reassoc(sta->wpa_sm, ies,
 						       ies_len);
 			if (resp != WLAN_STATUS_SUCCESS)
-				goto out;
+				return resp;
 		}
 #endif /* CONFIG_IEEE80211R_AP */
 
-		if (assoc_wpa_sm)
+		if (link)
 			goto skip_sae_owe;
 #ifdef CONFIG_SAE
 		if (wpa_auth_uses_sae(sta->wpa_sm) && sta->sae &&
@@ -4702,8 +4555,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 				wpa_printf(MSG_DEBUG,
 					   "SAE: No PMKSA cache entry found for "
 					   MACSTR, MAC2STR(sta->addr));
-				resp = WLAN_STATUS_INVALID_PMKID;
-				goto out;
+				return WLAN_STATUS_INVALID_PMKID;
 			}
 			wpa_printf(MSG_DEBUG, "SAE: " MACSTR
 				   " using PMKSA caching", MAC2STR(sta->addr));
@@ -4715,8 +4567,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			wpa_printf(MSG_DEBUG, "SAE: " MACSTR " tried to use "
 				   "SAE AKM after non-SAE auth_alg %u",
 				   MAC2STR(sta->addr), sta->auth_alg);
-			resp = WLAN_STATUS_NOT_SUPPORTED_AUTH_ALG;
-			goto out;
+			return WLAN_STATUS_NOT_SUPPORTED_AUTH_ALG;
 		}
 
 		if (hapd->conf->sae_pwe == SAE_PWE_BOTH &&
@@ -4727,8 +4578,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			wpa_printf(MSG_INFO, "SAE: " MACSTR
 				   " indicates support for SAE H2E, but did not use it",
 				   MAC2STR(sta->addr));
-			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-			goto out;
+			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 		}
 #endif /* CONFIG_SAE */
 
@@ -4742,7 +4592,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 			resp = owe_process_assoc_req(hapd, sta, elems->owe_dh,
 						     elems->owe_dh_len);
 			if (resp != WLAN_STATUS_SUCCESS)
-				goto out;
+				return resp;
 		}
 #endif /* CONFIG_OWE */
 	skip_sae_owe:
@@ -4755,7 +4605,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		    (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_DPP) &&
 		    hapd->conf->dpp_netaccesskey && sta->wpa_sm &&
 		    wpa_auth_sta_key_mgmt(sta->wpa_sm) == WPA_KEY_MGMT_DPP &&
-		    elems->owe_dh && !assoc_wpa_sm) {
+		    elems->owe_dh && !link) {
 			sta->dpp_pfs = dpp_pfs_init(
 				wpabuf_head(hapd->conf->dpp_netaccesskey),
 				wpabuf_len(hapd->conf->dpp_netaccesskey));
@@ -4770,11 +4620,10 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 					    elems->owe_dh_len) < 0) {
 				dpp_pfs_free(sta->dpp_pfs);
 				sta->dpp_pfs = NULL;
-				resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-				goto out;
+				return WLAN_STATUS_UNSPECIFIED_FAILURE;
 			}
 		}
-		if (!assoc_wpa_sm)
+		if (!link)
 			wpa_auth_set_dpp_z(sta->wpa_sm, sta->dpp_pfs ?
 					   sta->dpp_pfs->secret : NULL);
 	pfs_fail:
@@ -4787,8 +4636,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 				       HOSTAPD_LEVEL_INFO,
 				       "Station tried to use TKIP with HT "
 				       "association");
-			resp = WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
-			goto out;
+			return WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
 		}
 
 		wpa_auth_set_ssid_protection(
@@ -4820,8 +4668,7 @@ skip_wpa_ies:
 			wpa_printf(MSG_DEBUG,
 				   "HS 2.0: PMF not negotiated by release %d station "
 				   MACSTR, release, MAC2STR(sta->addr));
-			resp = WLAN_STATUS_ROBUST_MGMT_FRAME_POLICY_VIOLATION;
-			goto out;
+			return WLAN_STATUS_ROBUST_MGMT_FRAME_POLICY_VIOLATION;
 		}
 	} else {
 		sta->hs20_ie = NULL;
@@ -4852,8 +4699,7 @@ skip_wpa_ies:
 	    hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
 		wpa_printf(MSG_INFO,
 			   "MBO: Reject WPA2 association without PMF");
-		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-		goto out;
+		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 	}
 #endif /* CONFIG_MBO */
 
@@ -4871,17 +4717,14 @@ skip_wpa_ies:
 		if (hostapd_drv_channel_info(hapd, &ci) != 0) {
 			wpa_printf(MSG_WARNING,
 				   "Failed to get channel info to validate received OCI in FILS (Re)Association Request frame");
-			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-			goto out;
+			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 		}
 
 		if (get_sta_tx_parameters(sta->wpa_sm,
 					  channel_width_to_int(ci.chanwidth),
 					  ci.seg1_idx, &tx_chanwidth,
-					  &tx_seg1_idx) < 0) {
-			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-			goto out;
-		}
+					  &tx_seg1_idx) < 0)
+			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 
 		res = ocv_verify_tx_params(elems->oci, elems->oci_len, &ci,
 					   tx_chanwidth, tx_seg1_idx);
@@ -4897,8 +4740,7 @@ skip_wpa_ies:
 			wpa_msg(hapd->msg_ctx, MSG_INFO, OCV_FAILURE "addr="
 				MACSTR " frame=fils-reassoc-req error=%s",
 				MAC2STR(sta->addr), ocv_errorstr);
-			resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
-			goto out;
+			return WLAN_STATUS_UNSPECIFIED_FAILURE;
 		}
 	}
 #endif /* CONFIG_FILS && CONFIG_OCV */
@@ -4937,29 +4779,7 @@ skip_wpa_ies:
 		hostapd_wfa_capab(hapd, sta, elems->wfa_capab,
 				  elems->wfa_capab + elems->wfa_capab_len);
 
-out:
-	if (resp != WLAN_STATUS_SUCCESS || assoc_wpa_sm) {
-		wpa_auth_sta_deinit(sta->wpa_sm);
-
-		/* Only keep a reference to the main wpa_sm and drop the
-		 * per-link instance.
-		 * This reference is needed during group rekey handling.
-		 */
-		if (resp == WLAN_STATUS_SUCCESS) {
-			sta->wpa_sm = assoc_wpa_sm;
-#ifdef CONFIG_IEEE80211BE
-			set_wpa_sm_for_each_partner_link(hapd, sta,
-							 assoc_wpa_sm);
-#endif /* CONFIG_IEEE80211BE */
-		} else {
-			sta->wpa_sm = NULL;
-#ifdef CONFIG_IEEE80211BE
-			clear_wpa_sm_for_each_partner_link(hapd, sta);
-#endif /* CONFIG_IEEE80211BE */
-		}
-	}
-
-	return resp;
+	return WLAN_STATUS_SUCCESS;
 }
 
 
@@ -4976,7 +4796,7 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
 	}
 
-	return __check_assoc_ies(hapd, sta, ies, ies_len, &elems, type, NULL);
+	return __check_assoc_ies(hapd, sta, ies, ies_len, &elems, type, false);
 }
 
 
@@ -5099,8 +4919,7 @@ int ieee80211_ml_process_link(struct hostapd_data *hapd,
 	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
 	ap_sta_set_mld(sta, true);
 
-	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, type,
-				   origin_sta->wpa_sm);
+	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, type, true);
 	if (status != WLAN_STATUS_SUCCESS) {
 		wpa_printf(MSG_DEBUG, "MLD: link: Element check failed");
 		goto out;
@@ -5136,6 +4955,12 @@ int ieee80211_ml_process_link(struct hostapd_data *hapd,
 			ieee802_11_update_beacons(hapd->iface);
 	}
 
+	/* Maintain state machine reference on all link STAs, this is needed
+	 * during group rekey handling.
+	 */
+	wpa_auth_sta_deinit(sta->wpa_sm);
+	sta->wpa_sm = origin_sta->wpa_sm;
+
 	/*
 	 * Do not initialize the EAPOL state machine.
 	 * TODO: Maybe it is needed?
@@ -5146,7 +4971,6 @@ int ieee80211_ml_process_link(struct hostapd_data *hapd,
 		   hapd->mld_link_id, sta->aid);
 
 	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC_REQ_OK;
-	sta->vlan_id = origin_sta->vlan_id;
 
 	/* TODO: What other processing is required? */
 
@@ -5406,7 +5230,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
 static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 			   const u8 *addr, u16 status_code, int reassoc,
 			   const u8 *ies, size_t ies_len, int rssi,
-			   int omit_rsnxe)
+			   int omit_rsnxe, bool allow_mld_addr_trans)
 {
 	int send_len;
 	u8 *buf;
@@ -5487,8 +5311,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 		p = wpa_sm_write_assoc_resp_ies(sta->wpa_sm, p,
 						buf + buflen - p,
 						sta->auth_alg, ies, ies_len,
-						omit_rsnxe, reassoc,
-						sta->vlan_id);
+						omit_rsnxe);
 		if (!p) {
 			wpa_printf(MSG_DEBUG,
 				   "FT: Failed to write AssocResp IEs");
@@ -5503,7 +5326,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	     sta->auth_alg == WLAN_AUTH_FILS_SK_PFS ||
 	     sta->auth_alg == WLAN_AUTH_FILS_PK))
 		p = wpa_auth_write_assoc_resp_fils(sta->wpa_sm, p,
-						   buf + buflen - p);
+						   buf + buflen - p,
+						   ies, ies_len);
 #endif /* CONFIG_FILS */
 
 #ifdef CONFIG_OWE
@@ -5513,7 +5337,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 	      hapd->conf->rsn_override_key_mgmt_2) &
 	     WPA_KEY_MGMT_OWE))
 		p = wpa_auth_write_assoc_resp_owe(sta->wpa_sm, p,
-						  buf + buflen - p);
+						  buf + buflen - p,
+						  ies, ies_len);
 #endif /* CONFIG_OWE */
 
 	if (sta && status_code == WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY)
@@ -5751,14 +5576,14 @@ u8 * owe_assoc_req_process(struct hostapd_data *hapd, struct sta_info *sta,
 		wpa_printf(MSG_DEBUG, "OWE: Using IE override");
 		*status = WLAN_STATUS_SUCCESS;
 		return wpa_auth_write_assoc_resp_owe(sta->wpa_sm, owe_buf,
-						     owe_buf_len);
+						     owe_buf_len, NULL, 0);
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	if (wpa_auth_sta_get_pmksa(sta->wpa_sm)) {
 		wpa_printf(MSG_DEBUG, "OWE: Using PMKSA caching");
 		owe_buf = wpa_auth_write_assoc_resp_owe(sta->wpa_sm, owe_buf,
-							owe_buf_len);
+							owe_buf_len, NULL, 0);
 		*status = WLAN_STATUS_SUCCESS;
 		return owe_buf;
 	}
@@ -5774,7 +5599,7 @@ u8 * owe_assoc_req_process(struct hostapd_data *hapd, struct sta_info *sta,
 		return NULL;
 
 	owe_buf = wpa_auth_write_assoc_resp_owe(sta->wpa_sm, owe_buf,
-						owe_buf_len);
+						owe_buf_len, NULL, 0);
 
 	if (sta->owe_ecdh && owe_buf) {
 		struct wpabuf *pub;
@@ -5816,7 +5641,8 @@ void fils_hlp_finish_assoc(struct hostapd_data *hapd, struct sta_info *sta)
 	reply_res = send_assoc_resp(hapd, sta, sta->addr, WLAN_STATUS_SUCCESS,
 				    sta->fils_pending_assoc_is_reassoc,
 				    sta->fils_pending_assoc_req,
-				    sta->fils_pending_assoc_req_len, 0, 0);
+				    sta->fils_pending_assoc_req_len, 0, 0,
+				    true);
 	os_free(sta->fils_pending_assoc_req);
 	sta->fils_pending_assoc_req = NULL;
 	sta->fils_pending_assoc_req_len = 0;
@@ -5981,22 +5807,10 @@ static void handle_assoc(struct hostapd_data *hapd,
 		sta = handle_mlo_translate(hapd, mgmt, len, reassoc,
 					   &assoc_hapd);
 		if (sta) {
-			if (hapd != assoc_hapd) {
-				wpa_printf(MSG_DEBUG,
-					   "MLD: Switching to assoc hapd/station");
-				hapd = assoc_hapd;
-				mld_addrs_not_translated = true;
-			}
-
-			/* Allow link address to be changed if an SA query
-			 * procedure has expired. */
-			if (sta->sa_query_timed_out) {
-				u8 _link = hapd->mld_link_id;
-
-				os_memcpy(sta->mld_info.links[_link].peer_addr,
-					  mgmt->sa, ETH_ALEN);
-			}
-
+			wpa_printf(MSG_DEBUG,
+				   "MLD: Switching to assoc hapd/station");
+			hapd = assoc_hapd;
+			mld_addrs_not_translated = true;
 		}
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -6333,7 +6147,8 @@ static void handle_assoc(struct hostapd_data *hapd,
 					    mld_addrs_not_translated ?
 					    NULL : sta,
 					    mgmt->sa, resp, reassoc,
-					    pos, left, rssi, omit_rsnxe);
+					    pos, left, rssi, omit_rsnxe,
+					    !mld_addrs_not_translated);
 	os_free(tmp);
 
 	/*
@@ -7033,8 +6848,7 @@ static void handle_auth_cb(struct hostapd_data *hapd,
 fail:
 	success_status = status_code == WLAN_STATUS_SUCCESS;
 #ifdef CONFIG_SAE
-	if (auth_alg == WLAN_AUTH_SAE &&
-	    auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT)
+	if (auth_alg == WLAN_AUTH_SAE && auth_transaction == 1)
 		success_status = sae_status_success(hapd, status_code);
 #endif /* CONFIG_SAE */
 	if (!success_status && sta->added_unassoc) {
@@ -7240,7 +7054,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
 	else
 		mlme_associate_indication(hapd, sta);
 
-	ap_sta_set_sa_query_timeout(hapd, sta, 0);
+	sta->sa_query_timed_out = 0;
 
 	if (sta->eapol_sm == NULL) {
 		/*
@@ -7541,16 +7355,8 @@ int ieee802_11_get_mib(struct hostapd_data *hapd, char *buf, size_t buflen)
 int ieee802_11_get_mib_sta(struct hostapd_data *hapd, struct sta_info *sta,
 			   char *buf, size_t buflen)
 {
-	int len = 0, ret;
-
-	ret = os_snprintf(buf + len, buflen - len,
-			  "auth_alg=%d\n",
-			  sta->auth_alg);
-	if (os_snprintf_error(buflen - len, ret))
-		return len;
-	len += ret;
-
-	return len;
+	/* TODO */
+	return 0;
 }
 
 
@@ -7876,11 +7682,11 @@ static u8 * hostapd_eid_wb_channel_switch(struct hostapd_data *hapd, u8 *eid,
 	 */
 	switch (hapd->cs_freq_params.bandwidth) {
 	case 320:
-		/* As per IEEE Std 802.11be-2024, 35.15.3 (Channel switching
-		 * methods for an EHT BSS), for EHT BSS operating channel width
-		 * wider than 160 MHz, the announced BSS bandwidth in the Wide
-		 * Bandwidth Channel Switch element is less than the BSS
-		 * bandwidth in the Bandwidth Indication element
+		/* As per IEEE P802.11be/D7.0, 35.15.3,
+		 * For EHT BSS operating channel width wider than 160 MHz,
+		 * the announced BSS bandwidth in the Wide Bandwidth
+		 * Channel Switch element is less than the BSS bandwidth
+		 * in the Bandwidth Indication element
 		 */
 
 		/* Modifying the center frequency to 160 MHz */
@@ -8198,8 +8004,7 @@ repeat_rnr_len:
 			struct hostapd_data *bss = hapd->iface->bss[i];
 			bool ap_mld = false;
 
-			if (!bss || !bss->conf || !bss->started ||
-			    !bss->beacon_set_done)
+			if (!bss || !bss->conf || !bss->started)
 				continue;
 
 #ifdef CONFIG_IEEE80211BE
@@ -8477,8 +8282,7 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211BE */
 
 	if (!bss || !bss->conf || !bss->started ||
-	    bss == reporting_hapd || bss->conf->ignore_broadcast_ssid ||
-	    !bss->beacon_set_done)
+	    bss == reporting_hapd || bss->conf->ignore_broadcast_ssid)
 		return false;
 
 	if (hostapd_skip_rnr(i, skip_profiles, ap_mld, tbtt_info_len,
@@ -8859,11 +8663,10 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
 }
 
 
-size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd_probed, u32 frame_type,
+size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd, u32 frame_type,
 			      u8 *elem_count, const u8 *known_bss,
 			      size_t known_bss_len, size_t *rnr_len)
 {
-	struct hostapd_data *hapd = hostapd_mbssid_get_tx_bss(hapd_probed);
 	size_t len = 0, bss_index = 1;
 
 	if (!hapd->iconf->mbssid || hapd->iface->num_bss <= 1 ||
@@ -8883,7 +8686,7 @@ size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd_probed, u32 frame_type,
 	while (bss_index < hapd->iface->num_bss) {
 		size_t rnr_count = bss_index;
 
-		len += hostapd_eid_mbssid_elem_len(hapd_probed, frame_type,
+		len += hostapd_eid_mbssid_elem_len(hapd, frame_type,
 						   &bss_index, known_bss,
 						   known_bss_len);
 
@@ -9045,13 +8848,12 @@ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
 }
 
 
-u8 * hostapd_eid_mbssid(struct hostapd_data *hapd_probed, u8 *eid, u8 *end,
+u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 			unsigned int frame_stype, u8 elem_count,
 			u8 **elem_offset,
 			const u8 *known_bss, size_t known_bss_len, u8 *rnr_eid,
 			u8 *rnr_count, u8 **rnr_offset, size_t rnr_len)
 {
-	struct hostapd_data *hapd = hostapd_mbssid_get_tx_bss(hapd_probed);
 	size_t bss_index = 1, cur_len = 0;
 	u8 elem_index = 0, *rnr_start_eid = rnr_eid;
 	bool add_rnr;
@@ -9084,8 +8886,7 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd_probed, u8 *eid, u8 *end,
 			elem_offset[elem_index] = eid;
 			elem_index = elem_index + 1;
 		}
-		eid = hostapd_eid_mbssid_elem(hapd_probed, eid, end,
-					      frame_stype,
+		eid = hostapd_eid_mbssid_elem(hapd, eid, end, frame_stype,
 					      hostapd_max_bssid_indicator(hapd),
 					      &bss_index, elem_count,
 					      known_bss, known_bss_len);

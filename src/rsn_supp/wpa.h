@@ -105,7 +105,6 @@ struct wpa_sm_ctx {
 	void (*notify_pmksa_cache_entry)(void *ctx,
 					 struct rsn_pmksa_cache_entry *entry);
 	void (*ssid_verified)(void *ctx);
-	void (*sae_pw_id_change)(void *ctx, struct wpabuf_array *wa);
 };
 
 
@@ -142,9 +141,6 @@ enum wpa_sm_conf_params {
 	WPA_PARAM_RSN_OVERRIDE_SUPPORT,
 	WPA_PARAM_EAPOL_2_KEY_INFO_SET_MASK,
 	WPA_PARAM_SPP_AMSDU,
-	WPA_PARAM_URNM_MFPR,
-	WPA_PARAM_URNM_MFPR_X20,
-	WPA_PARAM_SAE_PW_ID_CHANGE,
 };
 
 enum wpa_rsn_override {

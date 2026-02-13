@@ -65,15 +65,12 @@ static struct http_request * http_request_init(struct http_server *srv, int fd,
 
 	if (srv->request_count >= HTTP_SERVER_MAX_CONNECTIONS) {
 		wpa_printf(MSG_DEBUG, "HTTP: Too many concurrent requests");
-		close(fd);
 		return NULL;
 	}
 
 	req = os_zalloc(sizeof(*req));
-	if (!req) {
-		close(fd);
+	if (req == NULL)
 		return NULL;
-	}
 
 	req->srv = srv;
 	req->fd = fd;
@@ -217,8 +214,10 @@ static void http_server_cb(int sd, void *eloop_ctx, void *sock_ctx)
 		   inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 
 	req = http_request_init(srv, conn, &addr);
-	if (!req)
+	if (req == NULL) {
+		close(conn);
 		return;
+	}
 
 	req->next = srv->requests;
 	srv->requests = req;

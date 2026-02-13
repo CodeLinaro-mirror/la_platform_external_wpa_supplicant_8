@@ -23,16 +23,10 @@
 #define WPA_GMK_LEN 32
 #define WPA_GTK_MAX_LEN 32
 #define WPA_PASN_PMK_LEN 32
-#define WPA_PASN_MAX_MIC_LEN 32
+#define WPA_PASN_MAX_MIC_LEN 24
 #define WPA_MAX_RSNXE_LEN 4
 
 #define OWE_DH_GROUP 19
-
-enum rsn_hash_alg {
-	RSN_HASH_SHA256,
-	RSN_HASH_SHA384,
-	RSN_HASH_SHA512,
-};
 
 #ifdef CONFIG_NO_TKIP
 #define WPA_ALLOWED_PAIRWISE_CIPHERS \
@@ -144,7 +138,6 @@ WPA_CIPHER_BIP_CMAC_256)
 #define RSN_KEY_DATA_MLO_IGTK RSN_SELECTOR(0x00, 0x0f, 0xac, 17)
 #define RSN_KEY_DATA_MLO_BIGTK RSN_SELECTOR(0x00, 0x0f, 0xac, 18)
 #define RSN_KEY_DATA_MLO_LINK RSN_SELECTOR(0x00, 0x0f, 0xac, 19)
-#define RSN_KEY_DATA_SAE_PW_IDS RSN_SELECTOR(0x00, 0x0f, 0xac, 25)
 
 #define WFA_KEY_DATA_IP_ADDR_REQ RSN_SELECTOR(0x50, 0x6f, 0x9a, 4)
 #define WFA_KEY_DATA_IP_ADDR_ALLOC RSN_SELECTOR(0x50, 0x6f, 0x9a, 5)
@@ -253,6 +246,7 @@ struct wpa_eapol_key {
 #define FILS_ICK_MAX_LEN 48
 #define FILS_FT_MAX_LEN 48
 #define WPA_PASN_KCK_LEN 32
+#define WPA_PASN_MIC_MAX_LEN 24
 #define WPA_LTF_KEYSEED_MAX_LEN 48
 
 /**
@@ -678,8 +672,6 @@ struct wpa_eapol_ie_parse {
 	size_t igtk_len;
 	const u8 *bigtk;
 	size_t bigtk_len;
-	const u8 *sae_pw_ids;
-	size_t sae_pw_ids_len;
 	const u8 *mdie;
 	size_t mdie_len;
 	const u8 *ftie;
@@ -775,22 +767,23 @@ int wpa_use_cmac(int akmp);
 int wpa_use_aes_key_wrap(int akmp);
 int fils_domain_name_hash(const char *domain, u8 *hash);
 
+bool pasn_use_sha384(int akmp, int cipher);
 int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 		    const u8 *spa, const u8 *bssid,
 		    const u8 *dhss, size_t dhss_len,
 		    struct wpa_ptk *ptk, int akmp, int cipher,
-		    size_t kdk_len, size_t kek_len, enum rsn_hash_alg *alg);
+		    size_t kdk_len, size_t kek_len);
 
-size_t pasn_mic_len(enum rsn_hash_alg alg);
+u8 pasn_mic_len(int akmp, int cipher);
 
-int pasn_mic(enum rsn_hash_alg alg, const u8 *kck, size_t kck_len,
+int pasn_mic(const u8 *kck, int akmp, int cipher,
 	     const u8 *addr1, const u8 *addr2,
 	     const u8 *data, size_t data_len,
 	     const u8 *frame, size_t frame_len, u8 *mic);
 
 int wpa_ltf_keyseed(struct wpa_ptk *ptk, int akmp, int cipher);
 
-int pasn_auth_frame_hash(enum rsn_hash_alg alg, const u8 *data, size_t len,
+int pasn_auth_frame_hash(int akmp, int cipher, const u8 *data, size_t len,
 			 u8 *hash);
 
 void wpa_pasn_build_auth_header(struct wpabuf *buf, const u8 *bssid,

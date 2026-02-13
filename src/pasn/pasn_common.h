@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2019, Intel Corporation
  * Copyright (c) 2022, Jouni Malinen <j@w1.fi>
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (C) 2022, Qualcomm Innovation Center, Inc.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -11,11 +11,6 @@
 
 #ifndef PASN_COMMON_H
 #define PASN_COMMON_H
-
-#include "common/wpa_common.h"
-#ifdef CONFIG_SAE
-#include "common/sae.h"
-#endif /* CONFIG_SAE */
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,9 +78,8 @@ struct pasn_data {
 	size_t pmk_len;
 	u8 pmk[PMK_LEN_MAX];
 	bool using_pmksa;
-	enum rsn_hash_alg hash_alg;
 
-	struct wpabuf *auth1;
+	u8 hash[SHA384_MAC_LEN];
 
 	struct wpabuf *beacon_rsne_rsnxe;
 	struct wpa_ptk ptk;
@@ -128,6 +122,7 @@ struct pasn_data {
 	bool noauth; /* Whether PASN without mutual authentication is enabled */
 	int disable_pmksa_caching;
 	int *pasn_groups;
+	struct wpabuf *wrapped_data;
 	int use_anti_clogging;
 	const u8 *rsn_ie;
 	size_t rsn_ie_len;

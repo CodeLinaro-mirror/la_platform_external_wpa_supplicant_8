@@ -1,7 +1,6 @@
 /*
  * hostapd / Callback functions for driver wrappers
  * Copyright (c) 2002-2013, Jouni Malinen <j@w1.fi>
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -333,14 +332,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 	bool updated = false;
 	bool driver_acl;
 
-#ifdef CONFIG_P2P
-	if (hapd->p2p_group && (!hapd->started || hapd->disabled)) {
-		wpa_printf(MSG_DEBUG,
-			   "hostapd_notif_assoc: Ignore assoc event - P2P GO not started or disabled");
-		return 0;
-	}
-#endif /* CONFIG_P2P */
-
 	if (addr == NULL) {
 		/*
 		 * This could potentially happen with unexpected event from the
@@ -500,7 +491,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 				continue;
 
 			bss = hostapd_mld_get_link_bss(hapd, link_id);
-			if (bss && bss != hapd &&
+			if (bss != hapd &&
 			    hostapd_check_acl(bss, addr, NULL) !=
 			    HOSTAPD_ACL_ACCEPT) {
 				wpa_printf(MSG_INFO, "STA " MACSTR
@@ -509,10 +500,9 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 				reason = WLAN_REASON_UNSPECIFIED;
 				goto fail;
 			}
-			if (bss &&
-			    hostapd_check_acl(bss, info->peer_addr, NULL) !=
+			if (hostapd_check_acl(bss, info->peer_addr, NULL) !=
 			    HOSTAPD_ACL_ACCEPT) {
-				wpa_printf(MSG_INFO, "link addr " MACSTR
+				wpa_printf(MSG_INFO, "link addr" MACSTR
 					   " not allowed to connect",
 					   MAC2STR(info->peer_addr));
 				reason = WLAN_REASON_UNSPECIFIED;
@@ -798,7 +788,7 @@ skip_wpa_check:
 #ifdef CONFIG_IEEE80211R_AP
 	p = wpa_sm_write_assoc_resp_ies(sta->wpa_sm, buf, sizeof(buf),
 					sta->auth_alg, req_ies, req_ies_len,
-					!elems.rsnxe, reassoc, sta->vlan_id);
+					!elems.rsnxe);
 	if (!p) {
 		wpa_printf(MSG_DEBUG, "FT: Failed to write AssocResp IEs");
 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
@@ -1743,6 +1733,8 @@ static void hostapd_notif_auth(struct hostapd_data *hapd,
 {
 	struct sta_info *sta;
 	u16 status = WLAN_STATUS_SUCCESS;
+	u8 resp_ies[2 + WLAN_AUTH_CHALLENGE_LEN];
+	size_t resp_ies_len = 0;
 
 	sta = ap_get_sta(hapd, rx_auth->peer);
 	if (!sta) {
@@ -1787,7 +1779,7 @@ static void hostapd_notif_auth(struct hostapd_data *hapd,
 
 fail:
 	hostapd_sta_auth(hapd, rx_auth->peer, rx_auth->auth_transaction + 1,
-			 status, NULL, 0);
+			 status, resp_ies, resp_ies_len);
 }
 
 
@@ -2308,9 +2300,6 @@ static void hostapd_event_iface_unavailable(struct hostapd_data *hapd)
 						&hapd->cs_freq_params);
 	}
 
-	/* Clear beacon_set_done so that the RNR and other beacon parameters
-	 * are properly updated. */
-	hapd->beacon_set_done = 0;
 	// inform framework that interface is unavailable
 	hostapd_disable_iface(hapd->iface);
 }
@@ -2701,7 +2690,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		hostapd_client_poll_ok(hapd, data->client_poll.addr);
 		break;
 	case EVENT_RX_FROM_UNKNOWN:
-		hapd = switch_link_hapd(hapd, data->rx_from_unknown.link_id);
 		hostapd_rx_from_unknown_sta(hapd, data->rx_from_unknown.bssid,
 					    data->rx_from_unknown.addr,
 					    data->rx_from_unknown.wds);
@@ -2844,9 +2832,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 #ifdef NEED_AP_MLME
 	case EVENT_INTERFACE_UNAVAILABLE:
 		hostapd_event_iface_unavailable(hapd);
-		/* Update beacon information in all other interfaces to cover
-		 * removal/disabling of this BSS. */
-		hostapd_refresh_all_iface_beacons(hapd->iface);
 		break;
 	case EVENT_DFS_RADAR_DETECTED:
 		if (!data)

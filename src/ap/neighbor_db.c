@@ -264,7 +264,8 @@ void hostapd_neighbor_set_own_report(struct hostapd_data *hapd)
 	}
 
 	if (ht) {
-		bssid_info |= NEI_REP_BSSID_INFO_HT;
+		bssid_info |= NEI_REP_BSSID_INFO_HT |
+			NEI_REP_BSSID_INFO_DELAYED_BA;
 		if (vht)
 			bssid_info |= NEI_REP_BSSID_INFO_VHT;
 	}
