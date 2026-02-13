@@ -24,8 +24,16 @@ L_CFLAGS += -DVERSION_STR_POSTFIX=\"-$(PLATFORM_VERSION)\"
 # Set Android log name
 L_CFLAGS += -DANDROID_LOG_NAME=\"hostapd\"
 
+L_CFLAGS += -Wall -Werror
+
 # Disable unused parameter warnings
 L_CFLAGS += -Wno-unused-parameter
+
+# Disable unused variable warnings
+L_CFLAGS += -Wno-unused-variable
+
+# Disable macro redefined warnings
+L_CFLAGS += -Wno-macro-redefined
 
 # Set Android extended P2P functionality
 L_CFLAGS += -DANDROID_P2P
@@ -34,20 +42,25 @@ ifeq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 L_CFLAGS += -DANDROID_LIB_STUB
 endif
 
+ifeq ($(BOARD_HOSTAPD_CONFIG_80211W_MFP_OPTIONAL),true)
+L_CFLAGS += -DENABLE_HOSTAPD_CONFIG_80211W_MFP_OPTIONAL
+endif
+
 ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB_EVENT),)
 L_CFLAGS += -DANDROID_LIB_EVENT
 endif
 
 # Use Android specific directory for control interface sockets
-L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/misc/wifi/sockets\"
-L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/system/hostapd\"
+L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/hostapd/sockets\"
+L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/hostapd/ctrl\"
 
 # Use Android specific directory for hostapd_cli command completion history
-L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/misc/wifi\"
+L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/vendor/wifi/hostapd\"
 
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
+L_CFLAGS += -DARCH_ARM_32
 endif
 
 INCLUDES = $(LOCAL_PATH)
@@ -62,6 +75,10 @@ INCLUDES += external/libnl-headers
 endif
 endif
 
+ifdef CONFIG_TESTING_OPTIONS
+L_CFLAGS += -DCONFIG_TESTING_OPTIONS
+CONFIG_WPS_TESTING=y
+endif
 
 ifndef CONFIG_OS
 ifdef CONFIG_NATIVE_WINDOWS
@@ -154,6 +171,7 @@ OBJS += src/utils/crc32.c
 OBJS += src/common/ieee802_11_common.c
 OBJS += src/common/wpa_common.c
 OBJS += src/common/hw_features_common.c
+OBJS += src/common/ptksa_cache.c
 
 OBJS += src/eapol_auth/eapol_auth_sm.c
 
@@ -227,7 +245,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-ifdef CONFIG_SUITEB192
+ifeq ($(CONFIG_SUITEB192),y)
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -236,6 +254,8 @@ ifdef CONFIG_OCV
 L_CFLAGS += -DCONFIG_OCV
 OBJS += src/common/ocv.c
 endif
+
+NEED_AES_UNWRAP=y
 
 ifdef CONFIG_IEEE80211R
 L_CFLAGS += -DCONFIG_IEEE80211R -DCONFIG_IEEE80211R_AP
@@ -251,11 +271,12 @@ L_CFLAGS += -DCONFIG_ETH_P_OUI
 OBJS += src/ap/eth_p_oui.c
 endif
 
-ifdef CONFIG_SAE
+ifeq ($(CONFIG_SAE),y)
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
 L_CFLAGS += -DCONFIG_SAE_PK
+NEED_AES_SIV=y
 OBJS += src/common/sae_pk.c
 endif
 NEED_ECC=y
@@ -264,7 +285,7 @@ NEED_HMAC_SHA256_KDF=y
 NEED_DRAGONFLY=y
 endif
 
-ifdef CONFIG_OWE
+ifeq ($(CONFIG_OWE),y)
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -272,6 +293,10 @@ NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
 NEED_SHA384=y
 NEED_SHA512=y
+endif
+
+ifdef CONFIG_WAPI_INTERFACE
+L_CFLAGS += -DCONFIG_WAPI_INTERFACE
 endif
 
 ifdef CONFIG_FILS
@@ -292,6 +317,12 @@ endif
 
 ifdef CONFIG_IEEE80211AC
 L_CFLAGS += -DCONFIG_IEEE80211AC
+endif
+
+ifdef CONFIG_IEEE80211BE
+CONFIG_IEEE80211AX=y
+L_CFLAGS += -DCONFIG_IEEE80211BE
+OBJS += src/ap/ieee802_11_eht.c
 endif
 
 ifdef CONFIG_IEEE80211AX
@@ -542,7 +573,7 @@ endif
 
 endif
 
-ifdef CONFIG_DPP
+ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
 OBJS += src/common/dpp_auth.c
@@ -567,6 +598,15 @@ NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
 endif
+ifdef CONFIG_DPP3
+L_CFLAGS += -DCONFIG_DPP3
+endif
+endif
+
+ifdef CONFIG_NAN_USD
+OBJS += src/common/nan_de.c
+OBJS += src/ap/nan_usd_ap.c
+L_CFLAGS += -DCONFIG_NAN_USD
 endif
 
 ifdef CONFIG_PASN
@@ -629,6 +669,11 @@ ifdef CHAP
 OBJS += src/eap_common/chap.c
 endif
 
+ifdef CONFIG_RADIUS_TLS
+TLS_FUNCS=y
+L_CFLAGS += -DCONFIG_RADIUS_TLS
+endif
+
 ifdef TLS_FUNCS
 NEED_DES=y
 # Shared TLS functions (needed for EAP_TLS, EAP_PEAP, and EAP_TTLS)
@@ -650,6 +695,7 @@ L_CFLAGS += -DCONFIG_TLSV12
 endif
 
 ifeq ($(CONFIG_TLS), openssl)
+L_CFLAGS += -DCRYPTO_RSA_OAEP_SHA256
 ifdef TLS_FUNCS
 OBJS += src/crypto/tls_openssl.c
 OBJS += src/crypto/tls_openssl_ocsp.c
@@ -822,7 +868,9 @@ endif
 ifdef NEED_AES_ENCBLOCK
 AESOBJS += src/crypto/aes-encblock.c
 endif
+ifneq ($(CONFIG_TLS), openssl)
 AESOBJS += src/crypto/aes-omac1.c
+endif
 ifdef NEED_AES_UNWRAP
 ifneq ($(CONFIG_TLS), openssl)
 NEED_AES_DEC=y
@@ -1023,6 +1071,9 @@ endif
 ifdef NEED_AP_MLME
 OBJS += src/ap/wmm.c
 OBJS += src/ap/ap_list.c
+OBJS += src/ap/comeback_token.c
+OBJS += src/pasn/pasn_responder.c
+OBJS += src/pasn/pasn_common.c
 OBJS += src/ap/ieee802_11.c
 OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
@@ -1112,11 +1163,21 @@ else
 OBJS_c += src/utils/edit_simple.c
 endif
 
+ifeq ($(filter gce_x86 gce_x86_64 calypso, $(TARGET_DEVICE)),)
+ifdef CONFIG_CTRL_IFACE_AIDL
+HOSTAPD_USE_AIDL=y
+L_CFLAGS += -DCONFIG_CTRL_IFACE_AIDL
+L_CPPFLAGS = -Wall -Werror -Wno-unused-variable
+endif
+endif
+
 ########################
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd_cli
-LOCAL_MODULE_TAGS := debug
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)
@@ -1127,6 +1188,45 @@ include $(BUILD_EXECUTABLE)
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
+LOCAL_MODULE_TAGS := optional
+LOCAL_PROPRIETARY_MODULE := true
+LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_VINTF_FRAGMENTS := android.hardware.wifi.hostapd.xml
+ifdef CONFIG_DRIVER_CUSTOM
+LOCAL_STATIC_LIBRARIES := libCustomWifi
+endif
+ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
+LOCAL_STATIC_LIBRARIES += $(BOARD_HOSTAPD_PRIVATE_LIB)
+endif
+LOCAL_SHARED_LIBRARIES := libc libcutils liblog libcrypto libssl
+ifdef CONFIG_DRIVER_NL80211
+ifneq ($(wildcard external/libnl),)
+LOCAL_SHARED_LIBRARIES += libnl
+else
+LOCAL_STATIC_LIBRARIES += libnl_2
+endif
+endif
+ifeq ($(HOSTAPD_USE_AIDL), y)
+LOCAL_SHARED_LIBRARIES += android.hardware.wifi.hostapd-V1-ndk
+LOCAL_SHARED_LIBRARIES += libbase libutils
+LOCAL_SHARED_LIBRARIES += libbinder_ndk
+LOCAL_STATIC_LIBRARIES += libhostapd_aidl
+endif
+LOCAL_CFLAGS := $(L_CFLAGS)
+LOCAL_SRC_FILES := $(OBJS)
+LOCAL_C_INCLUDES := $(INCLUDES)
+LOCAL_INIT_RC := hostapd.android.rc
+include $(BUILD_EXECUTABLE)
+
+########################
+include $(CLEAR_VARS)
+LOCAL_MODULE := hostapd_noaidl
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
 LOCAL_MODULE_TAGS := optional
 LOCAL_PROPRIETARY_MODULE := true
 ifdef CONFIG_DRIVER_CUSTOM
@@ -1143,10 +1243,34 @@ else
 LOCAL_STATIC_LIBRARIES += libnl_2
 endif
 endif
-LOCAL_CFLAGS := $(L_CFLAGS)
+LOCAL_CFLAGS := $(patsubst -DCONFIG_CTRL_IFACE_AIDL,,$(L_CFLAGS))
 LOCAL_SRC_FILES := $(OBJS)
 LOCAL_C_INCLUDES := $(INCLUDES)
-LOCAL_INIT_RC := hostapd.android.rc
 include $(BUILD_EXECUTABLE)
 
+ifeq ($(HOSTAPD_USE_AIDL), y)
+### Aidl service library ###
+########################
+include $(CLEAR_VARS)
+LOCAL_MODULE := libhostapd_aidl
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
+LOCAL_VENDOR_MODULE := true
+LOCAL_CPPFLAGS := $(L_CPPFLAGS)
+LOCAL_CFLAGS := $(L_CFLAGS)
+LOCAL_C_INCLUDES := $(INCLUDES)
+LOCAL_SRC_FILES := \
+    aidl/aidl.cpp \
+    aidl/hostapd.cpp
+LOCAL_SHARED_LIBRARIES := \
+    android.hardware.wifi.hostapd-V1-ndk \
+    libbinder_ndk \
+    libbase \
+    libutils \
+    liblog
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $(LOCAL_PATH)/aidl
+include $(BUILD_STATIC_LIBRARY)
+endif # HOSTAPD_USE_AIDL == y
 endif # ifeq ($(WPA_BUILD_HOSTAPD),true)

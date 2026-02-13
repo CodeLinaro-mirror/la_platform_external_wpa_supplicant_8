@@ -19,10 +19,14 @@ struct rsn_pmksa_cache_entry {
 	u8 pmkid[PMKID_LEN];
 	u8 pmk[PMK_LEN_MAX];
 	size_t pmk_len;
+	u8 kck[WPA_KCK_MAX_LEN];
+	size_t kck_len;
 	os_time_t expiration;
 	int akmp; /* WPA_KEY_MGMT_* */
 	u8 spa[ETH_ALEN];
 
+	u8 *dpp_pkhash; /* SHA256_MAC_LEN octet hash value of DPP Connector
+			 * public key */
 	u8 *identity;
 	size_t identity_len;
 	struct wpabuf *cui;
@@ -71,7 +75,8 @@ void pmksa_cache_free_entry(struct rsn_pmksa_cache *pmksa,
 			    struct rsn_pmksa_cache_entry *entry);
 int pmksa_cache_auth_radius_das_disconnect(struct rsn_pmksa_cache *pmksa,
 					   struct radius_das_attrs *attr);
-int pmksa_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len);
+int pmksa_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len,
+			  int *index);
 void pmksa_cache_auth_flush(struct rsn_pmksa_cache *pmksa);
 int pmksa_cache_auth_list_mesh(struct rsn_pmksa_cache *pmksa, const u8 *addr,
 			       char *buf, size_t len);
