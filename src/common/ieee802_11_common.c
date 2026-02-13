@@ -3551,20 +3551,7 @@ int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx)
 		(struct ieee80211_vht_capabilities *) elems->vht_capabilities;
 	struct ieee80211_he_capabilities *hecaps =
 		(struct ieee80211_he_capabilities *) elems->he_capabilities;
-	if (htcaps) {
-		int max_nss_ht = parse_ht_mcs_set_for_max_nss(htcaps, parse_for_rx);
-		if (max_nss_ht > max_nss)
-			max_nss = max_nss_ht;
-	}
 	le16 mcs_map;
-	if (vhtcaps) {
-		mcs_map = (parse_for_rx) ? vhtcaps->vht_supported_mcs_set.rx_map :
-			vhtcaps->vht_supported_mcs_set.tx_map;
-		int max_nss_vht = parse_mcs_map_for_max_nss(
-			le_to_host16(mcs_map), VHT_RX_NSS_MAX_STREAMS);
-		if (max_nss_vht > max_nss)
-			max_nss = max_nss_vht;
-	}
 	if (hecaps) {
 		mcs_map = (parse_for_rx) ? hecaps->he_basic_supported_mcs_set.rx_map :
 			hecaps->he_basic_supported_mcs_set.tx_map;
@@ -3572,6 +3559,17 @@ int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx)
 			le_to_host16(mcs_map), HE_NSS_MAX_STREAMS);
 		if (max_nss_he > max_nss)
 			max_nss = max_nss_he;
+	} else if (vhtcaps) {
+		mcs_map = (parse_for_rx) ? vhtcaps->vht_supported_mcs_set.rx_map :
+			vhtcaps->vht_supported_mcs_set.tx_map;
+		int max_nss_vht = parse_mcs_map_for_max_nss(
+			le_to_host16(mcs_map), VHT_RX_NSS_MAX_STREAMS);
+		if (max_nss_vht > max_nss)
+			max_nss = max_nss_vht;
+	} else if (htcaps) {
+		int max_nss_ht = parse_ht_mcs_set_for_max_nss(htcaps, parse_for_rx);
+		if (max_nss_ht > max_nss)
+			max_nss = max_nss_ht;
 	}
 	return max_nss;
 }
