@@ -4881,10 +4881,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->pasn_comeback_after = atoi(pos);
 	} else if (os_strcmp(buf, "pasn_noauth") == 0) {
 		bss->pasn_noauth = atoi(pos);
-	} else if (os_strcmp(buf, "urnm_mfpr") == 0) {
-		bss->urnm_mfpr = !!atoi(pos);
-	} else if (os_strcmp(buf, "urnm_mfpr_x20") == 0) {
-		bss->urnm_mfpr_x20 = !!atoi(pos);
 #endif /* CONFIG_PASN */
 	} else if (os_strcmp(buf, "ext_capa_mask") == 0) {
 		if (get_hex_config(bss->ext_capa_mask, EXT_CAPA_MAX_LEN,
@@ -4960,8 +4956,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->mld_indicate_disabled = atoi(pos);
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
-	} else if (os_strcmp(buf, "i2r_lmr_policy") == 0) {
-		conf->i2r_lmr_policy = atoi(pos);
 	} else {
 		wpa_printf(MSG_ERROR,
 			   "Line %d: unknown configuration item '%s'",
