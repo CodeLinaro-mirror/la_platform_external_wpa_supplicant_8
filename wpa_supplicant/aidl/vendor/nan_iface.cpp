@@ -993,7 +993,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 
@@ -1010,7 +1011,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			msg.peerId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 		if (msg.securityConfig.securityType == NanPairingSecurityType::PASSPHRASE &&
@@ -1022,7 +1024,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				msg.securityConfig.passphrase.end()).c_str());
 			if (cnt < 0 || cnt >= sizeof(cmd)) {
 				aidl_manager->notifyNanInitiatePairingResponse(
-					ifname, cmdId, nan_status, 0);
+					ifname, cmdId, nan_status, msg.peerId);
 				return;
 			}
 		}
@@ -1036,17 +1038,19 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		} else {
 			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
 			aidl_manager->notifyNanInitiatePairingResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.peerId);
 			return;
 		}
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
 		}
-		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+			nan_status, msg.peerId);
 	});
 
 	return ndk::ScopedAStatus::ok();
@@ -1097,7 +1101,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			msg.pairingInstanceId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.pairingInstanceId);
 			return;
 		}
 		if (msg.securityConfig.securityType == NanPairingSecurityType::PASSPHRASE)  {
@@ -1108,7 +1113,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				msg.securityConfig.passphrase.end()).c_str());
 			if (cnt < 0 || cnt >= sizeof(cmd)) {
 				aidl_manager->notifyNanInitiatePairingResponse(
-					ifname, cmdId, nan_status, 0);
+					ifname, cmdId, nan_status, msg.pairingInstanceId);
 				return;
 			}
 		}
@@ -1122,11 +1127,12 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		} else {
 			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
 			aidl_manager->notifyNanInitiatePairingResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.pairingInstanceId);
 			return;
 		}
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.pairingInstanceId);
 			return;
 		}
 		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
