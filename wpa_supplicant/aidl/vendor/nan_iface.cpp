@@ -1208,7 +1208,8 @@ static int appendSecurityConfigToCmd(
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
-			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 		char cmd[kNanIfaceConfBufSize];
@@ -1218,7 +1219,7 @@ static int appendSecurityConfigToCmd(
 			MAC2STR(msg.peerDiscMacAddr), msg.peerId);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateDataPathResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.peerId);
 			return;
 		}
 		if (msg.appInfo.size() > 0) {
@@ -1230,13 +1231,14 @@ static int appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateDataPathResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.peerId);
 			return;
 		}
 		if (wpas_nan_ndp_request(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
 		}
-		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId,
+			nan_status, msg.peerId);
 	});
 	return ndk::ScopedAStatus::ok();
 }
