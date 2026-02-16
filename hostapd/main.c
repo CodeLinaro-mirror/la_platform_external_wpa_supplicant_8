@@ -868,7 +868,7 @@ int main(int argc, char *argv[])
 #endif /* CONFIG_DPP */
 
 	for (;;) {
-		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:j:q");
+		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:j:q:");
 		if (c < 0)
 			break;
 		switch (c) {
