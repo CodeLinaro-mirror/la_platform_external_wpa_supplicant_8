@@ -1214,7 +1214,7 @@ static int appendSecurityConfigToCmd(
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_NDP_REQUEST handle=%d ndi=%s peer_nmi=" MACSTR " peer_id=%d",
+			"handle=%d ndi=%s peer_nmi=" MACSTR " peer_id=%d",
 			msg.discoverySessionId, msg.ifaceName.c_str(),
 			MAC2STR(msg.peerDiscMacAddr), msg.peerId);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
@@ -1227,7 +1227,7 @@ static int appendSecurityConfigToCmd(
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
 		}
-		cnt += appendSecurityConfigToCmd(
+		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateDataPathResponse(
@@ -1264,7 +1264,7 @@ static int appendSecurityConfigToCmd(
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_NDP_RESPONSE %s ndi=%s handle=%d ndp_id=%d",
+			"%s ndi=%s handle=%d ndp_id=%d",
 			msg.acceptRequest ? "accept" : "reject",
 			msg.ifaceName.c_str(), msg.discoverySessionId, msg.ndpInstanceId);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
@@ -1277,7 +1277,7 @@ static int appendSecurityConfigToCmd(
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
 		}
-		cnt += appendSecurityConfigToCmd(
+		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
@@ -1314,7 +1314,7 @@ static int appendSecurityConfigToCmd(
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-				"NAN_NDP_TERMINATE peer_nmi=" MACSTR " ndp_id=%d",
+				"peer_nmi=" MACSTR " ndp_id=%d",
 				MAC2STR(peerDiscMacAddr), ndpInstanceId);
 
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
