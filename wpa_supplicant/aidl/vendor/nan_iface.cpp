@@ -1094,7 +1094,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
 			MACSTR " handle=%d peer_instance_id=%d auth=%d responder",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
-			msg.peerId, convertNanPairingSecurityTypeToInteger(
+			msg.pairingInstanceId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);

@@ -1776,8 +1776,8 @@ void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
 		       wpa_key_mgmt_txt(key_mgmt, WPA_PROTO_RSN),
 		       verify);
 	wpas_aidl_notify_nan_pairing_request(wpa_s, instance_id,
-	-1/*peer_id*/, peer_nmi, -1/*pairing_id*/, !verify,
-	nullptr, nullptr);
+		instance_id/*peer_id*/, peer_nmi, instance_id/*pairing_id*/,
+		!verify, nullptr, nullptr);
 }
 
 
