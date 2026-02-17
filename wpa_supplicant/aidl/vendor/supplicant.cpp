@@ -695,10 +695,16 @@ std::pair<std::shared_ptr<ISupplicantWifiRttController>, ::ndk::ScopedAStatus>
 Supplicant::createRttControllerInternal(const std::string &ifaceName)
 {
 	AidlManager *aidl_manager = AidlManager::getInstance();
-	if (!aidl_manager || !aidl_manager->isAidlServiceVersionAtLeast(5)) {
+	if (!aidl_manager) {
+		return {nullptr,
+			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
+#ifndef MAINLINE_SUPPLICANT
+	if (!aidl_manager->isAidlServiceVersionAtLeast(5)) {
 		return {nullptr,
 			createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED)};
 	}
+#endif
 	// Check if required |ifname| argument is empty.
 	if (ifaceName.empty()) {
 		return {
@@ -716,7 +722,7 @@ Supplicant::createRttControllerInternal(const std::string &ifaceName)
 	if (aidl_manager->createOrGetWifiRttControllerAidlObject(
 			wpa_s->ifname, &rtt_controller)) {
 		return {rtt_controller,
-			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+			createStatus(SupplicantStatusCode::FAILURE_IFACE_INVALID)};
 	}
 	return {rtt_controller, ndk::ScopedAStatus::ok()};
 }
