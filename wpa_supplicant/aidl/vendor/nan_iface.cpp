@@ -594,10 +594,10 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN, ifaceName.c_str(), NULL, NULL, NULL,
+		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), NULL, NULL, NULL,
 						(u8 *)allocated_if_addr, NULL) < 0)
 		{
-			wpa_printf(MSG_ERROR, "Failed to create NAN iface");
+			wpa_printf(MSG_ERROR, "Failed to create NAN data iface");
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -606,6 +606,7 @@ bool NanIface::isValid()
 		iface_params.driver = kIfaceDriverName;
 		iface_params.ifname = ifaceName.c_str();
 		iface_params.confname = kMainlineSupplicantConfigPath.c_str();
+		iface_params.nan_data = true;
 
 		if (!wpa_supplicant_add_iface(wpa_global, &iface_params, wpa_s)) {
 			wpa_printf(MSG_ERROR, "Failed to add NAN data iface");
@@ -613,7 +614,7 @@ bool NanIface::isValid()
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
-
+		wpa_s->added_vif = true;
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 	});
