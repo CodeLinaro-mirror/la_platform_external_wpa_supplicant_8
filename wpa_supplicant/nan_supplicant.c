@@ -1204,6 +1204,10 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	/* Currently support shared key suites only */
 	wpa_s->nan_supported_csids = BIT(NAN_CS_SK_CCM_128) |
 				     BIT(NAN_CS_SK_GCM_256);
+#ifdef CONFIG_PASN
+	wpa_s->nan_supported_csids |= BIT(NAN_CS_PK_PASN_128) |
+				     BIT(NAN_CS_PK_PASN_256);
+#endif /* CONFIG_PASN */
 	return 0;
 }
 
