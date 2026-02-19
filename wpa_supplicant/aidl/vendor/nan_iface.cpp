@@ -64,7 +64,7 @@ static constexpr int kNanIfaceConfScanPeriod = 20;
 static constexpr int kNanIfaceConfBootstrapComebackTimeoutTus = 1024;
 static constexpr uint16_t kNanIfaceConfAutoAcceptedBm = BIT(0);
 static constexpr int kNanIfaceConfMaxBandwidth = 160;  // in MHz
-static constexpr int kNanIfaceCapMaxNdiInterfaces = 4;
+static constexpr int kNanIfaceCapMaxNdiInterfaces = 2;
 static constexpr int kNanIfaceCapMaxNdpSessions = 10;
 
 template <typename... Args>
