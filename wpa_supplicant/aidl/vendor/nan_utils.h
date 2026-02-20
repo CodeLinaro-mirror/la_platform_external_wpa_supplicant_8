@@ -189,24 +189,37 @@ inline int convertNanPairingSecurityTypeToInteger(
 inline int convertNanCipherSuiteTypeToSupplicantCipherSuiteType(
 	NanCipherSuiteType cipher_suite)
 {
-	switch (cipher_suite) {
-		// TODO: replace the magic number with enum nan_cipher_suite_id
-		// after upstream merged.
-		case NanCipherSuiteType::NONE:
-			return 0;
-		case NanCipherSuiteType::SHARED_KEY_128_MASK:
-			return 1;
-		case NanCipherSuiteType::SHARED_KEY_256_MASK:
-			return 2;
-		case NanCipherSuiteType::PUBLIC_KEY_2WDH_128_MASK:
-			return 3;
-		case NanCipherSuiteType::PUBLIC_KEY_2WDH_256_MASK:
-			return 4;
-		case NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK:
-			return 7;
-		case NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK:
-			return 8;
-	}
+	u16 cipher = static_cast<uint16_t>(cipher_suite);
+
+	if (cipher == static_cast<uint16_t>(NanCipherSuiteType::NONE))
+		return NAN_CS_NONE;
+	/* check sequence based on cipher suite priority */
+	/* NCS-PK-PASN-256 (using a password) or NCS-PK-2WDH-256 */
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK))
+		return NAN_CS_PK_PASN_256;
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::PUBLIC_KEY_2WDH_256_MASK))
+		return NAN_CS_PK_2WDH_256;
+
+	/* NCS-PK-PASN-128 (using a password) or NCS-PK-2WDH-128 */
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK))
+		return NAN_CS_PK_PASN_128;
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::PUBLIC_KEY_2WDH_128_MASK))
+		return NAN_CS_PK_2WDH_128;
+
+	/* NCS-SK-256 (using a PSK/Passphrase) */
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::SHARED_KEY_256_MASK))
+		return NAN_CS_SK_GCM_256;
+
+	/* NCS-SK-128 (using a PSK/Passphrase) */
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::SHARED_KEY_128_MASK))
+		return NAN_CS_SK_CCM_128;
+
+	/* Group key */
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::GROUP_KEY_GCMP_256_MASK))
+		return NAN_CS_GTK_GCMP_256;
+	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::GROUP_KEY_CCMP_128_MASK))
+		return NAN_CS_GTK_CCMP_128;
+
 	return -1;
 }
 
