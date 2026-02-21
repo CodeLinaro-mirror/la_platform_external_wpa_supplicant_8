@@ -1698,8 +1698,8 @@ static void mlme_event_unprot_beacon(struct wpa_driver_nl80211_data *drv,
 }
 
 
-static void mlme_event_link_addition(struct wpa_driver_nl80211_data *drv,
-				     const u8 *frame, size_t len)
+static void mlme_event_link_addition(struct i802_bss *bss, const u8 *frame,
+				     size_t len)
 {
 	const struct ieee80211_mgmt *mgmt;
 	union wpa_event_data event;
@@ -1707,6 +1707,7 @@ static void mlme_event_link_addition(struct wpa_driver_nl80211_data *drv,
 	u8 count;
 	const u8 *resp_ie;
 	const u8 *end;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
 
 	if (!frame) {
 		wpa_printf(MSG_DEBUG,
@@ -1737,12 +1738,12 @@ static void mlme_event_link_addition(struct wpa_driver_nl80211_data *drv,
 	resp_ie += 3 * count;
 	curr_valid_links = drv->sta_mlo_info.valid_links;
 
-	if (get_sta_mlo_interface_info(drv) < 0) {
+	if (get_sta_mlo_interface_info(bss) < 0) {
 		wpa_printf(MSG_INFO, "nl80211: Failed to get STA MLO info");
 		return;
 	}
 
-	if (!nl80211_get_assoc_bssid(drv)) {
+	if (!nl80211_get_assoc_bssid(bss)) {
 		wpa_printf(MSG_INFO,
 			   "nl80211: Failed to get BSSID info for newly added links");
 		return;
@@ -2281,7 +2282,7 @@ static void nl80211_cqm_event(struct i802_bss *bss, struct nlattr *tb[])
 	 * nl80211_get_link_signal() and nl80211_get_link_noise() set default
 	 * values in case querying the driver fails.
 	 */
-	res = nl80211_get_link_signal(drv, drv->bssid, &ed.signal_change.data);
+	res = nl80211_get_link_signal(bss, drv->bssid, &ed.signal_change.data);
 	if (res == 0) {
 		wpa_printf(MSG_DEBUG, "nl80211: Signal: %d dBm  txrate: %lu",
 			   ed.signal_change.data.signal,
@@ -2291,7 +2292,7 @@ static void nl80211_cqm_event(struct i802_bss *bss, struct nlattr *tb[])
 			   "nl80211: Querying the driver for signal info failed");
 	}
 
-	res = nl80211_get_link_noise(drv, &ed.signal_change);
+	res = nl80211_get_link_noise(bss, &ed.signal_change);
 	if (res == 0) {
 		wpa_printf(MSG_DEBUG, "nl80211: Noise: %d dBm",
 			   ed.signal_change.current_noise);
@@ -2788,6 +2789,8 @@ static void nl80211_spurious_frame(struct i802_bss *bss, struct nlattr **tb,
 	event.rx_from_unknown.bssid = bss->addr;
 	event.rx_from_unknown.addr = nla_data(tb[NL80211_ATTR_MAC]);
 	event.rx_from_unknown.wds = wds;
+	event.rx_from_unknown.link_id = tb[NL80211_ATTR_MLO_LINK_ID] ?
+		nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]) : -1;
 
 	wpa_supplicant_event(drv->ctx, EVENT_RX_FROM_UNKNOWN, &event);
 }
@@ -4354,6 +4357,11 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		break;
 	case NL80211_CMD_REG_CHANGE:
 	case NL80211_CMD_WIPHY_REG_CHANGE:
+		if (cmd == NL80211_CMD_REG_CHANGE &&
+		    (drv->capa.flags &
+		     WPA_DRIVER_FLAGS_SELF_MANAGED_REGULATORY))
+			break;
+
 		nl80211_reg_change_event(drv, tb);
 		break;
 	case NL80211_CMD_REG_BEACON_HINT:
@@ -4437,7 +4445,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		mlme_event_link_removal(drv, tb[NL80211_ATTR_MLO_LINKS]);
 		break;
 	case NL80211_CMD_ASSOC_MLO_RECONF:
-		mlme_event_link_addition(drv, nla_data(frame), nla_len(frame));
+		mlme_event_link_addition(bss, nla_data(frame), nla_len(frame));
 		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
@@ -4474,6 +4482,11 @@ int process_global_event(struct nl_msg *msg, void *arg)
 	int wdev_id_set = 0;
 	int wiphy_idx_set = 0;
 	bool processed = false;
+	int res;
+
+	res = nl80211_reply_hook(global, msg, process_global_event, arg);
+	if (res != NL_OK)
+		return res;
 
 	/* Event marker, all prior events have been processed */
 	if (gnlh->cmd == NL80211_CMD_GET_PROTOCOL_FEATURES) {
@@ -4566,6 +4579,12 @@ int process_bss_event(struct nl_msg *msg, void *arg)
 	struct i802_bss *bss = arg;
 	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+	int res;
+
+	res = nl80211_reply_hook(bss->drv->global, msg,
+				 process_bss_event, arg);
+	if (res != NL_OK)
+		return res;
 
 	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 		  genlmsg_attrlen(gnlh, 0), NULL);
