@@ -390,6 +390,8 @@ struct hostapd_multi_hw_info {
  * of TSF of the BSS specified by %tsf_bssid.
  * @tsf_bssid: The BSS that %parent_tsf TSF time refers to.
  * @beacon_newer: Whether the Beacon frame data is known to be newer
+ * @mlo_tput_accumulated: Whether the scan result throughput is accumulated
+ * (used during scan result processing)
  * @ie_len: length of the following IE field in octets
  * @beacon_ie_len: length of the following Beacon IE field in octets
  *
@@ -424,6 +426,7 @@ struct wpa_scan_res {
 	u64 parent_tsf;
 	u8 tsf_bssid[ETH_ALEN];
 	bool beacon_newer;
+	bool mlo_tput_accumulated;
 	size_t ie_len;
 	size_t beacon_ie_len;
 	/* Followed by ie_len + beacon_ie_len octets of IE data */
@@ -2433,6 +2436,14 @@ struct wpa_driver_capa {
 
 /** Driver supports NAN Device interface and NAN Synchronization */
 #define WPA_DRIVER_FLAGS2_SUPPORT_NAN			0x0000000080000000ULL
+/** Driver supports arbitrary channel width changes in AP mode */
+#define WPA_DRIVER_FLAGS2_AP_CHANWIDTH_CHANGE	0x0000000008000000ULL
+/** Driver supports FTM initiator functionality */
+#define WPA_DRIVER_FLAGS2_FTM_INITIATOR		0x0000000010000000ULL
+/** Driver supports non-trigger based ranging responder functionality */
+#define WPA_DRIVER_FLAGS2_NON_TRIGGER_BASED_RESPONDER   0x0000000020000000ULL
+/** Driver supports non-trigger based ranging initiator functionality */
+#define WPA_DRIVER_FLAGS2_NON_TRIGGER_BASED_INITIATOR	0x0000000040000000ULL
 
 	u64 flags2;
 /** Driver supports of adaptive 11r feature */
@@ -2570,6 +2581,21 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE	0x00000008
 	u32 nan_flags;
 #endif /* CONFIG_NAN */
+	/* EDCA based ranging capabilities */
+	u8 edca_format_and_bw;
+	u8 max_tx_antenna;
+	u8 max_rx_antenna;
+
+	/* NTB based ranging capabilities */
+	u8 ntb_format_and_bw;
+	u8 max_tx_ltf_repetations;
+	u8 max_rx_ltf_repetations;
+	u8 max_tx_ltf_total;
+	u8 max_rx_ltf_total;
+	u8 max_rx_sts_le_80;
+	u8 max_rx_sts_gt_80;
+	u8 max_tx_sts_le_80;
+	u8 max_tx_sts_gt_80;
 };
 
 
@@ -6799,6 +6825,7 @@ union wpa_event_data {
 		const u8 *bssid;
 		const u8 *addr;
 		int wds;
+		int link_id;
 	} rx_from_unknown;
 
 	/**
@@ -7424,9 +7451,6 @@ extern const struct wpa_driver_ops wpa_driver_wext_ops; /* driver_wext.c */
 /* driver_nl80211.c */
 extern const struct wpa_driver_ops wpa_driver_nl80211_ops;
 #endif /* CONFIG_DRIVER_NL80211 */
-#ifdef CONFIG_DRIVER_HOSTAP
-extern const struct wpa_driver_ops wpa_driver_hostap_ops; /* driver_hostap.c */
-#endif /* CONFIG_DRIVER_HOSTAP */
 #ifdef CONFIG_DRIVER_BSD
 extern const struct wpa_driver_ops wpa_driver_bsd_ops; /* driver_bsd.c */
 #endif /* CONFIG_DRIVER_BSD */
