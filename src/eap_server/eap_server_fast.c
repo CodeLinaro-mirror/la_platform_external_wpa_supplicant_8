@@ -357,18 +357,7 @@ static int eap_fast_get_phase2_key(struct eap_sm *sm,
 
 	if (key_len > isk_len)
 		key_len = isk_len;
-	if (key_len == 32 &&
-	    data->phase2_method->vendor == EAP_VENDOR_IETF &&
-	    data->phase2_method->method == EAP_TYPE_MSCHAPV2) {
-		/*
-		 * EAP-FAST uses reverse order for MS-MPPE keys when deriving
-		 * MSK from EAP-MSCHAPv2. Swap the keys here to get the correct
-		 * ISK for EAP-FAST cryptobinding.
-		 */
-		os_memcpy(isk, key + 16, 16);
-		os_memcpy(isk + 16, key, 16);
-	} else
-		os_memcpy(isk, key, key_len);
+	os_memcpy(isk, key, key_len);
 	os_free(key);
 
 	return 0;
@@ -929,13 +918,8 @@ static struct wpabuf * eap_fast_buildReq(struct eap_sm *sm, void *priv, u8 id)
 }
 
 
-<<<<<<< HEAD
-static Boolean eap_fast_check(struct eap_sm *sm, void *priv,
-			      struct wpabuf *respData)
-=======
 static bool eap_fast_check(struct eap_sm *sm, void *priv,
 			   struct wpabuf *respData)
->>>>>>> origin/caf/upstream/master
 {
 	const u8 *pos;
 	size_t len;
@@ -943,17 +927,10 @@ static bool eap_fast_check(struct eap_sm *sm, void *priv,
 	pos = eap_hdr_validate(EAP_VENDOR_IETF, EAP_TYPE_FAST, respData, &len);
 	if (pos == NULL || len < 1) {
 		wpa_printf(MSG_INFO, "EAP-FAST: Invalid frame");
-<<<<<<< HEAD
-		return TRUE;
-	}
-
-	return FALSE;
-=======
 		return true;
 	}
 
 	return false;
->>>>>>> origin/caf/upstream/master
 }
 
 
@@ -973,6 +950,7 @@ static int eap_fast_phase2_init(struct eap_sm *sm, struct eap_fast_data *data,
 		sm->auth_challenge = data->key_block_p->server_challenge;
 		sm->peer_challenge = data->key_block_p->client_challenge;
 	}
+	sm->eap_fast_mschapv2 = true;
 	sm->init_phase2 = 1;
 	data->phase2_priv = data->phase2_method->init(sm);
 	sm->init_phase2 = 0;
@@ -1575,11 +1553,7 @@ static void eap_fast_process(struct eap_sm *sm, void *priv,
 }
 
 
-<<<<<<< HEAD
-static Boolean eap_fast_isDone(struct eap_sm *sm, void *priv)
-=======
 static bool eap_fast_isDone(struct eap_sm *sm, void *priv)
->>>>>>> origin/caf/upstream/master
 {
 	struct eap_fast_data *data = priv;
 	return data->state == SUCCESS || data->state == FAILURE;
@@ -1630,11 +1604,7 @@ static u8 * eap_fast_get_emsk(struct eap_sm *sm, void *priv, size_t *len)
 }
 
 
-<<<<<<< HEAD
-static Boolean eap_fast_isSuccess(struct eap_sm *sm, void *priv)
-=======
 static bool eap_fast_isSuccess(struct eap_sm *sm, void *priv)
->>>>>>> origin/caf/upstream/master
 {
 	struct eap_fast_data *data = priv;
 	return data->state == SUCCESS;

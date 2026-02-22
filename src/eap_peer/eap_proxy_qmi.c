@@ -40,6 +40,7 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "user_identity_module_v01.h"
 #include "eap_config.h"
 #include "common/wpa_ctrl.h"
+#include "eap_common/eap_sim_common.h"
 #if defined(ANDROID)
 #include <cutils/properties.h>
 #ifdef CONFIG_EAP_PROXY_MDM_DETECT
@@ -957,19 +958,10 @@ static void eap_proxy_post_init(struct eap_proxy_sm *eap_proxy)
         int index;
         bool flag = false;
         int ret = 0;
-        wpa_uim_struct_type *wpa_uim;
+        wpa_uim_struct_type *wpa_uim = eap_proxy->wpa_uim;
 #ifdef CONFIG_EAP_PROXY_MDM_DETECT
         struct dev_info mdm_detect_info;
-#endif
 
-        if (!valid_eap_proxy(eap_proxy)) {
-            wpa_printf(MSG_ERROR, "eap_proxy: invalid eap proxy for post init");
-            return;
-        }
-
-        wpa_uim = eap_proxy->wpa_uim;
-
-#ifdef CONFIG_EAP_PROXY_MDM_DETECT
         /* Call ESOC API to get the number of modems.
          * If the number of modems is not zero, only then proceed
          * with the eap_proxy intialization.
@@ -1153,28 +1145,6 @@ int eap_auth_end_eap_session(qmi_client_type qmi_auth_svc_client_ptr)
         return 0;
 }
 
-static void eap_proxy_schedule_thread(void *eloop_ctx, void *timeout_ctx)
-{
-        struct eap_proxy_sm *eap_proxy = eloop_ctx;
-        int ret = -1;
-
-        if (!valid_eap_proxy(eap_proxy)) {
-            wpa_printf(MSG_ERROR, "eap_proxy: invalid eap proxy for schedule thread");
-            return;
-        }
-
-        // Make note of new thread creation, so that we can take care of joining.
-        eap_proxy->qmi_thread_joined = false;
-        // Store the PPID of this init caller to compare this during deinit.
-        eap_proxy->init_ppid = getppid();
-
-        ret = pthread_create(&eap_proxy->thread_id, NULL, eap_proxy_post_init, eap_proxy);
-        if(ret < 0) {
-            wpa_printf(MSG_ERROR, "eap_proxy: starting thread is failed %d\n", ret);
-            eap_proxy->initialized = false;
-        }
-}
-
 struct eap_proxy_sm *
 eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
                void *msg_ctx)
@@ -1201,10 +1171,22 @@ eap_proxy_init(void *eapol_ctx, const struct eapol_callbacks *eapol_cb,
         /* delay the qmi client initialization after the eloop_run starts,
         * in order to avoid the case of daemonize enabled, which exits the
         * parent process that created the qmi client context.
+        * NOTE: Spawn a new thread to allow eap_proxy initialization.
         */
 
-        eloop_register_timeout(0, 0, eap_proxy_schedule_thread, eap_proxy, NULL);
+        // Make note of new thread creation, so that we can take care of joining.
+        eap_proxy->qmi_thread_joined = false;
+
+        ret = pthread_create(&eap_proxy->thread_id, NULL, eap_proxy_post_init, eap_proxy);
+        if(ret != 0) {
+               wpa_printf(MSG_ERROR, "eap_proxy: starting thread is failed %d\n", ret);
+               goto fail;
+        }
+
         return eap_proxy;
+fail:
+        eap_proxy->initialized = false;
+        return NULL;
 }
 
 
@@ -1222,24 +1204,8 @@ static void eap_proxy_qmi_deinit(struct eap_proxy_sm *eap_proxy)
          * Also, Do not join the thread if it was already joined before.
          */
         if (!eap_proxy->qmi_thread_joined) {
-                /* In case when the wpa_supplicant is daemonized, the eap_proxy
-                 * thread also dies along with its parent wpa_supplicant. But as
-                 * the dead thread ID is passed in the pthread_join call it
-                 * waits for an indefinite time and this blocks the
-                 * wpa_supplicant termination.
-                 * Hence ensure to call the join only if wpa_supplicant is not a
-                 * daemon by comparing the PPID of eap_proxy init and deinit.
-                 */
-                if (getppid() == eap_proxy->init_ppid) {
-                        wpa_printf(MSG_ERROR,
-                                   "eap_proxy: pthread_join on eap_proxy=%p",
-                                   eap_proxy);
-                        pthread_join(eap_proxy->thread_id, NULL);
-                } else {
-                        wpa_printf(MSG_ERROR,
-                                   "eap_proxy: Do not block if the eap_proxy "
-                                   "thread was created under different parent");
-                }
+                wpa_printf(MSG_ERROR, "eap_proxy: pthread_join on eap_proxy=%p", eap_proxy);
+                pthread_join(eap_proxy->thread_id, NULL);
                 eap_proxy->qmi_thread_joined = true;
         }
         eap_proxy->proxy_state = EAP_PROXY_DISABLED;
@@ -1452,17 +1418,16 @@ static void handle_qmi_eap_reply(
                 void *userData, qmi_client_error_type sysErrCode)
 {
         struct eap_proxy_sm *eap_proxy = (struct eap_proxy_sm *)userData;
-        auth_send_eap_packet_ext_resp_msg_v01* rspDataExt =
-                (auth_send_eap_packet_ext_resp_msg_v01*)resp_c_struct;
         auth_send_eap_packet_resp_msg_v01* rspData =
                 (auth_send_eap_packet_resp_msg_v01*)resp_c_struct;
+
         u8 *resp_data;
         u32 length;
 
         wpa_printf(MSG_ERROR, "eap_proxy: %s started\n", __func__);
         if (!valid_eap_proxy(eap_proxy)) {
                 wpa_printf(MSG_ERROR, "eap_proxy: eap_proxy is not initialized");
-                goto done;
+                return;
         }
         if (QMI_STATE_RESP_PENDING == eap_proxy->qmi_state) {
 
@@ -1475,48 +1440,36 @@ static void handle_qmi_eap_reply(
                                         " the request: sysErrorCode=%d\n",
                                         sysErrCode);
                         eap_proxy->qmi_state = QMI_STATE_RESP_TIME_OUT;
-                        goto done;
+                        return;
                 }
 
-                if (NULL == resp_c_struct) {
+                if (NULL == rspData) {
                         wpa_printf(MSG_ERROR, "eap_proxy: Response data is NULL\n");
                         eap_proxy->qmi_state = QMI_STATE_RESP_TIME_OUT;
-                        goto done;
+                        return;
                 }
                 if (QMI_AUTH_SEND_EAP_PACKET_EXT_REQ_V01 != msg_id)
                 {
                         wpa_printf(MSG_ERROR, "eap_proxy: Invalid msgId =%d\n", msg_id);
                         eap_proxy->qmi_state = QMI_STATE_RESP_TIME_OUT;
-                        goto done;
+                        return;
                 }
 
                 /* ensure the reply packet exists  */
-                if (QMI_AUTH_SEND_EAP_PACKET_REQ_V01 == msg_id &&
-                    (rspData->eap_response_pkt_len > QMI_AUTH_EAP_RESP_PACKET_MAX_V01 ||
-                    rspData->eap_response_pkt_len <= 0)) {
+                if (rspData->eap_response_pkt_len <= 0 ||
+                    rspData->eap_response_pkt_len > QMI_AUTH_EAP_RESP_PACKET_EXT_MAX_V01) {
                         wpa_printf(MSG_ERROR, "eap_proxy: Reply packet is of invalid length %d"
                                 " error %d result %d\n", rspData->eap_response_pkt_len,
                                 rspData->resp.error, rspData->resp.result);
                         eap_proxy->qmi_state = QMI_STATE_RESP_TIME_OUT;
-                        goto done;
-                }
-
-                if (QMI_AUTH_SEND_EAP_PACKET_EXT_REQ_V01 == msg_id &&
-                    (rspDataExt->eap_response_ext_pkt_len > QMI_AUTH_EAP_RESP_PACKET_EXT_MAX_V01 || rspDataExt->eap_response_ext_pkt_len <= 0 )) {
-                        wpa_printf(MSG_ERROR, "eap_proxy: Reply packet is of"
-                                   "invalid length %d error %d result %d\n",
-                                   rspDataExt->eap_response_ext_pkt_len, rspDataExt->resp.error, rspDataExt->resp.result);
-                        eap_proxy->qmi_state = QMI_STATE_RESP_TIME_OUT;
                         return;
                 }
 
-                length = QMI_AUTH_SEND_EAP_PACKET_EXT_REQ_V01 == msg_id ?
-                        rspDataExt->eap_response_ext_pkt_len : rspData->eap_response_pkt_len;
-
+                length = rspData->eap_response_pkt_len;
                 eap_proxy->qmi_resp_data.eap_send_pkt_resp.length = length;
                 /* allocate a buffer to store the response data; size is EAP resp len field */
                 eap_proxy->qmi_resp_data.eap_send_pkt_resp.resp_data =
-                        os_malloc(length);
+                        os_malloc(rspData->eap_response_pkt_len);
 
                 resp_data =
                         (u8 *)eap_proxy->qmi_resp_data.eap_send_pkt_resp.resp_data;
@@ -1525,16 +1478,12 @@ static void handle_qmi_eap_reply(
                         wpa_printf(MSG_ERROR, "eap_proxy: Unable to allocate memory for"
                                         " reply packet\n");
                         eap_proxy->qmi_state = QMI_STATE_RESP_TIME_OUT;
-                        goto done;
+                        return;
                 }
 
                 /* copy the response data to the allocated buffer */
-                if (QMI_AUTH_SEND_EAP_PACKET_EXT_REQ_V01 == msg_id)
-                        os_memcpy(resp_data,
-                                  rspDataExt->eap_response_ext_pkt, length);
-                else
-                        os_memcpy(resp_data,
-                                  rspData->eap_response_pkt, length);
+                os_memcpy(resp_data,
+                                rspData->eap_response_pkt, length);
                 eap_proxy->qmi_state = QMI_STATE_RESP_RECEIVED;
                 wpa_printf(MSG_ERROR, "eap_proxy: **HANDLE_QMI_EAP_REPLY CALLBACK ENDDED **");
 
@@ -1542,7 +1491,7 @@ static void handle_qmi_eap_reply(
                 dump_buff(resp_data, length);
         }
 
-done:
+        /* Free rspData here in successful case, eap_proxy_process will free it in failure cases */
         if (rspData != NULL) {
                 os_free(rspData);
                 rspData = NULL;
@@ -2330,6 +2279,18 @@ static bool eap_proxy_build_identity(struct eap_proxy_sm *eap_proxy, u8 id, stru
                         wpa_printf(MSG_ERROR, "eap_proxy: EAP_IDENTITY_ANNONYMOUS selected user id "
                                 "%d, annonymous %d\n", eap_auth_start.user_id_len,
                                 eap_auth_start.eap_meta_identity_len);
+
+                        /* Is encrypted IMSI required? */
+                        if (eap_sim_anonymous_username(config->anonymous_identity,
+                                                       config->anonymous_identity_len)) {
+                            eap_auth_start.use_encrypted_imsi = 1;
+                            eap_auth_start.use_encrypted_imsi_valid = 1;
+                            wpa_printf(MSG_DEBUG, "eap_proxy: Using IMSI encryption for this connection.");
+
+                            /* IMSI encryption requires Real IMSI-Identitity */
+                            identity_format = EAP_IDENTITY_IMSI_3GPP_REALM;
+                            eap_auth_start.user_id_valid = 1;
+                        }
                 } else {
                         /* config file doesn't contain any identity
                                 generating IMSI@realm */
