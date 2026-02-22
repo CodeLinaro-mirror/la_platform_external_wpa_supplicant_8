@@ -286,9 +286,9 @@ L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
 L_CFLAGS += -DCONFIG_SAE_PK
-NEED_AES_SIV=y
 OBJS += src/common/sae_pk.c
 endif
+NEED_AES_SIV=y
 NEED_ECC=y
 NEED_DH_GROUPS=y
 NEED_HMAC_SHA256_KDF=y
@@ -342,6 +342,12 @@ ifdef NEED_NAN
 OBJS += nan_supplicant.o
 OBJS += src/nan/nan.o
 OBJS += src/common/nan_de.c
+endif
+
+ifdef CONFIG_PR
+OBJS += src/common/proximity_ranging.c
+OBJS += pr_supplicant.c
+L_CFLAGS += -DCONFIG_PR
 endif
 
 ifeq ($(CONFIG_OWE),y)
@@ -1765,6 +1771,11 @@ endif
 ifdef NEED_JSON
 OBJS += src/utils/json.c
 L_CFLAGS += -DCONFIG_JSON
+endif
+
+ifdef CONFIG_PROCESS_COORDINATION
+L_CFLAGS += -DCONFIG_PROCESS_COORDINATION
+OBJS += src/common/proc_coord.c
 endif
 
 OBJS += src/drivers/driver_common.c
