@@ -56,8 +56,7 @@ constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
  *   <your/path/here>/hostapd_unmetered_overlay.conf:/vendor/etc/wifi/hostapd_unmetered_overlay.conf
  *
  * to the build file for your device, with the <your/path/here> being the path to your overlay in
- * your repo. See the resolveVendorConfPath function in this file for more specifics on where this
- * overlay file will wind up on your device.
+ * your repo.
  *
  * This overlay may configure any of the parameters listed in kOverlayableKeys. The kOverlayableKeys
  * list is subject to change over time, as certain parameters may be added as APIs instead in the
@@ -71,7 +70,7 @@ constexpr char kConfFileNameFmt[] = "/data/vendor/wifi/hostapd/hostapd_%s.conf";
  * Anything added to this overlay will be prepended to the hostapd.conf for unmetered (typically
  * local only hotspots) interfaces.
  */
-constexpr char kUnmeteredIfaceOverlayPath[] = "/etc/wifi/hostapd_unmetered_overlay.conf";
+constexpr char kUnmeteredIfaceOverlayPath[] = "/vendor/etc/wifi/hostapd_unmetered_overlay.conf";
 
 /**
  * Allow-list of hostapd.conf parameters (keys) that can be set via overlay.
@@ -221,17 +220,6 @@ bool GetInterfacesInBridge(std::string br_name,
 		interfaces->push_back(if_name);
 	}
 	return true;
-}
-
-std::string resolveVendorConfPath(const std::string& conf_path)
-{
-#if defined(__ANDROID_APEX__)
-	// returns "/apex/<apexname>" + conf_path
-	std::string path = android::base::GetExecutablePath();
-	return path.substr(0, path.find_first_of('/', strlen("/apex/"))) + conf_path;
-#else
-	return std::string("/vendor") + conf_path;
-#endif
 }
 
 void logHostapdConfigError(int error, const std::string& file_path) {
@@ -876,12 +864,11 @@ std::string CreateHostapdConfig(
 			"1" : "0");
 
 	// Overlay for LOHS (unmetered SoftAP)
-	std::string overlay_path = resolveVendorConfPath(kUnmeteredIfaceOverlayPath);
 	std::string overlay_string;
 	if (!nw_params.isMetered
-			&& 0 == access(overlay_path.c_str(), R_OK)
-			&& !ReadFileToString(overlay_path, &overlay_string)) {
-		logHostapdConfigError(errno, overlay_path);
+			&& 0 == access(kUnmeteredIfaceOverlayPath, R_OK)
+			&& !ReadFileToString(kUnmeteredIfaceOverlayPath, &overlay_string)) {
+		logHostapdConfigError(errno, kUnmeteredIfaceOverlayPath);
 		return "";
 	}
 	std::string sanitized_overlay = "";
