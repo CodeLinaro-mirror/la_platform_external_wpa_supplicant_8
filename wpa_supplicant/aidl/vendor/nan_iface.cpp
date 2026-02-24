@@ -568,6 +568,8 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
 	char16_t cmdId, const std::string& ifaceName)
 {
+	u8 allocated_if_addr[ETH_ALEN];
+
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
@@ -593,7 +595,7 @@ bool NanIface::isValid()
 		}
 
 		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN, ifaceName.c_str(), NULL, NULL, NULL,
-						NULL, NULL) < 0)
+						(u8 *)allocated_if_addr, NULL) < 0)
 		{
 			wpa_printf(MSG_ERROR, "Failed to create NAN iface");
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
