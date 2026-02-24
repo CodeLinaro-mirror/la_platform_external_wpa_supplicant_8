@@ -1804,7 +1804,7 @@ void wpas_notify_nan_ndp_request(struct wpa_supplicant *wpa_s,
 		       ssi_hex ? ssi_hex : "", csid);
 
 	wpas_aidl_notify_nan_ndp_request(wpa_s, ndp_id, peer_nmi,
-		publish_inst_id, csid, nullptr, 0);
+		init_ndi, publish_inst_id, csid, nullptr, 0);
 
 	os_free(ssi_hex);
 }

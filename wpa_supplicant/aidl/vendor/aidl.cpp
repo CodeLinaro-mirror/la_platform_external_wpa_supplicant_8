@@ -1336,9 +1336,10 @@ void wpas_aidl_notify_nan_nik_received(
 
 void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
-		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len)
+		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid,
+		const u8* app_info, size_t app_info_len)
 {
-	if (!wpa_s || !peer_nmi_addr || (app_info_len > 0 && !app_info))
+	if (!wpa_s || !peer_nmi_addr || !init_ndi_addr || (app_info_len > 0 && !app_info))
 		return;
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
@@ -1347,7 +1348,7 @@ void wpas_aidl_notify_nan_ndp_request(
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN NDP request");
 	aidl_manager->notifyNanDataPathRequestEvent(wpa_s, discovery_session_id,
-		peer_nmi_addr, ndp_id,
+		peer_nmi_addr, init_ndi_addr, ndp_id,
 		// TODO(b/460750167): replace the magic number with nan_cipher_suite_id
 		csid != 0, app_info, app_info_len);
 }

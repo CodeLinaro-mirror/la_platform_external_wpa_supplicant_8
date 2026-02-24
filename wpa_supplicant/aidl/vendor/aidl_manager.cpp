@@ -4125,10 +4125,10 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 }
 
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len)
 {
-	if (!wpa_s || !peer_nmi_addr) {
+	if (!wpa_s || !peer_nmi_addr || !init_ndi_addr) {
 		return;
 	}
 
@@ -4137,6 +4137,7 @@ void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 		NanDataPathRequestInd request_ind;
 		request_ind.discoverySessionId = discovery_id;
 		request_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
+		request_ind.ndiInitMac = macAddrToArray(init_ndi_addr);
 		request_ind.ndpInstanceId = ndp_id;
 		request_ind.securityRequired = security_required;
 		if (app_info && app_info_len > 0) {
@@ -4469,7 +4470,7 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
 void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 	int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
@@ -4550,7 +4551,7 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
 void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 	int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,

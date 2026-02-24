@@ -1264,10 +1264,10 @@ static int appendSecurityConfigToCmd(
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"%s ndi=%s handle=%d ndp_id=%d peer_nmi=" MACSTR,
+			"%s ndi=%s handle=%d ndp_id=%d peer_nmi=" MACSTR " init_ndi=" MACSTR,
 			msg.acceptRequest ? "accept" : "reject",
 			msg.ifaceName.c_str(), msg.discoverySessionId, msg.ndpInstanceId,
-			MAC2STR(msg.peerDiscMacAddr));
+			MAC2STR(msg.peerDiscMacAddr), MAC2STR(msg.ndiInitMac));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 				ifname, cmdId, nan_status);

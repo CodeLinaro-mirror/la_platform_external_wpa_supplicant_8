@@ -209,7 +209,8 @@ extern "C"
 		int nik_lifetime, int identity_id);
 	void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
-		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len);
+		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid, const u8* app_info,
+		size_t app_info_len);
 	void wpas_aidl_notify_nan_ndp_confirmed(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
 		bool is_success, u8 reason, const u8* app_info, size_t app_info_len);
@@ -465,7 +466,8 @@ static void wpas_aidl_notify_nan_nik_received(
 		int nik_lifetime, int identity_id) {}
 static void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
-		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len) {}
+		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid, const u8* app_info,
+		size_t app_info_len) {}
 static void wpas_aidl_notify_nan_ndp_confirmed(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
 		bool is_success, u8 reason, const u8* app_info, size_t app_info_len) {}
