@@ -8,12 +8,12 @@
 
 #include "aidl_manager.h"
 #include "aidl_return_util.h"
-#include "aidl/shared/shared_utils.h"
 #include "driver_i.h"
 #include "misc_utils.h"
 #include "nan_iface.h"
 #include "nan_supplicant.h"
 #include "nan_utils.h"
+#include "shared_utils.h"
 #include "src/common/nan_de.h"
 #include "src/common/nan_defs.h"
 
