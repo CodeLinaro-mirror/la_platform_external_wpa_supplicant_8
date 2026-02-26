@@ -11,8 +11,7 @@
 #include "misc_utils.h"
 #include "supplicant.h"
 #include "p2p_iface.h"
-
-#include "aidl/shared/shared_utils.h"
+#include "shared_utils.h"
 
 #include <android-base/file.h>
 #include <fcntl.h>
