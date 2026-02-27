@@ -14,7 +14,7 @@
 
 prebuilt_etc {
     name: "mainline_supplicant_rc",
-    src: "config/mainline_supplicant.rc",
+    src: "mainline_supplicant.rc",
     filename: "mainline_supplicant.rc",
     installable: false,
 }
