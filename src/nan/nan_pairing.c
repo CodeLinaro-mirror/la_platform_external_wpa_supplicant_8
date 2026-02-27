@@ -888,7 +888,9 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 		}
 
 		ret = nan->cfg->pairing_result_cb(nan->cfg->cb_ctx,
-						  peer->nmi_addr, pasn->akmp,
+						  peer->nmi_addr,
+						  peer->pairing.peer_instance_id,
+						  pasn->akmp,
 						  pasn->cipher, pasn->status,
 						  &pasn->ptk,
 						  pasn->status ==
@@ -1100,7 +1102,9 @@ static int nan_pairing_handle_auth_2(struct nan_data *nan_data,
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: wpa_pasn_auth_rx() failed");
 		nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
-						 peer->nmi_addr, pasn->akmp,
+						 peer->nmi_addr,
+						 peer->pairing.peer_instance_id,
+						 pasn->akmp,
 						 pasn->cipher,
 						 WLAN_STATUS_UNSPECIFIED_FAILURE,
 						 NULL, NULL);
@@ -1136,7 +1140,9 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
 	}
 
 	ret = nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
-					       peer->nmi_addr, pasn->akmp,
+					       peer->nmi_addr,
+					       peer->pairing.peer_instance_id,
+					       pasn->akmp,
 					       pasn->cipher, status,
 					       &pasn->ptk,
 					       status == WLAN_STATUS_SUCCESS ?

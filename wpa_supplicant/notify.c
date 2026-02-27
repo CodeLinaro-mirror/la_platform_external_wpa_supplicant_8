@@ -1893,6 +1893,7 @@ void wpas_notify_nan_cluster_join(struct wpa_supplicant *wpa_s,
 
 
 void wpas_notify_nan_pairing_status(struct wpa_supplicant *wpa_s,
+				    int peer_instance_id,
 				    const u8 *peer_addr, int akmp,
 				    int cipher, u8 status,
 				    const u8 *nd_pmk)
@@ -1914,7 +1915,7 @@ void wpas_notify_nan_pairing_status(struct wpa_supplicant *wpa_s,
 		       nd_pmk ? " nd_pmk=" : "",
 		       nd_pmk ? nd_pmk_hex : "");
 
-	wpas_aidl_notify_nan_pairing_confirmed(wpa_s, -1, peer_addr,
+	wpas_aidl_notify_nan_pairing_confirmed(wpa_s, peer_instance_id, peer_addr,
 		status == WLAN_STATUS_SUCCESS, status, -1);
 }
 

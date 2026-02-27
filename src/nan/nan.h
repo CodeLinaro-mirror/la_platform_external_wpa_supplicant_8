@@ -645,6 +645,7 @@ struct nan_config {
 	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_addr: Peer NAN device address
+	 * @peer_instance_id: Peer instance id
 	 * @akmp: AKMP used in the pairing
 	 * @cipher: Cipher used in the pairing
 	 * @status: Status of the pairing (WLAN_STATUS_* )
@@ -654,7 +655,8 @@ struct nan_config {
 	 *	installed successfully or status is
 	 *	WLAN_STATUS_UNSPECIFIED_FAILURE, -1 otherwise
 	 */
-	int (*pairing_result_cb)(void *ctx, const u8 *peer_addr, int akmp,
+	int (*pairing_result_cb)(void *ctx, const u8 *peer_addr,
+				 int peer_instance_id, int akmp,
 				 int cipher, u8 status, struct wpa_ptk *ptk,
 				 const u8 *nd_pmk);
 
