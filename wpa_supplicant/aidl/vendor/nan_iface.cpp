@@ -29,7 +29,21 @@ using aidl::android::system::wifi::mainline_supplicant::nan_utils::validateNanPu
 using aidl::android::system::wifi::mainline_supplicant::nan_utils::validateNanSubscribeConfig;
 using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertAidlNanPublishConfigToInternal;
 using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertAidlNanSubscribeConfigToInternal;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertIntegerToRttBw;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertNanCipherSuiteTypeToSupplicantCipherSuiteType;
+using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertNanPairingSecurityTypeToInteger;
+using NanPairingConfig = aidl::android::system::wifi::mainline_supplicant::NanPairingConfig;
 using NanStatusCode = aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
+using NanPairingSecurityType =
+	aidl::android::system::wifi::mainline_supplicant::
+	NanPairingSecurityConfig::NanPairingSecurityType;
+using NanCipherSuiteType =
+	aidl::android::system::wifi::mainline_supplicant::NanCipherSuiteType;
+using NanDataPathSecurityType =
+	aidl::android::system::wifi::mainline_supplicant::
+	NanDataPathSecurityConfig::NanDataPathSecurityType;
+using NanDataPathSecurityConfig =
+	aidl::android::system::wifi::mainline_supplicant::NanDataPathSecurityConfig;
 
 const std::string kMainlineSupplicantConfigPath =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
@@ -46,6 +60,11 @@ static constexpr int kNanIfaceConfBufSize = 128;
 static constexpr int kNanIfaceConfBandDisableScan = 0;
 static constexpr int kNanIfaceConfScanDwellTime = 150;
 static constexpr int kNanIfaceConfScanPeriod = 20;
+static constexpr int kNanIfaceConfBootstrapComebackTimeoutTus = 1024;
+static constexpr uint16_t kNanIfaceConfAutoAcceptedBm = BIT(0);
+static constexpr int kNanIfaceConfMaxBandwidth = 160;  // in MHz
+static constexpr int kNanIfaceCapMaxNdiInterfaces = 4;
+static constexpr int kNanIfaceCapMaxNdpSessions = 10;
 
 template <typename... Args>
 int setNanConfigParam(struct wpa_supplicant* wpa_s, const char* param, Args... args)
@@ -56,6 +75,19 @@ int setNanConfigParam(struct wpa_supplicant* wpa_s, const char* param, Args... a
 		return 1;
 	}
 	return wpas_nan_set(wpa_s, cmd);
+}
+
+static std::string bytesToHexString(const uint8_t* data, size_t len) {
+    if (!data || len == 0) return "";
+
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+
+    for (size_t i = 0; i < len; ++i) {
+        ss << std::setw(2) << static_cast<int>(data[i]);
+    }
+
+    return ss.str();
 }
 
 void NanIface::enqueue(std::function<void()> task) {
@@ -258,12 +290,13 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::terminatePairingRequest(
-	char16_t in_cmdId, int32_t in_pairingInstanceId)
+	char16_t in_cmdId, int32_t in_pairingInstanceId,
+	const std::array<uint8_t, 6>& in_peerDiscMacAddr)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&NanIface::terminatePairingRequestInternal, in_cmdId,
-		in_pairingInstanceId);
+		in_pairingInstanceId, in_peerDiscMacAddr);
 }
 
 ::ndk::ScopedAStatus NanIface::initiateDataPathRequest(
@@ -284,14 +317,16 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequest(
-	char16_t in_cmdId, int32_t in_ndpInstanceId)
+	char16_t in_cmdId, int32_t in_ndpInstanceId,
+	const std::array<uint8_t, 6>& in_peerDiscMacAddr)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&NanIface::terminateDataPathRequestInternal, in_cmdId,
-		in_ndpInstanceId);
+		in_ndpInstanceId, in_peerDiscMacAddr);
 }
 
+#ifdef CONFIG_NAN
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
 {
@@ -314,6 +349,13 @@ bool NanIface::isValid()
 		NanStatus nan_status;
 		nan_status.status = NanStatusCode::SUCCESS;
 		NanCapabilities aidl_caps = {};
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global_, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanCapabilitiesResponse(ifname, cmdId,
+				nan_status, aidl_caps);
+			return;
+		}
 
 		aidl_caps.maxPublishes = kNanIfaceCapMaxPublishSessions;
 		aidl_caps.maxSubscribes = kNanIfaceCapMaxSubscribeSessions;
@@ -326,6 +368,17 @@ bool NanIface::isValid()
 			kNanIfaceCapInstantCommunicationModeSupport;
 		aidl_caps.supportsSuspension = kNanIfaceCapSupportsSuspension;
 		aidl_caps.supportsPeriodicRanging = kNanIfaceCapSupportsPeriodicRanging;
+		aidl_caps.maxSupportedBandwidth = convertIntegerToRttBw(kNanIfaceConfMaxBandwidth);
+		aidl_caps.maxNdiInterfaces = kNanIfaceCapMaxNdiInterfaces;
+		aidl_caps.maxNdpSessions = kNanIfaceCapMaxNdpSessions;
+		aidl_caps.supportedCipherSuites = wpa_s->nan_supported_csids;
+#ifdef CONFIG_PASN
+		if (wpa_s->nan_capa.drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP) {
+			aidl_caps.supportsPairing = true;
+		}
+#endif
+		// the upper nibble represents RX
+		aidl_caps.maxNumRxChainsSupported = (wpa_s->nan_capa.num_antennas >> 4) & 0x0f;
 		aidl_manager->notifyNanCapabilitiesResponse(
 			ifname, cmdId, nan_status, aidl_caps);
 	});
@@ -458,6 +511,9 @@ bool NanIface::isValid()
 		}
 		ret |= setNanConfigParam(
 			wpa_s, "cluster_id " MACSTR, MAC2STR(msg2.clusterId));
+		ret |= setNanConfigParam(
+			wpa_s, "max_bw %d",  kNanIfaceConfMaxBandwidth
+		);
 
 		if (ret != 0) {
 			aidl_manager->notifyNanEnableResponse(
@@ -634,6 +690,19 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			return;
 		}
 
+		// Setup Bootstrapping & Pairing Config
+		NanPairingConfig pairing_config = msg.pairingConfig;
+		setNanConfigParam(wpa_s, "pairing_setup %d", pairing_config.enablePairingSetup ? 1 : 0);
+		setNanConfigParam(wpa_s, "npk_caching %d", pairing_config.enablePairingCache ? 1 : 0);
+		setNanConfigParam(wpa_s, "pairing_verification %d", pairing_config.enablePairingVerification ? 1 : 0);
+		setNanConfigParam(wpa_s, "bootstrap_config %hx,%hx,%hu",
+			static_cast<uint16_t>(pairing_config.supportedBootstrappingMethods),
+			kNanIfaceConfAutoAcceptedBm, kNanIfaceConfBootstrapComebackTimeoutTus);
+		if (!msg.identityKey.empty()) {
+			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.identityKey.data(),
+				msg.identityKey.size()).c_str());
+		}
+
 		struct nan_publish_params params =
 			convertAidlNanPublishConfigToInternal(msg);
 		// To prevent hex_matching_xx is freed before passing it to wpas_nan_publish,
@@ -720,6 +789,19 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanStartSubscribeResponse(
 				ifname, cmdId, nan_status, 0);
 			return;
+		}
+
+		// Setup Bootstrapping & Pairing Config
+		NanPairingConfig pairing_config = msg.pairingConfig;
+		setNanConfigParam(wpa_s, "pairing_setup %d", pairing_config.enablePairingSetup ? 1 : 0);
+		setNanConfigParam(wpa_s, "npk_caching %d", pairing_config.enablePairingCache ? 1 : 0);
+		setNanConfigParam(wpa_s, "pairing_verification %d", pairing_config.enablePairingVerification ? 1 : 0);
+		setNanConfigParam(wpa_s, "bootstrap_config %hx,%hx,%hu",
+			static_cast<uint16_t>(pairing_config.supportedBootstrappingMethods),
+			kNanIfaceConfAutoAcceptedBm, kNanIfaceConfBootstrapComebackTimeoutTus);
+		if (!msg.identityKey.empty()) {
+			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.identityKey.data(),
+				msg.identityKey.size()).c_str());
 		}
 
 		struct nan_subscribe_params params =
@@ -834,9 +916,22 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for bootstrapping request initialization
-		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+			"NAN_BOOTSTRAP " MACSTR " handle=%d req_instance_id=%d method=%d",
+			MAC2STR(msg.peerDiscMacAddr.data()), msg.discoverySessionId,
+			msg.peerId, msg.requestBootstrappingMethod);
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiateBootstrappingResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (wpas_nan_bootstrap_request(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
+		// supplicant reuses the discvoery session id as bootstrapping session id
+		aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId,
+			nan_status, msg.discoverySessionId);
 	});
 
 	return ndk::ScopedAStatus::ok();
@@ -861,8 +956,19 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for responding bootstrapping request
-		nan_status.status = NanStatusCode::SUCCESS;
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+			"NAN_BOOTSTRAP " MACSTR " handle=%d method=%d auth",
+			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
+			msg.responseBootstrappingMethod);
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		if (wpas_nan_bootstrap_request(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
 			ifname, cmdId, nan_status);
 	});
@@ -888,7 +994,56 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for pairing request initialization
+
+		setNanConfigParam(wpa_s, "npk_caching %d", msg.enablePairingCache ? 1 : 0);
+		if (!msg.pairingIdentityKey.empty()) {
+			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.pairingIdentityKey.data(),
+				msg.pairingIdentityKey.size()).c_str());
+		}
+
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+			"NAN_PAIRING " MACSTR " handle=%d peer_instance_id=%d auth=%d",
+			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
+			msg.peerId, convertNanPairingSecurityTypeToInteger(
+				msg.securityConfig.securityType));
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (msg.securityConfig.securityType == NanPairingSecurityType::PASSPHRASE &&
+			msg.securityConfig.passphrase.size() > 0) {
+			cnt += snprintf(
+				cmd + cnt, kNanIfaceConfBufSize - cnt,
+				" password=%s",
+				std::string(msg.securityConfig.passphrase.begin(),
+				msg.securityConfig.passphrase.end()).c_str());
+			if (cnt < 0 || cnt >= sizeof(cmd)) {
+				aidl_manager->notifyNanInitiatePairingResponse(
+					ifname, cmdId, nan_status, 0);
+				return;
+			}
+		}
+		// Only support PUBLIC_KEY_PASN_128_MASK and PUBLIC_KEY_PASN_256_MASK for pairing
+		if (msg.securityConfig.cipherType == NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK) {
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher_suite=CCMP");
+		} else if (msg.securityConfig.cipherType ==
+				NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK) {
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
+				" cipher_suite=GCMP-256");
+		} else {
+			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
+			aidl_manager->notifyNanInitiatePairingResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
 	});
 
@@ -913,7 +1068,68 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for responding pairing request
+
+		if (!msg.acceptRequest) {
+			char cmd[kNanIfaceConfBufSize];
+			int ret = snprintf(cmd, kNanIfaceConfBufSize,
+				MACSTR, MAC2STR(msg.peerDiscMacAddr));
+			if (ret > 0 && ret < kNanIfaceConfBufSize &&
+				wpas_nan_pairing_abort(wpa_s, cmd) >= 0) {
+				nan_status.status = NanStatusCode::SUCCESS;
+			}
+			aidl_manager->notifyNanRespondToPairingIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+
+		setNanConfigParam(wpa_s, "npk_caching %d", msg.enablePairingCache ? 1 : 0);
+		if (!msg.pairingIdentityKey.empty()) {
+			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.pairingIdentityKey.data(),
+				msg.pairingIdentityKey.size()).c_str());
+		}
+
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+			"NAN_PAIRING " MACSTR " handle=%d peer_instance_id=%d auth=%d responder",
+			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
+			msg.peerId, convertNanPairingSecurityTypeToInteger(
+				msg.securityConfig.securityType));
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (msg.securityConfig.securityType == NanPairingSecurityType::PASSPHRASE)  {
+			cnt += snprintf(
+				cmd + cnt, kNanIfaceConfBufSize - cnt,
+				" password=%s",
+				std::string(msg.securityConfig.passphrase.begin(),
+				msg.securityConfig.passphrase.end()).c_str());
+			if (cnt < 0 || cnt >= sizeof(cmd)) {
+				aidl_manager->notifyNanInitiatePairingResponse(
+					ifname, cmdId, nan_status, 0);
+				return;
+			}
+		}
+		// Only support PUBLIC_KEY_PASN_128_MASK and PUBLIC_KEY_PASN_256_MASK for pairing
+		if (msg.securityConfig.cipherType == NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK) {
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher_suite=CCMP");
+		} else if (msg.securityConfig.cipherType ==
+				NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK) {
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
+				" cipher_suite=GCMP-256");
+		} else {
+			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
+			aidl_manager->notifyNanInitiatePairingResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanRespondToPairingIndicationResponse(
 			ifname, cmdId, nan_status);
 	});
@@ -922,7 +1138,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 }
 
 ::ndk::ScopedAStatus NanIface::terminatePairingRequestInternal(
-	char16_t cmdId, int32_t pairingInstanceId)
+	char16_t cmdId, int32_t pairingInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr)
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -938,11 +1154,36 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for terminating pairing request
+		char cmd[kNanIfaceConfBufSize];
+		int ret = snprintf(cmd, kNanIfaceConfBufSize, MACSTR, MAC2STR(peerDiscMacAddr));
+		if (ret > 0 && ret < kNanIfaceConfBufSize && wpas_nan_pairing_abort(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
 	});
 
 	return ndk::ScopedAStatus::ok();
+}
+
+static int appendSecurityConfigToCmd(
+	char* cmd, size_t cmd_size, size_t cnt,
+	const NanDataPathSecurityConfig& security_config)
+{
+	cnt += snprintf(
+		cmd + cnt, cmd_size - cnt,
+		" csid=%d", convertNanCipherSuiteTypeToSupplicantCipherSuiteType(
+			security_config.cipherType)
+	);
+	if (security_config.securityType == NanDataPathSecurityType::PASSPHRASE) {
+		cnt += snprintf(cmd + cnt, cmd_size - cnt,
+			" password=%s", std::string(security_config.passphrase.begin(),
+			security_config.passphrase.end()).c_str());
+	} else if (security_config.securityType == NanDataPathSecurityType::PMK) {
+		std::string pmk_str = bytesToHexString(security_config.pmk.data(), security_config.pmk.size());
+		cnt += snprintf(cmd + cnt, cmd_size - cnt,
+			" pmk=%s", pmk_str.c_str());
+	}
+	return cnt;
 }
 
 ::ndk::ScopedAStatus NanIface::initiateDataPathRequestInternal(
@@ -962,7 +1203,31 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for initiating data path request
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+			"NAN_NDP_REQUEST handle=%d ndi=%s peer_nmi=" MACSTR " peer_id=%d",
+			msg.discoverySessionId, msg.ifaceName.c_str(),
+			MAC2STR(msg.peerDiscMacAddr), msg.peerId);
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiateDataPathResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (msg.appInfo.size() > 0) {
+			std::string app_info_str = vectorToHexString(msg.appInfo);
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
+				" ssi=%s", app_info_str.c_str());
+		}
+		cnt += appendSecurityConfigToCmd(
+			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiateDataPathResponse(
+				ifname, cmdId, nan_status, 0);
+			return;
+		}
+		if (wpas_nan_ndp_request(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
 	});
 	return ndk::ScopedAStatus::ok();
@@ -987,7 +1252,32 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				ifname, cmdId, nan_status);
 			return;
 		}
-		// TODO(b/460750167): wpa_supplicant API for responding data path indication request
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+			"NAN_NDP_RESPONSE %s ndi=%s handle=%d ndp_id=%d",
+			msg.acceptRequest ? "accept" : "reject",
+			msg.ifaceName.c_str(), msg.discoverySessionId, msg.ndpInstanceId);
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		if (msg.appInfo.size() > 0) {
+			std::string app_info_str = vectorToHexString(msg.appInfo);
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
+				" ssi=%s", app_info_str.c_str());
+		}
+		cnt += appendSecurityConfigToCmd(
+			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+
+		if (wpas_nan_ndp_response(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
 		aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 			ifname, cmdId, nan_status);
 	});
@@ -995,11 +1285,162 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 }
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
-	char16_t cmdId, int32_t ndpInstanceId)
+	char16_t cmdId, int32_t ndpInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr)
 {
-	// TODO(b/460750167): wpa_supplicant API for terminate data path request & AIDL for callback response
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
+		NanStatus nan_status;
+		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		struct wpa_supplicant* wpa_s =
+			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
+		if (!wpa_s) {
+			aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
+			return;
+		}
+
+		char cmd[kNanIfaceConfBufSize];
+		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
+				"NAN_NDP_TERMINATE peer_nmi=" MACSTR " ndp_id=%d",
+				MAC2STR(peerDiscMacAddr), ndpInstanceId);
+
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
+			return;
+		}
+		if (wpas_nan_ndp_terminate(wpa_s, cmd) >= 0) {
+			nan_status.status = NanStatusCode::SUCCESS;
+		}
+		aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
+	});
+	return ndk::ScopedAStatus::ok();
+}
+#else
+::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
+	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
+{
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
+
+::ndk::ScopedAStatus NanIface::getCapabilitiesRequestInternal(char16_t cmdId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::configRequestInternal(
+	char16_t cmdId, const NanConfigRequest& request)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::enableRequestInternal(
+	char16_t cmdId, const NanEnableRequest& msg1,
+	const NanConfigRequest& msg2)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::disableRequestInternal(char16_t cmdId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
+	char16_t cmdId, const std::string& ifaceName)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::deleteDataInterfaceRequestInternal(
+	char16_t cmdId, const std::string& ifaceName)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::startPublishRequestInternal(
+	char16_t cmdId, const NanPublishRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::stopPublishRequestInternal(
+	char16_t cmdId, int8_t sessionId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::startSubscribeRequestInternal(
+	char16_t cmdId, const NanSubscribeRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::stopSubscribeRequestInternal(
+	char16_t cmdId, int8_t sessionId)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::transmitFollowupRequestInternal(
+	char16_t cmdId, const NanTransmitFollowupRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::initiateBootstrappingRequestInternal(
+	char16_t cmdId, const NanBootstrappingRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::respondToBootstrappingIndicationRequestInternal(
+	char16_t cmdId, const NanBootstrappingResponse& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::initiatePairingRequestInternal(
+	char16_t cmdId, const NanPairingRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::respondToPairingIndicationRequestInternal(
+	char16_t cmdId, const NanRespondToPairingIndicationRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::terminatePairingRequestInternal(
+	char16_t cmdId, int32_t pairingInstanceId,
+	const std::array<uint8_t, 6>& peerDiscMacAddr)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::initiateDataPathRequestInternal(
+	char16_t cmdId, const NanInitiateDataPathRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::respondToDataPathIndicationRequestInternal(
+	char16_t cmdId, const NanRespondToDataPathIndicationRequest& msg)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
+	char16_t cmdId, int32_t ndpInstanceId,
+	const std::array<uint8_t, 6>& peerDiscMacAddr)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+#endif
 
 bool NanIface::isStartedClusterIndicationEnabled()
 {

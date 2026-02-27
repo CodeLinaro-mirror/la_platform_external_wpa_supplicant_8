@@ -10,6 +10,7 @@
 #include <android/binder_manager.h>
 
 #include "aidl_manager.h"
+#include "src/nan/nan.h"
 
 extern "C"
 {
@@ -1232,6 +1233,158 @@ void wpas_aidl_notify_nan_match_expired(struct wpa_supplicant *wpa_s, int subscr
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN match expired");
 	aidl_manager->notifyNanMatchExpired(wpa_s, subscribe_id, peer_publish_id);
+}
+
+void wpas_aidl_notify_nan_bootstrap_request(
+		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
+		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id)
+{
+	if (!wpa_s || !peer_nmi_addr)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN bootstrap request");
+	aidl_manager->notifyNanBootstrappingRequestEvent(wpa_s,
+		discovery_session_id, peer_id, peer_nmi_addr, bootstrapping_id, bootstrap_method);
+}
+
+void wpas_aidl_notify_nan_bootstrap_confirmed(
+		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
+		const u8* peer_nmi_addr, u8 bootstrap_method,
+		bool is_success, u8 reason, const u8* cookie, size_t cookie_len)
+{
+	// bootstrap_method is not used by AIDL but provided by core supplicant
+	if (!wpa_s || (cookie_len > 0 && !cookie))
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN bootstrap result");
+	aidl_manager->notifyNanBootstrappingConfirmEvent(wpa_s,
+		bootstrapping_instance_id, peer_nmi_addr, is_success, reason, cookie, cookie_len);
+}
+
+#ifdef CONFIG_NAN
+bool getIsNpkCacheEnabled(struct wpa_supplicant* wpa_s, const u8* addr) {
+	if (!wpa_s || !addr)
+		return false;
+	// TODO: use API from nan.h nan_peer_npk_nik_caching_supported(wpa_s->nan, addr);
+	return true;
+}
+#else
+bool getIsNpkCacheEnabled(struct wpa_supplicant* wpa_s, const u8* addr) {
+	return false;
+}
+#endif
+
+void wpas_aidl_notify_nan_pairing_request(
+		struct wpa_supplicant* wpa_s, u8 discovery_session_id, int peer_id,
+		const u8* peer_nmi_addr, int pairing_id, bool is_setup,
+		const u8* nonce, const u8* tag)
+{
+	if (!wpa_s || !peer_nmi_addr)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN pairing request");
+	aidl_manager->notifyNanPairingRequestEvent(wpa_s,
+		discovery_session_id, peer_id, peer_nmi_addr,
+		pairing_id, is_setup, getIsNpkCacheEnabled(wpa_s, peer_nmi_addr),
+		nonce, tag);
+}
+
+void wpas_aidl_notify_nan_pairing_confirmed(
+		struct wpa_supplicant* wpa_s, int pairing_id, const u8 *peer_addr,
+		bool is_success, u8 status_code, int request_type)
+{
+	if (!wpa_s || !peer_addr)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN pairing confirmed");
+	aidl_manager->notifyNanPairingConfirmEvent(wpa_s, pairing_id,
+		is_success, status_code, request_type, getIsNpkCacheEnabled(wpa_s, peer_addr));
+}
+
+void wpas_aidl_notify_nan_nik_received(
+	struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
+	int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
+	int nik_lifetime, int identity_id)
+{
+	if (!wpa_s || (nik_len > 0 && !nik) || (npk_len > 0 && !npk))
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN identity key received");
+	aidl_manager->notifyPairingSecurityAssociationReceivedEvent(wpa_s,
+		nik, nik_len, cipher_ver, akmp, npk, npk_len, nik_lifetime, identity_id);
+}
+
+void wpas_aidl_notify_nan_ndp_request(
+		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
+		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len)
+{
+	if (!wpa_s || !peer_nmi_addr || (app_info_len > 0 && !app_info))
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN NDP request");
+	aidl_manager->notifyNanDataPathRequestEvent(wpa_s, discovery_session_id,
+		peer_nmi_addr, ndp_id,
+		// TODO(b/460750167): replace the magic number with nan_cipher_suite_id
+		csid != 0, app_info, app_info_len);
+}
+
+void wpas_aidl_notify_nan_ndp_confirmed(
+		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
+		bool is_success, u8 reason, const u8* app_info, size_t app_info_len)
+{
+	if (!wpa_s || !peer_ndi_addr || (app_info_len > 0 && !app_info))
+		return;
+
+	// TODO(b/460750167): get the channel info from wpas_nan_peer_info
+	// Command: "<addr> schedule"
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN NDP confirmed");
+	aidl_manager->notifyNanDataPathConfirmEvent(wpa_s, ndp_id,
+		is_success, peer_ndi_addr,
+		app_info, app_info_len, reason,
+		/* TODO(b/460750167): channel info*/
+		nullptr, nullptr, nullptr, 0);
+}
+
+void wpas_aidl_notify_nan_ndp_terminated(struct wpa_supplicant* wpa_s, u8 ndp_id)
+{
+	if (!wpa_s)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN NDP terminated");
+	aidl_manager->notifyNanDataPathTerminatedEvent(wpa_s, ndp_id);
 }
 
 static enum p2p_prov_disc_status convert_p2p_status_code_to_p2p_prov_disc_status(int status) {
