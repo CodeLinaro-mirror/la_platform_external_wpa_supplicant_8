@@ -1252,11 +1252,10 @@ void wpas_aidl_notify_nan_bootstrap_request(
 }
 
 void wpas_aidl_notify_nan_bootstrap_confirmed(
-		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
+		struct wpa_supplicant* wpa_s, u8 handle, u8 bootstrapping_instance_id,
 		const u8* peer_nmi_addr, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len)
 {
-	// bootstrap_method is not used by AIDL but provided by core supplicant
 	if (!wpa_s || (cookie_len > 0 && !cookie))
 		return;
 
@@ -1265,8 +1264,9 @@ void wpas_aidl_notify_nan_bootstrap_confirmed(
 		return;
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN bootstrap result");
-	aidl_manager->notifyNanBootstrappingConfirmEvent(wpa_s,
-		bootstrapping_instance_id, peer_nmi_addr, is_success, reason, cookie, cookie_len);
+	aidl_manager->notifyNanBootstrappingConfirmEvent(wpa_s, handle,
+		bootstrapping_instance_id, peer_nmi_addr, is_success, reason,
+		cookie, cookie_len, bootstrap_method);
 }
 
 #ifdef CONFIG_NAN

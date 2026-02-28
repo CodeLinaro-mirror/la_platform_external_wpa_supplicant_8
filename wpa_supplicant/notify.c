@@ -1708,7 +1708,7 @@ void wpas_notify_nan_bootstrap_success(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_SUCCESS
 		       "peer_nmi=" MACSTR " pbm=0x%04x handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, handle, requestor_instance_id);
-	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, requestor_instance_id,
+	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, requestor_instance_id,
 		peer_nmi, pbm, true, 0/*No Reason*/, nullptr, 0);
 }
 
@@ -1721,8 +1721,8 @@ void wpas_notify_nan_bootstrap_failure(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_FAILURE
 		       "peer_nmi=" MACSTR " pbm=0x%04x reason=%u handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, reason, handle, requestor_instance_id);
-	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, requestor_instance_id, peer_nmi, pbm,
-		false, reason, nullptr, 0);
+	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, requestor_instance_id, peer_nmi,
+		pbm, false, reason, nullptr, 0);
 }
 
 

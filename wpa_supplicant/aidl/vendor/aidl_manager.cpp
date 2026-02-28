@@ -3960,8 +3960,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 }
 
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
-	const u8 *cookie, size_t cookie_size)
+	int handle, int bootstrapping_id, const u8* peer_nmi_addr, bool success,
+	u8 reason, const u8 *cookie, size_t cookie_size, int bootstrapping_method)
 {
 	if (!wpa_s) {
 		return;
@@ -3969,6 +3969,17 @@ void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
 		nan_iface_object_map_.end()) {
 		NanBootstrappingConfirmInd confirm_ind;
+		confirm_ind.discoverySessionId = handle;
+		int method = translateBootstrappingMethod(bootstrapping_method);
+		if (method == -1) {
+			wpa_printf(MSG_ERROR, "Fail to translate bootstrapping method %d",
+					bootstrapping_method);
+			confirm_ind.bootstrappingMethod =
+				static_cast<NanBootstrappingMethod>(0);
+		} else {
+			confirm_ind.bootstrappingMethod =
+				static_cast<NanBootstrappingMethod>(method);
+		}
 		confirm_ind.bootstrappingInstanceId = bootstrapping_id;
 		confirm_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
 		confirm_ind.responseCode = success ?
@@ -4449,8 +4460,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
-	const u8 *cookie, size_t cookie_size) {}
+	int handle, int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
+	const u8 *cookie, size_t cookie_size, int bootstrapping_method) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int pairing_id, bool is_setup, bool is_npk_cache_enabled, const u8* nonce,
@@ -4530,8 +4541,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
-	const u8 *cookie, size_t cookie_size) {}
+	int handle, int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
+	const u8 *cookie, size_t cookie_size, int bootstrapping_method) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int pairing_id, bool is_setup, bool enable_cache, const u8* nonce,
