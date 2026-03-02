@@ -645,12 +645,13 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_remove(wpa_global->ifaces, WPA_IF_NAN, ifaceName.c_str()) != 0) {
+		if (wpa_drv_if_remove(wpa_global->ifaces, WPA_IF_NAN_DATA, ifaceName.c_str()) != 0) {
 			wpa_printf(MSG_ERROR, "Failed to remove NAN data iface in WPA driver.");
 			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
 
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
 	});
 	return ndk::ScopedAStatus::ok();
