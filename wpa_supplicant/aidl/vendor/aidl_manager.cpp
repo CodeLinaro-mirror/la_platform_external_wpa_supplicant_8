@@ -3585,7 +3585,8 @@ void AidlManager::notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
 #ifdef MAINLINE_SUPPLICANT
 #ifdef CONFIG_NAN
 NanMatchInd createNanServiceMatchResult(
-	int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len)
+	int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len,
+	const u8* match_filter, size_t match_filter_len)
 {
 	NanMatchInd nanMatchInfo;
 	nanMatchInfo.discoverySessionId = own_id;
@@ -3593,6 +3594,9 @@ NanMatchInd createNanServiceMatchResult(
 	nanMatchInfo.addr = macAddrToArray(peer_addr);
 	if (ssi != NULL) {
 		nanMatchInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	}
+	if (match_filter != NULL && match_filter_len > 0) {
+		nanMatchInfo.matchFilter = byteArrToVec(match_filter, match_filter_len);
 	}
 
 	return nanMatchInfo;
@@ -3637,7 +3641,7 @@ NanStatus convertNanReasonToAidl(enum nan_reason reason)
 void AidlManager::notifyNanServiceDiscovered(
 	struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
 	int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
-	const u8* ssi, size_t ssi_len)
+	const u8* ssi, size_t ssi_len, const u8* match_filter, size_t match_filter_len)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3653,7 +3657,7 @@ void AidlManager::notifyNanServiceDiscovered(
 			std::placeholders::_1,
 			createNanServiceMatchResult(
 				subscribe_id, peer_publish_id, peer_addr, ssi,
-				ssi_len)));
+				ssi_len, match_filter, match_filter_len)));
 		return;
 	}
 #endif
@@ -3709,7 +3713,7 @@ void AidlManager::notifyNanPublishReplied(
 			std::placeholders::_1,
 			createNanServiceMatchResult(
 				publish_id, peer_subscribe_id, peer_addr, ssi,
-				ssi_len)));
+				ssi_len, NULL, 0)));
 		return;
 	}
 #endif

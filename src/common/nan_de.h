@@ -40,7 +40,9 @@ struct nan_callbacks {
 				 const u8 *peer_addr, bool fsd, bool fsd_gas,
 				 const u8 *pmkid_list, size_t pmkid_count,
 				 const u8 *cipher_suite,
-				 size_t n_cipher_suite);
+				 size_t n_cipher_suite,
+				 const u8 *match_filter,
+				 size_t match_filter_len);
 
 	void (*replied)(void *ctx, int publish_id, const u8 *peer_addr,
 			int peer_subscribe_id,

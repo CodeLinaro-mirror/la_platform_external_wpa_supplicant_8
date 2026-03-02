@@ -1391,7 +1391,8 @@ send_event:
 			pmkid_count > 0 ? pmkid_list : NULL,
 			pmkid_count,
 			cipher_suite_count > 0 ? cipher_suites : NULL,
-			cipher_suite_count);
+			cipher_suite_count,
+			matching_filter, matching_filter_len);
 
 	return true;
 }

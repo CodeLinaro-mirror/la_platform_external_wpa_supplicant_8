@@ -169,7 +169,8 @@ extern "C"
 		struct wpa_supplicant* wpa_s,
 		enum nan_service_protocol_type srv_proto_type, int subscribe_id,
 		int peer_publish_id, const u8* peer_addr, bool fsd, const u8* ssi,
-		size_t ssi_len);
+		size_t ssi_len, const u8* match_filter,
+		size_t match_filter_len);
 	void wpas_aidl_notify_nan_publish_replied(
 		struct wpa_supplicant* wpa_s,
 		enum nan_service_protocol_type srv_proto_type, int publish_id,
@@ -430,7 +431,8 @@ static void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
 static void wpas_aidl_notify_nan_service_discovered(
     struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
     int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
-    const u8* ssi, size_t ssi_len) {}
+    const u8* ssi, size_t ssi_len, const u8* match_filter,
+    size_t match_filter_len) {}
 static void wpas_aidl_notify_nan_publish_replied(
     struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
     int publish_id, int peer_subscribe_id, const u8* peer_addr, const u8* ssi,

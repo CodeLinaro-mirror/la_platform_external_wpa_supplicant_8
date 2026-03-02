@@ -3345,7 +3345,9 @@ wpas_nan_de_discovery_result(void *ctx, int subscribe_id,
 			     const u8 *peer_addr, bool fsd, bool fsd_gas,
 			     const u8 *pmkid_list, size_t pmkid_count,
 			     const u8 *cipher_suite,
-			     size_t n_cipher_suite)
+			     size_t n_cipher_suite,
+			     const u8 *match_filter,
+			     size_t match_filter_len)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -3353,7 +3355,8 @@ wpas_nan_de_discovery_result(void *ctx, int subscribe_id,
 					 peer_publish_id, peer_addr, fsd,
 					 fsd_gas, ssi, ssi_len,
 					 pmkid_list, pmkid_count,
-					 cipher_suite, n_cipher_suite);
+					 cipher_suite, n_cipher_suite,
+					 match_filter, match_filter_len);
 }
 
 
