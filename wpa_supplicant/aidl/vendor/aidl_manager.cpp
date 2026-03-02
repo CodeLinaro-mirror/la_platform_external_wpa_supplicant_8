@@ -3176,6 +3176,29 @@ int AidlManager::addNanIfaceCallbackAidlObject(
 	return addIfaceCallbackAidlObjectToMap(
 		death_notifier_, ifname, callback, nan_iface_callbacks_map_);
 }
+
+/**
+ * Retrieve the |NanIface| aidl object reference using the provided
+ * ifname.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @iface_object Aidl reference corresponding to the iface.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::getNanIfaceAidlObjectByIfname(
+	const std::string &ifname, std::shared_ptr<NanIface> *iface_object)
+{
+	if (ifname.empty() || !iface_object)
+		return 1;
+
+	auto iface_object_iter = nan_iface_object_map_.find(ifname);
+	if (iface_object_iter == nan_iface_object_map_.end())
+		return 1;
+
+	*iface_object = iface_object_iter->second;
+	return 0;
+}
 #endif
 
 void AidlManager::notifyQosPolicyReset(

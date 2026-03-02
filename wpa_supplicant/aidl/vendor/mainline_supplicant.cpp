@@ -14,6 +14,7 @@
 #include "nan_iface.h"
 
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
+using aidl::android::hardware::wifi::supplicant::AidlManager;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
 using aidl::android::hardware::wifi::supplicant::misc_utils::ensureConfigFileExistsAtPath;
 using aidl::android::hardware::wifi::supplicant::misc_utils::kIfaceDriverName;
@@ -176,8 +177,14 @@ MainlineSupplicant::addNanInterfaceInternal(const std::string& ifaceName)
 			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
 
-	std::shared_ptr<ISupplicantNanIface> nanIface =
-		ndk::SharedRefBase::make<NanIface>(wpa_global_, nan_iface_name);
+	std::shared_ptr<NanIface> nanIface;
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager ||
+	    aidl_manager->getNanIfaceAidlObjectByIfname(nan_iface_name, &nanIface)) {
+		wpa_printf(MSG_ERROR, "Failed to get NAN interface object");
+		return {nullptr, createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN)};
+	}
+
 	active_nan_ifaces_[nan_iface_name] = nanIface;
 
 	wpa_printf(

@@ -320,6 +320,9 @@ public:
 	int addNanIfaceCallbackAidlObject(
 		const std::string &ifname,
 		const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback);
+	int getNanIfaceAidlObjectByIfname(
+		const std::string &ifname,
+		std::shared_ptr<NanIface> *iface_object);
 #endif
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
