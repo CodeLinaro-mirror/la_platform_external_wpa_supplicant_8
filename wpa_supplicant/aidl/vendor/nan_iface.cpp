@@ -906,6 +906,10 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
+
+		/* Transmit Followup Event when it is transmitted
+		   remove it when b/488629386 is implemented */
+		aidl_manager->notifyNanTransmitFollowup(wpa_s, cmdId, 0);
 	});
 
 	return ndk::ScopedAStatus::ok();
