@@ -4111,12 +4111,8 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 			wpa_printf(MSG_ERROR, "Invalid AKM type in pairing confirm event");
 			return;
 		}
-		if (cipher_ver == WPA_CIPHER_GCMP_256) {
-			npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK;
-		} else if (cipher_ver == WPA_CIPHER_CCMP) {
-			npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK;
-		} else {
-			wpa_printf(MSG_ERROR, "Invalid cipher type in pairing confirm event");
+		if (cipher_ver != NAN_NIRA_CIPHER_VER_128) {
+			wpa_printf(MSG_ERROR, "Invalid NIRA cipher version %d", cipher_ver);
 			return;
 		}
 
