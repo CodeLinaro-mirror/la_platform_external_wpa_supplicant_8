@@ -3513,12 +3513,33 @@ void wpas_nan_de_deinit(struct wpa_supplicant *wpa_s)
 }
 
 
+static struct wpa_supplicant *
+wpas_nan_get_mgmt_iface(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_supplicant *nmi_wpa_s;
+
+	for (nmi_wpa_s = wpa_s->global->ifaces; nmi_wpa_s;
+	     nmi_wpa_s = nmi_wpa_s->next) {
+		if (!nmi_wpa_s->nan_mgmt)
+			continue;
+		return nmi_wpa_s;
+	}
+
+	return wpa_s;
+}
+
+
 void wpas_nan_de_rx_sdf(struct wpa_supplicant *wpa_s, const u8 *src,
 			const u8 *a3,
 			unsigned int freq, const u8 *buf, size_t len,
 			int rssi)
 {
 	bool store_peer = false;
+
+	if (!wpa_s->nan_mgmt) {
+		/* Find NAN interface if packet rxed on wifi interface */
+		wpa_s = wpas_nan_get_mgmt_iface(wpa_s);
+	}
 
 	if (!wpa_s->nan_de)
 		return;
@@ -3853,23 +3874,6 @@ int * wpas_nan_usd_all_freqs(struct wpa_supplicant *wpa_s)
 
 	return freqs;
 }
-
-
-static struct wpa_supplicant *
-wpas_nan_get_mgmt_iface(struct wpa_supplicant *wpa_s)
-{
-	struct wpa_supplicant *nmi_wpa_s;
-
-	for (nmi_wpa_s = wpa_s->global->ifaces; nmi_wpa_s;
-	     nmi_wpa_s = nmi_wpa_s->next) {
-		if (!nmi_wpa_s->nan_mgmt)
-			continue;
-		return nmi_wpa_s;
-	}
-
-	return wpa_s;
-}
-
 
 void wpas_nan_tx_status(struct wpa_supplicant *wpa_s,
 			const u8 *data, size_t data_len, u8 acked)
