@@ -57,7 +57,7 @@ static constexpr int kNanMaxExtendedServiceSpecificInfoLen = 1280;
 static constexpr bool kNanIfaceCapInstantCommunicationModeSupport = false;
 static constexpr bool kNanIfaceCapSupportsPeriodicRanging = false;
 static constexpr bool kNanIfaceCapSupportsSuspension = false;
-static constexpr int kNanIfaceConfBufSize = 128;
+static constexpr int kNanIfaceConfBufSize = 1024;
 static constexpr int kNanIfaceConfBandDisableScan = 0;
 static constexpr int kNanIfaceConfScanDwellTime = 150;
 static constexpr int kNanIfaceConfScanPeriod = 20;
@@ -1231,6 +1231,11 @@ static int appendSecurityConfigToCmd(
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
 		}
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiateDataPathResponse(
+				ifname, cmdId, nan_status, msg.peerId);
+			return;
+		}
 		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
@@ -1281,6 +1286,11 @@ static int appendSecurityConfigToCmd(
 			std::string app_info_str = vectorToHexString(msg.appInfo);
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
+		}
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
 		}
 		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
