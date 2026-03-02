@@ -819,6 +819,13 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		params.match_filter_tx = hex_matching_tx.c_str();
 		params.match_filter_rx = hex_matching_rx.c_str();
 
+		discovery_termination_indication_ =
+			!msg.baseConfig.disableDiscoveryTerminationIndication;
+		match_expiration_indication_ =
+			!msg.baseConfig.disableMatchExpirationIndication;
+		followup_received_indication_ =
+			!msg.baseConfig.disableFollowupReceivedIndication;
+
 		// service name is guaranteed to be UTF-8, so it can be convert directly
 		std::string srv_name(msg.baseConfig.serviceName.begin(), msg.baseConfig.serviceName.end());
 
