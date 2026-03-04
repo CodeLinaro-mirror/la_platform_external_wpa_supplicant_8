@@ -3469,6 +3469,58 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpas_parse_connection_info_link(struct wpa_supplicant *wpa_s,
+					    int i,
+					    struct ieee802_11_elems *req_elems,
+					    struct ieee802_11_elems *resp_elems,
+					    struct wpabuf *req_mlbuf,
+					    struct wpabuf *resp_mlbuf)
+{
+	struct ieee802_11_elems req_persta_elems = *req_elems;
+	struct ieee802_11_elems resp_persta_elems = *resp_elems;
+	struct supported_chan_width sta_cw;
+	enum chan_width ap_cw;
+
+	if (ieee802_11_parse_link_assoc_req(&req_persta_elems, req_mlbuf, i,
+					    true) == ParseFailed ||
+	    ieee802_11_parse_link_assoc_resp(&resp_persta_elems, resp_mlbuf, i,
+					     true) == ParseFailed) {
+		wpa_s->links[i].max_nss_rx = wpa_s->connection_max_nss_rx;
+		wpa_s->links[i].max_nss_tx = wpa_s->connection_max_nss_tx;
+		wpa_s->links[i].channel_bandwidth =
+			wpa_s->connection_channel_bandwidth;
+		return;
+	}
+
+	sta_cw = get_supported_channel_width(&req_persta_elems);
+	ap_cw = get_operation_channel_width(&resp_persta_elems);
+
+	if (wpa_s->connection_vht || wpa_s->connection_he ||
+	    wpa_s->connection_eht) {
+		wpa_s->links[i].channel_bandwidth =
+			get_sta_operation_chan_width(ap_cw, sta_cw);
+	} else if (wpa_s->connection_ht) {
+		wpa_s->links[i].channel_bandwidth = (ap_cw == CHAN_WIDTH_40) ?
+			CHAN_WIDTH_40 : CHAN_WIDTH_20;
+	} else {
+		wpa_s->links[i].channel_bandwidth = CHAN_WIDTH_20;
+	}
+
+	wpa_s->links[i].max_nss_rx =
+		MIN(get_max_nss_capability(&req_persta_elems, true,
+					   wpa_s->links[i].channel_bandwidth),
+		    get_max_nss_capability(&resp_persta_elems, false,
+					   wpa_s->links[i].channel_bandwidth));
+
+	wpa_s->links[i].max_nss_tx =
+		MIN(get_max_nss_capability(&req_persta_elems, false,
+					   wpa_s->links[i].channel_bandwidth),
+		    get_max_nss_capability(&resp_persta_elems, true,
+					   wpa_s->links[i].channel_bandwidth));
+
+}
+
+
 static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 				       unsigned int freq,
 				       const u8 *req_ies, size_t req_ies_len,
@@ -3478,6 +3530,7 @@ static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 	int max_nss_rx_req, max_nss_rx_resp, max_nss_tx_req, max_nss_tx_resp;
 	struct supported_chan_width sta_supported_chan_width;
 	enum chan_width ap_operation_chan_width;
+	struct wpabuf *req_mlbuf, *resp_mlbuf;
 
 	wpa_s->connection_set = 0;
 
@@ -3503,14 +3556,6 @@ static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 		resp_elems.he_capabilities;
 	wpa_s->connection_eht = req_elems.eht_capabilities &&
 		resp_elems.eht_capabilities;
-	max_nss_rx_req = get_max_nss_capability(&req_elems, 1);
-	max_nss_rx_resp = get_max_nss_capability(&resp_elems, 1);
-	max_nss_tx_req = get_max_nss_capability(&req_elems, 0);
-	max_nss_tx_resp = get_max_nss_capability(&resp_elems, 0);
-	wpa_s->connection_max_nss_rx = (max_nss_tx_resp > max_nss_rx_req) ?
-		max_nss_rx_req : max_nss_tx_resp;
-	wpa_s->connection_max_nss_tx = (max_nss_tx_req > max_nss_rx_resp) ?
-		max_nss_rx_resp : max_nss_tx_req;
 
 	sta_supported_chan_width = get_supported_channel_width(&req_elems);
 	ap_operation_chan_width = get_operation_channel_width(&resp_elems);
@@ -3530,6 +3575,32 @@ static void wpas_parse_connection_info(struct wpa_supplicant *wpa_s,
 	wpa_s->ap_t2lm_negotiation_support =
 				is_ap_t2lm_negotiation_supported(resp_elems.basic_mle,
 				resp_elems.basic_mle_len);
+	max_nss_rx_req = get_max_nss_capability(
+		&req_elems, 1, wpa_s->connection_channel_bandwidth);
+	max_nss_rx_resp = get_max_nss_capability(
+		&resp_elems, 1, wpa_s->connection_channel_bandwidth);
+	max_nss_tx_req = get_max_nss_capability(
+		&req_elems, 0, wpa_s->connection_channel_bandwidth);
+	max_nss_tx_resp = get_max_nss_capability(
+		&resp_elems, 0, wpa_s->connection_channel_bandwidth);
+
+	wpa_s->connection_max_nss_rx = MIN(max_nss_tx_resp, max_nss_rx_req);
+	wpa_s->connection_max_nss_tx = MIN(max_nss_rx_resp, max_nss_tx_req);
+
+	req_mlbuf = ieee802_11_defrag(req_elems.basic_mle,
+				      req_elems.basic_mle_len, true);
+	resp_mlbuf = ieee802_11_defrag(resp_elems.basic_mle,
+				       resp_elems.basic_mle_len, true);
+	if (req_mlbuf && resp_mlbuf) {
+		int i;
+
+		for_each_link(wpa_s->valid_links, i)
+			wpas_parse_connection_info_link(wpa_s, i,
+							&req_elems, &resp_elems,
+							req_mlbuf, resp_mlbuf);
+	}
+	wpabuf_free(req_mlbuf);
+	wpabuf_free(resp_mlbuf);
 }
 
 
