@@ -1001,9 +1001,10 @@ void ieee802_11_elems_clear_ext_ids(struct ieee802_11_elems *elems,
 }
 
 
-ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
-					 struct wpabuf *mlbuf,
-					 u8 link_id, bool show_errors)
+static ParseRes ieee802_11_parse_link_profile(struct ieee802_11_elems *elems,
+					      struct wpabuf *mlbuf,
+					      u8 link_id, bool show_errors,
+					      bool is_assoc_resp)
 {
 	const struct ieee80211_eht_ml *ml;
 	const u8 *pos;
@@ -1101,6 +1102,28 @@ ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
 		pos += 2;
 		sub_elem_len -= 2;
 
+		/* For association response, check status code */
+		if (is_assoc_resp) {
+			u16 status_code;
+
+			if (sub_elem_len < 2) {
+				if (show_errors)
+					wpa_printf(MSG_DEBUG,
+						   "MLD: missing status code");
+				goto out;
+			}
+
+			status_code = WPA_GET_LE16(pos);
+			if (status_code != WLAN_STATUS_SUCCESS) {
+				wpa_printf(MSG_DEBUG,
+					   "MLD: status code %u", status_code);
+				goto out;
+			}
+
+			pos += 2;
+			sub_elem_len -= 2;
+		}
+
 		/* Handle non-inheritance */
 		non_inherit = get_ie_ext(pos, sub_elem_len,
 					 WLAN_EID_EXT_NON_INHERITANCE);
@@ -1157,6 +1180,26 @@ ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
 
 out:
 	return res;
+}
+
+
+ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
+					 struct wpabuf *mlbuf,
+					 u8 link_id, bool show_errors)
+{
+	return ieee802_11_parse_link_profile(elems, mlbuf, link_id,
+					     show_errors, false);
+}
+
+
+ParseRes ieee802_11_parse_link_assoc_resp(struct ieee802_11_elems *elems,
+				  struct wpabuf *mlbuf,
+					  u8 link_id, bool show_errors)
+{
+	/* ieee802_11_defrag_mle_subelem() handles subelement defragmentation
+	 * in-place within mlbuf */
+	return ieee802_11_parse_link_profile(elems, mlbuf, link_id,
+					     show_errors, true);
 }
 
 
@@ -3795,7 +3838,7 @@ static unsigned int parse_mcs_map_for_max_nss(u16 mcs_map,
 /* Parse capabilities elements to get maximum number of supported spatial
  * streams */
 unsigned int get_max_nss_capability(struct ieee802_11_elems *elems,
-				    bool parse_for_rx)
+				    bool parse_for_rx, enum chan_width bw)
 {
 	unsigned int max_nss = 1;
 	struct ieee80211_ht_capabilities *htcaps =
@@ -3808,10 +3851,22 @@ unsigned int get_max_nss_capability(struct ieee802_11_elems *elems,
 
 	if (hecaps) {
 		unsigned int max_nss_he;
+		const u8 *optional = hecaps->optional;
 
-		mcs_map = parse_for_rx ?
-			hecaps->he_basic_supported_mcs_set.rx_map :
-			hecaps->he_basic_supported_mcs_set.tx_map;
+		if (bw == CHAN_WIDTH_160) {
+			const le16 *mcs_160 = (const le16 *) &optional[0];
+
+			mcs_map = parse_for_rx ? mcs_160[0] : mcs_160[1];
+		} else if (bw == CHAN_WIDTH_80P80) {
+			const le16 *mcs_80p80 = (const le16 *) &optional[4];
+
+			mcs_map = parse_for_rx ? mcs_80p80[0] : mcs_80p80[1];
+		} else {
+			mcs_map = parse_for_rx ?
+				hecaps->he_basic_supported_mcs_set.rx_map :
+				hecaps->he_basic_supported_mcs_set.tx_map;
+		}
+
 		max_nss_he = parse_mcs_map_for_max_nss(
 			le_to_host16(mcs_map), HE_NSS_MAX_STREAMS);
 		if (max_nss_he > max_nss)
