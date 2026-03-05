@@ -1649,8 +1649,6 @@ struct wpa_supplicant {
 	struct wpa_radio_work *pasn_auth_work;
 	unsigned int pasn_count;
 	struct pasn_auth *pasn_params;
-	bool urnm_mfpr_x20;
-	bool disable_urnm_mfpr;
 #ifdef CONFIG_P2P
 	struct wpa_radio_work *p2p_pasn_auth_work;
 #endif /* CONFIG_P2P */
@@ -1791,7 +1789,6 @@ struct wpa_supplicant * wpa_supplicant_get_iface(struct wpa_global *global,
 struct wpa_global * wpa_supplicant_init(struct wpa_params *params);
 int wpa_supplicant_run(struct wpa_global *global);
 void wpa_supplicant_deinit(struct wpa_global *global);
-int wpa_supplicant_parse_config(const char *fname);
 
 int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 			      struct wpa_ssid *ssid);
