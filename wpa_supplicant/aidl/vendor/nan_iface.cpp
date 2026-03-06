@@ -13,7 +13,6 @@
 #include "nan_iface.h"
 #include "nan_supplicant.h"
 #include "nan_utils.h"
-#include "shared_utils.h"
 #include "src/common/nan_de.h"
 #include "src/common/nan_defs.h"
 
@@ -25,6 +24,8 @@ using aidl::android::hardware::wifi::supplicant::AidlManager;
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
 using aidl::android::hardware::wifi::supplicant::misc_utils::convertVectorToWpaBuf;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
+using aidl::android::hardware::wifi::supplicant::misc_utils::ensureConfigFileExistsAtPath;
+using aidl::android::hardware::wifi::supplicant::misc_utils::kIfaceDriverName;
 using aidl::android::system::wifi::mainline_supplicant::nan_utils::validateNanPublishConfig;
 using aidl::android::system::wifi::mainline_supplicant::nan_utils::validateNanSubscribeConfig;
 using aidl::android::system::wifi::mainline_supplicant::nan_utils::convertAidlNanPublishConfigToInternal;

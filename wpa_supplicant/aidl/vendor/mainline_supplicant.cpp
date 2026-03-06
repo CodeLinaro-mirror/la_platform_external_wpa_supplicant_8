@@ -12,10 +12,11 @@
 #include "mainline_supplicant.h"
 #include "misc_utils.h"
 #include "nan_iface.h"
-#include "shared_utils.h"
 
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
+using aidl::android::hardware::wifi::supplicant::misc_utils::ensureConfigFileExistsAtPath;
+using aidl::android::hardware::wifi::supplicant::misc_utils::kIfaceDriverName;
 using aidl::android::system::wifi::mainline_supplicant::ISupplicantNanIface;
 
 const std::string kMainlineSupplicantConfigPath =
