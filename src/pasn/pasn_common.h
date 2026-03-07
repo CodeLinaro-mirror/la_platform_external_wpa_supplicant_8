@@ -208,6 +208,7 @@ void pasn_enable_kdk_derivation(struct pasn_data *pasn);
 void pasn_disable_kdk_derivation(struct pasn_data *pasn);
 
 void pasn_set_akmp(struct pasn_data *pasn, int akmp);
+void pasn_set_password(struct pasn_data *pasn, const char *password);
 void pasn_set_cipher(struct pasn_data *pasn, int cipher);
 void pasn_set_own_addr(struct pasn_data *pasn, const u8 *addr);
 void pasn_set_peer_addr(struct pasn_data *pasn, const u8 *addr);
