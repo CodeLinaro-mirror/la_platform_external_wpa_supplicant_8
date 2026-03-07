@@ -1701,7 +1701,7 @@ struct wpa_supplicant {
 	struct nan_schedule_config nan_sched[MAX_NAN_RADIOS];
 	struct wpa_freq_range_list nan_disallowed_freqs;
 	u16 nan_max_bw;
-	u8 nan_supported_csids;
+	u16 nan_supported_csids;
 	unsigned int nan_ndi_ndp_refcount; /* Active NDP count on this NDI */
 #endif
 };

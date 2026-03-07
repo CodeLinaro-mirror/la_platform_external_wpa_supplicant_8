@@ -51,22 +51,36 @@ hostapd_nan_de_discovery_result(void *ctx, int subscribe_id,
 				bool fsd, bool fsd_gas,
 				const u8 *pmkid_list, size_t pmkid_count,
 				const u8 *cipher_suite,
-				size_t n_cipher_suite)
+				size_t n_cipher_suite,
+				const u8 *match_filter,
+				size_t match_filter_len)
 {
 	struct hostapd_data *hapd = ctx;
-	char *ssi_hex;
+	char *ssi_hex, *match_filter_hex = NULL;
 
 	ssi_hex = os_zalloc(2 * ssi_len + 1);
 	if (!ssi_hex)
 		return;
 	if (ssi)
 		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+
+	if (match_filter && match_filter_len > 0) {
+		match_filter_hex = os_zalloc(2 * match_filter_len + 1);
+		if (match_filter_hex)
+			wpa_snprintf_hex(match_filter_hex,
+					 2 * match_filter_len + 1,
+					 match_filter, match_filter_len);
+	}
+
 	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_DISCOVERY_RESULT
 		"subscribe_id=%d publish_id=%d address=" MACSTR
-		" fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s",
+		" fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s%s%s",
 		subscribe_id, peer_publish_id, MAC2STR(peer_addr),
-		fsd, fsd_gas, srv_proto_type, ssi_hex);
+		fsd, fsd_gas, srv_proto_type, ssi_hex,
+		match_filter_hex ? " match_filter=" : "",
+		match_filter_hex ? match_filter_hex : "");
 	os_free(ssi_hex);
+	os_free(match_filter_hex);
 }
 
 

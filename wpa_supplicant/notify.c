@@ -1516,9 +1516,11 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 				      const u8 *ssi, size_t ssi_len,
 				      const u8 *pmkid_list, size_t pmkid_count,
 				      const u8 *cipher_suite_list,
-				      size_t cipher_suite_count)
+				      size_t cipher_suite_count,
+				      const u8 *match_filter,
+				      size_t match_filter_len)
 {
-	char *ssi_hex, *pmkid_hex = NULL;
+	char *ssi_hex, *pmkid_hex = NULL, *match_filter_hex = NULL;
 	char *cipher_suites_str = NULL;
 	size_t i;
 	const size_t pmkid_hex_len = 2 * PMKID_LEN + 1;
@@ -1565,21 +1567,33 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 		}
 	}
 
+	if (match_filter && match_filter_len > 0) {
+		match_filter_hex = os_zalloc(2 * match_filter_len + 1);
+		if (match_filter_hex)
+			wpa_snprintf_hex(match_filter_hex,
+					 2 * match_filter_len + 1,
+					 match_filter, match_filter_len);
+	}
+
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_DISCOVERY_RESULT
 		       "subscribe_id=%d publish_id=%d address=" MACSTR
-		       " fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s%s%s%s%s",
+		       " fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s%s%s%s%s%s%s",
 		       subscribe_id, peer_publish_id, MAC2STR(peer_addr),
 		       fsd, fsd_gas, srv_proto_type, ssi_hex,
 		       pmkid_hex ? " pmkid=" : "",
 		       pmkid_hex ? pmkid_hex : "",
 		       cipher_suites_str ? " cipher_suites=" : "",
-		       cipher_suites_str ? cipher_suites_str : "");
+		       cipher_suites_str ? cipher_suites_str : "",
+		       match_filter_hex ? " match_filter=" : "",
+		       match_filter_hex ? match_filter_hex : "");
 	os_free(ssi_hex);
 	os_free(pmkid_hex);
 	os_free(cipher_suites_str);
+	os_free(match_filter_hex);
 
 	wpas_aidl_notify_nan_service_discovered(wpa_s, srv_proto_type,
-		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
+		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len,
+		match_filter, match_filter_len);
 
 	wpas_dbus_signal_nan_discovery_result(wpa_s, srv_proto_type,
 					      subscribe_id, peer_publish_id,
@@ -1696,7 +1710,7 @@ void wpas_notify_nan_bootstrap_request(struct wpa_supplicant *wpa_s,
 		       MAC2STR(peer_nmi), pbm, handle, requestor_instance_id);
 	wpas_aidl_notify_nan_bootstrap_request(wpa_s, peer_nmi, pbm,
 		handle/*discovery session id*/, requestor_instance_id,
-		handle/*bootstrapping id*/);
+		requestor_instance_id/*bootstrapping id*/);
 }
 
 
@@ -1708,8 +1722,8 @@ void wpas_notify_nan_bootstrap_success(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_SUCCESS
 		       "peer_nmi=" MACSTR " pbm=0x%04x handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, handle, requestor_instance_id);
-	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, peer_nmi, pbm,
-		true, 0/*No Reason*/, nullptr, 0);
+	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, requestor_instance_id,
+		peer_nmi, pbm, true, 0/*No Reason*/, nullptr, 0);
 }
 
 
@@ -1721,8 +1735,8 @@ void wpas_notify_nan_bootstrap_failure(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_BOOTSTRAP_FAILURE
 		       "peer_nmi=" MACSTR " pbm=0x%04x reason=%u handle=%d requestor_instance_id=%u",
 		       MAC2STR(peer_nmi), pbm, reason, handle, requestor_instance_id);
-	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, peer_nmi, pbm,
-		false, reason, nullptr, 0);
+	wpas_aidl_notify_nan_bootstrap_confirmed(wpa_s, handle, requestor_instance_id, peer_nmi,
+		pbm, false, reason, nullptr, 0);
 }
 
 
@@ -1776,8 +1790,8 @@ void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
 		       wpa_key_mgmt_txt(key_mgmt, WPA_PROTO_RSN),
 		       verify);
 	wpas_aidl_notify_nan_pairing_request(wpa_s, instance_id,
-	-1/*peer_id*/, peer_nmi, -1/*pairing_id*/, !verify,
-	nullptr, nullptr);
+		instance_id/*peer_id*/, peer_nmi, instance_id/*pairing_id*/,
+		!verify, nullptr, nullptr);
 }
 
 
@@ -1804,7 +1818,7 @@ void wpas_notify_nan_ndp_request(struct wpa_supplicant *wpa_s,
 		       ssi_hex ? ssi_hex : "", csid);
 
 	wpas_aidl_notify_nan_ndp_request(wpa_s, ndp_id, peer_nmi,
-		publish_inst_id, csid, nullptr, 0);
+		init_ndi, publish_inst_id, csid, nullptr, 0);
 
 	os_free(ssi_hex);
 }

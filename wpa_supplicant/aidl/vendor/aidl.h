@@ -169,7 +169,8 @@ extern "C"
 		struct wpa_supplicant* wpa_s,
 		enum nan_service_protocol_type srv_proto_type, int subscribe_id,
 		int peer_publish_id, const u8* peer_addr, bool fsd, const u8* ssi,
-		size_t ssi_len);
+		size_t ssi_len, const u8* match_filter,
+		size_t match_filter_len);
 	void wpas_aidl_notify_nan_publish_replied(
 		struct wpa_supplicant* wpa_s,
 		enum nan_service_protocol_type srv_proto_type, int publish_id,
@@ -193,7 +194,7 @@ extern "C"
 		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
 		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id);
 	void wpas_aidl_notify_nan_bootstrap_confirmed(
-		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
+		struct wpa_supplicant* wpa_s, u8 handle, u8 bootstrapping_instance_id,
 		const u8* peer_nmi_addr, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len);
 	void wpas_aidl_notify_nan_pairing_request(
@@ -209,7 +210,8 @@ extern "C"
 		int nik_lifetime, int identity_id);
 	void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
-		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len);
+		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid, const u8* app_info,
+		size_t app_info_len);
 	void wpas_aidl_notify_nan_ndp_confirmed(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
 		bool is_success, u8 reason, const u8* app_info, size_t app_info_len);
@@ -429,7 +431,8 @@ static void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
 static void wpas_aidl_notify_nan_service_discovered(
     struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
     int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
-    const u8* ssi, size_t ssi_len) {}
+    const u8* ssi, size_t ssi_len, const u8* match_filter,
+    size_t match_filter_len) {}
 static void wpas_aidl_notify_nan_publish_replied(
     struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
     int publish_id, int peer_subscribe_id, const u8* peer_addr, const u8* ssi,
@@ -449,7 +452,7 @@ static void wpas_aidl_notify_nan_bootstrap_request(
 		struct wpa_supplicant* wpa_s, const u8* peer_nmi_addr,
 		u8 bootstrap_method, u8 discovery_session_id, int peer_id, int bootstrapping_id) {}
 static void wpas_aidl_notify_nan_bootstrap_confirmed(
-		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
+		struct wpa_supplicant* wpa_s, u8 handle, u8 bootstrapping_instance_id,
 		const u8* peer_nmi_addr, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len) {}
 static void wpas_aidl_notify_nan_pairing_request(
@@ -465,7 +468,8 @@ static void wpas_aidl_notify_nan_nik_received(
 		int nik_lifetime, int identity_id) {}
 static void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
-		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len) {}
+		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid, const u8* app_info,
+		size_t app_info_len) {}
 static void wpas_aidl_notify_nan_ndp_confirmed(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_ndi_addr,
 		bool is_success, u8 reason, const u8* app_info, size_t app_info_len) {}

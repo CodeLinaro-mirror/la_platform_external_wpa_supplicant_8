@@ -257,7 +257,9 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 				      const u8 *ssi, size_t ssi_len,
 				      const u8 *pmkid_list, size_t pmkid_count,
 				      const u8 *cipher_suite_list,
-				      size_t cipher_suite_count);
+				      size_t cipher_suite_count,
+				      const u8 *match_filter,
+				      size_t match_filter_len);
 void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 			     enum nan_service_protocol_type srv_proto_type,
 			     int publish_id, int peer_subscribe_id,

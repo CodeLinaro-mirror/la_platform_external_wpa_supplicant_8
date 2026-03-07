@@ -1204,6 +1204,10 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	/* Currently support shared key suites only */
 	wpa_s->nan_supported_csids = BIT(NAN_CS_SK_CCM_128) |
 				     BIT(NAN_CS_SK_GCM_256);
+#ifdef CONFIG_PASN
+	wpa_s->nan_supported_csids |= BIT(NAN_CS_PK_PASN_128) |
+				     BIT(NAN_CS_PK_PASN_256);
+#endif /* CONFIG_PASN */
 	return 0;
 }
 
@@ -3345,7 +3349,9 @@ wpas_nan_de_discovery_result(void *ctx, int subscribe_id,
 			     const u8 *peer_addr, bool fsd, bool fsd_gas,
 			     const u8 *pmkid_list, size_t pmkid_count,
 			     const u8 *cipher_suite,
-			     size_t n_cipher_suite)
+			     size_t n_cipher_suite,
+			     const u8 *match_filter,
+			     size_t match_filter_len)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -3353,7 +3359,8 @@ wpas_nan_de_discovery_result(void *ctx, int subscribe_id,
 					 peer_publish_id, peer_addr, fsd,
 					 fsd_gas, ssi, ssi_len,
 					 pmkid_list, pmkid_count,
-					 cipher_suite, n_cipher_suite);
+					 cipher_suite, n_cipher_suite,
+					 match_filter, match_filter_len);
 }
 
 
@@ -3513,12 +3520,33 @@ void wpas_nan_de_deinit(struct wpa_supplicant *wpa_s)
 }
 
 
+static struct wpa_supplicant *
+wpas_nan_get_mgmt_iface(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_supplicant *nmi_wpa_s;
+
+	for (nmi_wpa_s = wpa_s->global->ifaces; nmi_wpa_s;
+	     nmi_wpa_s = nmi_wpa_s->next) {
+		if (!nmi_wpa_s->nan_mgmt)
+			continue;
+		return nmi_wpa_s;
+	}
+
+	return wpa_s;
+}
+
+
 void wpas_nan_de_rx_sdf(struct wpa_supplicant *wpa_s, const u8 *src,
 			const u8 *a3,
 			unsigned int freq, const u8 *buf, size_t len,
 			int rssi)
 {
 	bool store_peer = false;
+
+	if (!wpa_s->nan_mgmt) {
+		/* Find NAN interface if packet rxed on wifi interface */
+		wpa_s = wpas_nan_get_mgmt_iface(wpa_s);
+	}
 
 	if (!wpa_s->nan_de)
 		return;
@@ -3853,23 +3881,6 @@ int * wpas_nan_usd_all_freqs(struct wpa_supplicant *wpa_s)
 
 	return freqs;
 }
-
-
-static struct wpa_supplicant *
-wpas_nan_get_mgmt_iface(struct wpa_supplicant *wpa_s)
-{
-	struct wpa_supplicant *nmi_wpa_s;
-
-	for (nmi_wpa_s = wpa_s->global->ifaces; nmi_wpa_s;
-	     nmi_wpa_s = nmi_wpa_s->next) {
-		if (!nmi_wpa_s->nan_mgmt)
-			continue;
-		return nmi_wpa_s;
-	}
-
-	return wpa_s;
-}
-
 
 void wpas_nan_tx_status(struct wpa_supplicant *wpa_s,
 			const u8 *data, size_t data_len, u8 acked)

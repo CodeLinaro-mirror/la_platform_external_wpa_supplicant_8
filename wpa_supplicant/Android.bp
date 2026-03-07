@@ -1740,6 +1740,7 @@ cc_library_static {
     vendor: true,
     cppflags: [
         "-DCONFIG_NAN_USD",
+        "-DCONFIG_NAN",
         "-Wall",
         "-Werror",
         "-Wno-unused-parameter",
