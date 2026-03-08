@@ -14,6 +14,7 @@
 #include "nan_iface.h"
 
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
+using aidl::android::hardware::wifi::supplicant::AidlManager;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;
 using aidl::android::hardware::wifi::supplicant::misc_utils::ensureConfigFileExistsAtPath;
 using aidl::android::hardware::wifi::supplicant::misc_utils::kIfaceDriverName;
@@ -54,8 +55,37 @@ bool MainlineSupplicant::isValid() {
 
 ::ndk::ScopedAStatus MainlineSupplicant::removeNanInterface(
         const std::string& in_ifaceName) {
-    wpa_printf(MSG_ERROR, "removeNanInterface is not supported");
-    return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+
+	size_t pos = in_ifaceName.find('-');
+	if (in_ifaceName.empty() || pos == std::string::npos) {
+		wpa_printf(
+			MSG_ERROR, "Invalid iface name format: %s",
+			in_ifaceName.c_str());
+		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+	}
+
+	std::string nan_iface_name, primary_iface_name;
+	nan_iface_name = in_ifaceName.substr(0, pos);
+	primary_iface_name = in_ifaceName.substr(pos + 1);
+	struct wpa_supplicant* wpa_s =
+	wpa_supplicant_get_iface(wpa_global_, nan_iface_name.c_str());
+	if (!wpa_s) {
+		wpa_printf(MSG_ERROR, "Interface %s does not exist",
+			nan_iface_name.c_str());
+		return createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN);
+	}
+
+	if (wpa_supplicant_remove_iface(wpa_global_, wpa_s, 0)) {
+		wpa_printf(MSG_ERROR, "Unable to remove interface %s",
+			nan_iface_name.c_str());
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	active_nan_ifaces_.erase(nan_iface_name);
+
+	wpa_printf(MSG_INFO, "Interface %s was removed successfully",
+		nan_iface_name.c_str());
+	return ndk::ScopedAStatus::ok();
 }
 
 std::pair<std::shared_ptr<ISupplicant>, ndk::ScopedAStatus>
@@ -147,8 +177,14 @@ MainlineSupplicant::addNanInterfaceInternal(const std::string& ifaceName)
 			createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}
 
-	std::shared_ptr<ISupplicantNanIface> nanIface =
-		ndk::SharedRefBase::make<NanIface>(wpa_global_, nan_iface_name);
+	std::shared_ptr<NanIface> nanIface;
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager ||
+	    aidl_manager->getNanIfaceAidlObjectByIfname(nan_iface_name, &nanIface)) {
+		wpa_printf(MSG_ERROR, "Failed to get NAN interface object");
+		return {nullptr, createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN)};
+	}
+
 	active_nan_ifaces_[nan_iface_name] = nanIface;
 
 	wpa_printf(

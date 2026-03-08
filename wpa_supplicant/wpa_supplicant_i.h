@@ -142,6 +142,11 @@ struct wpa_interface {
 	 * nan_mgmt - Interface used for NAN management (NAN Device operations)
 	 */
 	bool nan_mgmt;
+
+	/**
+	 * nan_data - Interface used for NAN data path operations
+	 */
+	bool nan_data;
 };
 
 /**
@@ -1674,7 +1679,6 @@ struct wpa_supplicant {
 	struct nan_de *nan_de;
 	struct wpa_radio_work *nan_usd_listen_work;
 	struct wpa_radio_work *nan_tx_work;
-	struct wpa_radio_work *nan_usd_tx_work;
 #endif /* CONFIG_NAN_USD */
 
 	bool ssid_verified;
@@ -1686,11 +1690,19 @@ struct wpa_supplicant {
 	bool scs_reconfigure;
 
 	bool nan_mgmt;
+	bool nan_data;
 
 #ifdef CONFIG_NAN
-	u32 nan_drv_flags;
+#define MAX_NAN_RADIOS 2
+	struct nan_capa nan_capa;
 	struct nan_data *nan;
-	struct nan_cluster_config nan_config;
+	struct nan_cluster_config nan_cluster_config;
+	u8 schedule_sequence_id;
+	struct nan_schedule_config nan_sched[MAX_NAN_RADIOS];
+	struct wpa_freq_range_list nan_disallowed_freqs;
+	u16 nan_max_bw;
+	u16 nan_supported_csids;
+	unsigned int nan_ndi_ndp_refcount; /* Active NDP count on this NDI */
 #endif
 };
 
@@ -2123,5 +2135,14 @@ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
 				       struct wpa_bss *bss);
 int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
 			       const u8 **ssid, size_t *ssid_len);
+
+static inline bool wpas_is_nan_iface(struct wpa_supplicant *wpa_s)
+{
+#if defined(CONFIG_NAN)
+	return wpa_s->nan_mgmt || wpa_s->nan_data;
+#else
+	return false;
+#endif
+}
 
 #endif /* WPA_SUPPLICANT_I_H */

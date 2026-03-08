@@ -57,14 +57,14 @@ static constexpr int kNanMaxExtendedServiceSpecificInfoLen = 1280;
 static constexpr bool kNanIfaceCapInstantCommunicationModeSupport = false;
 static constexpr bool kNanIfaceCapSupportsPeriodicRanging = false;
 static constexpr bool kNanIfaceCapSupportsSuspension = false;
-static constexpr int kNanIfaceConfBufSize = 128;
+static constexpr int kNanIfaceConfBufSize = 1024;
 static constexpr int kNanIfaceConfBandDisableScan = 0;
 static constexpr int kNanIfaceConfScanDwellTime = 150;
 static constexpr int kNanIfaceConfScanPeriod = 20;
 static constexpr int kNanIfaceConfBootstrapComebackTimeoutTus = 1024;
 static constexpr uint16_t kNanIfaceConfAutoAcceptedBm = BIT(0);
 static constexpr int kNanIfaceConfMaxBandwidth = 160;  // in MHz
-static constexpr int kNanIfaceCapMaxNdiInterfaces = 4;
+static constexpr int kNanIfaceCapMaxNdiInterfaces = 2;
 static constexpr int kNanIfaceCapMaxNdpSessions = 10;
 
 template <typename... Args>
@@ -568,6 +568,8 @@ bool NanIface::isValid()
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
 	char16_t cmdId, const std::string& ifaceName)
 {
+	u8 allocated_if_addr[ETH_ALEN];
+
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
@@ -592,10 +594,10 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN, ifaceName.c_str(), NULL, NULL, NULL,
-						NULL, NULL) < 0)
+		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), NULL, NULL, NULL,
+						(u8 *)allocated_if_addr, NULL) < 0)
 		{
-			wpa_printf(MSG_ERROR, "Failed to create NAN iface");
+			wpa_printf(MSG_ERROR, "Failed to create NAN data iface");
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -604,6 +606,7 @@ bool NanIface::isValid()
 		iface_params.driver = kIfaceDriverName;
 		iface_params.ifname = ifaceName.c_str();
 		iface_params.confname = kMainlineSupplicantConfigPath.c_str();
+		iface_params.nan_data = true;
 
 		if (!wpa_supplicant_add_iface(wpa_global, &iface_params, wpa_s)) {
 			wpa_printf(MSG_ERROR, "Failed to add NAN data iface");
@@ -611,7 +614,7 @@ bool NanIface::isValid()
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
-
+		wpa_s->added_vif = true;
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 	});
@@ -642,12 +645,13 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_remove(wpa_global->ifaces, WPA_IF_NAN, ifaceName.c_str()) != 0) {
+		if (wpa_drv_if_remove(wpa_global->ifaces, WPA_IF_NAN_DATA, ifaceName.c_str()) != 0) {
 			wpa_printf(MSG_ERROR, "Failed to remove NAN data iface in WPA driver.");
 			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
 
+		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
 	});
 	return ndk::ScopedAStatus::ok();
@@ -712,6 +716,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		std::string hex_matching_rx = vectorToHexString(msg.baseConfig.rxMatchFilter);
 		params.match_filter_tx = hex_matching_tx.c_str();
 		params.match_filter_rx = hex_matching_rx.c_str();
+		params.pbm = static_cast<uint16_t>(pairing_config.supportedBootstrappingMethods);
 
 		discovery_termination_indication_ =
 			!msg.baseConfig.disableDiscoveryTerminationIndication;
@@ -814,6 +819,13 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		params.match_filter_tx = hex_matching_tx.c_str();
 		params.match_filter_rx = hex_matching_rx.c_str();
 
+		discovery_termination_indication_ =
+			!msg.baseConfig.disableDiscoveryTerminationIndication;
+		match_expiration_indication_ =
+			!msg.baseConfig.disableMatchExpirationIndication;
+		followup_received_indication_ =
+			!msg.baseConfig.disableFollowupReceivedIndication;
+
 		// service name is guaranteed to be UTF-8, so it can be convert directly
 		std::string srv_name(msg.baseConfig.serviceName.begin(), msg.baseConfig.serviceName.end());
 
@@ -894,6 +906,10 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
+
+		/* Transmit Followup Event when it is transmitted
+		   remove it when b/488629386 is implemented */
+		aidl_manager->notifyNanTransmitFollowup(wpa_s, cmdId, 0);
 	});
 
 	return ndk::ScopedAStatus::ok();
@@ -919,8 +935,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_BOOTSTRAP " MACSTR " handle=%d req_instance_id=%d method=%d",
-			MAC2STR(msg.peerDiscMacAddr.data()), msg.discoverySessionId,
+			MACSTR " handle=%d req_instance_id=%d method=%d",
+			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.peerId, msg.requestBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateBootstrappingResponse(
@@ -959,7 +975,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_BOOTSTRAP " MACSTR " handle=%d method=%d auth",
+			MACSTR " handle=%d method=%d auth",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.responseBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
@@ -992,7 +1008,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 
@@ -1004,12 +1021,13 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_PAIRING " MACSTR " handle=%d peer_instance_id=%d auth=%d",
+			MACSTR " handle=%d peer_instance_id=%d auth=%d",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.peerId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 		if (msg.securityConfig.securityType == NanPairingSecurityType::PASSPHRASE &&
@@ -1021,31 +1039,33 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				msg.securityConfig.passphrase.end()).c_str());
 			if (cnt < 0 || cnt >= sizeof(cmd)) {
 				aidl_manager->notifyNanInitiatePairingResponse(
-					ifname, cmdId, nan_status, 0);
+					ifname, cmdId, nan_status, msg.peerId);
 				return;
 			}
 		}
 		// Only support PUBLIC_KEY_PASN_128_MASK and PUBLIC_KEY_PASN_256_MASK for pairing
 		if (msg.securityConfig.cipherType == NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK) {
-			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher_suite=CCMP");
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher=CCMP");
 		} else if (msg.securityConfig.cipherType ==
 				NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK) {
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
-				" cipher_suite=GCMP-256");
+				" cipher=GCMP-256");
 		} else {
 			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
 			aidl_manager->notifyNanInitiatePairingResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.peerId);
 			return;
 		}
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
 		}
-		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+			nan_status, msg.peerId);
 	});
 
 	return ndk::ScopedAStatus::ok();
@@ -1091,12 +1111,13 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_PAIRING " MACSTR " handle=%d peer_instance_id=%d auth=%d responder",
+			MACSTR " handle=%d peer_instance_id=%d auth=%d responder",
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
-			msg.peerId, convertNanPairingSecurityTypeToInteger(
+			msg.pairingInstanceId, convertNanPairingSecurityTypeToInteger(
 				msg.securityConfig.securityType));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.pairingInstanceId);
 			return;
 		}
 		if (msg.securityConfig.securityType == NanPairingSecurityType::PASSPHRASE)  {
@@ -1107,25 +1128,26 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				msg.securityConfig.passphrase.end()).c_str());
 			if (cnt < 0 || cnt >= sizeof(cmd)) {
 				aidl_manager->notifyNanInitiatePairingResponse(
-					ifname, cmdId, nan_status, 0);
+					ifname, cmdId, nan_status, msg.pairingInstanceId);
 				return;
 			}
 		}
 		// Only support PUBLIC_KEY_PASN_128_MASK and PUBLIC_KEY_PASN_256_MASK for pairing
 		if (msg.securityConfig.cipherType == NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK) {
-			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher_suite=CCMP");
+			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt, " cipher=CCMP");
 		} else if (msg.securityConfig.cipherType ==
 				NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK) {
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
-				" cipher_suite=GCMP-256");
+				" cipher=GCMP-256");
 		} else {
 			wpa_printf(MSG_ERROR, "Invalid cipher suite type");
 			aidl_manager->notifyNanInitiatePairingResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.pairingInstanceId);
 			return;
 		}
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+				nan_status, msg.pairingInstanceId);
 			return;
 		}
 		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
@@ -1201,17 +1223,18 @@ static int appendSecurityConfigToCmd(
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
-			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
+			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId,
+				nan_status, msg.peerId);
 			return;
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_NDP_REQUEST handle=%d ndi=%s peer_nmi=" MACSTR " peer_id=%d",
+			"handle=%d ndi=%s peer_nmi=" MACSTR " peer_id=%d",
 			msg.discoverySessionId, msg.ifaceName.c_str(),
 			MAC2STR(msg.peerDiscMacAddr), msg.peerId);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateDataPathResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.peerId);
 			return;
 		}
 		if (msg.appInfo.size() > 0) {
@@ -1219,17 +1242,23 @@ static int appendSecurityConfigToCmd(
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
 		}
-		cnt += appendSecurityConfigToCmd(
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanInitiateDataPathResponse(
+				ifname, cmdId, nan_status, msg.peerId);
+			return;
+		}
+		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanInitiateDataPathResponse(
-				ifname, cmdId, nan_status, 0);
+				ifname, cmdId, nan_status, msg.peerId);
 			return;
 		}
 		if (wpas_nan_ndp_request(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
 		}
-		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId, nan_status, 0);
+		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId,
+			nan_status, msg.peerId);
 	});
 	return ndk::ScopedAStatus::ok();
 }
@@ -1255,9 +1284,10 @@ static int appendSecurityConfigToCmd(
 		}
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-			"NAN_NDP_RESPONSE %s ndi=%s handle=%d ndp_id=%d",
+			"%s ndi=%s handle=%d ndp_id=%d peer_nmi=" MACSTR " init_ndi=" MACSTR,
 			msg.acceptRequest ? "accept" : "reject",
-			msg.ifaceName.c_str(), msg.discoverySessionId, msg.ndpInstanceId);
+			msg.ifaceName.c_str(), msg.discoverySessionId, msg.ndpInstanceId,
+			MAC2STR(msg.peerDiscMacAddr), MAC2STR(msg.ndiInitMac));
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 				ifname, cmdId, nan_status);
@@ -1268,7 +1298,12 @@ static int appendSecurityConfigToCmd(
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
 		}
-		cnt += appendSecurityConfigToCmd(
+		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+				ifname, cmdId, nan_status);
+			return;
+		}
+		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
@@ -1305,7 +1340,7 @@ static int appendSecurityConfigToCmd(
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-				"NAN_NDP_TERMINATE peer_nmi=" MACSTR " ndp_id=%d",
+				"peer_nmi=" MACSTR " ndp_id=%d",
 				MAC2STR(peerDiscMacAddr), ndpInstanceId);
 
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
