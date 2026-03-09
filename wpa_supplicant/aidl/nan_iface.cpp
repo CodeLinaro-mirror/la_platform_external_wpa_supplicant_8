@@ -620,6 +620,17 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				ifname, cmdId, nan_status, -1);
 			return;
 		}
+		auto ssi_buf = convertVectorToWpaBuf(msg.baseConfig.serviceSpecificInfo);
+		if (msg.baseConfig.sessionId != 0) {
+			// update publish
+			int ret = wpas_nan_update_publish(wpa_s, msg.baseConfig.sessionId, ssi_buf.get());
+			if (ret >= 0) {
+				nan_status.status = NanStatusCode::SUCCESS;
+			}
+			aidl_manager->notifyNanStartPublishResponse(ifname, cmdId, nan_status,
+				msg.baseConfig.sessionId);
+			return;
+		}
 
                 /* Hardcoded the schedule map config, remove when b/484354184 is done */
                 char cmd[] = "map_id=1 5745:feffffff";
@@ -659,8 +670,6 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 		// service name is guaranteed to be UTF-8, so it can be convert directly
 		std::string srv_name(msg.baseConfig.serviceName.begin(), msg.baseConfig.serviceName.end());
-		auto ssi_buf =
-			convertVectorToWpaBuf(msg.baseConfig.serviceSpecificInfo);
 		int publish_id = 0;
 		publish_id = wpas_nan_publish(
 			wpa_s,
@@ -737,6 +746,14 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
                 if (wpas_nan_sched_config_map(wpa_s, cmd) < 0) {
                     wpa_printf(MSG_ERROR, "Failed to set hardcoded schedule map");
                 }
+
+		if (msg.baseConfig.sessionId != 0) {
+			// Ignore subscribe update, this feature unsupported.
+			nan_status.status = NanStatusCode::SUCCESS;
+			aidl_manager->notifyNanStartSubscribeResponse(ifname, cmdId, nan_status,
+				msg.baseConfig.sessionId);
+			return;
+		}
 
 		// Setup Bootstrapping & Pairing Config
 		NanPairingConfig pairing_config = msg.pairingConfig;
