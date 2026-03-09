@@ -397,62 +397,6 @@ bool NanIface::isValid()
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INVALID_ARGS;
-		struct wpa_supplicant* wpa_s =
-			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
-		if (!wpa_s) {
-			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
-			aidl_manager->notifyNanConfigResponse(ifname, cmdId, nan_status);
-			return;
-		}
-
-		// Write the input config to the nan_config inside wpa_s instance
-		int ret = 0;
-		ret |= setNanConfigParam(wpa_s, "master_pref %d", request.masterPref);
-		ret |= setNanConfigParam(
-			wpa_s, "discovery_beacon_interval %d", request.discoveryBeaconIntervalMs);
-		if (!request.bandSpecificConfig.empty()) {
-			ret |= setNanConfigParam(
-				wpa_s, "low_band_cfg %d,%d,%d,%d",
-				-request.bandSpecificConfig[0].rssiClose,
-				-request.bandSpecificConfig[0].rssiMiddle,
-				request.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
-					? request.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
-				kNanIfaceConfBandDisableScan);
-			ret |= setNanConfigParam(wpa_s, "scan_period %d",
-				request.bandSpecificConfig[0].scanPeriodSec);
-			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d",
-				request.bandSpecificConfig[0].dwellTimeMs);
-			if (request.bandSpecificConfig.size() > 1) {
-				ret |= setNanConfigParam(
-					wpa_s, "high_band_cfg %d,%d,%d,%d",
-					-request.bandSpecificConfig[1].rssiClose,
-					-request.bandSpecificConfig[1].rssiMiddle,
-					request.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
-						? request.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
-					kNanIfaceConfBandDisableScan);
-			}
-		} else {
-			ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
-			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
-		}
-
-		ret |= setNanConfigParam(
-			wpa_s, "cluster_id " MACSTR, MAC2STR(request.clusterId));
-		if (ret != 0) {
-			aidl_manager->notifyNanConfigResponse(
-				ifname, cmdId, nan_status);
-			return;
-		}
-
-		// Update the nan_config to the NAN discovery engine level
-		ret = wpas_nan_update_conf(wpa_s);
-		if (ret != 0) {
-			nan_status.status = NanStatusCode::INTERNAL_FAILURE;
-			aidl_manager->notifyNanConfigResponse(
-				ifname, cmdId, nan_status);
-			return;
-		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanConfigResponse(ifname, cmdId, nan_status);
 	});
@@ -486,34 +430,6 @@ bool NanIface::isValid()
 		int ret = 0;
 		ret |= setNanConfigParam(wpa_s, "master_pref %d", msg2.masterPref);
 		ret |= setNanConfigParam(wpa_s, "dual_band %d", dual_band);
-		ret |= setNanConfigParam(
-			wpa_s, "discovery_beacon_interval %d",
-			msg2.discoveryBeaconIntervalMs);
-		if (!msg2.bandSpecificConfig.empty()) {
-			ret |= setNanConfigParam(
-				wpa_s, "low_band_cfg %d,%d,%d,%d",
-				-msg2.bandSpecificConfig[0].rssiClose,
-				-msg2.bandSpecificConfig[0].rssiMiddle,
-				msg2.bandSpecificConfig[0].validDiscoveryWindowIntervalVal
-				? msg2.bandSpecificConfig[0].discoveryWindowIntervalVal : 1,
-				kNanIfaceConfBandDisableScan);
-			ret |= setNanConfigParam(wpa_s, "scan_period %d",
-				msg2.bandSpecificConfig[0].scanPeriodSec);
-			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d",
-				msg2.bandSpecificConfig[0].dwellTimeMs);
-			if (dual_band && msg2.bandSpecificConfig.size() > 1) {
-				ret |= setNanConfigParam(
-					wpa_s, "high_band_cfg %d,%d,%d,%d",
-					-msg2.bandSpecificConfig[1].rssiClose,
-					-msg2.bandSpecificConfig[1].rssiMiddle,
-					msg2.bandSpecificConfig[1].validDiscoveryWindowIntervalVal
-					? msg2.bandSpecificConfig[1].discoveryWindowIntervalVal : 1,
-					kNanIfaceConfBandDisableScan);
-			}
-		} else {
-			ret |= setNanConfigParam(wpa_s, "scan_period %d", kNanIfaceConfScanPeriod);
-			ret |= setNanConfigParam(wpa_s, "scan_dwell_time %d", kNanIfaceConfScanDwellTime);
-		}
 		ret |= setNanConfigParam(
 			wpa_s, "cluster_id " MACSTR, MAC2STR(msg2.clusterId));
 		ret |= setNanConfigParam(
