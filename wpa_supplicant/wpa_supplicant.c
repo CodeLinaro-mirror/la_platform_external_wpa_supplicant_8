@@ -698,9 +698,9 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	os_free(wpa_s->last_scan_res);
 	wpa_s->last_scan_res = NULL;
 
-#ifdef CONFIG_HS20
 	if (wpa_s->drv_priv)
 		wpa_drv_configure_frame_filters(wpa_s, 0);
+#ifdef CONFIG_HS20
 	hs20_deinit(wpa_s);
 #endif /* CONFIG_HS20 */
 
@@ -1144,9 +1144,7 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		if (ssid && (ssid->key_mgmt & WPA_KEY_MGMT_OWE))
 			wpas_update_owe_connect_params(wpa_s);
 #endif /* CONFIG_OWE */
-#ifdef CONFIG_HS20
-		hs20_configure_frame_filters(wpa_s);
-#endif
+		wpas_configure_frame_filters(wpa_s);
 	} else if (state == WPA_DISCONNECTED || state == WPA_ASSOCIATING ||
 		   state == WPA_ASSOCIATED) {
 		wpa_s->new_connection = 1;
@@ -3743,8 +3741,9 @@ static u8 * wpas_populate_assoc_ies(
 			wpabuf_free(hs20);
 		}
 	}
-	hs20_configure_frame_filters(wpa_s);
 #endif /* CONFIG_HS20 */
+
+	wpas_configure_frame_filters(wpa_s);
 
 	if (wpa_s->vendor_elem[VENDOR_ELEM_ASSOC_REQ]) {
 		struct wpabuf *buf = wpa_s->vendor_elem[VENDOR_ELEM_ASSOC_REQ];
@@ -4753,9 +4752,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 #endif /* CONFIG_P2P */
 	    ssid->bssid_set) {
 		wpa_s->current_bss = bss;
-#ifdef CONFIG_HS20
-		hs20_configure_frame_filters(wpa_s);
-#endif /* CONFIG_HS20 */
+		wpas_configure_frame_filters(wpa_s);
 	}
 
 	wpa_supplicant_rsn_supp_set_config(wpa_s, wpa_s->current_ssid);
@@ -9790,4 +9787,53 @@ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
 	}
 
 	return false;
+}
+
+void wpas_configure_frame_filters(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_bss *bss = wpa_s->current_bss;
+	u32 filter = 0;
+	bool hs20, proxy_arp_capa;
+
+	if (!bss)
+		return;
+
+#ifdef CONFIG_HS20
+	hs20 = is_hs20_network(wpa_s, wpa_s->current_ssid, bss);
+#else /* CONFIG_HS20 */
+	hs20 = false;
+#endif /* CONFIG_HS20 */
+
+	if (wpa_s->current_ssid &&
+	    wpa_s->current_ssid->drop_unicast_ip_in_l2_multicast) {
+		filter |= WPA_DATA_FRAME_FILTER_FLAG_GTK;
+	} else if (!hs20) {
+		/* Not configuring frame filtering - BSS is not a Hotspot 2.0
+		 * network */
+		return;
+	} else {
+#ifdef CONFIG_HS20
+		const u8 *ie;
+
+		ie = wpa_bss_get_vendor_ie(bss, HS20_IE_VENDOR_TYPE);
+
+		/* Check if DGAF disabled bit is zero (5th byte in the IE) */
+		if (!ie || ie[1] < 5)
+			wpa_printf(MSG_DEBUG,
+				   "Not configuring frame filtering - Can't extract DGAF bit");
+		else if (!(ie[6] & HS20_DGAF_DISABLED))
+			filter |= WPA_DATA_FRAME_FILTER_FLAG_GTK;
+#endif /* CONFIG_HS20 */
+	}
+
+	proxy_arp_capa = wpa_bss_ext_capab(bss, WLAN_EXT_CAPAB_PROXY_ARP);
+
+	if ((hs20 && proxy_arp_capa) ||
+	    wpa_s->current_ssid->always_use_proxy_arp == 2 ||
+	    (proxy_arp_capa && wpa_s->current_ssid &&
+	     wpa_s->current_ssid->always_use_proxy_arp == 1))
+		filter |= WPA_DATA_FRAME_FILTER_FLAG_ARP |
+			WPA_DATA_FRAME_FILTER_FLAG_NA;
+
+	wpa_drv_configure_frame_filters(wpa_s, filter);
 }

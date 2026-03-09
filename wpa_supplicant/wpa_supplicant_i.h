@@ -2058,4 +2058,6 @@ bool wpas_ap_supports_rsn_overriding(struct wpa_supplicant *wpa_s,
 bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
 				       struct wpa_bss *bss);
 
+void wpas_configure_frame_filters(struct wpa_supplicant *wpa_s);
+
 #endif /* WPA_SUPPLICANT_I_H */

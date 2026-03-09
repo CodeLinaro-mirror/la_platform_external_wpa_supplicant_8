@@ -896,6 +896,8 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT(max_idle);
 	INT(ssid_protection);
 
+	INT_DEF(drop_unicast_ip_in_l2_multicast, 1);
+	INT_DEF(always_use_proxy_arp, 0);
 #undef STR
 #undef INT
 #undef INT_DEF
