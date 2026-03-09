@@ -695,6 +695,12 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			return;
 		}
 
+                /* Hardcoded the schedule map config, remove when b/484354184 is done */
+                char cmd[] = "map_id=1 5745:feffffff";
+                if (wpas_nan_sched_config_map(wpa_s, cmd) < 0) {
+                     wpa_printf(MSG_ERROR, "Failed to set hardcoded schedule map");
+                }
+
 		// Setup Bootstrapping & Pairing Config
 		NanPairingConfig pairing_config = msg.pairingConfig;
 		setNanConfigParam(wpa_s, "pairing_setup %d", pairing_config.enablePairingSetup ? 1 : 0);
@@ -796,6 +802,12 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				ifname, cmdId, nan_status, 0);
 			return;
 		}
+
+                /* Hardcoded the schedule map config, remove when b/484354184 is done */
+                char cmd[] = "map_id=1 5745:feffffff";
+                if (wpas_nan_sched_config_map(wpa_s, cmd) < 0) {
+                    wpa_printf(MSG_ERROR, "Failed to set hardcoded schedule map");
+                }
 
 		// Setup Bootstrapping & Pairing Config
 		NanPairingConfig pairing_config = msg.pairingConfig;
