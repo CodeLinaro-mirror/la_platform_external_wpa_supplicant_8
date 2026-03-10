@@ -353,6 +353,7 @@ bool NanIface::isValid()
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global_, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanCapabilitiesResponse(ifname, cmdId,
 				nan_status, aidl_caps);
 			return;
@@ -396,10 +397,11 @@ bool NanIface::isValid()
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		nan_status.status = NanStatusCode::INVALID_ARGS;
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanConfigResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -446,6 +448,7 @@ bool NanIface::isValid()
 		// Update the nan_config to the NAN discovery engine level
 		ret = wpas_nan_update_conf(wpa_s);
 		if (ret != 0) {
+			nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 			aidl_manager->notifyNanConfigResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -472,6 +475,7 @@ bool NanIface::isValid()
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanEnableResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -517,6 +521,7 @@ bool NanIface::isValid()
 		);
 
 		if (ret != 0) {
+			nan_status.status = NanStatusCode::INVALID_ARGS;
 			aidl_manager->notifyNanEnableResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -548,6 +553,7 @@ bool NanIface::isValid()
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanDisableResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -583,6 +589,7 @@ bool NanIface::isValid()
 
 		if (!wpa_s) {
 			wpa_printf(MSG_ERROR, "nl80211 parent interface not found");
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -635,6 +642,7 @@ bool NanIface::isValid()
 		struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global, ifaceName.c_str());
 		if (!wpa_s) {
 			wpa_printf(MSG_ERROR, "Failed to find NAN data iface.");
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -684,12 +692,14 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanStartPublishResponse(
 				ifname, cmdId, nan_status, -1);
 			return;
 		}
 
 		if (!validateNanPublishConfig(msg)) {
+			nan_status.status = NanStatusCode::INVALID_ARGS;
 			aidl_manager->notifyNanStartPublishResponse(
 				ifname, cmdId, nan_status, -1);
 			return;
@@ -767,6 +777,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname_.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanStopPublishResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -792,12 +803,14 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanStartSubscribeResponse(
 				ifname, cmdId, nan_status, 0);
 			return;
 		}
 
 		if (!validateNanSubscribeConfig(msg)) {
+			nan_status.status = NanStatusCode::INVALID_ARGS;
 			aidl_manager->notifyNanStartSubscribeResponse(
 				ifname, cmdId, nan_status, 0);
 			return;
@@ -870,15 +883,14 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		nan_status.status = NanStatusCode::SUCCESS;
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanStopSubscribeResponse(ifname, cmdId, nan_status);
 			return;
 		}
-
-		nan_status.status = NanStatusCode::SUCCESS;
 		wpas_nan_cancel_subscribe(wpa_s, sessionId);
 		aidl_manager->notifyNanStopSubscribeResponse(ifname, cmdId, nan_status);
 	});
@@ -901,6 +913,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -942,6 +955,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanInitiateBootstrappingResponse(ifname, cmdId, nan_status, 0);
 			return;
 		}
@@ -951,6 +965,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.peerId, msg.requestBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			nan_status.status = NanStatusCode::INVALID_ARGS;
 			aidl_manager->notifyNanInitiateBootstrappingResponse(
 				ifname, cmdId, nan_status, 0);
 			return;
@@ -981,6 +996,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -991,6 +1007,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			MAC2STR(msg.peerDiscMacAddr), msg.discoverySessionId,
 			msg.responseBootstrappingMethod);
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			nan_status.status = NanStatusCode::INVALID_ARGS;
 			aidl_manager->notifyNanRespondToBootstrappingIndicationResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -1015,11 +1032,12 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		nan_status.status = NanStatusCode::INVALID_ARGS;
 
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
 				nan_status, msg.peerId);
 			return;
@@ -1075,6 +1093,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
+		} else {
+			nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		}
 		aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
 			nan_status, msg.peerId);
@@ -1093,10 +1113,11 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		nan_status.status = NanStatusCode::INVALID_ARGS;
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanRespondToPairingIndicationResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -1109,6 +1130,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 			if (ret > 0 && ret < kNanIfaceConfBufSize &&
 				wpas_nan_pairing_abort(wpa_s, cmd) >= 0) {
 				nan_status.status = NanStatusCode::SUCCESS;
+			} else {
+				nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 			}
 			aidl_manager->notifyNanRespondToPairingIndicationResponse(
 				ifname, cmdId, nan_status);
@@ -1164,6 +1187,8 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		if (wpas_nan_pairing_start(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
+		} else {
+			nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		}
 		aidl_manager->notifyNanRespondToPairingIndicationResponse(
 			ifname, cmdId, nan_status);
@@ -1186,6 +1211,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanTerminatePairingResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -1231,10 +1257,11 @@ static int appendSecurityConfigToCmd(
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		nan_status.status = NanStatusCode::INVALID_ARGS;
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId,
 				nan_status, msg.peerId);
 			return;
@@ -1253,11 +1280,11 @@ static int appendSecurityConfigToCmd(
 			std::string app_info_str = vectorToHexString(msg.appInfo);
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
-		}
-		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanInitiateDataPathResponse(
-				ifname, cmdId, nan_status, msg.peerId);
-			return;
+			if (cnt < 0 || cnt >= sizeof(cmd)) {
+				aidl_manager->notifyNanInitiateDataPathResponse(
+					ifname, cmdId, nan_status, msg.peerId);
+				return;
+			}
 		}
 		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
@@ -1268,6 +1295,8 @@ static int appendSecurityConfigToCmd(
 		}
 		if (wpas_nan_ndp_request(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
+		} else {
+			nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		}
 		aidl_manager->notifyNanInitiateDataPathResponse(ifname, cmdId,
 			nan_status, msg.peerId);
@@ -1285,11 +1314,12 @@ static int appendSecurityConfigToCmd(
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+		nan_status.status = NanStatusCode::INVALID_ARGS;
 
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 				ifname, cmdId, nan_status);
 			return;
@@ -1309,11 +1339,11 @@ static int appendSecurityConfigToCmd(
 			std::string app_info_str = vectorToHexString(msg.appInfo);
 			cnt += snprintf(cmd + cnt, kNanIfaceConfBufSize - cnt,
 				" ssi=%s", app_info_str.c_str());
-		}
-		if (cnt < 0 || cnt >= sizeof(cmd)) {
-			aidl_manager->notifyNanRespondToDataPathIndicationResponse(
-				ifname, cmdId, nan_status);
-			return;
+			if (cnt < 0 || cnt >= sizeof(cmd)) {
+				aidl_manager->notifyNanRespondToDataPathIndicationResponse(
+					ifname, cmdId, nan_status);
+				return;
+			}
 		}
 		cnt = appendSecurityConfigToCmd(
 			cmd, kNanIfaceConfBufSize, cnt, msg.securityConfig);
@@ -1325,6 +1355,8 @@ static int appendSecurityConfigToCmd(
 
 		if (wpas_nan_ndp_response(wpa_s, cmd) >= 0) {
 			nan_status.status = NanStatusCode::SUCCESS;
+		} else {
+			nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 		}
 		aidl_manager->notifyNanRespondToDataPathIndicationResponse(
 			ifname, cmdId, nan_status);
@@ -1346,6 +1378,7 @@ static int appendSecurityConfigToCmd(
 		struct wpa_supplicant* wpa_s =
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str());
 		if (!wpa_s) {
+			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
 			aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
 			return;
 		}
@@ -1356,6 +1389,7 @@ static int appendSecurityConfigToCmd(
 				MAC2STR(peerDiscMacAddr), ndpInstanceId);
 
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
+			nan_status.status = NanStatusCode::INVALID_ARGS;
 			aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
 			return;
 		}
