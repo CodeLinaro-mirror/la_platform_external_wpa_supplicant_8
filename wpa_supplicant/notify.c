@@ -1874,7 +1874,7 @@ void wpas_notify_nan_ndp_connected(struct wpa_supplicant *wpa_s,
 		       ssi_hex ? ssi_hex : "");
 
 	wpas_aidl_notify_nan_ndp_confirmed(wpa_s, ndp_id, peer_ndi,
-		true/*is_success*/, 0/*No Reason*/, nullptr, 0);
+		true/*is_success*/, 0/*No Reason*/, ssi, ssi_len);
 
 	os_free(ssi_hex);
 }
