@@ -56,17 +56,20 @@ bool MainlineSupplicant::isValid() {
 ::ndk::ScopedAStatus MainlineSupplicant::removeNanInterface(
         const std::string& in_ifaceName) {
 
+	if (in_ifaceName.empty()) {
+		wpa_printf(MSG_ERROR, "Empty iface name provided");
+		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+	}
 	size_t pos = in_ifaceName.find('-');
-	if (in_ifaceName.empty() || pos == std::string::npos) {
+	if (pos == std::string::npos) {
 		wpa_printf(
 			MSG_ERROR, "Invalid iface name format: %s",
 			in_ifaceName.c_str());
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
 
-	std::string nan_iface_name, primary_iface_name;
+	std::string nan_iface_name;
 	nan_iface_name = in_ifaceName.substr(0, pos);
-	primary_iface_name = in_ifaceName.substr(pos + 1);
 	struct wpa_supplicant* wpa_s =
 	wpa_supplicant_get_iface(wpa_global_, nan_iface_name.c_str());
 	if (!wpa_s) {
