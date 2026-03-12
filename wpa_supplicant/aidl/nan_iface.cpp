@@ -329,6 +329,15 @@ bool NanIface::isValid()
 		in_ndpInstanceId, in_peerDiscMacAddr, in_ndiInitMac);
 }
 
+::ndk::ScopedAStatus NanIface::setSchedule(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::setScheduleInternal, in_cmdId, in_schedule);
+}
+
 #ifdef CONFIG_NAN
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
@@ -1343,6 +1352,13 @@ static int appendSecurityConfigToCmd(
 	});
 	return ndk::ScopedAStatus::ok();
 }
+
+::ndk::ScopedAStatus NanIface::setScheduleInternal(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
 #else
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
@@ -1462,6 +1478,13 @@ static int appendSecurityConfigToCmd(
 	char16_t cmdId, int32_t ndpInstanceId,
 	const std::array<uint8_t, 6>& peerDiscMacAddr,
 	const std::array<uint8_t, 6>& in_ndiInitMac)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::setScheduleInternal(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }

@@ -49,6 +49,8 @@ public:
 		::aidl::android::system::wifi::mainline_supplicant::NanInitiateDataPathRequest;
 	using NanRespondToDataPathIndicationRequest =
 		::aidl::android::system::wifi::mainline_supplicant::NanRespondToDataPathIndicationRequest;
+	using NanSchedule =
+		::aidl::android::system::wifi::mainline_supplicant::NanSchedule;
 	NanIface(struct wpa_global* global, const std::string& ifname);
 	~NanIface() override;
 
@@ -116,6 +118,9 @@ public:
 		int32_t in_ndpInstanceId,
 		const std::array<uint8_t, 6>& in_peerDiscMacAddr,
 		const std::array<uint8_t, 6>& in_ndiInitMac) override;
+	::ndk::ScopedAStatus setSchedule(
+		char16_t in_cmdId,
+		const std::vector<NanSchedule>& in_schedule) override;
 
 private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
@@ -165,6 +170,9 @@ private:
 		char16_t cmdId, int32_t ndpInstanceId,
 		const std::array<uint8_t, 6>& peerDiscMacAddr,
 		const std::array<uint8_t, 6>& in_ndiInitMac);
+	::ndk::ScopedAStatus setScheduleInternal(
+		char16_t in_cmdId,
+		const std::vector<NanSchedule>& in_schedule);
 
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
