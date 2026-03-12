@@ -114,7 +114,8 @@ public:
 	::ndk::ScopedAStatus terminateDataPathRequest(
 		char16_t in_cmdId,
 		int32_t in_ndpInstanceId,
-		const std::array<uint8_t, 6>& in_peerDiscMacAddr) override;
+		const std::array<uint8_t, 6>& in_peerDiscMacAddr,
+		const std::array<uint8_t, 6>& in_ndiInitMac) override;
 
 private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
@@ -162,7 +163,8 @@ private:
 		const NanRespondToDataPathIndicationRequest& msg);
 	::ndk::ScopedAStatus terminateDataPathRequestInternal(
 		char16_t cmdId, int32_t ndpInstanceId,
-		const std::array<uint8_t, 6>& peerDiscMacAddr);
+		const std::array<uint8_t, 6>& peerDiscMacAddr,
+		const std::array<uint8_t, 6>& in_ndiInitMac);
 
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls
