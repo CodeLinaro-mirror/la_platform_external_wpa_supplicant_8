@@ -73,7 +73,8 @@ public:
 		const NanConfigRequest& in_msg2) override;
 	::ndk::ScopedAStatus disableRequest(char16_t in_cmdId) override;
 	::ndk::ScopedAStatus createDataInterfaceRequest(
-		char16_t, const std::string& in_ifaceName) override;
+		char16_t, const std::string& in_ifaceName,
+		const std::array<uint8_t, 6>& macAddr) override;
 	::ndk::ScopedAStatus deleteDataInterfaceRequest(
 		char16_t, const std::string& in_ifaceName) override;
 	::ndk::ScopedAStatus getName(std::string* _aidl_return) override;
@@ -128,7 +129,8 @@ private:
 		const NanConfigRequest& msg2);
 	::ndk::ScopedAStatus disableRequestInternal(char16_t cmdId);
 	::ndk::ScopedAStatus createDataInterfaceRequestInternal(
-		char16_t, const std::string& ifaceName);
+		char16_t, const std::string& ifaceName,
+		const std::array<uint8_t, 6>& macAddr);
 	::ndk::ScopedAStatus deleteDataInterfaceRequestInternal(
 		char16_t, const std::string& ifaceName);
 	::ndk::ScopedAStatus startPublishRequestInternal(

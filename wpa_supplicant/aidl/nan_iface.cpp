@@ -188,11 +188,12 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequest(
-	char16_t in_cmdId, const std::string& in_ifaceName)
+	char16_t in_cmdId, const std::string& in_ifaceName,
+	const std::array<uint8_t, 6>& macaddr)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-		&NanIface::createDataInterfaceRequestInternal, in_cmdId, in_ifaceName
+		&NanIface::createDataInterfaceRequestInternal, in_cmdId, in_ifaceName, macaddr
 	);
 }
 
@@ -488,9 +489,9 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
-	char16_t cmdId, const std::string& ifaceName)
+	char16_t cmdId, const std::string& ifaceName, const std::array<uint8_t, 6>& macAddr)
 {
-	u8 allocated_if_addr[ETH_ALEN];
+	u8 allocate_if_addr[ETH_ALEN];
 
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -517,8 +518,8 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), NULL, NULL, NULL,
-						(u8 *)allocated_if_addr, NULL) < 0)
+		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), macAddr.data(),
+						   NULL, NULL, (u8 *)allocate_if_addr, NULL) < 0)
 		{
 			wpa_printf(MSG_ERROR, "Failed to create NAN data iface");
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
@@ -1371,7 +1372,7 @@ static int appendSecurityConfigToCmd(
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
-	char16_t cmdId, const std::string& ifaceName)
+	char16_t cmdId, const std::string& ifaceName, const std::array<uint8_t, 6>& macAddr)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
