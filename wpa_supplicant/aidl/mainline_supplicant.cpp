@@ -68,10 +68,9 @@ bool MainlineSupplicant::isValid() {
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
 
-	std::string nan_iface_name;
-	nan_iface_name = in_ifaceName.substr(0, pos);
+	std::string nan_iface_name = in_ifaceName.substr(0, pos);
 	struct wpa_supplicant* wpa_s =
-	wpa_supplicant_get_iface(wpa_global_, nan_iface_name.c_str());
+		wpa_supplicant_get_iface(wpa_global_, nan_iface_name.c_str());
 	if (!wpa_s) {
 		wpa_printf(MSG_ERROR, "Interface %s does not exist",
 			nan_iface_name.c_str());

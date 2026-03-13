@@ -552,32 +552,39 @@ bool NanIface::isValid()
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 
-	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
-		NanStatus nan_status;
-		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
-		struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global, ifaceName.c_str());
-		if (!wpa_s) {
-			wpa_printf(MSG_ERROR, "Failed to find NAN data iface.");
-			nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
-			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
-			return;
-		}
+	NanStatus nan_status;
+	nan_status.status = NanStatusCode::INTERNAL_FAILURE;
+	if (ifaceName.empty()) {
+		wpa_printf(MSG_ERROR, "Empty nan data iface name provided");
+		nan_status.status = NanStatusCode::INVALID_ARGS;
+		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname_, cmdId, nan_status);
+		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
+	}
 
-		if (wpa_supplicant_remove_iface(wpa_global, wpa_s, 0) != 0) {
-			wpa_printf(MSG_ERROR, "Failed to remove NAN data iface in wpa_supplicant.");
-			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
-			return;
-		}
+	struct wpa_supplicant *wpa_s = wpa_supplicant_get_iface(wpa_global_, ifaceName.c_str());
+	if (!wpa_s) {
+		wpa_printf(MSG_ERROR, "Failed to find NAN data iface.");
+		nan_status.status = NanStatusCode::NAN_NOT_ALLOWED;
+		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname_, cmdId, nan_status);
+		return createStatus(SupplicantStatusCode::FAILURE_IFACE_UNKNOWN);
+	}
 
-		if (wpa_drv_if_remove(wpa_global->ifaces, WPA_IF_NAN_DATA, ifaceName.c_str()) != 0) {
-			wpa_printf(MSG_ERROR, "Failed to remove NAN data iface in WPA driver.");
-			aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
-			return;
-		}
+	if (wpa_supplicant_remove_iface(wpa_global_, wpa_s, 0)) {
+		wpa_printf(MSG_ERROR, "Failed to remove NAN data iface %s", ifaceName.c_str());
+		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname_, cmdId, nan_status);
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 
-		nan_status.status = NanStatusCode::SUCCESS;
-		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname, cmdId, nan_status);
-	});
+	if (wpa_drv_if_remove(wpa_global_->ifaces, WPA_IF_NAN_DATA, ifaceName.c_str())) {
+		wpa_printf(MSG_ERROR, "Failed to remove NAN data iface %s in WPA driver",
+			ifaceName.c_str());
+		aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname_, cmdId, nan_status);
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
+	nan_status.status = NanStatusCode::SUCCESS;
+	aidl_manager->notifyNanDeleteDataInterfaceResponse(ifname_, cmdId, nan_status);
+	wpa_printf(MSG_INFO, "Interface %s was removed successfully", ifaceName.c_str());
 	return ndk::ScopedAStatus::ok();
 }
 
