@@ -246,6 +246,27 @@ struct crypto_ec_key * dpp_set_pubkey_point(struct crypto_ec_key *group_key,
 }
 
 
+int dpp_get_pubkey_hash(struct crypto_ec_key *key, u8 *hash)
+{
+	struct wpabuf *uncomp;
+	const u8 *addr[1];
+	size_t len[1];
+	int res;
+
+	if (!key)
+		return -1;
+
+	uncomp = crypto_ec_key_get_pubkey_point(key, 1);
+	if (!uncomp)
+		return -1;
+	addr[0] = wpabuf_head(uncomp);
+	len[0] = wpabuf_len(uncomp);
+	res = sha256_vector(1, addr, len, hash);
+	wpabuf_free(uncomp);
+	return res;
+}
+
+
 struct crypto_ec_key * dpp_gen_keypair(const struct dpp_curve_params *curve)
 {
 	struct crypto_ec_key *key;
@@ -1035,10 +1056,9 @@ fail:
 int dpp_auth_derive_l_responder(struct dpp_authentication *auth)
 {
 	struct crypto_ec *ec;
-	struct crypto_ec_point *L = NULL;
-	const struct crypto_ec_point *BI;
-	const struct crypto_bignum *bR, *pR, *q;
-	struct crypto_bignum *sum = NULL, *lx = NULL;
+	struct crypto_ec_point *L = NULL, *BI = NULL;
+	const struct crypto_bignum *q;
+	struct crypto_bignum *sum = NULL, *lx = NULL, *bR = NULL, *pR = NULL;
 	int ret = -1;
 
 	/* L = ((bR + pR) modulo q) * BI */
@@ -1068,7 +1088,10 @@ int dpp_auth_derive_l_responder(struct dpp_authentication *auth)
 fail:
 	crypto_bignum_deinit(lx, 1);
 	crypto_bignum_deinit(sum, 1);
+	crypto_bignum_deinit(bR, 1);
+	crypto_bignum_deinit(pR, 1);
 	crypto_ec_point_deinit(L, 1);
+	crypto_ec_point_deinit(BI, 1);
 	crypto_ec_deinit(ec);
 	return ret;
 }
@@ -1077,10 +1100,8 @@ fail:
 int dpp_auth_derive_l_initiator(struct dpp_authentication *auth)
 {
 	struct crypto_ec *ec;
-	struct crypto_ec_point *L = NULL, *sum = NULL;
-	const struct crypto_ec_point *BR, *PR;
-	const struct crypto_bignum *bI;
-	struct crypto_bignum *lx = NULL;
+	struct crypto_ec_point *L = NULL, *sum = NULL, *BR = NULL, *PR = NULL;
+	struct crypto_bignum *lx = NULL, *bI = NULL;
 	int ret = -1;
 
 	/* L = bI * (BR + PR) */
@@ -1108,8 +1129,11 @@ int dpp_auth_derive_l_initiator(struct dpp_authentication *auth)
 	ret = 0;
 fail:
 	crypto_bignum_deinit(lx, 1);
+	crypto_bignum_deinit(bI, 1);
 	crypto_ec_point_deinit(sum, 1);
 	crypto_ec_point_deinit(L, 1);
+	crypto_ec_point_deinit(BR, 1);
+	crypto_ec_point_deinit(PR, 1);
 	crypto_ec_deinit(ec);
 	return ret;
 }
@@ -1434,25 +1458,27 @@ dpp_pkex_get_role_elem(const struct dpp_curve_params *curve, int init)
 
 struct crypto_ec_point *
 dpp_pkex_derive_Qi(const struct dpp_curve_params *curve, const u8 *mac_init,
-		   const char *code, const char *identifier,
+		   const char *code, size_t code_len, const char *identifier,
 		   struct crypto_ec **ret_ec)
 {
 	u8 hash[DPP_MAX_HASH_LEN];
 	const u8 *addr[3];
 	size_t len[3];
 	unsigned int num_elem = 0;
-	struct crypto_ec_point *Qi = NULL;
+	struct crypto_ec_point *Qi = NULL, *Pi = NULL;
 	struct crypto_ec_key *Pi_key = NULL;
-	const struct crypto_ec_point *Pi = NULL;
 	struct crypto_bignum *hash_bn = NULL;
 	struct crypto_ec *ec = NULL;
 
-	/* Qi = H(MAC-Initiator | [identifier |] code) * Pi */
+	/* Qi = H([MAC-Initiator |] [identifier |] code) * Pi */
 
-	wpa_printf(MSG_DEBUG, "DPP: MAC-Initiator: " MACSTR, MAC2STR(mac_init));
-	addr[num_elem] = mac_init;
-	len[num_elem] = ETH_ALEN;
-	num_elem++;
+	if (mac_init) {
+		wpa_printf(MSG_DEBUG, "DPP: MAC-Initiator: " MACSTR,
+			   MAC2STR(mac_init));
+		addr[num_elem] = mac_init;
+		len[num_elem] = ETH_ALEN;
+		num_elem++;
+	}
 	if (identifier) {
 		wpa_printf(MSG_DEBUG, "DPP: code identifier: %s",
 			   identifier);
@@ -1460,14 +1486,14 @@ dpp_pkex_derive_Qi(const struct dpp_curve_params *curve, const u8 *mac_init,
 		len[num_elem] = os_strlen(identifier);
 		num_elem++;
 	}
-	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, os_strlen(code));
+	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, code_len);
 	addr[num_elem] = (const u8 *) code;
-	len[num_elem] = os_strlen(code);
+	len[num_elem] = code_len;
 	num_elem++;
 	if (dpp_hash_vector(curve, num_elem, addr, len, hash) < 0)
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG,
-			"DPP: H(MAC-Initiator | [identifier |] code)",
+			"DPP: H([MAC-Initiator |] [identifier |] code)",
 			hash, curve->hash_len);
 	Pi_key = dpp_pkex_get_role_elem(curve, 1);
 	if (!Pi_key)
@@ -1491,6 +1517,7 @@ dpp_pkex_derive_Qi(const struct dpp_curve_params *curve, const u8 *mac_init,
 	crypto_ec_point_debug_print(ec, Qi, "DPP: Qi");
 out:
 	crypto_ec_key_deinit(Pi_key);
+	crypto_ec_point_deinit(Pi, 1);
 	crypto_bignum_deinit(hash_bn, 1);
 	if (ret_ec && Qi)
 		*ret_ec = ec;
@@ -1506,25 +1533,27 @@ fail:
 
 struct crypto_ec_point *
 dpp_pkex_derive_Qr(const struct dpp_curve_params *curve, const u8 *mac_resp,
-		   const char *code, const char *identifier,
+		   const char *code, size_t code_len, const char *identifier,
 		   struct crypto_ec **ret_ec)
 {
 	u8 hash[DPP_MAX_HASH_LEN];
 	const u8 *addr[3];
 	size_t len[3];
 	unsigned int num_elem = 0;
-	struct crypto_ec_point *Qr = NULL;
+	struct crypto_ec_point *Qr = NULL, *Pr = NULL;
 	struct crypto_ec_key *Pr_key = NULL;
-	const struct crypto_ec_point *Pr = NULL;
 	struct crypto_bignum *hash_bn = NULL;
 	struct crypto_ec *ec = NULL;
 
-	/* Qr = H(MAC-Responder | | [identifier | ] code) * Pr */
+	/* Qr = H([MAC-Responder |] [identifier |] code) * Pr */
 
-	wpa_printf(MSG_DEBUG, "DPP: MAC-Responder: " MACSTR, MAC2STR(mac_resp));
-	addr[num_elem] = mac_resp;
-	len[num_elem] = ETH_ALEN;
-	num_elem++;
+	if (mac_resp) {
+		wpa_printf(MSG_DEBUG, "DPP: MAC-Responder: " MACSTR,
+			   MAC2STR(mac_resp));
+		addr[num_elem] = mac_resp;
+		len[num_elem] = ETH_ALEN;
+		num_elem++;
+	}
 	if (identifier) {
 		wpa_printf(MSG_DEBUG, "DPP: code identifier: %s",
 			   identifier);
@@ -1532,14 +1561,14 @@ dpp_pkex_derive_Qr(const struct dpp_curve_params *curve, const u8 *mac_resp,
 		len[num_elem] = os_strlen(identifier);
 		num_elem++;
 	}
-	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, os_strlen(code));
+	wpa_hexdump_ascii_key(MSG_DEBUG, "DPP: code", code, code_len);
 	addr[num_elem] = (const u8 *) code;
-	len[num_elem] = os_strlen(code);
+	len[num_elem] = code_len;
 	num_elem++;
 	if (dpp_hash_vector(curve, num_elem, addr, len, hash) < 0)
 		goto fail;
 	wpa_hexdump_key(MSG_DEBUG,
-			"DPP: H(MAC-Responder | [identifier |] code)",
+			"DPP: H([MAC-Responder |] [identifier |] code)",
 			hash, curve->hash_len);
 	Pr_key = dpp_pkex_get_role_elem(curve, 0);
 	if (!Pr_key)
@@ -1564,6 +1593,7 @@ dpp_pkex_derive_Qr(const struct dpp_curve_params *curve, const u8 *mac_resp,
 
 out:
 	crypto_ec_key_deinit(Pr_key);
+	crypto_ec_point_deinit(Pr, 1);
 	crypto_bignum_deinit(hash_bn, 1);
 	if (ret_ec && Qr)
 		*ret_ec = ec;
@@ -1578,9 +1608,10 @@ fail:
 
 
 int dpp_pkex_derive_z(const u8 *mac_init, const u8 *mac_resp,
+		      u8 ver_init, u8 ver_resp,
 		      const u8 *Mx, size_t Mx_len,
 		      const u8 *Nx, size_t Nx_len,
-		      const char *code,
+		      const char *code, size_t code_len,
 		      const u8 *Kx, size_t Kx_len,
 		      u8 *z, unsigned int hash_len)
 {
@@ -1589,7 +1620,10 @@ int dpp_pkex_derive_z(const u8 *mac_init, const u8 *mac_resp,
 	u8 *info, *pos;
 	size_t info_len;
 
-	/* z = HKDF(<>, MAC-Initiator | MAC-Responder | M.x | N.x | code, K.x)
+	/*
+	 * v1: info = MAC-Initiator | MAC-Responder
+	 * v2: info = Protocol Version-Initiator | Protocol Version-Responder
+	 * z = HKDF(<>, info | M.x | N.x | code, K.x)
 	 */
 
 	/* HKDF-Extract(<>, IKM=K.x) */
@@ -1598,20 +1632,29 @@ int dpp_pkex_derive_z(const u8 *mac_init, const u8 *mac_resp,
 		return -1;
 	wpa_hexdump_key(MSG_DEBUG, "DPP: PRK = HKDF-Extract(<>, IKM)",
 			prk, hash_len);
-	info_len = 2 * ETH_ALEN + Mx_len + Nx_len + os_strlen(code);
+	if (mac_init && mac_resp)
+		info_len = 2 * ETH_ALEN;
+	else
+		info_len = 2;
+	info_len += Mx_len + Nx_len + code_len;
 	info = os_malloc(info_len);
 	if (!info)
 		return -1;
 	pos = info;
-	os_memcpy(pos, mac_init, ETH_ALEN);
-	pos += ETH_ALEN;
-	os_memcpy(pos, mac_resp, ETH_ALEN);
-	pos += ETH_ALEN;
+	if (mac_init && mac_resp) {
+		os_memcpy(pos, mac_init, ETH_ALEN);
+		pos += ETH_ALEN;
+		os_memcpy(pos, mac_resp, ETH_ALEN);
+		pos += ETH_ALEN;
+	} else {
+		*pos++ = ver_init;
+		*pos++ = ver_resp;
+	}
 	os_memcpy(pos, Mx, Mx_len);
 	pos += Mx_len;
 	os_memcpy(pos, Nx, Nx_len);
 	pos += Nx_len;
-	os_memcpy(pos, code, os_strlen(code));
+	os_memcpy(pos, code, code_len);
 
 	/* HKDF-Expand(PRK, info, L) */
 	if (hash_len == 32)
@@ -1642,11 +1685,10 @@ int dpp_reconfig_derive_ke_responder(struct dpp_authentication *auth,
 				     struct json_token *peer_net_access_key)
 {
 	struct crypto_ec_key *own_key = NULL, *peer_key = NULL;
-	struct crypto_bignum *sum = NULL;
-	const struct crypto_bignum *q, *cR, *pR;
+	struct crypto_bignum *sum = NULL, *cR = NULL, *pR = NULL;
+	const struct crypto_bignum *q;
 	struct crypto_ec *ec = NULL;
-	struct crypto_ec_point *M = NULL;
-	const struct crypto_ec_point *CI;
+	struct crypto_ec_point *M = NULL, *CI = NULL;
 	u8 Mx[DPP_MAX_SHARED_SECRET_LEN];
 	u8 prk[DPP_MAX_HASH_LEN];
 	const struct dpp_curve_params *curve;
@@ -1729,7 +1771,10 @@ fail:
 	forced_memzero(prk, sizeof(prk));
 	forced_memzero(Mx, sizeof(Mx));
 	crypto_ec_point_deinit(M, 1);
+	crypto_ec_point_deinit(CI, 1);
 	crypto_bignum_deinit(sum, 1);
+	crypto_bignum_deinit(cR, 1);
+	crypto_bignum_deinit(pR, 1);
 	crypto_ec_key_deinit(own_key);
 	crypto_ec_key_deinit(peer_key);
 	crypto_ec_deinit(ec);
@@ -1742,10 +1787,9 @@ int dpp_reconfig_derive_ke_initiator(struct dpp_authentication *auth,
 				     struct json_token *net_access_key)
 {
 	struct crypto_ec_key *pr = NULL, *peer_key = NULL;
-	const struct crypto_ec_point *CR, *PR;
-	const struct crypto_bignum *cI;
+	struct crypto_bignum *cI = NULL;
 	struct crypto_ec *ec = NULL;
-	struct crypto_ec_point *sum = NULL, *M = NULL;
+	struct crypto_ec_point *sum = NULL, *M = NULL, *CR = NULL, *PR = NULL;
 	u8 Mx[DPP_MAX_SHARED_SECRET_LEN];
 	u8 prk[DPP_MAX_HASH_LEN];
 	int res = -1;
@@ -1816,10 +1860,13 @@ int dpp_reconfig_derive_ke_initiator(struct dpp_authentication *auth,
 fail:
 	forced_memzero(prk, sizeof(prk));
 	forced_memzero(Mx, sizeof(Mx));
+	crypto_bignum_deinit(cI, 1);
 	crypto_ec_key_deinit(pr);
 	crypto_ec_key_deinit(peer_key);
 	crypto_ec_point_deinit(sum, 1);
 	crypto_ec_point_deinit(M, 1);
+	crypto_ec_point_deinit(CR, 1);
+	crypto_ec_point_deinit(PR, 1);
 	crypto_ec_deinit(ec);
 	return res;
 }
@@ -2040,7 +2087,7 @@ struct wpabuf * dpp_build_csr(struct dpp_authentication *auth, const char *name)
 	struct wpabuf *priv_key;
 	u8 cp[DPP_CP_LEN];
 	char *password = NULL;
-	size_t password_len;
+	size_t password_len = 0;
 	int hash_sign_algo;
 
 	/* TODO: use auth->csrattrs */
@@ -2240,8 +2287,8 @@ int dpp_update_reconfig_id(struct dpp_reconfig_id *id)
 {
 	const struct crypto_bignum *q;
 	struct crypto_bignum *bn;
-	const struct crypto_ec_point *pp, *generator;
-	struct crypto_ec_point *e_prime_id, *a_nonce;
+	const struct crypto_ec_point *generator;
+	struct crypto_ec_point *e_prime_id, *a_nonce, *pp;
 	int ret = -1;
 
 	pp = crypto_ec_key_get_public_key(id->pp_key);
@@ -2278,6 +2325,7 @@ int dpp_update_reconfig_id(struct dpp_reconfig_id *id)
 fail:
 	crypto_ec_point_deinit(e_prime_id, 1);
 	crypto_ec_point_deinit(a_nonce, 1);
+	crypto_ec_point_deinit(pp, 1);
 	crypto_bignum_deinit(bn, 1);
 	return ret;
 }
@@ -2302,9 +2350,9 @@ struct crypto_ec_point * dpp_decrypt_e_id(struct crypto_ec_key *ppkey,
 					  struct crypto_ec_key *e_prime_id)
 {
 	struct crypto_ec *ec;
-	const struct crypto_bignum *pp;
+	struct crypto_bignum *pp = NULL;
 	struct crypto_ec_point *e_id = NULL;
-	const struct crypto_ec_point *a_nonce_point, *e_prime_id_point;
+	struct crypto_ec_point *a_nonce_point, *e_prime_id_point;
 
 	if (!ppkey)
 		return NULL;
@@ -2329,11 +2377,147 @@ struct crypto_ec_point * dpp_decrypt_e_id(struct crypto_ec_key *ppkey,
 	crypto_ec_point_debug_print(ec, e_id, "DPP: Decrypted E-id");
 
 fail:
+	crypto_ec_point_deinit(a_nonce_point, 1);
+	crypto_ec_point_deinit(e_prime_id_point, 1);
+	crypto_bignum_deinit(pp, 1);
 	crypto_ec_deinit(ec);
 	return e_id;
 }
 
 #endif /* CONFIG_DPP2 */
+
+
+#ifdef CONFIG_DPP3
+
+int dpp_derive_auth_i(struct dpp_authentication *auth, u8 *auth_i)
+{
+	int ret = -1, res;
+	u8 Sx[DPP_MAX_SHARED_SECRET_LEN];
+	size_t Sx_len;
+	unsigned int hash_len;
+	const char *info = "New DPP Protocol Key";
+	const u8 *addr[3];
+	size_t len[3];
+	u8 tmp[DPP_MAX_HASH_LEN], k[DPP_MAX_HASH_LEN];
+	struct wpabuf *pcx = NULL, *pex = NULL;
+
+	hash_len = auth->curve->hash_len;
+
+	/*
+	 * Configurator: S = pc * Pe
+	 * Enrollee: S = pe * Pc
+	 * k = HKDF(bk, "New DPP Protocol Key", S.x)
+	 *   = HKDF-Expand(HKDF-Extract(bk, S.X), "New DPP Protocol Key",
+	 *                 len(new-curve-hash-out))
+	 * Auth-I = HMAC(k, E-nonce | Pc.x | Pe.x)
+	 *
+	 * auth->own_protocol_key and auth->peer_protocol_key have already been
+	 * updated to use the new keys. The new curve determines the size of
+	 * the (new) protocol keys and S.x. The other parameters (bk, hash
+	 * algorithm, k) are determined based on the initially determined curve
+	 * during the (re)authentication exchange.
+	 */
+
+	if (dpp_ecdh(auth->own_protocol_key, auth->peer_protocol_key,
+		     Sx, &Sx_len) < 0)
+		goto fail;
+
+	wpa_hexdump_key(MSG_DEBUG, "DPP: S.x", Sx, Sx_len);
+
+	/* tmp = HKDF-Extract(bk, S.x) */
+	addr[0] = Sx;
+	len[0] = Sx_len;
+	res = dpp_hmac_vector(hash_len, auth->bk, hash_len, 1, addr, len, tmp);
+	if (res < 0)
+		goto fail;
+	wpa_hexdump_key(MSG_DEBUG, "DPP: HKDF-Extract(bk, S.x)",
+			tmp, hash_len);
+	/* k = HKDF-Expand(tmp, "New DPP Protocol Key", len(hash-output))
+	 */
+	res = dpp_hkdf_expand(hash_len, tmp, hash_len, info, k, hash_len);
+	if (res < 0)
+		return -1;
+
+	wpa_hexdump_key(MSG_DEBUG,
+			"DPP: k = HKDF-Expand(\"New DPP Protocol Key\")",
+			k, hash_len);
+
+	/* Auth-I = HMAC(k, E-nonce | Pc.x | Pe.x) */
+	addr[0] = auth->e_nonce;
+	len[0] = auth->curve->nonce_len;
+
+	if (auth->configurator) {
+		pcx = crypto_ec_key_get_pubkey_point(auth->own_protocol_key, 0);
+		pex = crypto_ec_key_get_pubkey_point(auth->peer_protocol_key,
+						     0);
+	} else {
+		pcx = crypto_ec_key_get_pubkey_point(auth->peer_protocol_key,
+						     0);
+		pex = crypto_ec_key_get_pubkey_point(auth->own_protocol_key, 0);
+	}
+	if (!pcx || !pex)
+		goto fail;
+	addr[1] = wpabuf_head(pcx);
+	len[1] = wpabuf_len(pcx) / 2;
+	addr[2] = wpabuf_head(pex);
+	len[2] = wpabuf_len(pex) / 2;
+
+	if (dpp_hmac_vector(hash_len, k, hash_len, 3, addr, len, auth_i) < 0)
+		goto fail;
+	wpa_hexdump_key(MSG_DEBUG,
+			"DPP: Auth-I = HMAC(k, E-nonce | Pc.x | Pe.x)",
+			auth_i, hash_len);
+	ret = 0;
+fail:
+	forced_memzero(Sx, sizeof(Sx));
+	forced_memzero(tmp, sizeof(tmp));
+	forced_memzero(k, sizeof(k));
+	wpabuf_free(pcx);
+	wpabuf_free(pex);
+	return ret;
+}
+
+
+int dpp_hpke_suite(int iana_group, enum hpke_kem_id *kem_id,
+		   enum hpke_kdf_id *kdf_id, enum hpke_aead_id *aead_id)
+{
+	switch (iana_group) {
+	case 19:
+		*kem_id = HPKE_DHKEM_P256_HKDF_SHA256;
+		*kdf_id = HPKE_KDF_HKDF_SHA256;
+		*aead_id = HPKE_AEAD_AES_128_GCM;
+		return 0;
+	case 20:
+		*kem_id = HPKE_DHKEM_P384_HKDF_SHA384;
+		*kdf_id = HPKE_KDF_HKDF_SHA384;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	case 21:
+		*kem_id = HPKE_DHKEM_P521_HKDF_SHA512;
+		*kdf_id = HPKE_KDF_HKDF_SHA512;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	case 28:
+		*kem_id = HPKE_DHKEM_P256_HKDF_SHA256;
+		*kdf_id = HPKE_KDF_HKDF_SHA256;
+		*aead_id = HPKE_AEAD_AES_128_GCM;
+		return 0;
+	case 29:
+		*kem_id = HPKE_DHKEM_P384_HKDF_SHA384;
+		*kdf_id = HPKE_KDF_HKDF_SHA384;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	case 30:
+		*kem_id = HPKE_DHKEM_P521_HKDF_SHA512;
+		*kdf_id = HPKE_KDF_HKDF_SHA512;
+		*aead_id = HPKE_AEAD_AES_256_GCM;
+		return 0;
+	}
+
+	return -1;
+}
+
+#endif /* CONFIG_DPP3 */
 
 
 #ifdef CONFIG_TESTING_OPTIONS
@@ -2343,8 +2527,7 @@ int dpp_test_gen_invalid_key(struct wpabuf *msg,
 {
 	struct crypto_ec *ec;
 	struct crypto_ec_key *key = NULL;
-	const struct crypto_ec_point *pub_key;
-	struct crypto_ec_point *p = NULL;
+	struct crypto_ec_point *p = NULL, *pub_key = NULL;
 	u8 *x, *y;
 	int ret = -1;
 
@@ -2362,10 +2545,8 @@ retry:
 
 	/* Retrieve public key coordinates */
 	pub_key = crypto_ec_key_get_public_key(key);
-	if (!pub_key)
+	if (!pub_key || crypto_ec_point_to_bin(ec, pub_key, x, y))
 		goto fail;
-
-	crypto_ec_point_to_bin(ec, pub_key, x, y);
 
 	/* And corrupt them */
 	y[curve->prime_len - 1] ^= 0x01;
@@ -2379,6 +2560,7 @@ retry:
 	ret = 0;
 fail:
 	crypto_ec_point_deinit(p, 0);
+	crypto_ec_point_deinit(pub_key, 0);
 	crypto_ec_key_deinit(key);
 	crypto_ec_deinit(ec);
 	return ret;
