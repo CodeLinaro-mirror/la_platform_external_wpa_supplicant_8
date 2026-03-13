@@ -66,8 +66,8 @@
 #include "wpas_kay.h"
 #include "mesh.h"
 #include "dpp_supplicant.h"
-#include "nan_supplicant.h"
 #include "pr_supplicant.h"
+#include "nan_supplicant.h"
 #ifdef CONFIG_MESH
 #include "ap/ap_config.h"
 #include "ap/hostapd.h"
@@ -6289,7 +6289,7 @@ int wpa_supplicant_update_mac_addr(struct wpa_supplicant *wpa_s)
 	     !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE)) &&
 	    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_P2P_DEDICATED_INTERFACE) &&
 	    !wpa_s->nan_mgmt) {
-			l2_packet_deinit(wpa_s->l2);
+		l2_packet_deinit(wpa_s->l2);
 		wpa_s->l2 = l2_packet_init(wpa_s->ifname,
 					   wpa_drv_get_mac_addr(wpa_s),
 					   ETH_P_EAPOL,
@@ -7993,6 +7993,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		wpa_s->p2p_mgmt = iface->p2p_mgmt;
 
 	wpa_s->nan_mgmt = iface->nan_mgmt;
+	wpa_s->nan_data = iface->nan_data;
 
 	if (wpa_s->num_multichan_concurrent == 0)
 		wpa_s->num_multichan_concurrent = 1;
@@ -8053,7 +8054,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		return -1;
 
 #ifdef CONFIG_NAN
-	wpa_s->nan_drv_flags = capa.nan_flags;
+	os_memcpy(&wpa_s->nan_capa, &capa.nan_capa,
+		  sizeof(wpa_s->nan_capa));
 #endif /* CONFIG_NAN */
 
 	if (wpa_supplicant_init_eapol(wpa_s) < 0)
@@ -8386,7 +8388,7 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
 
 	/* Notify the control interfaces about new networks */
 	for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
-		if (iface->p2p_mgmt == 0 && iface->nan_mgmt == 0) {
+		if (iface->p2p_mgmt == 0) {
 			wpas_notify_network_added(wpa_s, ssid);
 		} else if (ssid->ssid_len > P2P_WILDCARD_SSID_LEN
 				&& os_strncmp((const char *) ssid->ssid,
@@ -8402,7 +8404,7 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 
 #ifdef CONFIG_P2P
-	if (!wpa_s->global->p2p && !iface->nan_mgmt &&
+	if (!wpa_s->global->p2p && !wpas_is_nan_iface(wpa_s) &&
 	    !wpa_s->global->p2p_disabled && !wpa_s->conf->p2p_disabled &&
 	    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) &&
 	    wpas_p2p_add_p2pdev_interface(

@@ -1277,6 +1277,15 @@ wpas_drv_nan_cancel_subscribe(struct wpa_supplicant *wpa_s, int subscribe_id)
 						   subscribe_id);
 }
 
+static inline int
+wpas_drv_get_chip_vendor_id(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->driver->get_chip_vendor_id)
+		return 0;
+
+	return wpa_s->driver->get_chip_vendor_id(wpa_s->drv_priv);
+}
+
 #ifdef CONFIG_NAN
 
 static inline int wpa_drv_nan_start(struct wpa_supplicant *wpa_s,
@@ -1302,14 +1311,30 @@ static inline int wpa_drv_nan_update_config(struct wpa_supplicant *wpa_s,
 	return wpa_s->driver->nan_change_config(wpa_s->drv_priv, conf);
 }
 
-#endif /* CONFIG_NAN */
+static inline int wpa_drv_nan_config_schedule(struct wpa_supplicant *wpa_s,
+					      u8 map_id,
+					      struct nan_schedule_config *conf)
+{
+	if (!wpa_s->driver->nan_config_schedule)
+		return -1;
+	return wpa_s->driver->nan_config_schedule(wpa_s->drv_priv, map_id,
+						  conf);
+}
 
 static inline int
-wpas_drv_get_chip_vendor_id(struct wpa_supplicant *wpa_s)
+wpa_drv_nan_config_peer_schedule(struct wpa_supplicant *wpa_s, const u8 *peer,
+				 u16 cdw, u8 sequence_id,
+				 u16 max_chan_switch_time,
+				 const struct wpabuf *ulw,
+				 struct nan_peer_schedule_config *sched)
 {
-	if (!wpa_s->driver->get_chip_vendor_id)
-		return 0;
-
-	return wpa_s->driver->get_chip_vendor_id(wpa_s->drv_priv);
+	if (!wpa_s->driver->nan_config_peer_schedule)
+		return -1;
+	return wpa_s->driver->nan_config_peer_schedule(wpa_s->drv_priv, peer,
+						       cdw, sequence_id,
+						       max_chan_switch_time,
+						       ulw, sched);
 }
+#endif /* CONFIG_NAN */
+
 #endif /* DRIVER_I_H */

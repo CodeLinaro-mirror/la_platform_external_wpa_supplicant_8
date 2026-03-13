@@ -61,8 +61,8 @@
 #include "mesh.h"
 #include "dpp_supplicant.h"
 #include "sme.h"
-#include "nan_supplicant.h"
 #include "pr_supplicant.h"
+#include "nan_supplicant.h"
 
 #ifdef __NetBSD__
 #include <net/if_ether.h>
@@ -4285,6 +4285,9 @@ static int iftype_str_to_index(const char *iftype_str)
 
 	if (os_strcmp(iftype_str, "NAN") == 0)
 		return WPA_IF_NAN;
+
+	if (os_strcmp(iftype_str, "NAN_DATA") == 0)
+		return WPA_IF_NAN_DATA;
 
 	return WPA_IF_MAX;
 }
@@ -8858,7 +8861,6 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 	int ret;
 
 	ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
-#ifdef CONFIG_P2P
 	if (ret == 0) {
 #ifdef CONFIG_P2P
 		if (os_strncasecmp(cmd, "COUNTRY", 7) == 0) {
@@ -8876,7 +8878,6 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 		if (os_snprintf_error(buflen, ret))
 			ret = -1;
 	}
-#endif /* CONFIG_P2P */
 	return ret;
 }
 #endif /* ANDROID */
@@ -9211,8 +9212,8 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 
 	wpa_s->conf->ignore_old_scan_res = 0;
 
-	wpas_nan_de_flush(wpa_s);
 	wpas_pr_flush(wpa_s);
+	wpas_nan_de_flush(wpa_s);
 }
 
 
@@ -12728,6 +12729,8 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 	int ret = -1;
 	enum nan_service_protocol_type srv_proto_type = 0;
 	int *freq_list = NULL;
+	int *cipher_list = NULL;
+	u8 nd_pmk[PMK_LEN];
 	bool p2p = false;
 
 	os_memset(&params, 0, sizeof(params));
@@ -12809,6 +12812,11 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strcmp(token, "pr=1") == 0) {
+			params.proximity_ranging = true;
+			continue;
+		}
+
 		if (os_strcmp(token, "sync=1") == 0) {
 			params.sync = true;
 			continue;
@@ -12829,8 +12837,39 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
-		if (os_strcmp(token, "pr=1") == 0) {
-			params.proximity_ranging = true;
+		if (os_strncmp(token, "pbm=", 4) == 0) {
+			params.pbm = strtol(token + 4, NULL, 0);
+			continue;
+		}
+
+		if (os_strncmp(token, "cipher_suites=", 14) == 0) {
+			char *pos = token + 14;
+
+			while (pos && pos[0]) {
+				int_array_add_unique(&cipher_list, atoi(pos));
+				pos = os_strchr(pos, ',');
+				if (pos)
+					pos++;
+			}
+
+			params.cipher_suites_list = cipher_list;
+			continue;
+		}
+
+		if (os_strncmp(token, "nd_pmk=", 7) == 0) {
+			if (params.nd_pmk) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: Duplicate nd_pmk parameter");
+				goto fail;
+			}
+
+			if (hexstr2bin(token + 7, nd_pmk, PMK_LEN) < 0) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: Invalid nd_pmk value");
+				goto fail;
+			}
+
+			params.nd_pmk = nd_pmk;
 			continue;
 		}
 
@@ -12844,8 +12883,12 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 	if (publish_id > 0)
 		ret = os_snprintf(buf, buflen, "%d", publish_id);
 fail:
+	if (params.nd_pmk)
+		forced_memzero(nd_pmk, PMK_LEN);
+
 	wpabuf_free(ssi);
 	os_free(freq_list);
+	os_free(cipher_list);
 	return ret;
 }
 
@@ -13016,6 +13059,11 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strcmp(token, "pr=1") == 0) {
+			params.proximity_ranging = true;
+			continue;
+		}
+
 		if (os_strcmp(token, "sync=1") == 0) {
 			params.sync = true;
 			continue;
@@ -13056,8 +13104,8 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
-		if (os_strcmp(token, "pr=1") == 0) {
-			params.proximity_ranging = true;
+		if (os_strncmp(token, "pbm=", 4) == 0) {
+			params.pbm = strtol(token + 4, NULL, 0);
 			continue;
 		}
 
@@ -14347,6 +14395,35 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "NAN_UPDATE_CONF", 15) == 0) {
 		if (wpas_nan_update_conf(wpa_s) < 0)
 			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_SCHED_CONFIG_MAP ", 21) == 0) {
+		if (wpas_nan_sched_config_map(wpa_s, buf + 21) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_NDP_REQUEST ", 16) == 0) {
+		if (wpas_nan_ndp_request(wpa_s, buf + 16) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_NDP_RESPONSE ", 17) == 0) {
+		if (wpas_nan_ndp_response(wpa_s, buf + 17) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_NDP_TERMINATE ", 17) == 0) {
+		if (wpas_nan_ndp_terminate(wpa_s, buf + 17) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_PEER_INFO ", 14) == 0) {
+		reply_len = wpas_nan_peer_info(wpa_s, buf + 14, reply,
+					       reply_size);
+	} else if (os_strncmp(buf, "NAN_BOOTSTRAP ", 14) == 0) {
+		if (wpas_nan_bootstrap_request(wpa_s, buf + 14) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_BOOTSTRAP_RESET ", 20) == 0) {
+		if (wpas_nan_bootstrap_reset(wpa_s, buf + 20) < 0)
+			reply_len = -1;
+#ifdef CONFIG_PASN
+	} else if (os_strncmp(buf, "NAN_PAIR ", 9) == 0) {
+		if (wpas_nan_pairing_start(wpa_s, buf + 9) < 0)
+			reply_len = -1;
+	} else if (os_strncmp(buf, "NAN_PAIR_ABORT ", 15) == 0) {
+		if (wpas_nan_pairing_abort(wpa_s, buf + 15) < 0)
+			reply_len = -1;
+#endif /* CONFIG_PASN */
 #endif /* CONFIG_NAN */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
@@ -14455,6 +14532,9 @@ static int wpa_supplicant_global_iface_add(struct wpa_global *global,
 			} else if (os_strcmp(pos, "nan") == 0) {
 				type = WPA_IF_NAN;
 				iface.nan_mgmt = 1;
+			} else if (os_strcmp(pos, "nan_data") == 0) {
+				type = WPA_IF_NAN_DATA;
+				iface.nan_data = true;
 			} else {
 				wpa_printf(MSG_DEBUG,
 					   "INTERFACE_ADD unsupported interface type: '%s'",

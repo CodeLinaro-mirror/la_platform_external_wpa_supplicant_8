@@ -42,10 +42,10 @@ void pasn_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
 int pasn_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
 				   const u8 *own_addr, const u8 *bssid,
 				   const u8 *pmk, size_t pmk_len,
-				   const u8 *pmkid)
+				   const u8 *pmkid, int akmp)
 {
 	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, own_addr,
-				 bssid, 0, NULL, WPA_KEY_MGMT_SAE))
+				 bssid, 0, NULL, akmp))
 		return 0;
 	return -1;
 }
@@ -143,7 +143,7 @@ static int pasn_wd_handle_sae_commit(struct pasn_data *pasn,
 	}
 
 	pasn->sae.akmp = pasn->akmp;
-	if (!pasn->password || !pasn->pt) {
+	if (!pasn->pt) {
 		wpa_printf(MSG_DEBUG, "PASN: No SAE PT found");
 		return -1;
 	}
@@ -378,16 +378,16 @@ pasn_derive_keys(struct pasn_data *pasn,
 	if (!cached_pmk || !cached_pmk_len)
 		wpa_printf(MSG_DEBUG, "PASN: No valid PMKSA entry");
 
-	if (pasn->akmp == WPA_KEY_MGMT_PASN) {
-		wpa_printf(MSG_DEBUG, "PASN: Using default PMK");
-
-		pmk_len = WPA_PASN_PMK_LEN;
-		os_memcpy(pmk, pasn_default_pmk, sizeof(pasn_default_pmk));
-	} else if (cached_pmk && cached_pmk_len) {
+	if (cached_pmk && cached_pmk_len) {
 		wpa_printf(MSG_DEBUG, "PASN: Using PMKSA entry");
 
 		pmk_len = cached_pmk_len;
 		os_memcpy(pmk, cached_pmk, cached_pmk_len);
+	} else if (pasn->akmp == WPA_KEY_MGMT_PASN) {
+		wpa_printf(MSG_DEBUG, "PASN: Using default PMK");
+
+		pmk_len = WPA_PASN_PMK_LEN;
+		os_memcpy(pmk, pasn_default_pmk, sizeof(pasn_default_pmk));
 	} else {
 		switch (pasn->akmp) {
 #ifdef CONFIG_SAE
@@ -845,7 +845,8 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 		goto send_resp;
 	}
 
-	if (!pasn->noauth && pasn->akmp == WPA_KEY_MGMT_PASN) {
+	if (!pasn->noauth && pasn->akmp == WPA_KEY_MGMT_PASN &&
+	    (!rsn_data.num_pmkid || !pasn->pmksa)) {
 		wpa_printf(MSG_DEBUG, "PASN: Refuse PASN-UNAUTH");
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		goto send_resp;
@@ -959,6 +960,12 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
 				if (pmksa) {
 					cached_pmk = pmksa->pmk;
 					cached_pmk_len = pmksa->pmk_len;
+				} else if (!pasn->noauth &&
+					   pasn->akmp == WPA_KEY_MGMT_PASN) {
+					wpa_printf(MSG_DEBUG,
+						   "PASN: No PMKSA entry found for PASN-UNAUTH");
+					status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+					goto send_resp;
 				}
 			}
 		}
