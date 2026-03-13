@@ -1513,14 +1513,13 @@ int nan_pairing_set_nik(struct nan_data *nan, const u8 *nik, size_t nik_len)
 			   nik_len);
 		return -1;
 	}
-
+	os_memcpy(nan->cfg->nik, nik, NAN_NIK_LEN);
 	if (nan->cfg->pairing_cfg.pairing_verification &&
 	    nan_nira_get_tag_nonce(nan->cfg, nonce, tag) < 0) {
 		wpa_printf(MSG_DEBUG, "NAN: Failed to set NIRA for new NIK");
 		return -1;
 	}
 
-	os_memcpy(nan->cfg->nik, nik, NAN_NIK_LEN);
 	os_memcpy(nan->nira_nonce, nonce, NAN_NIRA_NONCE_LEN);
 	os_memcpy(nan->nira_tag, tag, NAN_NIRA_TAG_LEN);
 
