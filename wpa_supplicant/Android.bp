@@ -692,6 +692,38 @@ cc_library {
     },
 }
 
+cc_defaults {
+    name: "wpa_supplicant_qca_cflags",
+    cflags: [
+        "-DCONFIG_DPP3",
+        "-DCONFIG_FST",
+        "-DCONFIG_OCV",
+        "-DCONFIG_IEEE80211AX",
+        "-DCONFIG_IEEE80211BE",
+    ],
+}
+
+cc_defaults {
+    name: "wpa_supplicant_qca_default",
+    local_include_dirs: [
+        "src/fst",
+    ],
+    defaults: [
+        "wpa_supplicant_qca_cflags",
+    ],
+    srcs: [
+        "src/common/ocv.c",
+        "src/fst/fst.c",
+        "src/fst/fst_session.c",
+        "src/fst/fst_iface.c",
+        "src/fst/fst_group.c",
+        "src/fst/fst_ctrl_aux.c",
+        "src/fst/fst_ctrl_iface.c",
+        "src/ap/ieee802_11_he.c",
+        "src/ap/ieee802_11_eht.c",
+    ],
+}
+
 // End of cuttlefish section
 
 // The section starting below is for non-cuttlefish products.
@@ -1497,6 +1529,7 @@ cc_binary {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
@@ -1551,6 +1584,7 @@ wpa_supplicant_cc_binary {
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
         "wpa_supplicant_usd_defaults",
+        "wpa_supplicant_qca_default",
     ],
     soong_config_variables: {
         board_wpa_supplicant_private_lib: {
@@ -1665,6 +1699,7 @@ cc_library_shared {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_cflags",
     ],
 }
 
@@ -1744,6 +1779,7 @@ cc_library_static {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
+        "wpa_supplicant_qca_default",
     ],
 }
 
