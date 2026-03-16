@@ -207,7 +207,8 @@ extern "C"
 	void wpas_aidl_notify_nan_nik_received(
 		struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
 		int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
-		int nik_lifetime, int identity_id);
+		int nik_lifetime, int identity_id, int cipher,
+		int discovery_session_id, int pairing_id);
 	void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
 		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid, const u8* app_info,
@@ -465,7 +466,8 @@ static void wpas_aidl_notify_nan_pairing_confirmed(
 static void wpas_aidl_notify_nan_nik_received(
 		struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
 		int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
-		int nik_lifetime, int identity_id) {}
+		int nik_lifetime, int identity_id, int cipher,
+		int discovery_session_id, int pairing_id) {}
 static void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
 		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid, const u8* app_info,

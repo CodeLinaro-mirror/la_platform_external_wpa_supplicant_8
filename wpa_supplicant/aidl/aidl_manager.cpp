@@ -4107,7 +4107,8 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
 		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id)
+		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id,
+		int cipher, int discovery_session_id, int pairing_id)
 {
 	if (!wpa_s || !peer_nik || !npk || nik_len > kNikLenBytes || npk_len > kNpkLenBytes) {
 		return;
@@ -4142,12 +4143,15 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 			wpa_printf(MSG_ERROR, "Invalid NIRA cipher version %d", cipher_ver);
 			return;
 		}
+		npksa.cipherType = cipher == WPA_CIPHER_CCMP
+				? NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK
+				: NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK;
 
 		callWithEachNanIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::eventPairingSecurityAssociationReceived,
-			std::placeholders::_1, npksa));
+			std::placeholders::_1, discovery_session_id, pairing_id, npksa));
 	}
 }
 
@@ -4495,7 +4499,8 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int request_type, bool is_npk_cache_enabled) {}
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
+	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id,
+	int cipher, int discovery_session_id, int pairing_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
@@ -4576,7 +4581,9 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int request_type, bool is_npk_cache_enabled) {}
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
+	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id,
+	int cipher, int discovery_session_id,
+	int pairing_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}

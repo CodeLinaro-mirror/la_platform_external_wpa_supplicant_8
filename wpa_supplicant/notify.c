@@ -1744,7 +1744,8 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 				  const u8 *nik, size_t nik_len,
 				  int cipher_ver, int akmp,
 				  const u8 *npk, size_t npk_len,
-				  int nik_lifetime, int identity_id)
+				  int nik_lifetime, int identity_id,
+				  int cipher, int handle, int req_instance_id)
 {
 	char *nik_hex, *npk_hex;
 
@@ -1769,7 +1770,7 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_nan_nik_received(
 		wpa_s, nik, nik_len, cipher_ver, akmp, npk, npk_len,
-		nik_lifetime, identity_id);
+		nik_lifetime, identity_id, cipher, handle, req_instance_id);
 
 	os_memset(nik_hex, 0, 2 * nik_len + 1);
 	os_memset(npk_hex, 0, 2 * npk_len + 1);
