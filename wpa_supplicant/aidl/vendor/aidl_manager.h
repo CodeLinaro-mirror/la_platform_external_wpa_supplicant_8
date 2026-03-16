@@ -204,7 +204,8 @@ public:
 	void notifyNanServiceDiscovered(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
-		bool fsd, const u8 *ssi, size_t ssi_len);
+		bool fsd, const u8 *ssi, size_t ssi_len,
+		const u8* match_filter, size_t match_filter_len);
 	void notifyNanPublishReplied(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int publish_id, int peer_subscribe_id,
@@ -226,8 +227,9 @@ public:
 		int discovery_id, int peer_id, const u8* peer_nmi_addr,
 		int bootstrapping_id, int bootstrapping_method);
 	void notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-		int bootstrapping_id, const u8* peer_nmi_addr, bool is_success, u8 status_code,
-		const u8* cookie, size_t cookie_size);
+		int handle, int bootstrapping_id, const u8* peer_nmi_addr,
+		bool is_success, u8 status_code,
+		const u8* cookie, size_t cookie_size, int bootstrapping_method);
 	void notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 		int discovery_id, int peer_id, const u8* peer_nmi_addr,
 		int pairing_id, bool is_setup, bool is_npk_cache_enabled,
@@ -239,7 +241,7 @@ public:
 		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id);
 	void notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-		int discovery_id, const u8* peer_nmi_addr, int npd_id,
+		int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int npd_id,
 		bool security_required, const u8* app_info, size_t app_info_len);
 	void notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 		int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
@@ -319,6 +321,9 @@ public:
 	int addNanIfaceCallbackAidlObject(
 		const std::string &ifname,
 		const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback);
+	int getNanIfaceAidlObjectByIfname(
+		const std::string &ifname,
+		std::shared_ptr<NanIface> *iface_object);
 #endif
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);
