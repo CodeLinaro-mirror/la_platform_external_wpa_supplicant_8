@@ -113,10 +113,5 @@ int wpas_module_tests(void)
 	if (crypto_module_tests() < 0)
 		ret = -1;
 
-#ifdef CONFIG_NAN
-	if (nan_module_tests() < 0)
-		ret = -1;
-#endif /* CONFIG_NAN */
-
 	return ret;
 }

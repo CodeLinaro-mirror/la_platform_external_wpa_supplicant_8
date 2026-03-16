@@ -11,15 +11,13 @@
 #include "misc_utils.h"
 #include "supplicant.h"
 #include "p2p_iface.h"
+#include "shared_utils.h"
 
 #include <android-base/file.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 
 namespace {
-using aidl::android::hardware::wifi::supplicant::misc_utils::ensureConfigFileExistsAtPath;
-using aidl::android::hardware::wifi::supplicant::misc_utils::kConfigFileMode;
-using aidl::android::hardware::wifi::supplicant::misc_utils::kIfaceDriverName;
 
 // Pre-populated interface params for interfaces controlled by wpa_supplicant.
 // Note: This may differ for other OEM's. So, modify this accordingly.

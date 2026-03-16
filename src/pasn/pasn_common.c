@@ -128,11 +128,14 @@ int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt)
 #endif /* CONFIG_SAE */
 }
 
+
 void pasn_set_password(struct pasn_data *pasn, const char *password)
 {
 	if (!pasn)
 		return;
+	pasn->password = password;
 }
+
 
 void pasn_set_wpa_key_mgmt(struct pasn_data *pasn, int key_mgmt)
 {

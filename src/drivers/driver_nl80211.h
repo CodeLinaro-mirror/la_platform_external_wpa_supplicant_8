@@ -41,6 +41,10 @@ struct nl80211_global {
 	int ioctl_sock; /* socket for ioctl() use */
 	struct nl_sock *nl_event;
 	u8 p2p_perm_addr[ETH_ALEN];
+#ifdef CONFIG_NAN
+	/* dedicated socket for NAN interface creation and events */
+	struct nl_sock *nl_nan;
+#endif
 
 	/* Handling of sync replies */
 	bool sync_reply_handling;
@@ -50,10 +54,6 @@ struct nl80211_global {
 
 	/* pending events that happened while waiting for a sync reply */
 	struct dl_list pending_events;
-#ifdef CONFIG_NAN
-	/* dedicated socket for NAN interface creation and events */
-	struct nl_sock *nl_nan;
-#endif
 };
 
 struct nl80211_wiphy_data {

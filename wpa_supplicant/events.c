@@ -53,8 +53,8 @@
 #include "wmm_ac.h"
 #include "dpp_supplicant.h"
 #include "rsn_supp/wpa_i.h"
-#include "pr_supplicant.h"
 #include "nan_supplicant.h"
+#include "pr_supplicant.h"
 
 
 #define MAX_OWE_TRANSITION_BSS_SELECT_COUNT 5
@@ -5209,7 +5209,6 @@ wpa_supplicant_event_interface_status(struct wpa_supplicant *wpa_s,
 		if (!wpa_s->global->p2p &&
 		    !wpa_s->global->p2p_disabled &&
 		    !wpa_s->conf->p2p_disabled &&
-		    !wpas_is_nan_iface(wpa_s) &&
 		    (wpa_s->drv_flags &
 		     WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) &&
 		    wpas_p2p_add_p2pdev_interface(
@@ -5842,25 +5841,14 @@ static void wpas_event_rx_mgmt_action(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_FST */
 
 #if defined(CONFIG_NAN_USD) || defined(CONFIG_NAN)
-	if ((category == WLAN_ACTION_PUBLIC ||
-	     category == WLAN_ACTION_PROTECTED_DUAL) &&
-	    plen >= 5 && payload[0] == WLAN_PA_VENDOR_SPECIFIC) {
-		/* Drop unprotected unicast frames from paired peers */
-		if (category == WLAN_ACTION_PUBLIC &&
-		    !is_multicast_ether_addr(mgmt->da) &&
-		    wpas_nan_is_peer_paired(wpa_s, mgmt->sa))
-			return;
-
-		if  (WPA_GET_BE32(&payload[1]) == NAN_SDF_VENDOR_TYPE) {
-			payload += 5;
-			plen -= 5;
-			wpas_nan_de_rx_sdf(wpa_s, mgmt->sa, mgmt->bssid, freq,
-					   payload, plen, rssi);
-			return;
-		} else if (WPA_GET_BE32(&payload[1]) == NAN_NAF_VENDOR_TYPE) {
-			wpas_nan_rx_naf(wpa_s, mgmt, len);
-			return;
-		}
+	if (category == WLAN_ACTION_PUBLIC && plen >= 5 &&
+	    payload[0] == WLAN_PA_VENDOR_SPECIFIC &&
+	    WPA_GET_BE32(&payload[1]) == NAN_SDF_VENDOR_TYPE) {
+		payload += 5;
+		plen -= 5;
+		wpas_nan_de_rx_sdf(wpa_s, mgmt->sa, mgmt->bssid, freq,
+				   payload, plen, rssi);
+		return;
 	}
 #endif /* CONFIG_NAN_USD || CONFIG_NAN */
 
@@ -6530,10 +6518,6 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 	if (elems.proximity_ranging && elems.proximity_ranging_len)
 		return wpas_pr_pasn_auth_rx(wpa_s, mgmt, len, freq);
 #endif /* CONFIG_PR */
-#ifdef CONFIG_NAN
-	if (wpa_s->nan_mgmt && elems.nan_ie && elems.nan_len)
-		return wpas_nan_pasn_auth_rx(wpa_s, mgmt, len);
-#endif /* CONFIG_NAN */
 
 	return wpas_pasn_auth_rx(wpa_s, mgmt, len);
 }
@@ -6799,17 +6783,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 						data->tx_status.ack) == 0)
 			break;
 #endif /* CONFIG_PR */
-#ifdef CONFIG_NAN
-		if (wpa_s->nan_mgmt &&
-		    data->tx_status.type == WLAN_FC_TYPE_MGMT &&
-		    data->tx_status.stype == WLAN_FC_STYPE_AUTH &&
-		    !wpa_s->pasn_auth_work &&
-		    wpas_nan_pasn_auth_tx_status(wpa_s, data->tx_status.data,
-						 data->tx_status.data_len,
-						 data->tx_status.ack) == 0)
-			break;
-#endif /* CONFIG_NAN */
-
 		if (data->tx_status.type == WLAN_FC_TYPE_MGMT &&
 		    data->tx_status.stype == WLAN_FC_STYPE_AUTH &&
 		    wpas_pasn_auth_tx_status(wpa_s, data->tx_status.data,
@@ -6817,16 +6790,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 					     data->tx_status.ack) == 0)
 			break;
 #endif /* CONFIG_PASN */
-
-		if (wpas_is_nan_iface(wpa_s) &&
-		    data->tx_status.type == WLAN_FC_TYPE_MGMT &&
-		    data->tx_status.stype == WLAN_FC_STYPE_ACTION) {
-			wpas_nan_tx_status(wpa_s, data->tx_status.data,
-					   data->tx_status.data_len,
-					   data->tx_status.ack);
-			break;
-		}
-
 #ifdef CONFIG_AP
 		if (wpa_s->ap_iface == NULL) {
 #ifdef CONFIG_OFFCHANNEL

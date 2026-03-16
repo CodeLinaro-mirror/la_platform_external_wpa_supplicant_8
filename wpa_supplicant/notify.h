@@ -254,12 +254,7 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 				      int subscribe_id, int peer_publish_id,
 				      const u8 *peer_addr,
 				      bool fsd, bool fsd_gas,
-				      const u8 *ssi, size_t ssi_len,
-				      const u8 *pmkid_list, size_t pmkid_count,
-				      const u8 *cipher_suite_list,
-				      size_t cipher_suite_count,
-				      const u8 *match_filter,
-				      size_t match_filter_len);
+				      const u8 *ssi, size_t ssi_len);
 void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 			     enum nan_service_protocol_type srv_proto_type,
 			     int publish_id, int peer_subscribe_id,
@@ -274,11 +269,6 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
 void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 					  int subscribe_id,
 					  enum nan_de_reason reason);
-void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
-				  const u8 *nik, size_t nik_len,
-				  int cipher_ver, int akmp,
-				  const u8 *npk, size_t npk_len,
-				  int nik_lifetime, int identity_id);
 void wpas_notify_pr_pasn_result(struct wpa_supplicant *wpa_s, u8 role,
 				u8 protocol_type, u8 op_class, u8 op_channel,
 				const char *country);
@@ -286,45 +276,5 @@ void wpas_notify_pr_ranging_params(struct wpa_supplicant *wpa_s,
 				   const u8 *dev_addr, const u8 *peer_addr,
 				   u8 role, u8 protocol, int freq, int channel,
 				   int bw, int format_bw);
-void wpas_notify_nan_bootstrap_request(struct wpa_supplicant *wpa_s,
-				       const u8 *peer_addr, u16 pbm,
-				       int handle, u8 requestor_instance_id);
-void wpas_notify_nan_bootstrap_success(struct wpa_supplicant *wpa_s,
-				       const u8 *peer_addr, u16 pbm,
-				       int handle, u8 requestor_instance_id);
-void wpas_notify_nan_bootstrap_failure(struct wpa_supplicant *wpa_s,
-				       const u8 *peer_addr, u16 pbm,
-				       u8 reason, int handle,
-				       u8 requestor_instance_id);
-void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
-				     const u8 *peer_nmi, u8 csid,
-				     u8 instance_id, int key_mgmt,
-				     bool verify);
-void wpas_notify_nan_ndp_request(struct wpa_supplicant *wpa_s,
-				 const u8 *peer_nmi, const u8 *init_ndi,
-				 u32 ndp_id, u8 publish_inst_id,
-				 const u8 *ssi, size_t ssi_len, u32 csid);
-void wpas_notify_nan_ndp_counter_request(struct wpa_supplicant *wpa_s,
-					 const u8 *peer_nmi,
-					 const u8 *init_ndi, u32 ndp_id,
-					 const u8 *ssi, size_t ssi_len);
-void wpas_notify_nan_ndp_connected(struct wpa_supplicant *wpa_s,
-				   const u8 *peer_nmi, u32 ndp_id,
-				   const u8 *local_ndi,
-				   const u8 *peer_ndi,
-				   const u8 *ssi, size_t ssi_len);
-void wpas_notify_nan_ndp_disconnected(struct wpa_supplicant *wpa_s,
-				      const u8 *peer_nmi, u32 ndp_id,
-				      const u8 *local_ndi,
-				      const u8 *peer_ndi,
-				      enum nan_reason reason,
-				      bool locally_generated);
-void wpas_notify_nan_cluster_join(struct wpa_supplicant *wpa_s,
-				  const u8 *cluster_id, bool new_cluster);
-void wpas_notify_nan_pairing_status(struct wpa_supplicant *wpa_s,
-				    int peer_instance_id,
-				    const u8 *peer_addr, int akmp,
-				    int cipher, u8 status,
-				    const u8 *nd_pmk);
 
 #endif /* NOTIFY_H */

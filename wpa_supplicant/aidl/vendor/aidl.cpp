@@ -1133,8 +1133,7 @@ void wpas_aidl_notify_qos_policy_scs_response(struct wpa_supplicant *wpa_s,
 void wpas_aidl_notify_nan_service_discovered(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
-		bool fsd, const u8 *ssi, size_t ssi_len,
-		const u8* match_filter, size_t match_filter_len)
+		bool fsd, const u8 *ssi, size_t ssi_len)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -1145,8 +1144,7 @@ void wpas_aidl_notify_nan_service_discovered(struct wpa_supplicant *wpa_s,
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN service discovered");
 	aidl_manager->notifyNanServiceDiscovered(wpa_s, srv_proto_type,
-		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len,
-		match_filter, match_filter_len);
+		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len);
 }
 
 void wpas_aidl_notify_nan_publish_replied(struct wpa_supplicant *wpa_s,
@@ -1254,10 +1252,11 @@ void wpas_aidl_notify_nan_bootstrap_request(
 }
 
 void wpas_aidl_notify_nan_bootstrap_confirmed(
-		struct wpa_supplicant* wpa_s, u8 handle, u8 bootstrapping_instance_id,
+		struct wpa_supplicant* wpa_s, u8 bootstrapping_instance_id,
 		const u8* peer_nmi_addr, u8 bootstrap_method,
 		bool is_success, u8 reason, const u8* cookie, size_t cookie_len)
 {
+	// bootstrap_method is not used by AIDL but provided by core supplicant
 	if (!wpa_s || (cookie_len > 0 && !cookie))
 		return;
 
@@ -1266,9 +1265,8 @@ void wpas_aidl_notify_nan_bootstrap_confirmed(
 		return;
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN bootstrap result");
-	aidl_manager->notifyNanBootstrappingConfirmEvent(wpa_s, handle,
-		bootstrapping_instance_id, peer_nmi_addr, is_success, reason,
-		cookie, cookie_len, bootstrap_method);
+	aidl_manager->notifyNanBootstrappingConfirmEvent(wpa_s,
+		bootstrapping_instance_id, peer_nmi_addr, is_success, reason, cookie, cookie_len);
 }
 
 #ifdef CONFIG_NAN
@@ -1338,10 +1336,9 @@ void wpas_aidl_notify_nan_nik_received(
 
 void wpas_aidl_notify_nan_ndp_request(
 		struct wpa_supplicant* wpa_s, u8 ndp_id, const u8* peer_nmi_addr,
-		const u8* init_ndi_addr, u8 discovery_session_id, u8 csid,
-		const u8* app_info, size_t app_info_len)
+		u8 discovery_session_id, u8 csid, const u8* app_info, size_t app_info_len)
 {
-	if (!wpa_s || !peer_nmi_addr || !init_ndi_addr || (app_info_len > 0 && !app_info))
+	if (!wpa_s || !peer_nmi_addr || (app_info_len > 0 && !app_info))
 		return;
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
@@ -1350,7 +1347,7 @@ void wpas_aidl_notify_nan_ndp_request(
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN NDP request");
 	aidl_manager->notifyNanDataPathRequestEvent(wpa_s, discovery_session_id,
-		peer_nmi_addr, init_ndi_addr, ndp_id,
+		peer_nmi_addr, ndp_id,
 		// TODO(b/460750167): replace the magic number with nan_cipher_suite_id
 		csid != 0, app_info, app_info_len);
 }

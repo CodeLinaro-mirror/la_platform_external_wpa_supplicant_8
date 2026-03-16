@@ -55,6 +55,7 @@ struct pasn_data {
 #endif /* CONFIG_SAE */
 
 	/* Responder */
+	const char *password;
 	int wpa_key_mgmt;
 	int rsn_pairwise;
 	u16 rsnxe_capab;
@@ -208,7 +209,6 @@ void pasn_enable_kdk_derivation(struct pasn_data *pasn);
 void pasn_disable_kdk_derivation(struct pasn_data *pasn);
 
 void pasn_set_akmp(struct pasn_data *pasn, int akmp);
-void pasn_set_password(struct pasn_data *pasn, const char *password);
 void pasn_set_cipher(struct pasn_data *pasn, int cipher);
 void pasn_set_own_addr(struct pasn_data *pasn, const u8 *addr);
 void pasn_set_peer_addr(struct pasn_data *pasn, const u8 *addr);
@@ -223,7 +223,7 @@ void pasn_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
 int pasn_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
 				   const u8 *own_addr, const u8 *bssid,
 				   const u8 *pmk, size_t pmk_len,
-				   const u8 *pmkid, int akmp);
+				   const u8 *pmkid);
 int pasn_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 				   const u8 *bssid, u8 *pmkid, u8 *pmk,
 				   size_t *pmk_len);
@@ -233,6 +233,7 @@ void pasn_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
 
 /* Responder */
 void pasn_set_noauth(struct pasn_data *pasn, bool noauth);
+void pasn_set_password(struct pasn_data *pasn, const char *password);
 void pasn_set_wpa_key_mgmt(struct pasn_data *pasn, int key_mgmt);
 void pasn_set_rsn_pairwise(struct pasn_data *pasn, int rsn_pairwise);
 void pasn_set_rsnxe_caps(struct pasn_data *pasn, u16 rsnxe_capab);
@@ -245,7 +246,7 @@ void pasn_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
 int pasn_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
 				   const u8 *own_addr, const u8 *bssid,
 				   const u8 *pmk, size_t pmk_len,
-				   const u8 *pmkid, int akmp);
+				   const u8 *pmkid);
 int pasn_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 				   const u8 *bssid, u8 *pmkid, u8 *pmk,
 				   size_t *pmk_len);

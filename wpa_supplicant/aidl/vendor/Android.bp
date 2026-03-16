@@ -36,6 +36,7 @@ cc_library_static {
         "iface_config_utils.cpp",
         "p2p_iface.cpp",
         "p2p_network.cpp",
+        "shared_utils.cpp",
         "sta_iface.cpp",
         "sta_network.cpp",
         "supplicant.cpp",
