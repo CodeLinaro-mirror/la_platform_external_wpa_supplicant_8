@@ -83,6 +83,8 @@ private:
 	const std::string ifname_;
 	bool is_valid_;
 	std::weak_ptr<SupplicantWifiRttController> weak_ptr_this_;
+	std::string proximity_ranging_name_;
+	std::array<uint8_t, 6> proximity_ranging_mac_address_{};
 };
 
 }  // namespace supplicant

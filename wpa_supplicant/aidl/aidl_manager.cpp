@@ -17,6 +17,9 @@
 #include <android/binder_manager.h>
 #include <aidl/android/hardware/wifi/supplicant/IpVersion.h>
 #include <cutils/properties.h>
+#ifdef CONFIG_PR
+#include "src/common/proximity_ranging.h"
+#endif
 
 extern "C" {
 #include "scan.h"
@@ -57,6 +60,8 @@ using aidl::android::hardware::wifi::supplicant::KeyMgmtMask;
 using aidl::android::hardware::wifi::supplicant::LegacyMode;
 using aidl::android::hardware::wifi::supplicant::WifiChannelWidthInMhz;
 using aidl::android::hardware::wifi::supplicant::WifiTechnology;
+using aidl::android::hardware::wifi::supplicant::RttPreamble;
+using aidl::android::hardware::wifi::supplicant::RttBw;
 
 #ifdef MAINLINE_SUPPLICANT
 #ifdef CONFIG_NAN
@@ -3536,7 +3541,113 @@ P2pUsdBasedServiceDiscoveryResultParams createP2pUsdBasedServiceDiscoveryResult(
 	return p2pServiceDiscoveryInfo;
 }
 
+#ifdef CONFIG_PR
+static struct pr_device * getPeerPrDevice(struct pr_data *pr, const u8 *addr)
+{
+	struct pr_device *dev;
+
+	if (!pr)
+		return NULL;
+
+	dl_list_for_each(dev, &pr->devices, struct pr_device, list) {
+		if (ether_addr_equal(dev->pr_device_addr, addr))
+			return dev;
+	}
+	return NULL;
+}
+
+static void convertEdcaFormatAndBwToAidl(UsdServiceDiscoveryInfo& info,
+		enum edca_format_and_bw_value format_bw) {
+	switch (format_bw) {
+		case EDCA_FORMAT_AND_BW_VHT20:
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased =
+				RttBw::BW_20MHZ;
+			info.prInfo->maxSupportedPreambleEdcaBased =
+				RttPreamble::VHT;
+			break;
+		case EDCA_FORMAT_AND_BW_HT40:
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased =
+				RttBw::BW_40MHZ;
+			info.prInfo->maxSupportedPreambleEdcaBased =
+				RttPreamble::HT;
+			break;
+		case EDCA_FORMAT_AND_BW_VHT40:
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased =
+				RttBw::BW_40MHZ;
+			info.prInfo->maxSupportedPreambleEdcaBased =
+				RttPreamble::VHT;
+			break;
+		case EDCA_FORMAT_AND_BW_VHT80:
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased =
+				RttBw::BW_80MHZ;
+			info.prInfo->maxSupportedPreambleEdcaBased =
+				RttPreamble::VHT;
+			break;
+		case EDCA_FORMAT_AND_BW_VHT80P80:
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased =
+				RttBw::BW_160MHZ;
+			info.prInfo->maxSupportedPreambleEdcaBased =
+				RttPreamble::VHT;
+			break;
+		case EDCA_FORMAT_AND_BW_VHT160_DUAL_LO:
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased =
+				RttBw::BW_160MHZ;
+			info.prInfo->maxSupportedPreambleEdcaBased =
+				RttPreamble::VHT;
+			break;
+		default:
+			wpa_printf(MSG_ERROR, "PR: EDCA format and bandwidth conversion failed,"
+				" unknown format_bw: %d", static_cast<int>(format_bw));
+			info.prInfo->maxSupportedPacketBandwidthEdcaBased = RttBw::INVALID;
+			info.prInfo->maxSupportedPreambleEdcaBased = RttPreamble::INVALID;
+	}
+}
+
+static void convertNtbFormatAndBwToAidl(UsdServiceDiscoveryInfo &info,
+		enum ntb_format_and_bw_value format_bw)
+{
+	switch (format_bw) {
+		case NTB_FORMAT_AND_BW_HE20:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_20MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
+		case NTB_FORMAT_AND_BW_HE40:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_40MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
+		case NTB_FORMAT_AND_BW_HE80:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_80MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
+		case NTB_FORMAT_AND_BW_HE80P80:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_160MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
+		case NTB_FORMAT_AND_BW_HE160_DUAL_LO:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_160MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
+		default:
+			wpa_printf(MSG_ERROR, "PR: NTB format and bandwidth conversion failed,"
+				" unknown format_bw: %d", static_cast<int>(format_bw));
+			info.prInfo->maxSupportedPacketBandwidthNtb = RttBw::INVALID;
+			info.prInfo->maxSupportedPreambleNtb = RttPreamble::INVALID;
+	}
+}
+#endif
+
 UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
+		struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int own_id, int peer_id, const u8 *peer_addr,
 		bool fsd, const u8 *ssi, size_t ssi_len) {
@@ -3550,6 +3661,43 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 		discoveryInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
 	}
 	discoveryInfo.isFsd = fsd;
+#ifdef CONFIG_PR
+	if (AidlManager::getInstance()->areAidlServiceAndClientAtLeastVersion(5)) {
+		struct pr_device *dev = getPeerPrDevice(wpa_s->global->pr, peer_addr);
+		if (dev) {
+			discoveryInfo.prInfo.emplace();
+			if (dev->pr_caps.device_name[0] != '\0') {
+				discoveryInfo.prInfo->deviceName =
+					misc_utils::charBufToString(dev->pr_caps.device_name);
+			}
+			// general ranging capabilities
+			discoveryInfo.prInfo->isEdcaBasedRangingSupported = dev->pr_caps.edca_support;
+			discoveryInfo.prInfo->isNtbNonSecureLtfRangingSupported = dev->pr_caps.ntb_support;
+			discoveryInfo.prInfo->isNtbSecureLtfRangingSupported = dev->pr_caps.ntb_support &&
+				dev->pr_caps.secure_he_ltf;
+			discoveryInfo.prInfo->isUnauthenticatedPasnModeSupported = dev->pr_caps.pasn_type
+				& (PR_PASN_DH19_UNAUTH | PR_PASN_DH20_UNAUTH);
+			discoveryInfo.prInfo->isAuthenticatedPasnModeSupported = dev->pr_caps.pasn_type
+				& (PR_PASN_DH19_AUTH | PR_PASN_DH20_AUTH);
+			discoveryInfo.prInfo->is6GHzSupported = dev->pr_caps.support_6ghz;
+			// EDCA capabilities
+			discoveryInfo.prInfo->isEdcaBasedIstaRoleSupported = dev->edca_caps.ista_support;
+			discoveryInfo.prInfo->isEdcaBasedRstaRoleSupported = dev->edca_caps.rsta_support;
+			discoveryInfo.prInfo->maxNumTxAntennas = (
+				dev->edca_caps.edca_hw_caps & EDCA_MAX_TX_ANTENNA_MASK) >> EDCA_MAX_TX_ANTENNA;
+			discoveryInfo.prInfo->maxNumRxAntennas = (
+				dev->edca_caps.edca_hw_caps & EDCA_MAX_RX_ANTENNA_MASK) >> EDCA_MAX_RX_ANTENNA;
+			convertEdcaFormatAndBwToAidl(discoveryInfo,
+					(enum edca_format_and_bw_value)((dev->edca_caps.edca_hw_caps &
+						EDCA_FORMAT_AND_BW_MASK) >> EDCA_FORMAT_AND_BW));
+			discoveryInfo.prInfo->isNtbIstaRoleSupported = dev->ntb_caps.ista_support;
+			discoveryInfo.prInfo->isNtbRstaRoleSupported = dev->ntb_caps.rsta_support;
+			convertNtbFormatAndBwToAidl(discoveryInfo,
+					(enum ntb_format_and_bw_value)((dev->ntb_caps.ntb_hw_caps &
+						NTB_FORMAT_AND_BW_MASK) >> NTB_FORMAT_AND_BW));
+		}
+	}
+#endif
 	return discoveryInfo;
 }
 
@@ -3711,7 +3859,7 @@ void AidlManager::notifyNanServiceDiscovered(
 	} else {
 		// Notify service discovered event on STA interface.
 		UsdServiceDiscoveryInfo discoveryInfo =
-			createUsdServiceDiscoveryInfo(
+			createUsdServiceDiscoveryInfo(wpa_s,
 			srv_proto_type, subscribe_id, peer_publish_id,
 			peer_addr, fsd, ssi, ssi_len);
 		callWithEachStaIfaceCallback(
@@ -3734,7 +3882,7 @@ void AidlManager::notifyNanPublishReplied(
 		return;
 
 	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
-		srv_proto_type, publish_id, peer_subscribe_id, peer_addr,
+		wpa_s, srv_proto_type, publish_id, peer_subscribe_id, peer_addr,
 		false /* fsd */, ssi, ssi_len);
 	callWithEachStaIfaceCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
