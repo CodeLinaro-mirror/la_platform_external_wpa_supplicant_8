@@ -39,6 +39,8 @@ constexpr int32_t kMaxNumContinuousRangingAdvertiserSessions = 1;
 constexpr int32_t kMaxNumPeersPerRangingSession = 1;
 constexpr u8 kDefaultAvailabilityWindowMs = 160;
 
+int SupplicantWifiRttController::current_cmd_id_ = -1;
+
 std::shared_ptr<SupplicantWifiRttController> SupplicantWifiRttController::create(
 	struct wpa_global* wpa_global, const char* ifname)
 {
@@ -167,6 +169,16 @@ static RttPreamble convertPreambleToRttPreamble(u32 preamble_bitmap)
 	if (preamble_bitmap & BIT(WPA_PR_PREAMBLE_HT))
 		return RttPreamble::HT;
 	return RttPreamble::INVALID;
+}
+
+int SupplicantWifiRttController::getCurrentCmdId()
+{
+	return current_cmd_id_;
+}
+
+void SupplicantWifiRttController::setCurrentCmdId(int cmdId)
+{
+	current_cmd_id_ = cmdId;
 }
 
 // Internal implementations
@@ -380,6 +392,12 @@ static bool setPasnSecureConfig(const RttSecureConfig& secureConfig, struct pr_p
 ndk::ScopedAStatus SupplicantWifiRttController::rangeRequestInternal(
 	int32_t cmdId, const std::vector<RttConfig>& rttConfigs)
 {
+	if (current_cmd_id_ != -1) {
+		wpa_printf(MSG_ERROR, "Ranging session already active (cmdId=%d)", current_cmd_id_);
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+	current_cmd_id_ = cmdId;
+
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	if (wpa_s == nullptr) {
 		wpa_printf(MSG_ERROR, "Failed to retrieve wpa_supplicant interface for %s",
@@ -489,12 +507,17 @@ ndk::ScopedAStatus SupplicantWifiRttController::rangeRequestInternal(
 		return createStatus(SupplicantStatusCode::FAILURE_ARGS_INVALID);
 	}
 	wpas_pr_pasn_trigger(wpa_s, &params);
+
 	return ndk::ScopedAStatus::ok();
 }
 
 ndk::ScopedAStatus SupplicantWifiRttController::rangeCancelInternal(
 	int32_t cmdId, const std::vector<MacAddress>& addrs)
 {
+	if (current_cmd_id_ != cmdId) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
+
 	struct wpa_supplicant* wpa_s = retrieveIfacePtr();
 	if (wpa_s == nullptr) {
 		wpa_printf(MSG_ERROR, "Failed to retrieve wpa_supplicant interface for %s",
@@ -503,6 +526,14 @@ ndk::ScopedAStatus SupplicantWifiRttController::rangeCancelInternal(
 	}
 
 	wpas_pr_abort_ranging(wpa_s);
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (aidl_manager) {
+		aidl_manager->notifyRttContinuousRangingTerminatedEvent(wpa_s, 
+			ISupplicantWifiRttControllerEventCallback::
+			ContinuousRangingTerminateReasonCode::USER_REQUEST);
+	}
+	current_cmd_id_ = -1;
 	return ndk::ScopedAStatus::ok();
 }
 
