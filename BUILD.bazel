@@ -15,22 +15,6 @@
 """wpa_supplicant_8 bazel build rule."""
 
 load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_license//rules:license.bzl", "license")
-
-package(
-    default_applicable_licenses = [":license"],
-)
-
-license(
-    name = "license",
-    package_name = "wpa-supplicant-8",
-    copyright_notice = "Copyright (c) 2002-2019, Jouni Malinen <j@w1.fi> and contributors",
-    license_kinds = ["@rules_license//licenses/spdx:BSD-3-Clause"],
-    license_text = "README",
-    visibility = ["//visibility:public"],
-)
-
-exports_files(["README"])
 
 # Common source files for the hostapd library, derived from the CMake file.
 HOSTAPD_SRCS = [
@@ -210,12 +194,6 @@ cc_library(
         "src",
         "src/utils",
     ],
-    linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
-            "user32.lib",
-        ],
-        "//conditions:default": [],
-    }),
     visibility = ["//visibility:public"],
     deps = [
         "@boringssl//:crypto",
@@ -223,6 +201,12 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
             "@aemu//base:aemu-base",
             "@aemu//windows:compat",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+            "user32.lib",
         ],
         "//conditions:default": [],
     }),
