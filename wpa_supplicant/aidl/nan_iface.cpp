@@ -188,11 +188,12 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequest(
-	char16_t in_cmdId, const std::string& in_ifaceName)
+	char16_t in_cmdId, const std::string& in_ifaceName,
+	const std::array<uint8_t, 6>& macaddr)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-		&NanIface::createDataInterfaceRequestInternal, in_cmdId, in_ifaceName
+		&NanIface::createDataInterfaceRequestInternal, in_cmdId, in_ifaceName, macaddr
 	);
 }
 
@@ -319,12 +320,13 @@ bool NanIface::isValid()
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequest(
 	char16_t in_cmdId, int32_t in_ndpInstanceId,
-	const std::array<uint8_t, 6>& in_peerDiscMacAddr)
+	const std::array<uint8_t, 6>& in_peerDiscMacAddr,
+	const std::array<uint8_t, 6>& in_ndiInitMac)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&NanIface::terminateDataPathRequestInternal, in_cmdId,
-		in_ndpInstanceId, in_peerDiscMacAddr);
+		in_ndpInstanceId, in_peerDiscMacAddr, in_ndiInitMac);
 }
 
 #ifdef CONFIG_NAN
@@ -488,9 +490,9 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
-	char16_t cmdId, const std::string& ifaceName)
+	char16_t cmdId, const std::string& ifaceName, const std::array<uint8_t, 6>& macAddr)
 {
-	u8 allocated_if_addr[ETH_ALEN];
+	u8 allocate_if_addr[ETH_ALEN];
 
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -517,8 +519,8 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), NULL, NULL, NULL,
-						(u8 *)allocated_if_addr, NULL) < 0)
+		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), macAddr.data(),
+						   NULL, NULL, (u8 *)allocate_if_addr, NULL) < 0)
 		{
 			wpa_printf(MSG_ERROR, "Failed to create NAN data iface");
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
@@ -1305,7 +1307,8 @@ static int appendSecurityConfigToCmd(
 }
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
-	char16_t cmdId, int32_t ndpInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr)
+	char16_t cmdId, int32_t ndpInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr,
+	const std::array<uint8_t, 6>& in_ndiInitMac)
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -1325,8 +1328,8 @@ static int appendSecurityConfigToCmd(
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-				"peer_nmi=" MACSTR " ndp_id=%d",
-				MAC2STR(peerDiscMacAddr), ndpInstanceId);
+				"peer_nmi=" MACSTR " ndp_id=%d" " init_ndi=" MACSTR,
+				MAC2STR(peerDiscMacAddr), ndpInstanceId, MAC2STR(in_ndiInitMac));
 
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			nan_status.status = NanStatusCode::INVALID_ARGS;
@@ -1371,7 +1374,7 @@ static int appendSecurityConfigToCmd(
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
-	char16_t cmdId, const std::string& ifaceName)
+	char16_t cmdId, const std::string& ifaceName, const std::array<uint8_t, 6>& macAddr)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
@@ -1457,7 +1460,8 @@ static int appendSecurityConfigToCmd(
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
 	char16_t cmdId, int32_t ndpInstanceId,
-	const std::array<uint8_t, 6>& peerDiscMacAddr)
+	const std::array<uint8_t, 6>& peerDiscMacAddr,
+	const std::array<uint8_t, 6>& in_ndiInitMac)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
