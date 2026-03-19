@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <android/binder_process.h>
@@ -77,6 +81,12 @@ struct wpas_aidl_priv *wpas_aidl_init(struct wpa_global *global)
 	if (aidl_manager->registerAidlService(global)) {
 		goto err;
 	}
+#ifdef CONFIG_USE_VENDOR_AIDL
+	wpa_printf(MSG_INFO, "register vendor aidl service.");
+	if (aidl_manager->registerVendorAidlService(global)) {
+		goto err;
+	}
+#endif
 	// We may not need to store this aidl manager reference in the
 	// global data structure because we've made it a singleton class.
 	priv->aidl_manager = (void *)aidl_manager;
@@ -1303,3 +1313,18 @@ void wpas_aidl_notify_auth_status_code(struct wpa_supplicant *wpa_s,
 
 	aidl_manager->notifyAuthStatusCode(wpa_s, auth_type, auth_transaction, status_code);
 }
+
+#ifdef CONFIG_USE_VENDOR_AIDL
+void wpas_aidl_notify_vendor_ctrl_event(struct wpa_supplicant *wpa_s, const char* msg)
+{
+        if (!wpa_s || !msg)
+                return;
+
+        AidlManager *aidl_manager = AidlManager::getInstance();
+        if (!aidl_manager)
+                return;
+
+        wpa_printf(MSG_DEBUG, "Notifying vendor control event");
+        aidl_manager->notifyVendorCtrlEvent(wpa_s, msg);
+}
+#endif
