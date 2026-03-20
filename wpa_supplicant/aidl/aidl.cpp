@@ -1322,7 +1322,8 @@ void wpas_aidl_notify_nan_pairing_confirmed(
 void wpas_aidl_notify_nan_nik_received(
 	struct wpa_supplicant* wpa_s, const u8 *nik, size_t nik_len,
 	int cipher_ver, int akmp, const u8 *npk, size_t npk_len,
-	int nik_lifetime, int identity_id)
+	int nik_lifetime, int identity_id, int cipher,
+	int discovery_session_id, int pairing_id)
 {
 	if (!wpa_s || (nik_len > 0 && !nik) || (npk_len > 0 && !npk))
 		return;
@@ -1333,7 +1334,8 @@ void wpas_aidl_notify_nan_nik_received(
 
 	wpa_printf(MSG_DEBUG, "Notifying NAN identity key received");
 	aidl_manager->notifyPairingSecurityAssociationReceivedEvent(wpa_s,
-		nik, nik_len, cipher_ver, akmp, npk, npk_len, nik_lifetime, identity_id);
+		nik, nik_len, cipher_ver, akmp, npk, npk_len, nik_lifetime,
+		identity_id, cipher, discovery_session_id, pairing_id);
 }
 
 void wpas_aidl_notify_nan_ndp_request(

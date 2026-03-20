@@ -278,7 +278,9 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 				  const u8 *nik, size_t nik_len,
 				  int cipher_ver, int akmp,
 				  const u8 *npk, size_t npk_len,
-				  int nik_lifetime, int identity_id);
+				  int nik_lifetime, int identity_id,
+				  int cipher, int handle,
+				  int req_instance_id);
 void wpas_notify_pr_pasn_result(struct wpa_supplicant *wpa_s, u8 role,
 				u8 protocol_type, u8 op_class, u8 op_channel,
 				const char *country);

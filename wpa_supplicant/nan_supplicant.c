@@ -912,7 +912,8 @@ static int wpas_nan_update_pairing_credentials_cb(void *ctx, const u8 *nik,
 						  size_t nik_len,
 						  int cipher_ver,
 						  int nik_lifetime, int akmp,
-						  u8 *npk, size_t npk_len)
+						  u8 *npk, size_t npk_len,
+						  int cipher, int handle, u8 req_instance_id)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	struct wpa_dev_ik *ik;
@@ -966,7 +967,8 @@ static int wpas_nan_update_pairing_credentials_cb(void *ctx, const u8 *nik,
 
 	/* Notify control interface about received NIK */
 	wpas_notify_nan_nik_received(wpa_s, nik, nik_len, cipher_ver, akmp,
-				     npk, npk_len, nik_lifetime, ik->id);
+				     npk, npk_len, nik_lifetime, ik->id, cipher,
+				     handle, req_instance_id);
 
 	return ik->id;
 
