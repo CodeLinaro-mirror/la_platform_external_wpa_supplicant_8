@@ -3602,7 +3602,7 @@ NanMatchInd createNanServiceMatchResult(
 	if (match_filter != NULL && match_filter_len > 0) {
 		nanMatchInfo.matchFilter = byteArrToVec(match_filter, match_filter_len);
 	}
-		NanPairingConfig nanPairingConfig;
+	NanPairingConfig nanPairingConfig;
 	nanPairingConfig.enablePairingSetup = pairing_setup;
 	nanPairingConfig.enablePairingCache = pairing_cache;
 	nanPairingConfig.enablePairingVerification = pairing_verification;
@@ -3616,7 +3616,6 @@ NanMatchInd createNanServiceMatchResult(
 				  std::begin(nanIdentityResolutionAttribute.tag));
 		nanMatchInfo.peerNira = nanIdentityResolutionAttribute;
 	}
-
 	return nanMatchInfo;
 }
 

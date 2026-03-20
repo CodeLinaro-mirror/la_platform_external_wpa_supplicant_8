@@ -967,13 +967,73 @@ static int wpas_nan_update_pairing_credentials_cb(void *ctx, const u8 *nik,
 
 	/* Notify control interface about received NIK */
 	wpas_notify_nan_nik_received(wpa_s, nik, nik_len, cipher_ver, akmp,
-				     npk, npk_len, nik_lifetime, ik->id, cipher,
-				     handle, req_instance_id);
+				npk, npk_len, nik_lifetime, ik->id,
+				cipher, handle, req_instance_id);
 
 	return ik->id;
 
 fail:
 	wpa_printf(MSG_DEBUG, "NAN: Failed to store NIK as device identity");
+	wpa_config_remove_identity(wpa_s->conf, ik->id);
+	return -1;
+}
+
+int wpas_nan_update_pairing_credentials(void *ctx, const u8 *nik,
+		size_t nik_len, int cipher_ver, int akmp,
+		const u8 *npk, size_t npk_len)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+	struct wpa_dev_ik *ik;
+
+	if (!nik || cipher_ver != NAN_NIRA_CIPHER_VER_128 ||
+		nik_len != NAN_NIK_LEN || !npk || !npk_len) {
+		wpa_printf(MSG_ERROR, "NAN: Invalid NIK/NPK parameters");
+		return -1;
+	}
+
+	wpa_hexdump_key(MSG_DEBUG, "NAN: Received NIK", nik, nik_len);
+
+	/* Check if an identity with the same NIK already exists */
+	for (ik = wpa_s->conf->identity; ik; ik = ik->next) {
+		if (nik_len == wpabuf_len(ik->dik) &&
+			os_memcmp(nik, wpabuf_head(ik->dik), nik_len) == 0) {
+			wpa_printf(MSG_ERROR,
+					   "NAN: Remove previous device identity entry for matching NIK");
+			wpa_config_remove_identity(wpa_s->conf, ik->id);
+			break;
+		}
+	}
+
+	/* Create a new device identity entry */
+	wpa_printf(MSG_DEBUG,
+			   "NAN: Create a new device identity entry for NIK");
+	ik = wpa_config_add_identity(wpa_s->conf);
+	if (!ik) {
+		wpa_printf(MSG_ERROR, "NAN: Failed to allocate identity");
+		return -1;
+	}
+
+	/* Store the NIK as the DIK */
+	ik->dik = wpabuf_alloc_copy(nik, nik_len);
+	if (!ik->dik)
+		goto fail;
+
+	/* Store the NPK as the PMK */
+	ik->pmk = wpabuf_alloc_copy(npk, npk_len);
+	if (!ik->pmk)
+		goto fail;
+
+	/* Store cipher version and AKMP */
+	ik->dik_cipher = cipher_ver;
+	ik->akmp = akmp;
+
+	wpa_printf(MSG_INFO, "NAN: Stored NIK as device identity (id=%d)",
+			   ik->id);
+
+	return ik->id;
+
+	fail:
+	wpa_printf(MSG_ERROR, "NAN: Failed to store NIK as device identity");
 	wpa_config_remove_identity(wpa_s->conf, ik->id);
 	return -1;
 }
@@ -2915,16 +2975,25 @@ static int wpas_nan_pasn_update_station(struct wpa_supplicant *wpa_s,
 
 	os_memset(&params, 0, sizeof(params));
 	params.addr = nmi_addr;
-	params.flags = WPA_STA_MFP;
-	params.set = 1;
+	params.flags = WPA_STA_AUTHENTICATED | WPA_STA_ASSOCIATED;
+	params.flags_mask = params.flags;
 
+	// Try to add first, it may be a new peer
+	// It will fail if peer is already in the station list
 	if (wpa_drv_sta_add(wpa_s, &params) < 0) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN PASN: Failed to update PASN station "
-			   MACSTR, MAC2STR(nmi_addr));
-		return -1;
+		wpa_printf(MSG_DEBUG, "NAN PASN: Failed to add PASN station "
+				MACSTR, MAC2STR(nmi_addr));
 	}
 
+	// Then update the station
+	params.flags = WPA_STA_MFP;
+	params.flags_mask = 0;
+	params.set = 1;
+	if (wpa_drv_sta_add(wpa_s, &params) < 0) {
+		wpa_printf(MSG_ERROR,"NAN PASN: Failed to update PASN station "
+				MACSTR, MAC2STR(nmi_addr));
+		return -1;
+	}
 	return 0;
 }
 
