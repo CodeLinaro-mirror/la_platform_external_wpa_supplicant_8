@@ -259,7 +259,13 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 				      const u8 *cipher_suite_list,
 				      size_t cipher_suite_count,
 				      const u8 *match_filter,
-				      size_t match_filter_len);
+				      size_t match_filter_len,
+				      bool pairing_setup,
+				      bool pairing_cache,
+				      bool pairing_verification,
+				      u16 pbm,
+				      const u8* nonce,
+				      const u8* tag);
 void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
 			     enum nan_service_protocol_type srv_proto_type,
 			     int publish_id, int peer_subscribe_id,
@@ -301,7 +307,7 @@ void wpas_notify_nan_bootstrap_failure(struct wpa_supplicant *wpa_s,
 void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_nmi, u8 csid,
 				     u8 instance_id, int key_mgmt,
-				     bool verify);
+				     bool verify, const u8* nonce, const u8* tag);
 void wpas_notify_nan_ndp_request(struct wpa_supplicant *wpa_s,
 				 const u8 *peer_nmi, const u8 *init_ndi,
 				 u32 ndp_id, u8 publish_inst_id,

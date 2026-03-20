@@ -1068,10 +1068,22 @@ wpas_nan_pasn_pairing_request_cb(void *ctx, const u8 *peer_nmi, u8 csid,
 				 const struct wpa_ie_data *rsn_data)
 {
 	struct wpa_supplicant *wpa_s = ctx;
+	const struct nan_pairing_cfg *pairing_cfg;
+	const u8 *nonce = NULL;
+	const u8 *tag = NULL;
+
+	pairing_cfg = nan_peer_get_pairing_cfg(wpa_s->nan, peer_nmi,
+			&nonce, &tag);
+	if (!pairing_cfg) {
+		wpa_printf(MSG_DEBUG, "NAN: No pairing config found for peer "
+				MACSTR, MAC2STR(peer_nmi));
+		return;
+	}
 
 	wpas_notify_nan_pairing_request(wpa_s, peer_nmi, csid, instance_id,
 					rsn_data->key_mgmt,
-					!!rsn_data->num_pmkid);
+					!!rsn_data->num_pmkid,
+					nonce, tag);
 }
 #endif /* CONFIG_PASN */
 
@@ -3356,13 +3368,35 @@ wpas_nan_de_discovery_result(void *ctx, int subscribe_id,
 			     size_t match_filter_len)
 {
 	struct wpa_supplicant *wpa_s = ctx;
+	const struct nan_pairing_cfg *pairing_cfg;
+	const u8 *nonce = NULL;
+	const u8 *tag = NULL;
+
+	pairing_cfg = nan_peer_get_pairing_cfg(wpa_s->nan, peer_addr, &nonce, &tag);
+	if (!pairing_cfg) {
+		wpa_printf(MSG_ERROR, "NAN: Failed to get pairing config for peer "
+				MACSTR, MAC2STR(peer_addr));
+		return;
+	}
+	u16 bootstrap_methods;
+
+	if (nan_bootstrap_get_supported_methods(wpa_s->nan, peer_addr,
+				&bootstrap_methods) < 0) {
+		wpa_printf(MSG_ERROR, "NAN: Failed to get bootstrap methods for peer "
+				MACSTR, MAC2STR(peer_addr));
+	}
 
 	wpas_notify_nan_discovery_result(wpa_s, srv_proto_type, subscribe_id,
 					 peer_publish_id, peer_addr, fsd,
 					 fsd_gas, ssi, ssi_len,
 					 pmkid_list, pmkid_count,
 					 cipher_suite, n_cipher_suite,
-					 match_filter, match_filter_len);
+					 match_filter, match_filter_len,
+					 pairing_cfg->pairing_setup,
+					 pairing_cfg->npk_caching,
+					 pairing_cfg->pairing_verification,
+					 bootstrap_methods,
+					 nonce, tag);
 }
 
 

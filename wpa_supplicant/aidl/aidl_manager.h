@@ -205,7 +205,9 @@ public:
 		enum nan_service_protocol_type srv_proto_type,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
 		bool fsd, const u8 *ssi, size_t ssi_len,
-		const u8* match_filter, size_t match_filter_len);
+		const u8* match_filter, size_t match_filter_len,
+		bool pairing_setup, bool pairing_cache, bool pairing_verification,
+		u16 pbm, const u8* nonce, const u8* tag);
 	void notifyNanPublishReplied(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int publish_id, int peer_subscribe_id,

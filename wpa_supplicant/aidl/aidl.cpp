@@ -1134,7 +1134,9 @@ void wpas_aidl_notify_nan_service_discovered(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
 		bool fsd, const u8 *ssi, size_t ssi_len,
-		const u8* match_filter, size_t match_filter_len)
+		const u8* match_filter, size_t match_filter_len,
+		bool pairing_setup, bool pairing_cache, bool pairing_verification,
+		u16 pbm, const u8* nonce, const u8* tag)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -1146,7 +1148,8 @@ void wpas_aidl_notify_nan_service_discovered(struct wpa_supplicant *wpa_s,
 	wpa_printf(MSG_DEBUG, "Notifying NAN service discovered");
 	aidl_manager->notifyNanServiceDiscovered(wpa_s, srv_proto_type,
 		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len,
-		match_filter, match_filter_len);
+		match_filter, match_filter_len, pairing_setup, pairing_cache,
+		pairing_verification, pbm, nonce, tag);
 }
 
 void wpas_aidl_notify_nan_publish_replied(struct wpa_supplicant *wpa_s,
