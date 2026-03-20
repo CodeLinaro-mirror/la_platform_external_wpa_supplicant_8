@@ -22,7 +22,7 @@
 #include "utils/eloop.h"
 #include "common/ieee802_11_common.h"
 #include "bitfield.h"
-#include "aidl/vendor/aidl.h"
+#include "aidl/aidl.h"
 
 #define DEFAULT_NAN_MASTER_PREF 2
 #define DEFAULT_NAN_DUAL_BAND   0
