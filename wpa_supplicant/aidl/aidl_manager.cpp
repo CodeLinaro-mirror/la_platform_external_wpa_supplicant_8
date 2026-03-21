@@ -62,8 +62,10 @@ using aidl::android::hardware::wifi::supplicant::WifiTechnology;
 #ifdef CONFIG_NAN
 using aidl::android::system::wifi::mainline_supplicant::NanClusterEventInd;
 using aidl::android::system::wifi::mainline_supplicant::NanFollowupReceivedInd;
+using aidl::android::system::wifi::mainline_supplicant::NanIdentityResolutionAttribute;
 using aidl::android::system::wifi::mainline_supplicant::NanMatchInd;
 using aidl::android::system::wifi::mainline_supplicant::NanStatus;
+using aidl::android::system::wifi::mainline_supplicant::NanPairingConfig;
 using NanStatusCode =
 	aidl::android::system::wifi::mainline_supplicant::NanStatus::NanStatusCode;
 using NanClusterEventType = aidl::android::system::wifi::mainline_supplicant::
@@ -3586,7 +3588,9 @@ void AidlManager::notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_NAN
 NanMatchInd createNanServiceMatchResult(
 	int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len,
-	const u8* match_filter, size_t match_filter_len)
+	const u8* match_filter, size_t match_filter_len,
+	bool pairing_setup, bool pairing_cache, bool pairing_verification,
+	u16 pbm, const u8* nonce, const u8* tag)
 {
 	NanMatchInd nanMatchInfo;
 	nanMatchInfo.discoverySessionId = own_id;
@@ -3598,7 +3602,20 @@ NanMatchInd createNanServiceMatchResult(
 	if (match_filter != NULL && match_filter_len > 0) {
 		nanMatchInfo.matchFilter = byteArrToVec(match_filter, match_filter_len);
 	}
-
+	NanPairingConfig nanPairingConfig;
+	nanPairingConfig.enablePairingSetup = pairing_setup;
+	nanPairingConfig.enablePairingCache = pairing_cache;
+	nanPairingConfig.enablePairingVerification = pairing_verification;
+	nanPairingConfig.supportedBootstrappingMethods = pbm;
+	nanMatchInfo.peerPairingConfig = nanPairingConfig;
+	if (nonce != NULL && tag != NULL) {
+		NanIdentityResolutionAttribute nanIdentityResolutionAttribute;
+		std::copy(nonce, nonce + DEVICE_IDENTITY_NONCE_LEN,
+				  std::begin(nanIdentityResolutionAttribute.nonce));
+		std::copy(tag, tag + DEVICE_IDENTITY_TAG_LEN,
+				  std::begin(nanIdentityResolutionAttribute.tag));
+		nanMatchInfo.peerNira = nanIdentityResolutionAttribute;
+	}
 	return nanMatchInfo;
 }
 
@@ -3641,7 +3658,9 @@ NanStatus convertNanReasonToAidl(enum nan_reason reason)
 void AidlManager::notifyNanServiceDiscovered(
 	struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
 	int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
-	const u8* ssi, size_t ssi_len, const u8* match_filter, size_t match_filter_len)
+	const u8* ssi, size_t ssi_len, const u8* match_filter, size_t match_filter_len,
+	bool pairing_setup, bool pairing_cache, bool pairing_verification,
+	u16 pbm, const u8* nonce, const u8* tag)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3657,7 +3676,8 @@ void AidlManager::notifyNanServiceDiscovered(
 			std::placeholders::_1,
 			createNanServiceMatchResult(
 				subscribe_id, peer_publish_id, peer_addr, ssi,
-				ssi_len, match_filter, match_filter_len)));
+				ssi_len, match_filter, match_filter_len, pairing_setup,
+				pairing_cache, pairing_verification, pbm, nonce, tag)));
 		return;
 	}
 #endif
@@ -3701,23 +3721,6 @@ void AidlManager::notifyNanPublishReplied(
 {
 	if (!wpa_s || !peer_addr)
 		return;
-
-#ifdef MAINLINE_SUPPLICANT
-#ifdef CONFIG_NAN
-	if (nan_iface_object_map_.find(wpa_s->ifname) !=
-		nan_iface_object_map_.end()) {
-		callWithEachNanIfaceCallback(
-			misc_utils::charBufToString(wpa_s->ifname),
-			std::bind(
-			&NanIface::ISupplicantNanIfaceEventCallback::eventMatch,
-			std::placeholders::_1,
-			createNanServiceMatchResult(
-				publish_id, peer_subscribe_id, peer_addr, ssi,
-				ssi_len, NULL, 0)));
-		return;
-	}
-#endif
-#endif
 
 	if (!areAidlServiceAndClientAtLeastVersion(4))
 		return;
@@ -4107,7 +4110,8 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
 		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id)
+		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id,
+		int cipher, int discovery_session_id, int pairing_id)
 {
 	if (!wpa_s || !peer_nik || !npk || nik_len > kNikLenBytes || npk_len > kNpkLenBytes) {
 		return;
@@ -4142,12 +4146,15 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 			wpa_printf(MSG_ERROR, "Invalid NIRA cipher version %d", cipher_ver);
 			return;
 		}
+		npksa.cipherType = cipher == WPA_CIPHER_CCMP
+				? NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK
+				: NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK;
 
 		callWithEachNanIfaceCallback(
 			misc_utils::charBufToString(wpa_s->ifname),
 			std::bind(
 			&NanIface::ISupplicantNanIfaceEventCallback::eventPairingSecurityAssociationReceived,
-			std::placeholders::_1, npksa));
+			std::placeholders::_1, discovery_session_id, pairing_id, npksa));
 	}
 }
 
@@ -4495,7 +4502,8 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int request_type, bool is_npk_cache_enabled) {}
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
+	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id,
+	int cipher, int discovery_session_id, int pairing_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
@@ -4576,7 +4584,9 @@ void AidlManager::notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
 	int request_type, bool is_npk_cache_enabled) {}
 void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant *wpa_s,
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
+	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id,
+	int cipher, int discovery_session_id,
+	int pairing_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}

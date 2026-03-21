@@ -45,6 +45,10 @@ using NanDataPathSecurityType =
 	NanDataPathSecurityConfig::NanDataPathSecurityType;
 using NanDataPathSecurityConfig =
 	aidl::android::system::wifi::mainline_supplicant::NanDataPathSecurityConfig;
+using NanPairingRequestType =
+	aidl::android::system::wifi::mainline_supplicant::NanPairingRequestType;
+using NanPairingAkm =
+	aidl::android::system::wifi::mainline_supplicant::NanPairingAkm;
 
 const std::string kMainlineSupplicantConfigPath =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
@@ -327,6 +331,15 @@ bool NanIface::isValid()
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&NanIface::terminateDataPathRequestInternal, in_cmdId,
 		in_ndpInstanceId, in_peerDiscMacAddr, in_ndiInitMac);
+}
+
+::ndk::ScopedAStatus NanIface::setSchedule(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::setScheduleInternal, in_cmdId, in_schedule);
 }
 
 #ifdef CONFIG_NAN
@@ -991,6 +1004,29 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				msg.pairingIdentityKey.size()).c_str());
 		}
 
+		// Update pairing credentials for verification
+		if (msg.requestType == NanPairingRequestType::NAN_PAIRING_VERIFICATION) {
+			if (!msg.peerIdentityKey) {
+				wpa_printf(MSG_ERROR, "No peer identity key provided");
+				aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+					nan_status, msg.peerId);
+				return;
+			}
+			int akmp  = 0;
+			if (msg.securityConfig.akm == NanPairingAkm::PASN) {
+				akmp = WPA_KEY_MGMT_PASN;
+			} else {
+				akmp = WPA_KEY_MGMT_SAE;
+			}
+			if (wpas_nan_update_pairing_credentials(
+					wpa_s, msg.peerIdentityKey->data(), msg.peerIdentityKey->size(),
+					NAN_NIRA_CIPHER_VER_128, akmp, msg.securityConfig.pmk.data(),
+					msg.securityConfig.pmk.size()) < 0) {
+				wpa_printf(MSG_ERROR, "Failed to update pairing credentials");
+
+			}
+		}
+
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
 			MACSTR " handle=%d peer_instance_id=%d auth=%d",
@@ -1084,6 +1120,28 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		if (!msg.pairingIdentityKey.empty()) {
 			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.pairingIdentityKey.data(),
 				msg.pairingIdentityKey.size()).c_str());
+		}
+
+		// Update pairing credentials for verification
+		if (msg.requestType == NanPairingRequestType::NAN_PAIRING_VERIFICATION) {
+			if (!msg.peerIdentityKey) {
+				wpa_printf(MSG_ERROR, "No peer identity key provided");
+				aidl_manager->notifyNanRespondToPairingIndicationResponse(
+						ifname, cmdId, nan_status);
+				return;
+			}
+			int akmp  = 0;
+			if (msg.securityConfig.akm == NanPairingAkm::PASN) {
+				akmp = WPA_KEY_MGMT_PASN;
+			} else {
+				akmp = WPA_KEY_MGMT_SAE;
+			}
+			if (wpas_nan_update_pairing_credentials(
+					wpa_s, msg.peerIdentityKey->data(), msg.peerIdentityKey->size(),
+					NAN_NIRA_CIPHER_VER_128, akmp, msg.securityConfig.pmk.data(),
+					msg.securityConfig.pmk.size()) < 0) {
+				wpa_printf(MSG_ERROR, "Failed to update pairing credentials");
+			}
 		}
 
 		char cmd[kNanIfaceConfBufSize];
@@ -1343,6 +1401,13 @@ static int appendSecurityConfigToCmd(
 	});
 	return ndk::ScopedAStatus::ok();
 }
+
+::ndk::ScopedAStatus NanIface::setScheduleInternal(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
 #else
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
 	const std::shared_ptr<ISupplicantNanIfaceEventCallback>& callback)
@@ -1462,6 +1527,13 @@ static int appendSecurityConfigToCmd(
 	char16_t cmdId, int32_t ndpInstanceId,
 	const std::array<uint8_t, 6>& peerDiscMacAddr,
 	const std::array<uint8_t, 6>& in_ndiInitMac)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::setScheduleInternal(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
