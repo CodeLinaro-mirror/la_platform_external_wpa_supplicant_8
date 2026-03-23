@@ -32,6 +32,7 @@
 #include "p2p_supplicant.h"
 #include "sme.h"
 #include "notify.h"
+#include "nan/nan_i.h"
 #include "aidl/aidl.h"
 #include "vendor_aidl/aidl_vendor.h"
 
@@ -2004,8 +2005,14 @@ void wpas_notify_nan_pairing_status(struct wpa_supplicant *wpa_s,
 		       nd_pmk ? " nd_pmk=" : "",
 		       nd_pmk ? nd_pmk_hex : "");
 
-	wpas_aidl_notify_nan_pairing_confirmed(wpa_s, peer_instance_id, peer_addr,
-		status == WLAN_STATUS_SUCCESS, status, 0);
+	struct nan_peer *peer = nan_get_peer(wpa_s->nan, peer_addr);
+	if (! peer) {
+		wpa_printf(MSG_ERROR, "Could not find a peer");
+		return;
+	}
+
+	wpas_aidl_notify_nan_pairing_confirmed(wpa_s, peer->pairing.peer_instance_id, peer_addr,
+                                               status == WLAN_STATUS_SUCCESS, status, 0);
 }
 
 #endif /* CONFIG_NAN || CONFIG_NAN_USD */

@@ -878,7 +878,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		int ret = wpas_nan_transmit(
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str()),
 			msg.discoverySessionId, ssi_buf.get(), elems.get(),
-			msg.addr.data(), msg.peerId);
+			msg.addr.data(), msg.peerId, nullptr/*cookie*/);
 		if (ret < 0) {
 			aidl_manager->notifyNanTransmitFollowupResponse(
 				ifname, cmdId, nan_status);
