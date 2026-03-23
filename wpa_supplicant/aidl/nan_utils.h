@@ -213,14 +213,12 @@ inline int convertNanCipherSuiteTypeToSupplicantCipherSuiteType(
 	/* NCS-SK-128 (using a PSK/Passphrase) */
 	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::SHARED_KEY_128_MASK))
 		return NAN_CS_SK_CCM_128;
-
-#if 0 // Group ciphers are now commented out in AIDL
+	
 	/* Group key */
 	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::GROUP_KEY_GCMP_256_MASK))
 		return NAN_CS_GTK_GCMP_256;
 	if (cipher & static_cast<uint16_t>(NanCipherSuiteType::GROUP_KEY_CCMP_128_MASK))
 		return NAN_CS_GTK_CCMP_128;
-#endif
 
 	return -1;
 }
