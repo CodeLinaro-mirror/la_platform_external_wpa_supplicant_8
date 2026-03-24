@@ -306,6 +306,12 @@ send_and_recv_resp(struct wpa_driver_nl80211_data *drv,
 			     valid_handler, valid_data, NULL, NULL, NULL);
 }
 
+int send_and_recv_msgs(struct wpa_driver_nl80211_data *drv, struct nl_msg *msg,
+		       int (*valid_handler)(struct nl_msg *, void *),
+		       void *valid_data,
+		       int (*ack_handler_custom)(struct nl_msg *, void *),
+		       void *ack_data);
+
 int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 			 const char *ifname, enum nl80211_iftype iftype,
 			 const u8 *addr, int wds,

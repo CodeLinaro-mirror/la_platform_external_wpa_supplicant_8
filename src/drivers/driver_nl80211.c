@@ -583,6 +583,28 @@ int send_and_recv(struct nl80211_global *global,
 }
 
 
+/*
+ * send_and_recv_msgs() is deprecated and kept only for legacy
+ * compatibility (e.g. legacy wpa_supplicant_8_lib).
+ *
+ * New code should use one of the following helpers instead:
+ *  - send_and_recv()
+ *  - send_and_recv_resp()
+ *  - send_and_recv_cmd()
+ */
+int send_and_recv_msgs(struct wpa_driver_nl80211_data *drv,
+		       struct nl_msg *msg,
+		       int (*valid_handler)(struct nl_msg *, void *),
+		       void *valid_data,
+		       int (*ack_handler_custom)(struct nl_msg *, void *),
+		       void *ack_data)
+{
+	return send_and_recv(drv->global, drv->global->nl, msg,
+			     valid_handler, valid_data,
+			     ack_handler_custom, ack_data, NULL);
+}
+
+
 static int nl80211_put_control_port(struct wpa_driver_nl80211_data *drv,
 				    struct nl_msg *msg)
 {
