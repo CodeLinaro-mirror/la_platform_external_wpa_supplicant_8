@@ -2,6 +2,7 @@
  * wpa_supplicant - P2P
  * Copyright (c) 2009-2010, Atheros Communications
  * Copyright (c) 2010-2014, Jouni Malinen <j@w1.fi>
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -1444,6 +1445,9 @@ static void wpas_p2p_group_started(struct wpa_supplicant *wpa_s,
 		   wpa_s->ifname, go ? "GO" : "client", ssid_txt, freq,
 		   MAC2STR(go_dev_addr), persistent ? " [PERSISTENT]" : "",
 		   extra);
+
+	if (go && is_zero_ether_addr(wpa_s->go_dev_addr))
+		os_memcpy(wpa_s->go_dev_addr, go_dev_addr, ETH_ALEN);
 }
 
 
@@ -7244,8 +7248,12 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	}
 
 #ifdef CONFIG_PASN
-	if (wpa_s->p2p2 && !wpa_s->p2p_pd_before_go_neg)
-		wpas_p2p_initiate_pasn_auth(wpa_s, peer_addr, force_freq);
+	if (wpa_s->p2p2 && !wpa_s->p2p_pd_before_go_neg) {
+		int listen_freq = p2p_get_listen_freq(wpa_s->global->p2p,
+						      peer_addr);
+
+		wpas_p2p_initiate_pasn_auth(wpa_s, peer_addr, listen_freq);
+	}
 #endif /* CONFIG_PASN */
 
 	return ret;
@@ -11760,4 +11768,57 @@ void wpas_p2p_update_dev_addr(struct wpa_supplicant *wpa_s)
 {
 	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
 	p2p_set_dev_addr(wpa_s->global->p2p, wpa_s->own_addr);
+}
+
+
+static void wpas_p2p_set_disabled(struct wpa_supplicant *wpa_s)
+{
+	wpa_printf(MSG_DEBUG, "P2P: Disabled");
+
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) ||
+	    wpa_s->p2p_mgmt) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Disable only implemented on parent interface");
+	} else {
+		if (wpa_s->global->p2p_init_wpa_s &&
+		    wpa_s->global->p2p &&
+		    wpa_s->global->p2p_init_wpa_s->parent == wpa_s) {
+			wpa_supplicant_remove_iface(
+				wpa_s->global, wpa_s->global->p2p_init_wpa_s,
+				0);
+		} else {
+			wpa_printf(MSG_DEBUG, "P2P: Not global P2P owner");
+		}
+	}
+}
+
+
+static void wpas_p2p_set_enabled(struct wpa_supplicant *wpa_s)
+{
+	wpa_printf(MSG_DEBUG, "P2P: Enabled");
+
+	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_DEDICATED_P2P_DEVICE) ||
+	    wpa_s->p2p_mgmt) {
+		wpa_printf(MSG_INFO,
+			   "P2P: Enabling only implemented on parent interface");
+	} else if (!wpa_s->global->p2p &&
+		   !wpa_s->global->p2p_disabled) {
+		if (wpas_p2p_add_p2pdev_interface(
+			    wpa_s, wpa_s->global->params.conf_p2p_dev) < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "P2P: Failed to enable P2P Device interface");
+		}
+	} else {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Not enabling, global P2P configured or globally disabled");
+	}
+}
+
+
+void wpas_p2p_disabled_changed(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->conf->p2p_disabled)
+		wpas_p2p_set_disabled(wpa_s);
+	else
+		wpas_p2p_set_enabled(wpa_s);
 }

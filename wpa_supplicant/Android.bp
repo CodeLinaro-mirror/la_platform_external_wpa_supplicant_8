@@ -1001,6 +1001,8 @@ wpa_supplicant_cc_defaults_type {
         "-DCONFIG_HMAC_SHA512_KDF",
         "-DCONFIG_HS20",
         "-DCONFIG_IEEE80211AC",
+        "-DCONFIG_IEEE80211AX",
+        "-DCONFIG_IEEE80211BE",
         "-DCONFIG_IEEE80211R",
         "-DCONFIG_INTERWORKING",
         "-DCONFIG_IPV6",
@@ -1347,6 +1349,8 @@ cc_defaults {
         "src/ap/hw_features.c",
         "src/ap/ieee802_11_auth.c",
         "src/ap/ieee802_11.c",
+        "src/ap/ieee802_11_eht.c",
+        "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_ht.c",
         "src/ap/ieee802_11_shared.c",
         "src/ap/ieee802_11_vht.c",
@@ -1721,7 +1725,7 @@ cc_fuzz {
     name: "mainline_supplicant_service_fuzzer",
     team: "trendy_team_fwk_wifi_hal",
     srcs: [
-        "aidl/mainline/fuzzers/mainline_supplicant_service_fuzzer.cpp",
+        "aidl/fuzzers/mainline_supplicant_service_fuzzer.cpp",
     ],
     defaults: [
         "fuzzer_disable_leaks",
@@ -1866,11 +1870,11 @@ genrule {
     name: "wpa_supplicant_mainline_conf_gen",
     srcs: [
         // Custom script adapted from wpa_supplicant_conf.sh
-        "aidl/mainline/config/wpa_supplicant_mainline_conf.sh",
+        "aidl/config/wpa_supplicant_mainline_conf.sh",
         // Shared template file
         "wpa_supplicant_template.conf",
     ],
-    cmd: "bash $(location aidl/mainline/config/wpa_supplicant_mainline_conf.sh) $(location wpa_supplicant_template.conf) > $(out)",
+    cmd: "bash $(location aidl/config/wpa_supplicant_mainline_conf.sh) $(location wpa_supplicant_template.conf) > $(out)",
     out: ["wpa_supplicant_mainline.conf"],
 }
 

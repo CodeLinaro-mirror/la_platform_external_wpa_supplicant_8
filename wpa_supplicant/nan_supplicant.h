@@ -135,7 +135,10 @@ void wpas_nan_usd_cancel_remain_on_channel_cb(struct wpa_supplicant *wpa_s,
 int * wpas_nan_usd_all_freqs(struct wpa_supplicant *wpa_s);
 int wpas_nan_usd_unpause_publish(struct wpa_supplicant *wpa_s, int publish_id,
 				 u8 peer_instance_id, const u8 *peer_addr);
-
+int wpas_nan_usd_publish_stop_listen(struct wpa_supplicant *wpa_s,
+				int publish_id);
+int wpas_nan_usd_subscribe_stop_listen(struct wpa_supplicant *wpa_s,
+				int subscribe_id);
 #else /* CONFIG_NAN_USD */
 
 static inline
@@ -158,6 +161,20 @@ int * wpas_nan_usd_all_freqs(struct wpa_supplicant *wpa_s)
 static inline
 int wpas_nan_usd_unpause_publish(struct wpa_supplicant *wpa_s, int publish_id,
 				 u8 peer_instance_id, const u8 *peer_addr)
+{
+	return -1;
+}
+
+static inline
+int wpas_nan_usd_publish_stop_listen(struct wpa_supplicant *wpa_s,
+				int publish_id)
+{
+    return -1;
+}
+
+static inline
+int wpas_nan_usd_subscribe_stop_listen(struct wpa_supplicant *wpa_s,
+				int subscribe_id)
 {
 	return -1;
 }
