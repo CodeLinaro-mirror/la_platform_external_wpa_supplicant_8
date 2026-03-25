@@ -1541,7 +1541,13 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 				      const u8 *cipher_suite_list,
 				      size_t cipher_suite_count,
 				      const u8 *match_filter,
-				      size_t match_filter_len)
+				      size_t match_filter_len,
+				      bool pairing_setup,
+				      bool pairing_cache,
+				      bool pairing_verification,
+				      u16 pbm,
+				      const u8* nonce,
+				      const u8* tag)
 {
 	char *ssi_hex, *pmkid_hex = NULL, *match_filter_hex = NULL;
 	char *cipher_suites_str = NULL;
@@ -1616,7 +1622,8 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_nan_service_discovered(wpa_s, srv_proto_type,
 		subscribe_id, peer_publish_id, peer_addr, fsd, ssi, ssi_len,
-		match_filter, match_filter_len);
+		match_filter, match_filter_len, pairing_setup, pairing_cache,
+		pairing_verification, pbm, nonce, tag);
 
 	wpas_dbus_signal_nan_discovery_result(wpa_s, srv_proto_type,
 					      subscribe_id, peer_publish_id,
@@ -1767,7 +1774,8 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 				  const u8 *nik, size_t nik_len,
 				  int cipher_ver, int akmp,
 				  const u8 *npk, size_t npk_len,
-				  int nik_lifetime, int identity_id)
+				  int nik_lifetime, int identity_id,
+				  int cipher, int handle, int req_instance_id)
 {
 	char *nik_hex, *npk_hex;
 
@@ -1792,7 +1800,7 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 
 	wpas_aidl_notify_nan_nik_received(
 		wpa_s, nik, nik_len, cipher_ver, akmp, npk, npk_len,
-		nik_lifetime, identity_id);
+		nik_lifetime, identity_id, cipher, handle, req_instance_id);
 
 	os_memset(nik_hex, 0, 2 * nik_len + 1);
 	os_memset(npk_hex, 0, 2 * npk_len + 1);
@@ -1805,7 +1813,7 @@ out:
 void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
 				     const u8 *peer_nmi, u8 csid,
 				     u8 instance_id, int key_mgmt,
-				     bool verify)
+				     bool verify, const u8* nonce, const u8* tag)
 {
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_PAIRING_REQUEST
 		       "peer_nmi=" MACSTR " csid=%u instance_id=%u key_mgmt=%s verify=%d",
@@ -1814,7 +1822,7 @@ void wpas_notify_nan_pairing_request(struct wpa_supplicant *wpa_s,
 		       verify);
 	wpas_aidl_notify_nan_pairing_request(wpa_s, instance_id,
 		instance_id/*peer_id*/, peer_nmi, instance_id/*pairing_id*/,
-		!verify, nullptr, nullptr);
+		!verify, nonce, tag);
 }
 
 
@@ -1897,7 +1905,7 @@ void wpas_notify_nan_ndp_connected(struct wpa_supplicant *wpa_s,
 		       ssi_hex ? ssi_hex : "");
 
 	wpas_aidl_notify_nan_ndp_confirmed(wpa_s, ndp_id, peer_ndi,
-		true/*is_success*/, 0/*No Reason*/, nullptr, 0);
+		true/*is_success*/, 0/*No Reason*/, ssi, ssi_len);
 
 	os_free(ssi_hex);
 }

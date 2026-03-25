@@ -205,7 +205,9 @@ public:
 		enum nan_service_protocol_type srv_proto_type,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
 		bool fsd, const u8 *ssi, size_t ssi_len,
-		const u8* match_filter, size_t match_filter_len);
+		const u8* match_filter, size_t match_filter_len,
+		bool pairing_setup, bool pairing_cache, bool pairing_verification,
+		u16 pbm, const u8* nonce, const u8* tag);
 	void notifyNanPublishReplied(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int publish_id, int peer_subscribe_id,
@@ -239,7 +241,9 @@ public:
 		int request_type, bool is_npk_cache_enabled);
 	void notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
 		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
-		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id);
+		const u8 *npk, int npk_len, int peer_nik_lifetime,
+		int identity_id, int cipher, int discovery_session_id,
+		int pairing_id);
 	void notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 		int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int npd_id,
 		bool security_required, const u8* app_info, size_t app_info_len);
