@@ -19,6 +19,16 @@ package {
     ],
 }
 
+cc_defaults {
+    name: "hostapd_qca_default",
+    cflags: [
+        "-DCONFIG_USE_VENDOR_AIDL",
+    ],
+    shared_libs: [
+        "vendor.qti.hardware.wifi.hostapd-V1-ndk",
+    ],
+}
+
 cc_library_headers {
     name: "libhostapd_aidl_headers",
     export_include_dirs: ["."],
@@ -28,7 +38,10 @@ cc_library_headers {
 cc_library_static {
     name: "libhostapd_aidl_bp",
     srcs: ["*.cpp"],
-    defaults: ["hostapd_cflags_defaults"],
+    defaults: [
+        "hostapd_cflags_defaults",
+        "hostapd_qca_default",
+    ],
     soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.hostapd-V2-ndk",
