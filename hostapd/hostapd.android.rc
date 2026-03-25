@@ -5,6 +5,10 @@
 # This software may be distributed under the terms of the BSD license.
 # See README for more details.
 #
+# Changes from Qualcomm Technologies, Inc. are provided under the following license:
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+#
 
 on post-fs-data
     mkdir /data/vendor/wifi 0770 wifi wifi
@@ -13,6 +17,7 @@ on post-fs-data
 
 service hostapd /vendor/bin/hw/hostapd
     interface aidl android.hardware.wifi.hostapd.IHostapd/default
+    interface aidl vendor.qti.hardware.wifi.hostapd.IHostapdVendor/default
     class main
     capabilities NET_ADMIN NET_RAW
     user wifi

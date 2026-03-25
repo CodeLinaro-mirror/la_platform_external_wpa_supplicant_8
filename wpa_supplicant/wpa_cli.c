@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "includes.h"
@@ -2959,6 +2963,13 @@ static int wpa_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	return wpa_cli_cmd(ctrl, "DRIVER", 1, argc, argv);
 }
+
+#ifdef CONFIG_TESTING_OPTIONS
+static int wpa_cli_cmd_driver_event(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_cli_cmd(ctrl, "DRIVER_EVENT", 1, argc, argv);
+}
+#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* ANDROID */
 
 
@@ -4036,6 +4047,10 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 #ifdef ANDROID
 	{ "driver", wpa_cli_cmd_driver, NULL, cli_cmd_flag_none,
 	  "<command> = driver private commands" },
+#ifdef CONFIG_TESTING_OPTIONS
+	{ "driver_event", wpa_cli_cmd_driver_event, NULL, cli_cmd_flag_none,
+	  "<command> = fake driver event commands" },
+#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* ANDROID */
 	{ "radio_work", wpa_cli_cmd_radio_work, NULL, cli_cmd_flag_none,
 	  "= radio_work <show/add/done>" },

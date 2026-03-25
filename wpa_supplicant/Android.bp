@@ -692,7 +692,21 @@ cc_library {
     },
 }
 
-cc_defaults {
+soong_config_module_type {
+    name: "wpa_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs",
+        "srcs",
+    ],
+}
+
+wpa_cc_defaults_type {
     name: "wpa_supplicant_qca_cflags",
     cflags: [
         "-DCONFIG_DPP3",
@@ -701,9 +715,29 @@ cc_defaults {
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            cflags: [
+                "-DCONFIG_USE_VENDOR_AIDL",
+            ],
+        },
+    },
 }
 
-cc_defaults {
+soong_config_module_type {
+    name: "hostapd_cc_defaults_type",
+    module_type: "cc_defaults",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "shared_libs"
+    ],
+}
+
+hostapd_cc_defaults_type {
     name: "wpa_supplicant_qca_default",
     local_include_dirs: [
         "src/fst",
@@ -722,6 +756,12 @@ cc_defaults {
         "src/ap/ieee802_11_he.c",
         "src/ap/ieee802_11_eht.c",
     ],
+    shared_libs: [],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: ["vendor.qti.hardware.wifi.supplicant-V2-ndk"],
+        },
+    },
 }
 
 // End of cuttlefish section
@@ -1542,10 +1582,12 @@ soong_config_module_type {
     ],
     bool_variables: [
         "wifi_hidl_unified_supplicant_service_rc_entry",
+        "enable_vendor_aidl",
     ],
     properties: [
         "init_rc",
         "static_libs",
+        "required",
     ],
 }
 
@@ -1593,6 +1635,9 @@ wpa_supplicant_cc_binary {
         // init_rc: wpa_supplicant only
         wifi_hidl_unified_supplicant_service_rc_entry: {
             init_rc: ["aidl/vendor/android.hardware.wifi.supplicant-service.rc"],
+        },
+        enable_vendor_aidl: {
+            required: ["android.hardware.wifi.supplicant.vendor.xml"],
         },
     },
     vintf_fragment_modules: ["android.hardware.wifi.supplicant.xml"],
@@ -1742,7 +1787,21 @@ cc_fuzz {
 
 //## Aidl service library ###
 //#######################
-cc_library_static {
+soong_config_module_type {
+    name: "wpa_cc_library_static_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cppflags",
+        "srcs",
+        "shared_libs"
+    ],
+}
+
+wpa_cc_library_static_type {
     name: "libwpa_aidl",
     vendor: true,
     cppflags: [
@@ -1781,6 +1840,14 @@ cc_library_static {
         "wpa_supplicant_includes_default",
         "wpa_supplicant_qca_default",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            srcs: [
+                "aidl/vendor/supplicant_vendor.cpp",
+                "aidl/vendor/vendorsta_iface.cpp",
+            ],
+        },
+    },
 }
 
 cc_library_static {

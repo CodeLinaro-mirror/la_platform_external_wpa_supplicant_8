@@ -4,6 +4,10 @@
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "utils/includes.h"
@@ -3941,7 +3945,7 @@ static int hostapd_ctrl_iface_proc_coord_test(struct hostapd_data *hapd,
 #endif /* CONFIG_TESTING_OPTIONS */
 
 
-static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 					      char *buf, char *reply,
 					      int reply_size,
 					      struct sockaddr_storage *from,
