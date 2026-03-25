@@ -1305,8 +1305,6 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
  * @peer_addr: MAC address of the peer device
  * @shared_key_descr: Pointer to the shared key descriptor attribute
  * @attr_len: Length of the shared key descriptor attribute
- * @handle: Service handle of the service associated with this followup
- * @req_instance_id: Instance ID of the request that triggered this followup
  *
  * Returns: true if the follow-up frame was processed, false otherwise.
  *
@@ -1318,7 +1316,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
  */
 bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 			     struct nan_shared_key *shared_key_descr,
-			     size_t attr_len, int handle, u8 req_instance_id)
+			     size_t attr_len)
 {
 	struct nan_peer *peer;
 	struct pasn_data *pasn;
@@ -1433,10 +1431,7 @@ bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 						  be_to_host32(lifetime_kde->lifetime_sec),
 						  pasn_get_akmp(pasn),
 						  pasn_get_pmk(pasn),
-						  pasn_get_pmk_len(pasn),
-						  pasn->cipher,
-						  handle,
-						  req_instance_id);
+						  pasn_get_pmk_len(pasn));
 
 	if (peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_RESPONDER)
 		nan_send_nik(nan_data, peer);
@@ -1513,13 +1508,14 @@ int nan_pairing_set_nik(struct nan_data *nan, const u8 *nik, size_t nik_len)
 			   nik_len);
 		return -1;
 	}
-	os_memcpy(nan->cfg->nik, nik, NAN_NIK_LEN);
+
 	if (nan->cfg->pairing_cfg.pairing_verification &&
 	    nan_nira_get_tag_nonce(nan->cfg, nonce, tag) < 0) {
 		wpa_printf(MSG_DEBUG, "NAN: Failed to set NIRA for new NIK");
 		return -1;
 	}
 
+	os_memcpy(nan->cfg->nik, nik, NAN_NIK_LEN);
 	os_memcpy(nan->nira_nonce, nonce, NAN_NIRA_NONCE_LEN);
 	os_memcpy(nan->nira_tag, tag, NAN_NIRA_TAG_LEN);
 

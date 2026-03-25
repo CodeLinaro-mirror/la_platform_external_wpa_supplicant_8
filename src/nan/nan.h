@@ -671,16 +671,12 @@ struct nan_config {
 	 * @akmp: AKMP suite used to establish the NPKSA
 	 * @npk: the NPK associated with the received NIK
 	 * @npk_len: Length of the NPK
-	 * @cipher: Cipher suite used to establish the NPKSA
-	 * @handle: Service handle of the service associated with this followup
-	 * @req_instance_id: Instance ID of the request that triggered this followup
 	 * Returns: 0 on success, -1 on failure
 	 */
 	int (*update_pairing_credentials)(void *ctx, const u8 *nik,
 					  size_t nik_len, int cipher_ver,
 					  int nik_lifetime, int akmp, u8 *npk,
-					  size_t npk_len, int cipher,
-					  int handle, u8 req_instance_id);
+					  size_t npk_len);
 
 	/**
 	 * get_npk_akmp - Get the cached NPK and AKMP for a peer

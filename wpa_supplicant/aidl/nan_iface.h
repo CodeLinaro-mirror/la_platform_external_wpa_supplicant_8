@@ -49,8 +49,6 @@ public:
 		::aidl::android::system::wifi::mainline_supplicant::NanInitiateDataPathRequest;
 	using NanRespondToDataPathIndicationRequest =
 		::aidl::android::system::wifi::mainline_supplicant::NanRespondToDataPathIndicationRequest;
-	using NanSchedule =
-		::aidl::android::system::wifi::mainline_supplicant::NanSchedule;
 	NanIface(struct wpa_global* global, const std::string& ifname);
 	~NanIface() override;
 
@@ -75,8 +73,7 @@ public:
 		const NanConfigRequest& in_msg2) override;
 	::ndk::ScopedAStatus disableRequest(char16_t in_cmdId) override;
 	::ndk::ScopedAStatus createDataInterfaceRequest(
-		char16_t, const std::string& in_ifaceName,
-		const std::array<uint8_t, 6>& macAddr) override;
+		char16_t, const std::string& in_ifaceName) override;
 	::ndk::ScopedAStatus deleteDataInterfaceRequest(
 		char16_t, const std::string& in_ifaceName) override;
 	::ndk::ScopedAStatus getName(std::string* _aidl_return) override;
@@ -116,11 +113,7 @@ public:
 	::ndk::ScopedAStatus terminateDataPathRequest(
 		char16_t in_cmdId,
 		int32_t in_ndpInstanceId,
-		const std::array<uint8_t, 6>& in_peerDiscMacAddr,
-		const std::array<uint8_t, 6>& in_ndiInitMac) override;
-	::ndk::ScopedAStatus setSchedule(
-		char16_t in_cmdId,
-		const std::vector<NanSchedule>& in_schedule) override;
+		const std::array<uint8_t, 6>& in_peerDiscMacAddr) override;
 
 private:
 	::ndk::ScopedAStatus registerEventCallbackInternal(
@@ -135,8 +128,7 @@ private:
 		const NanConfigRequest& msg2);
 	::ndk::ScopedAStatus disableRequestInternal(char16_t cmdId);
 	::ndk::ScopedAStatus createDataInterfaceRequestInternal(
-		char16_t, const std::string& ifaceName,
-		const std::array<uint8_t, 6>& macAddr);
+		char16_t, const std::string& ifaceName);
 	::ndk::ScopedAStatus deleteDataInterfaceRequestInternal(
 		char16_t, const std::string& ifaceName);
 	::ndk::ScopedAStatus startPublishRequestInternal(
@@ -168,11 +160,7 @@ private:
 		const NanRespondToDataPathIndicationRequest& msg);
 	::ndk::ScopedAStatus terminateDataPathRequestInternal(
 		char16_t cmdId, int32_t ndpInstanceId,
-		const std::array<uint8_t, 6>& peerDiscMacAddr,
-		const std::array<uint8_t, 6>& in_ndiInitMac);
-	::ndk::ScopedAStatus setScheduleInternal(
-		char16_t in_cmdId,
-		const std::vector<NanSchedule>& in_schedule);
+		const std::array<uint8_t, 6>& peerDiscMacAddr);
 
 	struct wpa_global* wpa_global_;
 	// Name of the iface this aidl object controls

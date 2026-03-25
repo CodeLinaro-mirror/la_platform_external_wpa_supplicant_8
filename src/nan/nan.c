@@ -1329,8 +1329,7 @@ bool nan_process_followup(struct nan_data *nan, const u8 *addr, const u8 *buf,
 	else if (attrs.shared_key_desc)
 		ret = nan_pairing_followup_rx(nan, addr,
 					      (void *)attrs.shared_key_desc,
-					      attrs.shared_key_desc_len,
-					      handle, req_instance_id);
+					      attrs.shared_key_desc_len);
 
 	nan_attrs_clear(nan, &attrs);
 	return ret;
