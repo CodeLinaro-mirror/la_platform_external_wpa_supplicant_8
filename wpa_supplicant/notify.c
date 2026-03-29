@@ -1962,6 +1962,8 @@ void wpas_notify_nan_cluster_join(struct wpa_supplicant *wpa_s,
 {
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_CLUSTER_JOIN "cluster_id=" MACSTR
 		       " new=%d", MAC2STR(cluster_id), new_cluster);
+
+	wpas_aidl_notify_nan_cluster_event(wpa_s, new_cluster ? 1 : 0, cluster_id);
 }
 
 
