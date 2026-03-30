@@ -1741,6 +1741,7 @@ void wpas_notify_nan_transmit_req_status(struct wpa_supplicant *wpa_s,
 {
 	wpa_msg_global(wpa_s, MSG_INFO, NAN_TRANSMIT_STATUS
 		       "cookie=%u acked=%u", cookie, acked);
+	wpas_aidl_notify_nan_transmit_status(wpa_s, cookie, acked);
 }
 
 
