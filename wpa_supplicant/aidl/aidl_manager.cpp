@@ -4070,7 +4070,7 @@ void AidlManager::notifyNanSubscribeTerminated(
 }
 
 void AidlManager::notifyRttContinuousRangingResultEvent(struct wpa_supplicant *wpa_s,
-	void *result)
+	const void *result)
 {
 	if (!wpa_s || !result)
 		return;
@@ -4084,8 +4084,8 @@ void AidlManager::notifyRttContinuousRangingResultEvent(struct wpa_supplicant *w
 	}
 
 	RttResult outputResult;
-	struct wpa_event_data::peer_measurement_result *res =
-		(struct wpa_event_data::peer_measurement_result *)result;
+	const struct wpa_event_data::peer_measurement_result *res =
+		(const struct wpa_event_data::peer_measurement_result *)result;
 	outputResult.addr = macAddrToArray(res->addr);
 	outputResult.burstNum = res->ftm.burst_index;
 	outputResult.measurementNumber = res->ftm.num_ftmr_attempts;

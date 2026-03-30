@@ -530,8 +530,8 @@ ndk::ScopedAStatus SupplicantWifiRttController::rangeCancelInternal(
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (aidl_manager) {
 		aidl_manager->notifyRttContinuousRangingTerminatedEvent(wpa_s, 
-			ISupplicantWifiRttControllerEventCallback::
-			ContinuousRangingTerminateReasonCode::USER_REQUEST);
+			static_cast<u32>(ISupplicantWifiRttControllerEventCallback::
+			ContinuousRangingTerminateReasonCode::USER_REQUEST));
 	}
 	current_cmd_id_ = -1;
 	return ndk::ScopedAStatus::ok();

@@ -230,7 +230,7 @@ enum wpas_continuous_ranging_status_code {
 		bool is_success, u8 reason, const u8* app_info, size_t app_info_len);
 	void wpas_aidl_notify_nan_ndp_terminated(struct wpa_supplicant* wpa_s, u8 ndp_id);
 	void wpas_aidl_notify_rtt_continuous_ranging_result(
-		struct wpa_supplicant* wpa_s, void *data);
+		struct wpa_supplicant* wpa_s, const void *data);
 	void wpas_aidl_notify_rtt_continuous_ranging_status(
 		struct wpa_supplicant* wpas_s, enum wpas_continuous_ranging_status_code status);
 	void wpas_aidl_notify_rtt_continuous_ranging_terminated(
@@ -498,7 +498,7 @@ static void wpas_aidl_notify_nan_ndp_confirmed(
 		bool is_success, u8 reason, const u8* app_info, size_t app_info_len) {}
 static void wpas_aidl_notify_nan_ndp_terminated(struct wpa_supplicant* wpa_s, u8 ndp_id) {}
 static void wpas_aidl_notify_rtt_continuous_ranging_result(
-	struct wpa_supplicant* wpa_s, void *data) {}
+	struct wpa_supplicant* wpa_s, const void *data) {}
 static void wpas_aidl_notify_rtt_continuous_ranging_status(
 	struct wpa_supplicant* wpa_s, enum wpas_continuous_ranging_status_code status) {}
 static void wpas_aidl_notify_rtt_continuous_ranging_terminated(

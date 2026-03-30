@@ -17,6 +17,7 @@
 #include "utils/common.h"
 #include "common/wpa_ctrl.h"
 #include "common/nan_de.h"
+#include "ieee802_11_defs.h"
 #include "common/proximity_ranging.h"
 #include "config.h"
 #include "wpa_supplicant_i.h"
@@ -2052,6 +2053,8 @@ void wpas_notify_pr_pasn_result(struct wpa_supplicant *wpa_s, u8 role,
 		       "SUCCESS role=%u protocol=%u opclass=%u channel=%u cc=%c%c",
 		       role, protocol_type, op_class, op_channel,
 		       country[0], country[1]);
+	wpas_aidl_notify_rtt_continuous_ranging_status(wpa_s,
+		WPAS_CONTINUOUS_RANGING_STATUS_PR_RANGE_NEGOTIATION_SUCCEEDED);
 }
 
 
@@ -2062,6 +2065,8 @@ void wpas_notify_pr_negotiation_started(struct wpa_supplicant *wpa_s,
 	wpa_msg_global(wpa_s, MSG_INFO, PR_PASN_NEGOTIATION_STARTED
 		       "peer_addr=" MACSTR " role=%u protocol=%u",
 		       MAC2STR(peer_addr), role, protocol_type);
+	wpas_aidl_notify_rtt_continuous_ranging_status(wpa_s,
+		WPAS_CONTINUOUS_RANGING_STATUS_PR_RANGE_NEGOTIATION_STARTED);
 }
 
 
@@ -2075,6 +2080,14 @@ void wpas_notify_pr_ranging_params(struct wpa_supplicant *wpa_s,
 		       " role=%u protocol=%u freq=%d channel=%d bw=%d format_bw=%d",
 		       MAC2STR(dev_addr), MAC2STR(peer_addr), ranging_role,
 		       protocol_type, freq, channel, bw, format_bw);
+
+	if (ranging_role == PR_ISTA_SUPPORT) {
+		wpas_aidl_notify_rtt_continuous_ranging_status(wpa_s,
+			WPAS_CONTINUOUS_RANGING_STATUS_PR_STARTED_RANGE_REQUESTS_ISTA_ROLE);
+	} else if (ranging_role == PR_RSTA_SUPPORT) {
+		wpas_aidl_notify_rtt_continuous_ranging_status(wpa_s,
+			WPAS_CONTINUOUS_RANGING_STATUS_PR_STARTED_RANGE_REQUESTS_RSTA_ROLE);
+	}
 }
 
 
@@ -2092,6 +2105,7 @@ void wpas_notify_pr_measurement_result(
 			       MAC2STR(result->addr), result->status,
 			       result->ftm.burst_index,
 			       result->ftm.fail_reason);
+		wpas_aidl_notify_rtt_continuous_ranging_result(wpa_s, result);
 		return;
 	}
 
@@ -2106,6 +2120,7 @@ void wpas_notify_pr_measurement_result(
 		       "addr=" MACSTR " status=%u burst_index=%u%s%s",
 		       MAC2STR(result->addr), result->status,
 		       result->ftm.burst_index, rtt, dist);
+	wpas_aidl_notify_rtt_continuous_ranging_result(wpa_s, result);
 }
 
 
@@ -2113,6 +2128,7 @@ void wpas_notify_pr_ranging_complete(struct wpa_supplicant *wpa_s, u64 cookie)
 {
 	wpa_msg_global(wpa_s, MSG_INFO, PR_EVENT_RANGING_COMPLETE
 		       "cookie=%llu", (unsigned long long) cookie);
+	wpas_aidl_notify_rtt_continuous_ranging_terminated(wpa_s, (u32)-1 /*UNKNOWN*/);
 }
 
 

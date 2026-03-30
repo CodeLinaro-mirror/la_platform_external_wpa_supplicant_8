@@ -1420,7 +1420,7 @@ void wpas_aidl_notify_nan_ndp_terminated(struct wpa_supplicant* wpa_s, u8 ndp_id
 }
 
 void wpas_aidl_notify_rtt_continuous_ranging_result(
-	struct wpa_supplicant *wpa_s, void *data)
+	struct wpa_supplicant *wpa_s, const void *data)
 {
 	if (!wpa_s || !data)
 		return;
@@ -1429,7 +1429,6 @@ void wpas_aidl_notify_rtt_continuous_ranging_result(
 	if (!aidl_manager)
 		return;
 
-	wpa_printf(MSG_DEBUG, "Notifying RTT continuous ranging result");
 	aidl_manager->notifyRttContinuousRangingResultEvent(wpa_s, data);
 }
 

@@ -259,7 +259,7 @@ public:
 	void notifyNanDataPathTerminatedEvent(struct wpa_supplicant *wpa_s,
 		int ndp_id);
 	void notifyRttContinuousRangingResultEvent(struct wpa_supplicant *wpa_s,
-		void *data);
+		const void *data);
 	void notifyRttContinuousRangingStatusChangedEvent(struct wpa_supplicant *wpa_s,
 		enum wpas_continuous_ranging_status_code status);
 	void notifyRttContinuousRangingTerminatedEvent(struct wpa_supplicant *wpa_s,
