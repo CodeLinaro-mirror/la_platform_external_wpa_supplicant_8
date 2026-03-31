@@ -6,13 +6,13 @@
  * See README for more details.
  */
 
-#include "aidl/shared/shared_utils.h"
 #include "aidl_manager.h"
 #include "aidl_return_util.h"
 #include "driver_i.h"
 #include "mainline_supplicant.h"
 #include "misc_utils.h"
 #include "nan_iface.h"
+#include "shared_utils.h"
 
 using aidl::android::hardware::wifi::supplicant::aidl_return_util::validateAndCall;
 using aidl::android::hardware::wifi::supplicant::misc_utils::createStatus;

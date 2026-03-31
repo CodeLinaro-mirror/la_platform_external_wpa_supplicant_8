@@ -6,7 +6,7 @@
  * See README for more details.
  */
 
-#include "aidl/shared/shared_utils.h"
+#include "shared_utils.h"
 
 int ensureConfigFileExistsAtPath(const std::string& config_file_path) {
     int ret = access(config_file_path.c_str(), R_OK);

@@ -1,6 +1,6 @@
 /*
  * hostapd / IEEE 802.11be EHT
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -48,34 +48,14 @@ static u16 ieee80211_eht_ppet_size(u16 ppe_thres_hdr, const u8 *phy_cap_info)
 
 
 static u8 ieee80211_eht_mcs_set_size(enum hostapd_hw_mode mode, u8 opclass,
-				     int he_oper_chwidth, const u8 *he_phy_cap,
+				     const u8 *he_phy_cap,
 				     const u8 *eht_phy_cap)
 {
 	u8 sz = EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
 	bool band24, band5, band6;
-	u8 he_phy_cap_chwidth = ~HE_PHYCAP_CHANNEL_WIDTH_MASK;
 	u8 cap_chwidth;
 
-	switch (he_oper_chwidth) {
-	case CONF_OPER_CHWIDTH_80P80MHZ:
-		he_phy_cap_chwidth |=
-			HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G;
-		/* fall through */
-	case CONF_OPER_CHWIDTH_160MHZ:
-		he_phy_cap_chwidth |= HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G;
-		/* fall through */
-	case CONF_OPER_CHWIDTH_80MHZ:
-	case CONF_OPER_CHWIDTH_USE_HT:
-		he_phy_cap_chwidth |= HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G |
-			HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G;
-		break;
-	}
-
 	cap_chwidth = he_phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX];
-	if (he_oper_chwidth != -1)
-		he_phy_cap_chwidth &= cap_chwidth;
-	else
-		he_phy_cap_chwidth = cap_chwidth;
 
 	band24 = mode == HOSTAPD_MODE_IEEE80211B ||
 		mode == HOSTAPD_MODE_IEEE80211G ||
@@ -85,18 +65,18 @@ static u8 ieee80211_eht_mcs_set_size(enum hostapd_hw_mode mode, u8 opclass,
 	band6 = is_6ghz_op_class(opclass);
 
 	if (band24 &&
-	    (he_phy_cap_chwidth & HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G) == 0)
+	    (cap_chwidth & HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G) == 0)
 		return EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY;
 
 	if (band5 &&
-	    (he_phy_cap_chwidth &
+	    (cap_chwidth &
 	     (HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
 	      HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
 	      HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)) == 0)
 		return EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY;
 
 	if (band5 &&
-	    (he_phy_cap_chwidth &
+	    (cap_chwidth &
 	     (HE_PHYCAP_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
 	      HE_PHYCAP_CHANNEL_WIDTH_SET_80PLUS80MHZ_IN_5G)))
 	    sz += EHT_PHYCAP_MCS_NSS_LEN_20MHZ_PLUS;
@@ -126,7 +106,6 @@ size_t hostapd_eid_eht_capab_len(struct hostapd_data *hapd,
 		return 0;
 
 	len += ieee80211_eht_mcs_set_size(mode->mode, hapd->iconf->op_class,
-					  hapd->iconf->he_oper_chwidth,
 					  mode->he_capab[opmode].phy_cap,
 					  eht_cap->phy_cap);
 	len += ieee80211_eht_ppet_size(WPA_GET_LE16(&eht_cap->ppet[0]),
@@ -181,7 +160,6 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
 
 	mcs_nss_len = ieee80211_eht_mcs_set_size(mode->mode,
 						 hapd->iconf->op_class,
-						 hapd->iconf->he_oper_chwidth,
 						 mode->he_capab[opmode].phy_cap,
 						 eht_cap->phy_cap);
 	if (mcs_nss_len) {
@@ -336,7 +314,6 @@ static bool check_valid_eht_mcs(struct hostapd_data *hapd,
 	sta_mcs = capab->optional;
 
 	if (ieee80211_eht_mcs_set_size(mode->mode, hapd->iconf->op_class,
-				       hapd->iconf->he_oper_chwidth,
 				       mode->he_capab[opmode].phy_cap,
 				       mode->eht_capab[opmode].phy_cap) ==
 	    EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY)
@@ -378,7 +355,7 @@ static bool ieee80211_invalid_eht_cap_size(enum hostapd_hw_mode mode,
 	if (len < cap_len)
 		return true;
 
-	cap_len += ieee80211_eht_mcs_set_size(mode, opclass, -1, he_phy_cap,
+	cap_len += ieee80211_eht_mcs_set_size(mode, opclass, he_phy_cap,
 					      cap->phy_cap);
 	if (len < cap_len)
 		return true;
@@ -405,7 +382,8 @@ u16 copy_sta_eht_capab(struct hostapd_data *hapd, struct sta_info *sta,
 	    ieee80211_invalid_eht_cap_size(mode, hapd->iconf->op_class,
 					   he_capab, eht_capab,
 					   eht_capab_len) ||
-	    !check_valid_eht_mcs(hapd, eht_capab, opmode)) {
+	    !check_valid_eht_mcs(hapd, eht_capab, opmode) ||
+	    !(sta->flags & WLAN_STA_HE)) {
 		sta->flags &= ~WLAN_STA_EHT;
 		os_free(sta->eht_capab);
 		sta->eht_capab = NULL;
@@ -573,7 +551,7 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 		total_len = sta_info_len + link->resp_sta_profile_len;
 
 		/* Per-STA Profile subelement */
-		wpabuf_put_u8(buf, EHT_ML_SUB_ELEM_PER_STA_PROFILE);
+		wpabuf_put_u8(buf, MULTI_LINK_SUB_ELEM_ID_PER_STA_PROFILE);
 
 		if (total_len <= 255)
 			wpabuf_put_u8(buf, total_len);
@@ -582,14 +560,14 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 
 		/* STA Control */
 		control = (link_id & 0xf) |
-			EHT_PER_STA_CTRL_MAC_ADDR_PRESENT_MSK |
-			EHT_PER_STA_CTRL_COMPLETE_PROFILE_MSK |
-			EHT_PER_STA_CTRL_TSF_OFFSET_PRESENT_MSK |
-			EHT_PER_STA_CTRL_BEACON_INTERVAL_PRESENT_MSK |
-			EHT_PER_STA_CTRL_DTIM_INFO_PRESENT_MSK;
+			BASIC_MLE_STA_CTRL_PRES_STA_MAC |
+			BASIC_MLE_STA_CTRL_COMPLETE_PROFILE |
+			BASIC_MLE_STA_CTRL_PRES_TSF_OFFSET |
+			BASIC_MLE_STA_CTRL_PRES_BEACON_INT |
+			BASIC_MLE_STA_CTRL_PRES_DTIM_INFO;
 
 		if (include_bpcc)
-			control |= EHT_PER_STA_CTRL_BSS_PARAM_CNT_PRESENT_MSK;
+			control |= BASIC_MLE_STA_CTRL_PRES_BSS_PARAM_COUNT;
 
 		wpabuf_put_le16(buf, control);
 
@@ -638,7 +616,8 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 				else
 					slice_len = 255;
 
-				wpabuf_put_u8(buf, EHT_ML_SUB_ELEM_FRAGMENT);
+				wpabuf_put_u8(buf,
+					      MULTI_LINK_SUB_ELEM_ID_FRAGMENT);
 				wpabuf_put_u8(buf, slice_len);
 				wpabuf_put_data(buf, ptr, slice_len);
 
@@ -1088,7 +1067,7 @@ static const u8 * auth_skip_fixed_fields(struct hostapd_data *hapd,
 		return pos;
 #ifdef CONFIG_SAE
 	case WLAN_AUTH_SAE:
-		if (auth_transaction == 1) {
+		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
 			if (status_code == WLAN_STATUS_SUCCESS) {
 				wpa_printf(MSG_DEBUG,
 					   "EHT: SAE H2E is mandatory for MLD");
@@ -1097,7 +1076,7 @@ static const u8 * auth_skip_fixed_fields(struct hostapd_data *hapd,
 
 			return sae_commit_skip_fixed_fields(mgmt, len, pos,
 							    status_code);
-		} else if (auth_transaction == 2) {
+		} else if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_CONFIRM) {
 			return sae_confirm_skip_fixed_fields(hapd, mgmt, len,
 							     pos, status_code);
 		}
@@ -1433,23 +1412,23 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		}
 		control = WPA_GET_LE16(pos);
 		link_info = &info->links[control &
-					 EHT_PER_STA_CTRL_LINK_ID_MSK];
+					 BASIC_MLE_STA_CTRL_LINK_ID_MASK];
 		pos += 2;
 
-		if (!(control & EHT_PER_STA_CTRL_COMPLETE_PROFILE_MSK)) {
+		if (!(control & BASIC_MLE_STA_CTRL_COMPLETE_PROFILE)) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Per-STA complete profile expected");
 			goto out;
 		}
 
-		if (!(control & EHT_PER_STA_CTRL_MAC_ADDR_PRESENT_MSK)) {
+		if (!(control & BASIC_MLE_STA_CTRL_PRES_STA_MAC)) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Per-STA MAC address not present");
 			goto out;
 		}
 
-		if ((control & (EHT_PER_STA_CTRL_BEACON_INTERVAL_PRESENT_MSK |
-				EHT_PER_STA_CTRL_DTIM_INFO_PRESENT_MSK))) {
+		if ((control & (BASIC_MLE_STA_CTRL_PRES_BEACON_INT |
+				BASIC_MLE_STA_CTRL_PRES_DTIM_INFO))) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Beacon/DTIM interval not expected");
 			goto out;
@@ -1458,8 +1437,8 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		/* The length octet and the MAC address must be present */
 		sta_info_len = 1 + ETH_ALEN;
 
-		if (control & EHT_PER_STA_CTRL_NSTR_LINK_PAIR_PRESENT_MSK) {
-			if (control & EHT_PER_STA_CTRL_NSTR_BM_SIZE_MSK)
+		if (control & BASIC_MLE_STA_CTRL_PRES_NSTR_LINK_PAIR) {
+			if (control & BASIC_MLE_STA_CTRL_NSTR_BITMAP)
 				link_info->nstr_bitmap_len = 2;
 			else
 				link_info->nstr_bitmap_len = 1;
@@ -1485,7 +1464,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		os_memcpy(link_info->peer_addr, pos, ETH_ALEN);
 		wpa_printf(MSG_DEBUG,
 			   "MLD: assoc: link id=%u, addr=" MACSTR,
-			   control & EHT_PER_STA_CTRL_LINK_ID_MSK,
+			   control & BASIC_MLE_STA_CTRL_LINK_ID_MASK,
 			   MAC2STR(link_info->peer_addr));
 
 		pos += ETH_ALEN;
@@ -1603,7 +1582,7 @@ void hostapd_link_reconf_resp_tx_status(struct hostapd_data *hapd,
 			   "; revert link additions",
 			   MAC2STR(mgmt->da));
 
-		dl_list_for_each(info, &req_list->del_req,
+		dl_list_for_each(info, &req_list->add_req,
 				 struct link_reconf_req_info, list) {
 			if (info->status != WLAN_STATUS_SUCCESS)
 				continue;
@@ -1702,10 +1681,10 @@ void hostapd_link_reconf_resp_tx_status(struct hostapd_data *hapd,
 		}
 
 		/* Free as a link STA */
-		ap_free_sta(lhapd, lsta);
 		wpa_msg(hapd->msg_ctx, MSG_INFO,
 			WPA_EVENT_LINK_STA_REMOVED "sta=" MACSTR " link_id=%u",
 			MAC2STR(lsta->addr), link_id);
+		ap_free_sta(lhapd, lsta);
 
 		for_each_mld_link(other_hapd, lhapd) {
 			struct mld_link_info *link;
@@ -2046,7 +2025,7 @@ hostapd_send_link_reconf_resp(struct hostapd_data *hapd,
 							  false, true);
 		if ((size_t) (mle_pos - pos) != mle_len) {
 			wpa_printf(MSG_DEBUG,
-				   "MLD: Unexpected MLE length: %ld != %zu",
+				   "MLD: Unexpected MLE length: %td != %zu",
 				   mle_pos - pos, mle_len);
 			reject_all = true;
 			goto reject_all_req;
@@ -2143,7 +2122,7 @@ hostapd_parse_link_reconf_req_sta_profile(struct hostapd_data *hapd,
 
 	os_memset(sta_addr, 0, ETH_ALEN);
 
-	if (elem->id != EHT_ML_SUB_ELEM_PER_STA_PROFILE) {
+	if (elem->id != MULTI_LINK_SUB_ELEM_ID_PER_STA_PROFILE) {
 		wpa_printf(MSG_DEBUG, "MLD: Unexpected subelement (%u) found",
 			   elem->id);
 		ret = 1; /* skip this subelement */

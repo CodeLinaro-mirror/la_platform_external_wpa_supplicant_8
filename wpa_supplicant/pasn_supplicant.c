@@ -2,6 +2,7 @@
  * wpa_supplicant - PASN processing
  *
  * Copyright (C) 2019 Intel Corporation
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -127,8 +128,10 @@ wpas_pasn_sae_derive_pt(struct wpa_ssid *ssid, int group)
 	}
 
 	return sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
-			    (const u8 *) password, os_strlen(password),
-			    ssid->sae_password_id);
+			     (const u8 *) password, os_strlen(password),
+			     (const u8 *) ssid->sae_password_id,
+			     ssid->sae_password_id ?
+			     os_strlen(ssid->sae_password_id) : 0);
 }
 
 
@@ -687,8 +690,27 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_LTF);
 	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_RTT_STA)
 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
-	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA)
-		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA) {
+		/*
+		 * URNM_MFPR_X20 is a subset of URNM_MFPR which excludes 20 MHz
+		 * bandwidth from mandating protected Management frames. Set
+		 * URNM_MFPR only when URNM_MFPR_X20 is not set.
+		 */
+		if (wpa_s->disable_urnm_mfpr) {
+			wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_URNM_MFPR, 0);
+		} else {
+			capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+			wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_URNM_MFPR, 1);
+		}
+		if (wpa_s->urnm_mfpr_x20) {
+			capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR_X20);
+			wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_URNM_MFPR_X20,
+					 1);
+		} else {
+			wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_URNM_MFPR_X20,
+					 0);
+		}
+	}
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
 	    ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_SPP_A_MSDU))
 		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
@@ -698,7 +720,8 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 	ssid = wpa_config_get_network(wpa_s->conf, awork->network_id);
 
 #ifdef CONFIG_SAE
-	if (awork->akmp == WPA_KEY_MGMT_SAE) {
+	if (awork->akmp == WPA_KEY_MGMT_SAE ||
+	    awork->akmp == WPA_KEY_MGMT_SAE_EXT_KEY) {
 		if (!ssid) {
 			wpa_printf(MSG_DEBUG,
 				   "PASN: No network profile found for SAE");
