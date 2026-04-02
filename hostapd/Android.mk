@@ -60,9 +60,9 @@ L_CFLAGS += -DCONFIG_HOSTAPD_CLI_HISTORY_DIR=\"/data/vendor/wifi/hostapd\"
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
-# QTI_BEGIN: 2018-09-18: WLAN: Binder: limit hw binder buffer size for 32bit platform.
+#  QTI_BEGIN: 2018-09-18: WLAN: Binder: limit hw binder buffer size for 32bit platform.
 L_CFLAGS += -DARCH_ARM_32
-# QTI_END: 2018-09-18: WLAN: Binder: limit hw binder buffer size for 32bit platform.
+#  QTI_END: 2018-09-18: WLAN: Binder: limit hw binder buffer size for 32bit platform.
 endif
 
 INCLUDES = $(LOCAL_PATH)
@@ -1185,9 +1185,9 @@ ifeq ($(filter gce_x86 gce_x86_64 calypso, $(TARGET_DEVICE)),)
 ifdef CONFIG_CTRL_IFACE_AIDL
 HOSTAPD_USE_AIDL=y
 L_CFLAGS += -DCONFIG_CTRL_IFACE_AIDL
-# QTI_BEGIN: 2021-07-29: WLAN: Delete unsupported warning -Wno-error-deprecated-declarations
+#  QTI_BEGIN: 2021-07-29: WLAN: Delete unsupported warning -Wno-error-deprecated-declarations
 L_CPPFLAGS = -Wall -Werror -Wno-unused-variable
-# QTI_END: 2021-07-29: WLAN: Delete unsupported warning -Wno-error-deprecated-declarations
+#  QTI_END: 2021-07-29: WLAN: Delete unsupported warning -Wno-error-deprecated-declarations
 endif
 endif
 
