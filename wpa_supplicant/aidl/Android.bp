@@ -53,7 +53,6 @@ wpa_cc_library_static_aidl_vendor_type {
         "iface_config_utils.cpp",
         "p2p_iface.cpp",
         "p2p_network.cpp",
-        "shared_utils.cpp",
         "sta_iface.cpp",
         "sta_network.cpp",
         "supplicant.cpp",
@@ -87,7 +86,6 @@ wpa_cc_library_static_aidl_vendor_type {
     header_libs: [
         "wpa_supplicant_headers",
         "libwpa_aidl_headers",
-        "libwpa_shared_aidl_headers_vendor",
     ],
     soong_config_variables: {
         enable_vendor_aidl: {

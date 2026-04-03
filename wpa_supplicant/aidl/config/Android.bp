@@ -12,18 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_headers {
-    name: "libwpa_shared_aidl_headers_vendor",
-    export_include_dirs: ["."],
-    soc_specific: true,
+prebuilt_etc {
+    name: "mainline_supplicant_rc",
+    src: "mainline_supplicant.rc",
+    filename: "mainline_supplicant.rc",
+    installable: false,
 }
 
-cc_library_headers {
-    name: "libwpa_shared_aidl_headers_mainline",
-    export_include_dirs: ["."],
-    apex_available: [
-        "//apex_available:platform",
-        "com.android.wifi",
-    ],
-    min_sdk_version: "30",
+prebuilt_etc {
+    name: "mainline_supplicant_conf",
+    src: ":wpa_supplicant_mainline_conf_gen",
+    filename: "wpa_supplicant_mainline.conf",
+    installable: false,
 }

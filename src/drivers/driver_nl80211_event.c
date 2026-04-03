@@ -188,6 +188,10 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_SET_TID_TO_LINK_MAPPING)
 	C2S(NL80211_CMD_ASSOC_MLO_RECONF)
 	C2S(NL80211_CMD_EPCS_CFG)
+	C2S(NL80211_CMD_NAN_CLUSTER_JOINED)
+	C2S(NL80211_CMD_NAN_NEXT_DW_NOTIFICATION)
+	C2S(NL80211_CMD_NAN_SET_LOCAL_SCHED)
+	C2S(NL80211_CMD_NAN_SET_PEER_SCHED)
 	C2S(__NL80211_CMD_AFTER_LAST)
 	}
 #undef C2S
@@ -1486,15 +1490,47 @@ static void mlme_event_mgmt_tx_status(struct i802_bss *bss,
 
 	if (!is_ap_interface(drv->nlmode) &&
 	    WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_ACTION) {
+		bool known = false;
+
 		if (!cookie)
 			return;
+
+		if (cookie_val == drv->send_frame_cookie) {
+			known = true;
+			drv->send_frame_cookie = (u64)-1;
+		}
+
+		if ((drv->nlmode == NL80211_IFTYPE_NAN ||
+		     drv->nlmode == NL80211_IFTYPE_NAN_DATA) &&
+		    drv->num_send_frame_cookies > 0) {
+			unsigned int i;
+
+			/*
+			 * Check the cookie is stored for previously sent
+			 * frames. If it is found, remove it and in case of NAN
+			 * mark it as known
+			 */
+			for (i = 0; i < drv->num_send_frame_cookies; i++) {
+				if (cookie_val != drv->send_frame_cookies[i])
+					continue;
+
+				if (i < drv->num_send_frame_cookies - 1)
+					os_memmove(&drv->send_frame_cookies[i],
+						   &drv->send_frame_cookies[i + 1],
+						   (drv->num_send_frame_cookies - i - 1) * sizeof(u64));
+
+				drv->num_send_frame_cookies--;
+				known = true;
+				break;
+			}
+		}
 
 		wpa_printf(MSG_DEBUG,
 			   "nl80211: Frame TX status: cookie=0x%llx%s (ack=%d)",
 			   (long long unsigned int) cookie_val,
-			   cookie_val == drv->send_frame_cookie ?
-			   " (match)" : " (unknown)", ack != NULL);
-		if (cookie_val != drv->send_frame_cookie)
+			   known ? " (match)" : " (unknown)", ack != NULL);
+
+		if (!known)
 			return;
 	} else if (!is_ap_interface(drv->nlmode) &&
 		   WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_AUTH) {
@@ -4447,6 +4483,14 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 	case NL80211_CMD_ASSOC_MLO_RECONF:
 		mlme_event_link_addition(bss, nla_data(frame), nla_len(frame));
 		break;
+#ifdef CONFIG_NAN
+	case NL80211_CMD_NAN_CLUSTER_JOINED:
+		nl80211_nan_cluster_joined_event(drv, tb);
+		break;
+	case NL80211_CMD_NAN_NEXT_DW_NOTIFICATION:
+		nl80211_nan_next_dw_event(drv, tb);
+		break;
+#endif /* CONFIG_NAN */
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
 			"(cmd=%d)", cmd);
