@@ -2126,12 +2126,23 @@ ndk::ScopedAStatus StaIface::setMboCellularDataStatusInternal(bool available)
 	char mbo_cmd[32];
 	char buf[32];
 
-	os_snprintf(mbo_cmd, sizeof(mbo_cmd), "%s %d", "MBO CELL_DATA_CAP", mbo_cell_capa);
+	os_snprintf(mbo_cmd, sizeof(mbo_cmd), "MBO CELL_DATA_CAP %d", mbo_cell_capa);
 	if (wpa_drv_driver_cmd(wpa_s, mbo_cmd, buf, sizeof(buf)) < 0) {
 		wpa_printf(MSG_ERROR, "MBO CELL_DATA_CAP cmd failed CAP:%d", mbo_cell_capa);
 	}
 #else
-	wpas_mbo_update_cell_capa(wpa_s, mbo_cell_capa);
+#ifdef MAINLINE_SUPPLICANT
+	if (wpa_s->conf->use_priv_cmd_mbo_cell_status) {
+		char mbo_cmd[32];
+		char buf[32];
+
+		os_snprintf(mbo_cmd, sizeof(mbo_cmd), "MBO CELL_DATA_CAP %d", mbo_cell_capa);
+		if (wpa_drv_driver_cmd(wpa_s, mbo_cmd, buf, sizeof(buf)) < 0) {
+			wpa_printf(MSG_ERROR, "MBO CELL_DATA_CAP cmd failed CAP:%d", mbo_cell_capa);
+		}
+	} else
+#endif
+		wpas_mbo_update_cell_capa(wpa_s, mbo_cell_capa);
 #endif
 
 	return ndk::ScopedAStatus::ok();

@@ -11,7 +11,9 @@ on post-fs-data
     mkdir /data/vendor/wifi/hostapd 0770 wifi wifi
     mkdir /data/vendor/wifi/hostapd/sockets 0770 wifi wifi
 
+#  QTI_BEGIN: 2019-12-03: WLAN: hostapd: Add global interface support in service definition
 service hostapd /vendor/bin/hw/hostapd -dd -g /data/vendor/wifi/hostapd/global
+#  QTI_END: 2019-12-03: WLAN: hostapd: Add global interface support in service definition
     interface aidl android.hardware.wifi.hostapd.IHostapd/default
     class main
     capabilities NET_ADMIN NET_RAW

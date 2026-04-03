@@ -1,3 +1,4 @@
+#  QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 CFLAGS += -DSIM_AKA_IDENTITY_IMSI
 CFLAGS += -DSIM_AKA_IMSI_RAW_ENABLED
 
@@ -17,3 +18,4 @@ endif
 ifdef CONFIG_EAP_PROXY_DUAL_SIM
 CFLAGS += -DCONFIG_EAP_PROXY_DUAL_SIM
 endif
+#  QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
