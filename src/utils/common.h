@@ -9,6 +9,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include "includes.h"
 #include "os.h"
 
 #if defined(__linux__) || defined(__GLIBC__)
@@ -541,6 +542,11 @@ static inline int is_broadcast_ether_addr(const u8 *a)
 static inline int is_multicast_ether_addr(const u8 *a)
 {
 	return a[0] & 0x01;
+}
+
+static inline bool ether_addr_equal(const u8 *a, const u8 *b)
+{
+	return os_memcmp(a, b, ETH_ALEN) == 0;
 }
 
 #define broadcast_ether_addr (const u8 *) "\xff\xff\xff\xff\xff\xff"
