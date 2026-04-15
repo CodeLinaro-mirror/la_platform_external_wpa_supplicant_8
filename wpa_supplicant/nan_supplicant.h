@@ -45,6 +45,9 @@ int wpas_nan_pasn_auth_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
 				 size_t data_len, bool acked);
 int wpas_nan_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 			  const struct ieee80211_mgmt *mgmt, size_t len);
+int wpas_nan_update_pairing_credentials(void *ctx, const u8 *nik,
+			  size_t nik_len, int cipher_ver, int akmp,
+			  const u8 *npk, size_t npk_len);
 #endif /* CONFIG_PASN */
 
 #else /* CONFIG_NAN */
