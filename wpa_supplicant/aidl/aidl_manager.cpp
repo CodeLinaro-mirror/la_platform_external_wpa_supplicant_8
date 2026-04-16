@@ -3176,6 +3176,29 @@ int AidlManager::addNanIfaceCallbackAidlObject(
 	return addIfaceCallbackAidlObjectToMap(
 		death_notifier_, ifname, callback, nan_iface_callbacks_map_);
 }
+
+/**
+ * Retrieve the |NanIface| aidl object reference using the provided
+ * ifname.
+ *
+ * @param ifname Name of the corresponding interface.
+ * @iface_object Aidl reference corresponding to the iface.
+ *
+ * @return 0 on success, 1 on failure.
+ */
+int AidlManager::getNanIfaceAidlObjectByIfname(
+	const std::string &ifname, std::shared_ptr<NanIface> *iface_object)
+{
+	if (ifname.empty() || !iface_object)
+		return 1;
+
+	auto iface_object_iter = nan_iface_object_map_.find(ifname);
+	if (iface_object_iter == nan_iface_object_map_.end())
+		return 1;
+
+	*iface_object = iface_object_iter->second;
+	return 0;
+}
 #endif
 
 void AidlManager::notifyQosPolicyReset(
@@ -3562,7 +3585,8 @@ void AidlManager::notifyAuthStatusCode(struct wpa_supplicant *wpa_s,
 #ifdef MAINLINE_SUPPLICANT
 #ifdef CONFIG_NAN
 NanMatchInd createNanServiceMatchResult(
-	int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len)
+	int own_id, int peer_id, const u8* peer_addr, const u8* ssi, size_t ssi_len,
+	const u8* match_filter, size_t match_filter_len)
 {
 	NanMatchInd nanMatchInfo;
 	nanMatchInfo.discoverySessionId = own_id;
@@ -3570,6 +3594,9 @@ NanMatchInd createNanServiceMatchResult(
 	nanMatchInfo.addr = macAddrToArray(peer_addr);
 	if (ssi != NULL) {
 		nanMatchInfo.serviceSpecificInfo = byteArrToVec(ssi, ssi_len);
+	}
+	if (match_filter != NULL && match_filter_len > 0) {
+		nanMatchInfo.matchFilter = byteArrToVec(match_filter, match_filter_len);
 	}
 
 	return nanMatchInfo;
@@ -3614,7 +3641,7 @@ NanStatus convertNanReasonToAidl(enum nan_reason reason)
 void AidlManager::notifyNanServiceDiscovered(
 	struct wpa_supplicant* wpa_s, enum nan_service_protocol_type srv_proto_type,
 	int subscribe_id, int peer_publish_id, const u8* peer_addr, bool fsd,
-	const u8* ssi, size_t ssi_len)
+	const u8* ssi, size_t ssi_len, const u8* match_filter, size_t match_filter_len)
 {
 	if (!wpa_s || !peer_addr)
 		return;
@@ -3630,7 +3657,7 @@ void AidlManager::notifyNanServiceDiscovered(
 			std::placeholders::_1,
 			createNanServiceMatchResult(
 				subscribe_id, peer_publish_id, peer_addr, ssi,
-				ssi_len)));
+				ssi_len, match_filter, match_filter_len)));
 		return;
 	}
 #endif
@@ -3686,7 +3713,7 @@ void AidlManager::notifyNanPublishReplied(
 			std::placeholders::_1,
 			createNanServiceMatchResult(
 				publish_id, peer_subscribe_id, peer_addr, ssi,
-				ssi_len)));
+				ssi_len, NULL, 0)));
 		return;
 	}
 #endif
@@ -3960,8 +3987,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 }
 
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
-	const u8 *cookie, size_t cookie_size)
+	int handle, int bootstrapping_id, const u8* peer_nmi_addr, bool success,
+	u8 reason, const u8 *cookie, size_t cookie_size, int bootstrapping_method)
 {
 	if (!wpa_s) {
 		return;
@@ -3969,6 +3996,17 @@ void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_
 	if (nan_iface_object_map_.find(wpa_s->ifname) !=
 		nan_iface_object_map_.end()) {
 		NanBootstrappingConfirmInd confirm_ind;
+		confirm_ind.discoverySessionId = handle;
+		int method = translateBootstrappingMethod(bootstrapping_method);
+		if (method == -1) {
+			wpa_printf(MSG_ERROR, "Fail to translate bootstrapping method %d",
+					bootstrapping_method);
+			confirm_ind.bootstrappingMethod =
+				static_cast<NanBootstrappingMethod>(0);
+		} else {
+			confirm_ind.bootstrappingMethod =
+				static_cast<NanBootstrappingMethod>(method);
+		}
 		confirm_ind.bootstrappingInstanceId = bootstrapping_id;
 		confirm_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
 		confirm_ind.responseCode = success ?
@@ -4100,12 +4138,8 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 			wpa_printf(MSG_ERROR, "Invalid AKM type in pairing confirm event");
 			return;
 		}
-		if (cipher_ver == WPA_CIPHER_GCMP_256) {
-			npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_256_MASK;
-		} else if (cipher_ver == WPA_CIPHER_CCMP) {
-			npksa.cipherType = NanCipherSuiteType::PUBLIC_KEY_PASN_128_MASK;
-		} else {
-			wpa_printf(MSG_ERROR, "Invalid cipher type in pairing confirm event");
+		if (cipher_ver != NAN_NIRA_CIPHER_VER_128) {
+			wpa_printf(MSG_ERROR, "Invalid NIRA cipher version %d", cipher_ver);
 			return;
 		}
 
@@ -4118,10 +4152,10 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 }
 
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len)
 {
-	if (!wpa_s || !peer_nmi_addr) {
+	if (!wpa_s || !peer_nmi_addr || !init_ndi_addr) {
 		return;
 	}
 
@@ -4130,6 +4164,7 @@ void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
 		NanDataPathRequestInd request_ind;
 		request_ind.discoverySessionId = discovery_id;
 		request_ind.peerDiscMacAddr = macAddrToArray(peer_nmi_addr);
+		request_ind.ndiInitMac = macAddrToArray(init_ndi_addr);
 		request_ind.ndpInstanceId = ndp_id;
 		request_ind.securityRequired = security_required;
 		if (app_info && app_info_len > 0) {
@@ -4449,8 +4484,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
-	const u8 *cookie, size_t cookie_size) {}
+	int handle, int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
+	const u8 *cookie, size_t cookie_size, int bootstrapping_method) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int pairing_id, bool is_setup, bool is_npk_cache_enabled, const u8* nonce,
@@ -4462,7 +4497,7 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
 void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 	int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
@@ -4530,8 +4565,8 @@ void AidlManager::notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int bootstrapping_id, int bootstrapping_method) {}
 void AidlManager::notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-	int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
-	const u8 *cookie, size_t cookie_size) {}
+	int handle, int bootstrapping_id, const u8* peer_nmi_addr, bool success, u8 reason,
+	const u8 *cookie, size_t cookie_size, int bootstrapping_method) {}
 void AidlManager::notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
 	int discovery_id, int peer_id, const u8* peer_nmi_addr,
 	int pairing_id, bool is_setup, bool enable_cache, const u8* nonce,
@@ -4543,7 +4578,7 @@ void AidlManager::notifyPairingSecurityAssociationReceivedEvent(struct wpa_suppl
 	const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
 	const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id) {}
 void AidlManager::notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-	int discovery_id, const u8* peer_nmi_addr, int ndp_id,
+	int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int ndp_id,
 	bool security_required, const u8* app_info, size_t app_info_len) {}
 void AidlManager::notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
 	int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
