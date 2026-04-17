@@ -9,13 +9,17 @@
 #ifndef MISC_UTILS_H_
 #define MISC_UTILS_H_
 
+#include <android-base/file.h>
+#include <fcntl.h>
 #include <iostream>
+
 #include <aidl/android/hardware/wifi/supplicant/SupplicantStatusCode.h>
 
 extern "C"
 {
 #include "pmksa_cache.h"
 #include "wpabuf.h"
+#include "utils/common.h"
 }
 
 namespace {
@@ -30,6 +34,10 @@ namespace hardware {
 namespace wifi {
 namespace supplicant {
 namespace misc_utils {
+
+constexpr char kIfaceDriverName[] = "nl80211";
+constexpr mode_t kConfigFileMode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
+
 using wpabuf_unique_ptr = std::unique_ptr<wpabuf, void (*)(wpabuf *)>;
 
 // Creates a unique_ptr for wpabuf ptr with a custom deleter.
@@ -137,6 +145,29 @@ inline std::int8_t deserializePmkCacheEntry(
 	ss.read((char *) pmksa_entry->fils_cache_id, FILS_CACHE_ID_LEN);
 	return 0;
 }
+
+inline int ensureConfigFileExistsAtPath(const std::string& config_file_path) {
+    int ret = access(config_file_path.c_str(), R_OK);
+    if (ret == 0) {
+        return 0;
+    }
+    if (errno == EACCES) {
+        ret = chmod(config_file_path.c_str(), kConfigFileMode);
+        if (ret == 0) {
+            return 0;
+        } else {
+            wpa_printf(
+                MSG_ERROR, "Cannot set RW to %s. Errno: %s",
+                config_file_path.c_str(), strerror(errno));
+        }
+    } else if (errno != ENOENT) {
+        wpa_printf(
+            MSG_ERROR, "Cannot access %s. Errno: %s",
+            config_file_path.c_str(), strerror(errno));
+    }
+    return errno;
+}
+
 }  // namespace misc_utils
 }  // namespace supplicant
 }  // namespace wifi

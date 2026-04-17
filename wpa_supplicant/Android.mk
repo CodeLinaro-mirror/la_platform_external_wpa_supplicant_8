@@ -337,16 +337,16 @@ NEED_NAN=y
 L_CFLAGS += -DCONFIG_NAN_USD
 endif
 
-ifdef NEED_NAN
-OBJS += nan_supplicant.o
-OBJS += src/nan/nan.o
-OBJS += src/common/nan_de.c
-endif
-
 ifdef CONFIG_PR
 OBJS += src/common/proximity_ranging.c
 OBJS += pr_supplicant.c
 L_CFLAGS += -DCONFIG_PR
+endif
+
+ifdef NEED_NAN
+OBJS += nan_supplicant.o
+OBJS += src/nan/nan.o
+OBJS += src/common/nan_de.c
 endif
 
 ifdef CONFIG_OWE

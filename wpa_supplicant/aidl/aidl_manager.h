@@ -228,7 +228,8 @@ public:
 	void notifyNanServiceDiscovered(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int subscribe_id, int peer_publish_id, const u8 *peer_addr,
-		bool fsd, const u8 *ssi, size_t ssi_len);
+		bool fsd, const u8 *ssi, size_t ssi_len,
+		const u8* match_filter, size_t match_filter_len);
 	void notifyNanPublishReplied(struct wpa_supplicant *wpa_s,
 		enum nan_service_protocol_type srv_proto_type,
 		int publish_id, int peer_subscribe_id,
@@ -246,34 +247,37 @@ public:
 		int subscribe_id, int peer_publish_id);
 	void notifyNanTransmitFollowup(struct wpa_supplicant *wpa_s,
 		int cmd_id, u8 status_code);
-#ifdef MAINLINE_SUPPLICANT
 	void notifyNanBootstrappingRequestEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, int discovery_id, int peer_id, const u8* peer_nmi_addr,
+		int discovery_id, int peer_id, const u8* peer_nmi_addr,
 		int bootstrapping_id, int bootstrapping_method);
 	void notifyNanBootstrappingConfirmEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, int bootstrapping_id, int response_code, u8 status_code,
-		int come_back_delay_sec, const u8* cookie, size_t cookie_size);
+		int handle, int bootstrapping_id, const u8* peer_nmi_addr,
+		bool is_success, u8 status_code,
+		const u8* cookie, size_t cookie_size, int bootstrapping_method);
 	void notifyNanPairingRequestEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, int discovery_id, int peer_id, const u8* peer_nmi_addr,
-		int pairing_id, int request_type, bool enable_cache, const u8* nonce,
-		const u8* tag);
+		int discovery_id, int peer_id, const u8* peer_nmi_addr,
+		int pairing_id, bool is_setup, bool is_npk_cache_enabled,
+		const u8* nonce, const u8* tag);
 	void notifyNanPairingConfirmEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, int pairing_id, bool success, u8 status_code,
-		int request_type, bool enable_cache, const u8* peer_nik,
-		const u8* local_nik, const u8* npk, int akm, int cipher_type);
+		int pairing_id, bool success, u8 status_code,
+		int request_type, bool is_npk_cache_enabled);
+	void notifyPairingSecurityAssociationReceivedEvent(struct wpa_supplicant* wpa_s,
+		const u8 *peer_nik, int nik_len, int cipher_ver, int akmp,
+		const u8 *npk, int npk_len, int peer_nik_lifetime, int identity_id);
 	void notifyNanDataPathRequestEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, int discovery_id, const u8* peer_nmi_addr, int npd_id,
+		int discovery_id, const u8* peer_nmi_addr, const u8* init_ndi_addr, int npd_id,
 		bool security_required, const u8* app_info, size_t app_info_len);
 	void notifyNanDataPathConfirmEvent(struct wpa_supplicant *wpa_s,
-	int cmd_id, int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
-	size_t app_info_len, u8 status_code, const int* channel_freq_mhz, const int* bandwidth,
-	const int* num_spatial_stream, size_t num_configs);
+		int ndp_id, bool success, const u8* peer_ndi_addr, const u8* app_info,
+		size_t app_info_len, u8 status_code, const int* channel_freq_mhz,
+		const int* bandwidth, const int* num_spatial_stream, size_t num_configs);
 	void notifyNanDataPathScheduleUpdateEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, const u8* peer_nmi_addr, const int* channel_freq_mhz,
+		const u8* peer_nmi_addr, const int* channel_freq_mhz,
 		const int* bandwidth, const int* num_spatial_stream, const int* ndp_ids,
 		size_t num_configs);
 	void notifyNanDataPathTerminatedEvent(struct wpa_supplicant *wpa_s,
-		int cmd_id, int ndp_id);
+		int ndp_id);
+#ifdef MAINLINE_SUPPLICANT
 	void notifyNanCapabilitiesResponse(const std::string iface_name,
 		const char16_t id, const NanStatus status, const NanCapabilities capabilities);
 	void notifyNanConfigResponse(const std::string iface_name,
@@ -310,6 +314,8 @@ public:
 		const char16_t id, const NanStatus status, const int8_t ndp_id);
 	void notifyNanRespondToDataPathIndicationResponse(const std::string iface_name,
 		const char16_t id, const NanStatus status);
+	void notifyNanTerminateDataPathResponse(const std::string iface_name,
+		const char16_t id, const NanStatus status);
 #endif /* MAINLINE_SUPPLICANT */
 
 	int getP2pIfaceAidlObjectByIfname(
@@ -339,6 +345,9 @@ public:
 	int addNanIfaceCallbackAidlObject(
 		const std::string &ifname,
 		const std::shared_ptr<NanIface::ISupplicantNanIfaceEventCallback> &callback);
+	int getNanIfaceAidlObjectByIfname(
+		const std::string &ifname,
+		std::shared_ptr<NanIface> *iface_object);
 #endif
 	int registerNonStandardCertCallbackAidlObject(
 		const std::shared_ptr<INonStandardCertCallback> &callback);

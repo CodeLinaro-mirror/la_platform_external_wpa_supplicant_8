@@ -42,10 +42,10 @@ void pasn_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
 int pasn_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
 				   const u8 *own_addr, const u8 *bssid,
 				   const u8 *pmk,
-				   size_t pmk_len, const u8 *pmkid)
+				   size_t pmk_len, const u8 *pmkid, int akmp)
 {
 	if (pmksa_cache_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, bssid,
-			    own_addr, NULL, WPA_KEY_MGMT_SAE, NULL))
+			    own_addr, NULL, akmp, NULL))
 		return 0;
 	return -1;
 }
@@ -620,11 +620,16 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 #else /* CONFIG_IEEE80211R */
 		goto fail;
 #endif /* CONFIG_IEEE80211R */
-	} else if (wrapped_data != WPA_PASN_WRAPPED_DATA_NO) {
+	} else {
 		struct rsn_pmksa_cache_entry *pmksa;
 
 		pmksa = pmksa_cache_get(pasn->pmksa, pasn->peer_addr,
 					pasn->own_addr, NULL, NULL, pasn->akmp);
+
+		wpa_printf(MSG_DEBUG,
+			   "PASN: PMKSA: akmp=0x%x, found=0x%x",
+			   pasn->akmp, pmksa ? pmksa->akmp : 0);
+
 		if (pmksa && pasn->custom_pmkid_valid)
 			pmkid = pasn->custom_pmkid;
 		else if (pmksa)
@@ -634,7 +639,7 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
 		 * Note: Even when PMKSA is available, also add wrapped data as
 		 * it is possible that the PMKID is no longer valid at the AP.
 		 */
-		if (!verify)
+		if (wrapped_data != WPA_PASN_WRAPPED_DATA_NO && !verify)
 			wrapped_data_buf = wpas_pasn_get_wrapped_data(pasn);
 	}
 
@@ -856,7 +861,7 @@ static int wpas_pasn_set_pmk(struct pasn_data *pasn,
 	os_memset(pasn->pmk, 0, sizeof(pasn->pmk));
 	pasn->pmk_len = 0;
 
-	if (pasn->akmp == WPA_KEY_MGMT_PASN) {
+	if (pasn->akmp == WPA_KEY_MGMT_PASN && !rsn_data->num_pmkid) {
 		wpa_printf(MSG_DEBUG, "PASN: Using default PMK");
 
 		pasn->pmk_len = WPA_PASN_PMK_LEN;

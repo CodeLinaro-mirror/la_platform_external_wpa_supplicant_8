@@ -821,6 +821,11 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 			wpas_connect_work_done(wpa_s);
 			return;
 		}
+	} else if (wpa_s->wpa_proto == WPA_PROTO_RSN &&
+		   wpa_key_mgmt_wpa_psk_no_sae(wpa_s->key_mgmt)) {
+		// Omit RSNXE for WPA2-PSK connections if AP does not advertise it
+		// to avoid AP compatibility issues.
+		omit_rsnxe |= !wpa_bss_get_rsnxe(wpa_s, bss, ssid, false);
 	}
 
 #ifdef CONFIG_IEEE80211R
