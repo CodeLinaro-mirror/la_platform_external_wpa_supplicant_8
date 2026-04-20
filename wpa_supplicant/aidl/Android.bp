@@ -27,15 +27,38 @@ cc_library_headers {
     soc_specific: true,
 }
 
-cc_library_static {
-    name: "libwpa_aidl_bp",
-    srcs: ["*.cpp"],
+soong_config_module_type {
+    name: "wpa_cc_library_static_aidl_vendor_type",
+    module_type: "cc_library_static",
+    config_namespace: "wpa_supplicant_8",
+    bool_variables: [
+        "enable_vendor_aidl",
+    ],
+    properties: [
+        "cflags",
+        "srcs",
+        "shared_libs",
+    ],
+}
+
+wpa_cc_library_static_aidl_vendor_type {
+     name: "libwpa_aidl_bp",
+     soc_specific: true,
+     srcs: [
+        "aidl.cpp",
+        "aidl_manager.cpp",
+        "certificate_utils.cpp",
+        "iface_config_utils.cpp",
+        "p2p_iface.cpp",
+        "p2p_network.cpp",
+        "sta_iface.cpp",
+        "sta_network.cpp",
+        "supplicant.cpp",
+    ],
     defaults: ["wpa_supplicant_cflags_defaults"],
-    soc_specific: true,
     shared_libs: [
         "android.hardware.wifi.supplicant-V2-ndk",
         "android.system.keystore2-V1-ndk",
-        "vendor.qti.hardware.wifi.supplicant-V2-ndk",
         "libbinder_ndk",
         "libbase",
         "libcrypto",
@@ -55,6 +78,20 @@ cc_library_static {
         "wpa_supplicant_headers",
         "libwpa_aidl_headers",
     ],
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            cflags: [
+                "-DCONFIG_USE_VENDOR_AIDL",
+            ],
+            srcs: [
+                "supplicant_vendor.cpp",
+                "vendorsta_iface.cpp",
+            ],
+            shared_libs: [
+                "vendor.qti.hardware.wifi.supplicant-V2-ndk",
+            ],
+        },
+    },
 }
 
 filegroup {
