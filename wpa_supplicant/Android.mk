@@ -8,8 +8,14 @@
 LOCAL_PATH := $(call my-dir)
 PKG_CONFIG ?= pkg-config
 
+$(eval $(call declare-copy-files-license-metadata,external/wpa_supplicant_8/wpa_supplicant,.conf,SPDX-license-identifier-BSD-3-Clause,notice,external/wpa_supplicant_8/LICENSE,))
+
 ifneq ($(BOARD_WPA_SUPPLICANT_DRIVER),)
   CONFIG_DRIVER_$(BOARD_WPA_SUPPLICANT_DRIVER) := y
+endif
+
+ifeq ($(BOARD_WLAN_DEVICE), qcwcn)
+  CONFIG_DRIVER_NL80211_QCA=y
 endif
 
 include $(LOCAL_PATH)/android.config
@@ -22,8 +28,32 @@ L_CFLAGS += -DVERSION_STR_POSTFIX=\"-$(PLATFORM_VERSION)\"
 # Set Android log name
 L_CFLAGS += -DANDROID_LOG_NAME=\"wpa_supplicant\"
 
+L_CFLAGS += -Wall -Werror
+
+# Keep sometimes uninitialized warnings
+L_CFLAGS += -Wno-error=sometimes-uninitialized
+
+# Disable incompatible pointer type warnings
+L_CFLAGS += -Wno-incompatible-pointer-types
+L_CFLAGS += -Wno-incompatible-pointer-types-discards-qualifiers
+
+# Disable extraneous parentheses warnings
+L_CFLAGS += -Wno-parentheses-equality
+
+# Disable sign compare warnings
+L_CFLAGS += -Wno-sign-compare
+
+# Disable unused function warnings
+L_CFLAGS += -Wno-unused-function
+
+# Disable unused variable warnings
+L_CFLAGS += -Wno-unused-variable
+
 # Disable unused parameter warnings
 L_CFLAGS += -Wno-unused-parameter
+
+# Disable redefined macro warnings
+L_CFLAGS += -Wno-macro-redefined
 
 # Set Android extended P2P functionality
 L_CFLAGS += -DANDROID_P2P
@@ -41,17 +71,23 @@ ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
 endif
 
+ifeq ($(WIFI_PRIV_CMD_UPDATE_MBO_CELL_STATUS), enabled)
+L_CFLAGS += -DENABLE_PRIV_CMD_UPDATE_MBO_CELL_STATUS
+endif
+
 # Use Android specific directory for control interface sockets
-L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/misc/wifi/sockets\"
-L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/misc/wifi/sockets\"
+L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/vendor/wifi/wpa/sockets\"
+L_CFLAGS += -DCONFIG_CTRL_IFACE_DIR=\"/data/vendor/wifi/wpa/sockets\"
 
 # Use Android specific directory for wpa_cli command completion history
-L_CFLAGS += -DCONFIG_WPA_CLI_HISTORY_DIR=\"/data/misc/wifi\"
+L_CFLAGS += -DCONFIG_WPA_CLI_HISTORY_DIR=\"/data/vendor/wifi/wpa\"
 
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
+L_CFLAGS += -DARCH_ARM_32
 endif
+
 
 # C++ flags for binder interface
 L_CPPFLAGS := -std=c++11 -Wall -Werror
@@ -75,6 +111,7 @@ INCLUDES += $(LOCAL_PATH)/src/rsn_supp
 INCLUDES += $(LOCAL_PATH)/src/tls
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += $(LOCAL_PATH)/src/wps
+INCLUDES += $(LOCAL_PATH)/src/pasn
 INCLUDES += system/security/keystore/include
 ifdef CONFIG_DRIVER_NL80211
 ifneq ($(wildcard external/libnl),)
@@ -86,7 +123,6 @@ endif
 
 ifdef CONFIG_FIPS
 CONFIG_NO_RANDOM_POOL=
-CONFIG_OPENSSL_CMAC=y
 endif
 
 OBJS = config.c
@@ -105,6 +141,9 @@ OBJS += op_classes.c
 OBJS += rrm.c
 OBJS += twt.c
 OBJS += robust_av.c
+OBJS += src/common/ptksa_cache.c
+OBJS += src/rsn_supp/pmksa_cache.c
+OBJS += twt.c
 OBJS_p = wpa_passphrase.c
 OBJS_p += src/utils/common.c
 OBJS_p += src/utils/wpa_debug.c
@@ -213,7 +252,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-ifdef CONFIG_SUITEB192
+ifeq ($(CONFIG_SUITEB192),y)
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -228,7 +267,7 @@ L_CFLAGS += -DCONFIG_IEEE80211R
 OBJS += src/rsn_supp/wpa_ft.c
 endif
 
-ifdef CONFIG_MESH
+ifeq ($(CONFIG_MESH),y)
 NEED_80211_COMMON=y
 NEED_AES_SIV=y
 CONFIG_SAE=y
@@ -239,11 +278,12 @@ OBJS += mesh_mpm.c
 OBJS += mesh_rsn.c
 endif
 
-ifdef CONFIG_SAE
+ifeq ($(CONFIG_SAE),y)
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
 L_CFLAGS += -DCONFIG_SAE_PK
+NEED_AES_SIV=y
 OBJS += src/common/sae_pk.c
 endif
 NEED_ECC=y
@@ -255,7 +295,7 @@ NEED_DH_GROUPS_ALL=y
 endif
 endif
 
-ifdef CONFIG_DPP
+ifeq ($(CONFIG_DPP),y)
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
 OBJS += src/common/dpp_auth.c
@@ -279,9 +319,18 @@ NEED_ASN1=y
 ifdef CONFIG_DPP2
 L_CFLAGS += -DCONFIG_DPP2
 endif
+ifdef CONFIG_DPP3
+L_CFLAGS += -DCONFIG_DPP3
+endif
 endif
 
-ifdef CONFIG_OWE
+ifdef CONFIG_NAN_USD
+OBJS += src/common/nan_de.c
+OBJS += nan_usd.c
+L_CFLAGS += -DCONFIG_NAN_USD
+endif
+
+ifeq ($(CONFIG_OWE),y)
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -289,6 +338,10 @@ NEED_HMAC_SHA384_KDF=y
 NEED_HMAC_SHA512_KDF=y
 NEED_SHA384=y
 NEED_SHA512=y
+endif
+
+ifdef CONFIG_WAPI_INTERFACE
+L_CFLAGS += -DCONFIG_WAPI_INTERFACE
 endif
 
 ifdef CONFIG_FILS
@@ -302,6 +355,10 @@ endif
 endif
 
 ifdef CONFIG_MBO
+CONFIG_WNM=y
+endif
+
+ifdef CONFIG_BGSCAN_SIMPLE
 CONFIG_WNM=y
 endif
 
@@ -380,6 +437,8 @@ NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
 OBJS += src/common/ptksa_cache.c
+OBJS += src/pasn/pasn_initiator.c
+OBJS += src/pasn/pasn_common.c
 OBJS += pasn_supplicant.c
 endif
 
@@ -416,6 +475,28 @@ endif
 
 ifdef CONFIG_NO_TKIP
 L_CFLAGS += -DCONFIG_NO_TKIP
+endif
+
+ifdef CONFIG_NO_RRM
+L_CFLAGS += -DCONFIG_NO_RRM
+else
+OBJS += rrm.c
+ifdef CONFIG_AP
+OBJS += src/ap/rrm.c
+endif
+OBJS += op_classes.c
+endif
+
+ifdef CONFIG_NO_WMM_AC
+L_CFLAGS += -DCONFIG_NO_WMM_AC
+else
+OBJS += wmm_ac.c
+endif
+
+ifdef CONFIG_NO_ROBUST_AV
+L_CFLAGS += -DCONFIG_NO_ROBUST_AV
+else
+OBJS += robust_av.c
 endif
 
 
@@ -475,6 +556,9 @@ OBJS += src/eap_peer/eap_tls.c
 endif
 TLS_FUNCS=y
 CONFIG_IEEE8021X_EAPOL=y
+ifdef CONFIG_EAP_TLSV1_3
+L_CFLAGS += -DEAP_TLSV1_3
+endif
 endif
 
 ifdef CONFIG_EAP_UNAUTH_TLS
@@ -633,12 +717,17 @@ CONFIG_EAP_SIM_COMMON=y
 NEED_AES_CBC=y
 endif
 
+ifndef DISABLE_EAP_PROXY
+ifneq ($(wildcard vendor/qcom/proprietary/mdm-helper/libmdmdetect),)
+CONFIG_EAP_PROXY_MDM_DETECT := true
+endif
 ifdef CONFIG_EAP_PROXY
 L_CFLAGS += -DCONFIG_EAP_PROXY
 OBJS += src/eap_peer/eap_proxy_$(CONFIG_EAP_PROXY).c
 include $(LOCAL_PATH)/eap_proxy_$(CONFIG_EAP_PROXY).mk
 CONFIG_IEEE8021X_EAPOL=y
-endif
+endif # CONFIG_EAP_PROXY
+endif # DISABLE_EAP_PROXY
 
 ifdef CONFIG_EAP_AKA_PRIME
 # EAP-AKA'
@@ -735,6 +824,7 @@ OBJS += src/eap_peer/eap_pwd.c src/eap_common/eap_pwd_common.c
 CONFIG_IEEE8021X_EAPOL=y
 NEED_ECC=y
 NEED_DRAGONFLY=y
+MS_FUNCS=y
 endif
 
 ifdef CONFIG_EAP_EKE
@@ -905,6 +995,9 @@ endif
 ifdef CONFIG_IEEE80211AX
 OBJS += src/ap/ieee802_11_he.c
 endif
+ifdef CONFIG_IEEE80211BE
+OBJS += src/ap/ieee802_11_eht.c
+endif
 ifdef CONFIG_WNM_AP
 L_CFLAGS += -DCONFIG_WNM_AP
 OBJS += src/ap/wnm_ap.c
@@ -927,6 +1020,10 @@ OBJS += src/eap_server/eap_server_methods.c
 ifdef CONFIG_IEEE80211AC
 L_CFLAGS += -DCONFIG_IEEE80211AC
 endif
+ifdef CONFIG_IEEE80211BE
+CONFIG_IEEE80211AX=y
+L_CFLAGS += -DCONFIG_IEEE80211BE
+endif
 ifdef CONFIG_IEEE80211AX
 L_CFLAGS += -DCONFIG_IEEE80211AX
 endif
@@ -934,6 +1031,8 @@ endif
 ifdef NEED_AP_MLME
 OBJS += src/ap/wmm.c
 OBJS += src/ap/ap_list.c
+OBJS += src/ap/comeback_token.c
+OBJS += src/pasn/pasn_responder.c
 OBJS += src/ap/ieee802_11.c
 OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
@@ -944,10 +1043,13 @@ L_CFLAGS += -DEAP_SERVER_WSC
 OBJS += src/ap/wps_hostapd.c
 OBJS += src/eap_server/eap_server_wsc.c
 endif
-ifdef CONFIG_DPP
+ifeq ($(CONFIG_DPP),y)
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
+endif
+ifdef CONFIG_NAN_USD
+OBJS += src/ap/nan_usd_ap.c
 endif
 ifdef CONFIG_INTERWORKING
 NEED_AP_GAS_SERV=y
@@ -967,6 +1069,7 @@ endif
 
 ifdef CONFIG_TESTING_OPTIONS
 L_CFLAGS += -DCONFIG_TESTING_OPTIONS
+NEED_AES_WRAP=y
 endif
 
 ifdef NEED_RSN_AUTHENTICATOR
@@ -1047,6 +1150,7 @@ endif
 
 ifndef CONFIG_TLS
 CONFIG_TLS=openssl
+L_CFLAGS += -DCONFIG_USE_OPENSSL_RNG
 endif
 
 ifdef CONFIG_TLSV11
@@ -1058,6 +1162,7 @@ L_CFLAGS += -DCONFIG_TLSV12
 endif
 
 ifeq ($(CONFIG_TLS), openssl)
+L_CFLAGS += -DCRYPTO_RSA_OAEP_SHA256
 ifdef TLS_FUNCS
 L_CFLAGS += -DEAP_TLS_OPENSSL
 OBJS += src/crypto/tls_openssl.c
@@ -1262,9 +1367,7 @@ ifdef NEED_AES_ENCBLOCK
 AESOBJS += src/crypto/aes-encblock.c
 endif
 NEED_AES_ENC=y
-ifdef CONFIG_OPENSSL_CMAC
-L_CFLAGS += -DCONFIG_OPENSSL_CMAC
-else
+ifneq ($(CONFIG_TLS), openssl)
 AESOBJS += src/crypto/aes-omac1.c
 endif
 ifdef NEED_AES_WRAP
@@ -1355,6 +1458,17 @@ ifdef CONFIG_INTERNAL_RC4
 ifndef CONFIG_NO_RC4
 OBJS += src/crypto/rc4.c
 endif
+endif
+endif
+
+ifdef CONFIG_SAE
+ifdef NEED_SHA384
+# Need to add HMAC-SHA384 KDF as well, if SHA384 was enabled.
+NEED_HMAC_SHA384_KDF=y
+endif
+ifdef NEED_SHA512
+# Need to add HMAC-SHA512 KDF as well, if SHA512 was enabled.
+NEED_HMAC_SHA512_KDF=y
 endif
 endif
 
@@ -1486,6 +1600,15 @@ L_CFLAGS += -DCONFIG_CTRL_IFACE_DBUS_INTRO
 endif
 L_CFLAGS += $(DBUS_INCLUDE)
 endif
+
+ifdef CONFIG_CTRL_IFACE_AIDL
+WPA_SUPPLICANT_USE_AIDL=y
+L_CFLAGS += -DCONFIG_AIDL -DCONFIG_CTRL_IFACE_AIDL
+endif
+
+ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
+SUPPLICANT_VENDOR_AIDL=y
+L_CFLAGS += -DCONFIG_SUPPLICANT_VENDOR_AIDL
 
 ifdef CONFIG_CTRL_IFACE_BINDER
 WPA_SUPPLICANT_USE_BINDER=y
@@ -1695,11 +1818,153 @@ ifndef LDO
 LDO=$(CC)
 endif
 
+PASNOBJS =
+PASNOBJS += src/utils/$(CONFIG_ELOOP).c
+PASNOBJS += src/utils/wpa_debug.c
+PASNOBJS += src/utils/wpabuf.c
+PASNOBJS += src/utils/os_$(CONFIG_OS).c
+PASNOBJS += src/utils/config.c
+PASNOBJS += src/utils/common.c
+
+ifdef NEED_BASE64
+PASNOBJS += src/utils/base64.c
+endif
+
+ifdef CONFIG_WPA_TRACE
+PASNOBJS += src/utils/trace.c
+endif
+
+ifdef CONFIG_EXT_PASSWORD_FILE
+PASNOBJS += src/utils/ext_password_file.c
+endif
+
+ifdef CONFIG_EXT_PASSWORD_TEST
+PASNOBJS += src/utils/ext_password_test.c
+endif
+
+ifdef NEED_EXT_PASSWORD
+PASNOBJS += src/utils/ext_password.c
+endif
+
+ifdef CONFIG_SAE
+PASNOBJS += src/common/sae.c
+endif
+
+ifdef CONFIG_SAE_PK
+PASNOBJS += src/common/sae_pk.c
+endif
+
+ifndef CONFIG_NO_WPA
+PASNOBJS += src/common/wpa_common.c
+endif
+
+PASNOBJS += src/common/ieee802_11_common.c
+
+ifdef NEED_DRAGONFLY
+PASNOBJS += src/common/dragonfly.c
+endif
+
+PASNOBJS += src/common/ptksa_cache.c
+
+PASNOBJS += src/rsn_supp/pmksa_cache.c
+
+ifndef CONFIG_NO_WPA
+PASNOBJS += src/rsn_supp/wpa_ie.c
+endif
+
+PASNOBJS += src/ap/comeback_token.c
+PASNOBJS += src/ap/pmksa_cache_auth.c
+
+ifdef NEED_EAP_COMMON
+PASNOBJS += src/eap_common/eap_common.c
+endif
+
+ifdef CHAP
+PASNOBJS += src/eap_common/chap.c
+endif
+
+ifdef CONFIG_IEEE8021X_EAPOL
+PASNOBJS += src/eap_peer/eap.c
+PASNOBJS += src/eap_peer/eap_methods.c
+PASNOBJS += src/eapol_supp/eapol_supp_sm.c
+endif
+
+ifeq ($(CONFIG_TLS), openssl)
+PASNOBJS += src/crypto/crypto_openssl.c
+ifdef TLS_FUNCS
+PASNOBJS += src/crypto/tls_openssl.c
+PASNOBJS += src/crypto/tls_openssl_ocsp.c
+PASNOBJS += -lssl -lcrypto
+NEED_TLS_PRF_SHA256=y
+endif
+endif
+
+ifeq ($(CONFIG_TLS), gnutls)
+PASNOBJS += src/crypto/crypto_$(CONFIG_CRYPTO).c
+ifdef TLS_FUNCS
+PASNOBJS += src/crypto/tls_gnutls.c
+PASNOBJS += -lgnutls -lgpg-error
+PASNOBJS += -lgcrypt
+endif
+endif
+
+ifdef NEED_TLS_PRF_SHA256
+PASNOBJS += src/crypto/sha256-tlsprf.c
+endif
+
+ifdef NEED_SHA512
+PASNOBJS += src/crypto/sha512-prf.c
+endif
+
+ifdef NEED_SHA384
+PASNOBJS += src/crypto/sha384-prf.c
+endif
+
+PASNOBJS += src/crypto/sha256-prf.c
+
+ifdef NEED_HMAC_SHA512_KDF
+PASNOBJS += src/crypto/sha512-kdf.c
+endif
+
+ifdef NEED_HMAC_SHA384_KDF
+PASNOBJS += src/crypto/sha384-kdf.c
+endif
+
+ifdef NEED_HMAC_SHA256_KDF
+PASNOBJS += src/crypto/sha256-kdf.c
+endif
+
+ifdef NEED_DH_GROUPS
+PASNOBJS += src/crypto/dh_groups.c
+endif
+
+ifdef NEED_AES_SIV
+PASNOBJS += src/crypto/aes-siv.c
+endif
+
+ifdef NEED_AES_CTR
+PASNOBJS += src/crypto/aes-ctr.c
+endif
+
+ifdef NEED_SHA1
+PASNOBJS += src/crypto/sha1-prf.c
+ifdef NEED_TLS_PRF
+PASNOBJS += src/crypto/sha1-tlsprf.c
+endif
+endif
+
+PASNOBJS += src/pasn/pasn_initiator.c
+PASNOBJS += src/pasn/pasn_responder.c
+PASNOBJS += src/pasn/pasn_common.c
+
 ########################
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := wpa_cli
-LOCAL_MODULE_TAGS := debug
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_SRC_FILES := $(OBJS_c)
@@ -1709,6 +1974,11 @@ include $(BUILD_EXECUTABLE)
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := wpa_supplicant
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
+LOCAL_PROPRIETARY_MODULE := true
+LOCAL_MODULE_RELATIVE_PATH := hw
 ifdef CONFIG_DRIVER_CUSTOM
 LOCAL_STATIC_LIBRARIES := libCustomWifi
 endif
@@ -1719,6 +1989,7 @@ LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 ifdef CONFIG_EAP_PROXY
 LOCAL_STATIC_LIBRARIES += $(LIB_STATIC_EAP_PROXY)
 LOCAL_SHARED_LIBRARIES += $(LIB_SHARED_EAP_PROXY)
+LOCAL_HEADER_LIBRARIES += $(LIB_HEADER_EAP_PROXY)
 endif
 ifeq ($(CONFIG_TLS), openssl)
 LOCAL_SHARED_LIBRARIES += libcrypto libssl libkeystore_binder
@@ -1775,6 +2046,10 @@ include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE = libwpa_client
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-BSD-3-Clause SPDX-license-identifier-ISC legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../LICENSE
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_CFLAGS = $(L_CFLAGS)
 LOCAL_SRC_FILES = src/common/wpa_ctrl.c src/utils/os_$(CONFIG_OS).c
 LOCAL_C_INCLUDES = $(INCLUDES)
@@ -1822,3 +2097,14 @@ LOCAL_STATIC_LIBRARIES := libwpa_binder_interface
 include $(BUILD_STATIC_LIBRARY)
 
 endif # BINDER == y
+
+include $(CLEAR_VARS)
+LOCAL_MODULE = libpasn
+LOCAL_CFLAGS = $(L_CFLAGS)
+LOCAL_SRC_FILES = $(PASNOBJS)
+LOCAL_C_INCLUDES = $(INCLUDES)
+LOCAL_SHARED_LIBRARIES := libc libcutils liblog
+ifeq ($(CONFIG_TLS), openssl)
+LOCAL_SHARED_LIBRARIES := libcrypto libssl
+endif
+include $(BUILD_SHARED_LIBRARY)
