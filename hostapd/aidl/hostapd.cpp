@@ -1287,9 +1287,11 @@ std::vector<uint8_t>  generateRandomOweSsid()
 		std::size_t j = 0;
 		for (i = 0; i < interfaces_->count; i++) {
 			struct hostapd_iface *iface = interfaces_->iface[i];
-
 			for (j = 0; j < iface->num_bss; j++) {
 				struct hostapd_data *iface_hapd = iface->bss[j];
+				if (os_strcmp(iface_hapd->conf->iface, br_name.c_str()) != 0) {
+					continue;
+				}
 				if (hostapd_enable_iface(iface_hapd->iface) < 0) {
 					wpa_printf(
 					MSG_ERROR, "Enabling interface %s failed on %zu",
@@ -1315,9 +1317,9 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 
 		for (j = 0; j < iface->num_bss; j++) {
 			struct hostapd_data *hapd = iface->bss[j];
-
-			if (link_id == hapd->mld_link_id)
+			if (hapd->conf->mld_ap && link_id == hapd->mld_link_id) {
 				return hapd;
+			}
 		}
 	}
 #endif /* CONFIG_IEEE80211BE */
@@ -1571,11 +1573,24 @@ struct hostapd_data * hostapd_get_iface_by_link_id(struct hapd_interfaces *inter
 	// interfaces to be removed
 	std::vector<std::string> interfaces;
 	bool is_error = false;
-
 	const auto it = br_interfaces_.find(iface_name);
+	struct hostapd_data *hapd = hostapd_get_iface(interfaces_, iface_name.c_str());
 	if (it != br_interfaces_.end()) {
-		// In case bridge, remove managed interfaces
-		interfaces = it->second;
+#ifdef CONFIG_IEEE80211BE
+		if (hapd && hapd->conf->mld_ap) {
+			wpa_printf(MSG_INFO, "Remove MLO interface %s", iface_name.c_str());
+			// MLO bridged interface cases
+			for (size_t i = 0; i < it->second.size(); i++) {
+				interfaces.push_back(iface_name);
+			}
+        } else {
+#endif
+			// The non MLO bridged interface is found, remove managed instances
+			wpa_printf(MSG_INFO, "Remove bridged interface %s", iface_name.c_str());
+			interfaces = it->second;
+#ifdef CONFIG_IEEE80211BE
+		}
+#endif
 		br_interfaces_.erase(iface_name);
 	} else {
 		// else remove current interface
