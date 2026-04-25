@@ -95,9 +95,7 @@ L_CFLAGS += -DCONFIG_WPA_CLI_HISTORY_DIR=\"/data/vendor/wifi/wpa\"
 # To force sizeof(enum) = 4
 ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
-#  QTI_BEGIN: 2018-09-18: WLAN: Binder: limit hw binder buffer size for 32bit platform.
 L_CFLAGS += -DARCH_ARM_32
-#  QTI_END: 2018-09-18: WLAN: Binder: limit hw binder buffer size for 32bit platform.
 endif
 
 # C++ flags for aidl interface
@@ -257,9 +255,7 @@ ifdef CONFIG_SUITEB
 L_CFLAGS += -DCONFIG_SUITEB
 endif
 
-#  QTI_BEGIN: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 ifeq ($(CONFIG_SUITEB192),y)
-#  QTI_END: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 L_CFLAGS += -DCONFIG_SUITEB192
 NEED_SHA384=y
 endif
@@ -274,9 +270,7 @@ L_CFLAGS += -DCONFIG_IEEE80211R
 OBJS += src/rsn_supp/wpa_ft.c
 endif
 
-#  QTI_BEGIN: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 ifeq ($(CONFIG_MESH),y)
-#  QTI_END: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 NEED_80211_COMMON=y
 NEED_AES_SIV=y
 CONFIG_SAE=y
@@ -287,9 +281,7 @@ OBJS += mesh_mpm.c
 OBJS += mesh_rsn.c
 endif
 
-#  QTI_BEGIN: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 ifeq ($(CONFIG_SAE),y)
-#  QTI_END: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 L_CFLAGS += -DCONFIG_SAE
 OBJS += src/common/sae.c
 ifdef CONFIG_SAE_PK
@@ -306,9 +298,7 @@ NEED_DH_GROUPS_ALL=y
 endif
 endif
 
-#  QTI_BEGIN: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 ifeq ($(CONFIG_DPP),y)
-#  QTI_END: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 L_CFLAGS += -DCONFIG_DPP
 OBJS += src/common/dpp.c
 OBJS += src/common/dpp_auth.c
@@ -360,9 +350,7 @@ OBJS += src/nan/nan.o
 OBJS += src/common/nan_de.c
 endif
 
-#  QTI_BEGIN: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 ifeq ($(CONFIG_OWE),y)
-#  QTI_END: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 L_CFLAGS += -DCONFIG_OWE
 NEED_ECC=y
 NEED_HMAC_SHA256_KDF=y
@@ -743,21 +731,17 @@ CONFIG_EAP_SIM_COMMON=y
 NEED_AES_CBC=y
 endif
 
-#  QTI_BEGIN: 2018-04-25: WConnect/WLAN_3RDPARTY_GOOGLE: eap_proxy: Add flag to disable qmi EAP-SIM security.
 ifndef DISABLE_EAP_PROXY
 ifneq ($(wildcard vendor/qcom/proprietary/mdm-helper/libmdmdetect),)
 CONFIG_EAP_PROXY_MDM_DETECT := true
 endif
-#  QTI_END: 2018-04-25: WConnect/WLAN_3RDPARTY_GOOGLE: eap_proxy: Add flag to disable qmi EAP-SIM security.
 ifdef CONFIG_EAP_PROXY
 L_CFLAGS += -DCONFIG_EAP_PROXY
 OBJS += src/eap_peer/eap_proxy_$(CONFIG_EAP_PROXY).c
 include $(LOCAL_PATH)/eap_proxy_$(CONFIG_EAP_PROXY).mk
 CONFIG_IEEE8021X_EAPOL=y
-#  QTI_BEGIN: 2018-04-25: WConnect/WLAN_3RDPARTY_GOOGLE: eap_proxy: Add flag to disable qmi EAP-SIM security.
 endif # CONFIG_EAP_PROXY
 endif # DISABLE_EAP_PROXY
-#  QTI_END: 2018-04-25: WConnect/WLAN_3RDPARTY_GOOGLE: eap_proxy: Add flag to disable qmi EAP-SIM security.
 
 ifdef CONFIG_EAP_AKA_PRIME
 # EAP-AKA'
@@ -1074,9 +1058,7 @@ L_CFLAGS += -DEAP_SERVER_WSC
 OBJS += src/ap/wps_hostapd.c
 OBJS += src/eap_server/eap_server_wsc.c
 endif
-#  QTI_BEGIN: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 ifeq ($(CONFIG_DPP),y)
-#  QTI_END: 2019-09-18: WLAN: Disable WPA3 support for unsupported legacy targets
 OBJS += src/ap/dpp_hostapd.c
 OBJS += src/ap/gas_query_ap.c
 NEED_AP_GAS_SERV=y
@@ -1637,17 +1619,13 @@ endif
 ifdef CONFIG_CTRL_IFACE_AIDL
 WPA_SUPPLICANT_USE_AIDL=y
 L_CFLAGS += -DCONFIG_AIDL -DCONFIG_CTRL_IFACE_AIDL
-#  QTI_BEGIN: 2018-05-07: WLAN: hidl: Implement qti.hardware.wifi.supplicant@2.0 HAL interface
 endif
 
-#  QTI_END: 2018-05-07: WLAN: hidl: Implement qti.hardware.wifi.supplicant@2.0 HAL interface
-#  QTI_BEGIN: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 ifdef CONFIG_SUPPLICANT_VENDOR_AIDL
 SUPPLICANT_VENDOR_AIDL=y
 L_CFLAGS += -DCONFIG_SUPPLICANT_VENDOR_AIDL
 endif
 
-#  QTI_END: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 ifdef CONFIG_READLINE
 OBJS_c += src/utils/edit_readline.c
 LIBS_c += -lncurses -lreadline
@@ -2019,9 +1997,7 @@ LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 ifdef CONFIG_EAP_PROXY
 LOCAL_STATIC_LIBRARIES += $(LIB_STATIC_EAP_PROXY)
 LOCAL_SHARED_LIBRARIES += $(LIB_SHARED_EAP_PROXY)
-#  QTI_BEGIN: 2018-05-03: WLAN: Use libril-qc-qmi-services-headers library
 LOCAL_HEADER_LIBRARIES += $(LIB_HEADER_EAP_PROXY)
-#  QTI_END: 2018-05-03: WLAN: Use libril-qc-qmi-services-headers library
 endif
 ifeq ($(CONFIG_TLS), openssl)
 LOCAL_SHARED_LIBRARIES += libcrypto libssl
@@ -2056,11 +2032,9 @@ LOCAL_SHARED_LIBRARIES += libutils libbase
 LOCAL_SHARED_LIBRARIES += libbinder_ndk
 LOCAL_STATIC_LIBRARIES += libwpa_aidl
 LOCAL_REQUIRED_MODULES += android.hardware.wifi.supplicant.xml
-#  QTI_BEGIN: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
 LOCAL_SHARED_LIBRARIES += vendor.qti.hardware.wifi.supplicant-V1-ndk
 endif
-#  QTI_END: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 ifeq ($(WIFI_HIDL_UNIFIED_SUPPLICANT_SERVICE_RC_ENTRY), true)
 LOCAL_INIT_RC=aidl/android.hardware.wifi.supplicant-service.rc
 endif
@@ -2068,10 +2042,8 @@ endif
 
 else
 # wpa_supplicant for macsec
-#  QTI_BEGIN: 2024-03-11: WLAN: wpa_supplicant: Remove Vendor AIDL CFLAGS for mac_sec supplicant
 # remove aidl control interface, standalone and supplicant vendor aidl
 LOCAL_CFLAGS := $(patsubst -DCONFIG_CTRL_IFACE_AIDL,,$(patsubst -DCONFIG_AIDL,,$(patsubst -DCONFIG_SUPPLICANT_VENDOR_AIDL,,$(L_CFLAGS))))
-#  QTI_END: 2024-03-11: WLAN: wpa_supplicant: Remove Vendor AIDL CFLAGS for mac_sec supplicant
 LOCAL_CFLAGS += -DCONFIG_MACSEC -DCONFIG_DRIVER_MACSEC_LINUX
 # config macsec to use AIDL interface for CAK key.
 LOCAL_CFLAGS += -DCONFIG_AIDL_MACSEC_PSK_METHODS
@@ -2160,7 +2132,6 @@ LOCAL_SRC_FILES := \
     aidl/sta_iface.cpp \
     aidl/sta_network.cpp \
     aidl/supplicant.cpp
-#  QTI_BEGIN: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
 LOCAL_SRC_FILES += \
     vendor_aidl/aidl_vendor.cpp \
@@ -2169,7 +2140,6 @@ LOCAL_SRC_FILES += \
     vendor_aidl/supplicantvendor.cpp
 endif
 
-#  QTI_END: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 LOCAL_SHARED_LIBRARIES := \
     android.hardware.wifi.supplicant-V5-ndk \
     android.system.keystore2-V1-ndk \
@@ -2178,12 +2148,10 @@ LOCAL_SHARED_LIBRARIES := \
     libutils \
     liblog \
     libssl
-#  QTI_BEGIN: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 ifeq ($(SUPPLICANT_VENDOR_AIDL), y)
 LOCAL_SHARED_LIBRARIES += \
     vendor.qti.hardware.wifi.supplicant-V1-ndk
 endif
-#  QTI_END: 2023-02-16: WLAN: AIDL: Implement vendor.qti.hardware.wifi.supplicant
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
     $(LOCAL_PATH)/aidl
 include $(BUILD_STATIC_LIBRARY)

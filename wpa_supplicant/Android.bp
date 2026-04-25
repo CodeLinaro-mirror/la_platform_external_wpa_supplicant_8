@@ -726,13 +726,8 @@ cc_library {
 // })
 
 // Start of non-cuttlefish section
-// QTI_BEGIN: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
 cc_defaults {
-// QTI_END: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
-// QTI_BEGIN: 2025-04-06: WLAN: Add qca_default to required binaries/libs
     name: "wpa_supplicant_qca_cflags",
-// QTI_END: 2025-04-06: WLAN: Add qca_default to required binaries/libs
-// QTI_BEGIN: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
     cflags: [
         "-DCONFIG_DPP3",
         "-DCONFIG_FST",
@@ -740,12 +735,8 @@ cc_defaults {
         "-DCONFIG_SUPPLICANT_VENDOR_AIDL",
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
-// QTI_END: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
         "-DCONFIG_HE_OVERRIDES",
-// QTI_BEGIN: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
     ],
-// QTI_END: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
-// QTI_BEGIN: 2025-04-06: WLAN: Add qca_default to required binaries/libs
 }
 
 cc_defaults {
@@ -756,8 +747,6 @@ cc_defaults {
     defaults: [
         "wpa_supplicant_qca_cflags",
     ],
-// QTI_END: 2025-04-06: WLAN: Add qca_default to required binaries/libs
-// QTI_BEGIN: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
     srcs: [
         "src/common/ocv.c",
         "src/fst/fst.c",
@@ -781,7 +770,6 @@ cc_defaults {
     ],
 }
 
-// QTI_END: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
 cc_defaults {
     name: "wpa_supplicant_driver_srcs_default",
     srcs: [
@@ -1319,9 +1307,7 @@ cc_defaults {
     }) + select(soong_config_variable("wpa_supplicant_8", "wpa_supplicant_11be"), {
         true: ["src/ap/ieee802_11_eht.c"],
         default: [],
-// QTI_BEGIN: 2025-02-19: WLAN: Enable missing macros for wpa_s and hostapd in qcwcn board
     }),
-// QTI_END: 2025-02-19: WLAN: Enable missing macros for wpa_s and hostapd in qcwcn board
     defaults: [
         "wpa_supplicant_driver_srcs_default",
     ],
@@ -1584,9 +1570,7 @@ cc_binary {
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
         "wpa_supplicant_usd_defaults",
-// QTI_BEGIN: 2025-04-06: WLAN: Add qca_default to required binaries/libs
         "wpa_supplicant_qca_cflags",
-// QTI_END: 2025-04-06: WLAN: Add qca_default to required binaries/libs
     ],
 }
 
@@ -1641,9 +1625,7 @@ wpa_supplicant_cc_binary {
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
         "wpa_supplicant_usd_defaults",
-// QTI_BEGIN: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
         "wpa_supplicant_qca_default",
-// QTI_END: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
     ],
     soong_config_variables: {
         board_wpa_supplicant_private_lib: {
@@ -1759,9 +1741,7 @@ cc_library_shared {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
-// QTI_BEGIN: 2025-04-06: WLAN: Add qca_default to required binaries/libs
         "wpa_supplicant_qca_cflags",
-// QTI_END: 2025-04-06: WLAN: Add qca_default to required binaries/libs
     ],
 }
 
@@ -1841,9 +1821,7 @@ cc_library_static {
     defaults: [
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
-// QTI_BEGIN: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
         "wpa_supplicant_qca_default",
-// QTI_END: 2025-03-12: WLAN: wpa_supplicant: Add cc_defaults to enable vendor feature
     ],
 }
 

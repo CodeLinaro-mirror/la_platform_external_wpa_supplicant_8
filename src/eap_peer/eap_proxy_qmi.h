@@ -1,4 +1,3 @@
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 /*--------------------------------------------------------------------------
 Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
 
@@ -104,8 +103,6 @@ typedef struct {
         int                                   qmi_msg_lib_handle;
 } wpa_uim_struct_type;
 
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
-// QTI_BEGIN: 2019-10-13: WLAN: eap_proxy: handle QMI callbacks in eloop context.
 struct qmi_cb_data {
         struct dl_list list;
 
@@ -115,18 +112,12 @@ struct qmi_cb_data {
         void *buf;
         unsigned int buflen;
         void *userdata;
-// QTI_END: 2019-10-13: WLAN: eap_proxy: handle QMI callbacks in eloop context.
-// QTI_BEGIN: 2021-01-29: WLAN: eap_proxy: Cancel eloop registration during eap_proxy_deinit
         eloop_timeout_handler handler;
-// QTI_END: 2021-01-29: WLAN: eap_proxy: Cancel eloop registration during eap_proxy_deinit
-// QTI_BEGIN: 2019-10-13: WLAN: eap_proxy: handle QMI callbacks in eloop context.
 
         /* additional data for eap_reply */
         qmi_client_error_type err_code;
 };
-// QTI_END: 2019-10-13: WLAN: eap_proxy: handle QMI callbacks in eloop context.
 
-// QTI_BEGIN: 2019-10-13: WLAN: eap_proxy: Register for Modem state notification.
 typedef enum {
         EAP_PROXY_MODEM_UNKNOWN = 0x00,
         EAP_PROXY_MODEM_UIM_UP  = 0x01,
@@ -134,69 +125,48 @@ typedef enum {
         EAP_PROXY_MODEM_FULL_UP = 0x03,
 } qmi_modem_state;
 
-// QTI_END: 2019-10-13: WLAN: eap_proxy: Register for Modem state notification.
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 struct eap_proxy_sm {
         qmi_client_type qmi_auth_svc_client_ptr[MAX_NO_OF_SIM_SUPPORTED];
         qmi_state_e qmi_state;
         eap_proxy_qmi_srv_result srvc_result;
         qmi_eap_sync_rsp_data_type qmi_resp_data;
         eap_proxy_state  proxy_state;
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         bool iskey_valid;
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         u8 *key;
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         bool is_state_changed;
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         void *ctx;
         void *msg_ctx;
         struct eapol_callbacks *eapol_cb;
         u8 *eapReqData;
         size_t eapReqDataLen;
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         bool isEap;
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         int eap_type;
         int user_selected_sim;
         int eap_auth_session_flag[MAX_NO_OF_SIM_SUPPORTED];
         int notification_code;
         pthread_t thread_id;
         wpa_uim_struct_type   wpa_uim[MAX_NO_OF_SIM_SUPPORTED];
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         bool qmi_uim_svc_client_initialized[MAX_NO_OF_SIM_SUPPORTED];
         bool qmi_thread_joined;
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
         u8 *session_id;
         size_t session_id_len;
         u8 *emsk;
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
-// QTI_BEGIN: 2019-06-21: WLAN: eap_proxy: Use static global eap_proxy per interface.
         // To check if eap_proxy_sm for curernt interface is initialized/in use
-// QTI_END: 2019-06-21: WLAN: eap_proxy: Use static global eap_proxy per interface.
         bool initialized;
-// QTI_BEGIN: 2019-10-13: WLAN: eap_proxy: handle QMI callbacks in eloop context.
         /* list to maintain qmi_cb_data list */
         struct dl_list callback;
-// QTI_END: 2019-10-13: WLAN: eap_proxy: handle QMI callbacks in eloop context.
-// QTI_BEGIN: 2019-10-13: WLAN: eap_proxy: Register for Modem state notification.
         // To trigger initialization post SSR based on modem UP state.
         qmi_modem_state modem_state;
         qmi_client_os_params uim_notifier_os_params;
         qmi_client_os_params auth_notifier_os_params;
         qmi_client_type uim_notifier_handle;
         qmi_client_type auth_notifier_handle;
-// QTI_END: 2019-10-13: WLAN: eap_proxy: Register for Modem state notification.
         bool notifier_cb_initialized;
-// QTI_BEGIN: 2023-02-22: WLAN: eap_proxy: During deinit unblock the join based on PPID
         // To store the PPID of eap_proxy init caller
         pid_t init_ppid;
-// QTI_END: 2023-02-22: WLAN: eap_proxy: During deinit unblock the join based on PPID
-// QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 };
 
 int eap_proxy_allowed_method(struct eap_peer_config *config, int vendor,
                               u32 method);
 
 #endif /* EAP_PROXY_QMI_H */
-// QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
