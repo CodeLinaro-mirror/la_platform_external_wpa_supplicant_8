@@ -4492,10 +4492,16 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	if (ft_completed &&
+	if ((ft_completed || ether_addr_equal(bssid, wpa_s->bssid)) &&
 	    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_BSS_SELECTION)) {
 		wpa_msg(wpa_s, MSG_INFO, "Attempt to roam to " MACSTR,
 			MAC2STR(bssid));
+
+		if (ether_addr_equal(bssid, wpa_s->bssid)) {
+			wpa_printf(MSG_ERROR, "Roam to same bssid!");
+			wpa_supplicant_update_scan_results(wpa_s, bssid);
+		}
+
 		if (!wpa_supplicant_update_current_bss(wpa_s, bssid)) {
 			wpa_printf(MSG_ERROR,
 				   "Can't find target AP's information!");
