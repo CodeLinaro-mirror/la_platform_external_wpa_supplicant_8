@@ -1,6 +1,4 @@
-#  QTI_BEGIN: 2023-05-08: WLAN: Update QCOM target config for wpa_supplicant compilation
 ifeq ($(filter $(TARGET_BOARD_PLATFORM), qssi qssi_64),)
-#  QTI_END: 2023-05-08: WLAN: Update QCOM target config for wpa_supplicant compilation
 S_LOCAL_PATH := $(call my-dir)
 
 ifdef FORCE_USE_ANDROIDMK_FOR_WPA
@@ -18,6 +16,4 @@ endif #End of Check for platform version
 endif #End of Check for target build variant
 endif
 endif
-#  QTI_BEGIN: 2020-05-15: WLAN: wpa_supplicant: Disable wpa_supplicant for qssi targets
 endif #End of Check for qssi target
-#  QTI_END: 2020-05-15: WLAN: wpa_supplicant: Disable wpa_supplicant for qssi targets
