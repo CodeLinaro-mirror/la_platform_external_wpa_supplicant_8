@@ -780,7 +780,7 @@ int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nira_nonce,
 void nan_pairing_deinit_peer(struct nan_peer *peer);
 bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 			     struct nan_shared_key *shared_key_descr,
-			     size_t attr_len);
+			     size_t attr_len, int handle, u8 req_instance_id);
 #else
 static inline
 int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nira_nonce,
