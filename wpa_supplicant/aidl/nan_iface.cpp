@@ -45,6 +45,10 @@ using NanDataPathSecurityType =
 	NanDataPathSecurityConfig::NanDataPathSecurityType;
 using NanDataPathSecurityConfig =
 	aidl::android::system::wifi::mainline_supplicant::NanDataPathSecurityConfig;
+using NanPairingRequestType =
+	aidl::android::system::wifi::mainline_supplicant::NanPairingRequestType;
+using NanPairingAkm =
+	aidl::android::system::wifi::mainline_supplicant::NanPairingAkm;
 
 const std::string kMainlineSupplicantConfigPath =
 	"/apex/com.android.wifi/etc/wpa_supplicant_mainline.conf";
@@ -188,11 +192,12 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequest(
-	char16_t in_cmdId, const std::string& in_ifaceName)
+	char16_t in_cmdId, const std::string& in_ifaceName,
+	const std::array<uint8_t, 6>& macaddr)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-		&NanIface::createDataInterfaceRequestInternal, in_cmdId, in_ifaceName
+		&NanIface::createDataInterfaceRequestInternal, in_cmdId, in_ifaceName, macaddr
 	);
 }
 
@@ -319,12 +324,22 @@ bool NanIface::isValid()
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequest(
 	char16_t in_cmdId, int32_t in_ndpInstanceId,
-	const std::array<uint8_t, 6>& in_peerDiscMacAddr)
+	const std::array<uint8_t, 6>& in_peerDiscMacAddr,
+	const std::array<uint8_t, 6>& in_ndiInitMac)
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
 		&NanIface::terminateDataPathRequestInternal, in_cmdId,
-		in_ndpInstanceId, in_peerDiscMacAddr);
+		in_ndpInstanceId, in_peerDiscMacAddr, in_ndiInitMac);
+}
+
+::ndk::ScopedAStatus NanIface::setSchedule(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
+{
+	return validateAndCall(
+		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
+		&NanIface::setScheduleInternal, in_cmdId, in_schedule);
 }
 
 #ifdef CONFIG_NAN
@@ -488,9 +503,9 @@ bool NanIface::isValid()
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
-	char16_t cmdId, const std::string& ifaceName)
+	char16_t cmdId, const std::string& ifaceName, const std::array<uint8_t, 6>& macAddr)
 {
-	u8 allocated_if_addr[ETH_ALEN];
+	u8 allocate_if_addr[ETH_ALEN];
 
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -517,8 +532,8 @@ bool NanIface::isValid()
 			return;
 		}
 
-		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), NULL, NULL, NULL,
-						(u8 *)allocated_if_addr, NULL) < 0)
+		if (wpa_drv_if_add(wpa_s, WPA_IF_NAN_DATA, ifaceName.c_str(), macAddr.data(),
+						   NULL, NULL, (u8 *)allocate_if_addr, NULL) < 0)
 		{
 			wpa_printf(MSG_ERROR, "Failed to create NAN data iface");
 			aidl_manager->notifyNanCreateDataInterfaceResponse(ifname, cmdId, nan_status);
@@ -989,6 +1004,29 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 				msg.pairingIdentityKey.size()).c_str());
 		}
 
+		// Update pairing credentials for verification
+		if (msg.requestType == NanPairingRequestType::NAN_PAIRING_VERIFICATION) {
+			if (!msg.peerIdentityKey) {
+				wpa_printf(MSG_ERROR, "No peer identity key provided");
+				aidl_manager->notifyNanInitiatePairingResponse(ifname, cmdId,
+					nan_status, msg.peerId);
+				return;
+			}
+			int akmp  = 0;
+			if (msg.securityConfig.akm == NanPairingAkm::PASN) {
+				akmp = WPA_KEY_MGMT_PASN;
+			} else {
+				akmp = WPA_KEY_MGMT_SAE;
+			}
+			if (wpas_nan_update_pairing_credentials(
+					wpa_s, msg.peerIdentityKey->data(), msg.peerIdentityKey->size(),
+					NAN_NIRA_CIPHER_VER_128, akmp, msg.securityConfig.pmk.data(),
+					msg.securityConfig.pmk.size()) < 0) {
+				wpa_printf(MSG_ERROR, "Failed to update pairing credentials");
+
+			}
+		}
+
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
 			MACSTR " handle=%d peer_instance_id=%d auth=%d",
@@ -1082,6 +1120,28 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		if (!msg.pairingIdentityKey.empty()) {
 			setNanConfigParam(wpa_s, "nik %s", bytesToHexString(msg.pairingIdentityKey.data(),
 				msg.pairingIdentityKey.size()).c_str());
+		}
+
+		// Update pairing credentials for verification
+		if (msg.requestType == NanPairingRequestType::NAN_PAIRING_VERIFICATION) {
+			if (!msg.peerIdentityKey) {
+				wpa_printf(MSG_ERROR, "No peer identity key provided");
+				aidl_manager->notifyNanRespondToPairingIndicationResponse(
+						ifname, cmdId, nan_status);
+				return;
+			}
+			int akmp  = 0;
+			if (msg.securityConfig.akm == NanPairingAkm::PASN) {
+				akmp = WPA_KEY_MGMT_PASN;
+			} else {
+				akmp = WPA_KEY_MGMT_SAE;
+			}
+			if (wpas_nan_update_pairing_credentials(
+					wpa_s, msg.peerIdentityKey->data(), msg.peerIdentityKey->size(),
+					NAN_NIRA_CIPHER_VER_128, akmp, msg.securityConfig.pmk.data(),
+					msg.securityConfig.pmk.size()) < 0) {
+				wpa_printf(MSG_ERROR, "Failed to update pairing credentials");
+			}
 		}
 
 		char cmd[kNanIfaceConfBufSize];
@@ -1305,7 +1365,8 @@ static int appendSecurityConfigToCmd(
 }
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
-	char16_t cmdId, int32_t ndpInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr)
+	char16_t cmdId, int32_t ndpInstanceId, const std::array<uint8_t, 6>& peerDiscMacAddr,
+	const std::array<uint8_t, 6>& in_ndiInitMac)
 {
 	AidlManager* aidl_manager = AidlManager::getInstance();
 	if (!aidl_manager) {
@@ -1325,8 +1386,8 @@ static int appendSecurityConfigToCmd(
 
 		char cmd[kNanIfaceConfBufSize];
 		int cnt = snprintf(cmd, kNanIfaceConfBufSize,
-				"peer_nmi=" MACSTR " ndp_id=%d",
-				MAC2STR(peerDiscMacAddr), ndpInstanceId);
+				"peer_nmi=" MACSTR " ndp_id=%d" " init_ndi=" MACSTR,
+				MAC2STR(peerDiscMacAddr), ndpInstanceId, MAC2STR(in_ndiInitMac));
 
 		if (cnt < 0 || cnt >= sizeof(cmd)) {
 			nan_status.status = NanStatusCode::INVALID_ARGS;
@@ -1339,6 +1400,13 @@ static int appendSecurityConfigToCmd(
 		aidl_manager->notifyNanTerminateDataPathResponse(ifname, cmdId, nan_status);
 	});
 	return ndk::ScopedAStatus::ok();
+}
+
+::ndk::ScopedAStatus NanIface::setScheduleInternal(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
 #else
 ::ndk::ScopedAStatus NanIface::registerEventCallbackInternal(
@@ -1371,7 +1439,7 @@ static int appendSecurityConfigToCmd(
 }
 
 ::ndk::ScopedAStatus NanIface::createDataInterfaceRequestInternal(
-	char16_t cmdId, const std::string& ifaceName)
+	char16_t cmdId, const std::string& ifaceName, const std::array<uint8_t, 6>& macAddr)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
@@ -1457,7 +1525,15 @@ static int appendSecurityConfigToCmd(
 
 ::ndk::ScopedAStatus NanIface::terminateDataPathRequestInternal(
 	char16_t cmdId, int32_t ndpInstanceId,
-	const std::array<uint8_t, 6>& peerDiscMacAddr)
+	const std::array<uint8_t, 6>& peerDiscMacAddr,
+	const std::array<uint8_t, 6>& in_ndiInitMac)
+{
+	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
+}
+
+::ndk::ScopedAStatus NanIface::setScheduleInternal(
+	char16_t in_cmdId,
+	const std::vector<NanSchedule>& in_schedule)
 {
 	return createStatus(SupplicantStatusCode::FAILURE_UNSUPPORTED);
 }
