@@ -1374,8 +1374,10 @@ soong_config_module_type {
     bool_variables: [
         "wifi_hidl_unified_supplicant_service_rc_entry",
         "enable_vendor_aidl",
+        "exclude_qca_defaults",
     ],
     properties: [
+        "defaults",
         "init_rc",
         "static_libs",
         "required",
@@ -1417,7 +1419,6 @@ wpa_supplicant_cc_binary {
         "wpa_supplicant_cflags_default",
         "wpa_supplicant_includes_default",
         "wpa_supplicant_usd_defaults",
-        "wpa_supplicant_qca_default",
     ],
     soong_config_variables: {
         board_wpa_supplicant_private_lib: {
@@ -1429,6 +1430,13 @@ wpa_supplicant_cc_binary {
         },
         enable_vendor_aidl: {
             required: ["android.hardware.wifi.supplicant.vendor.xml"],
+        },
+        // When exclude_qca_defaults is not set (default), include QCA-specific defaults.
+        // Set SOONG_CONFIG_wpa_supplicant_8_exclude_qca_defaults := true to exclude QTI code.
+        exclude_qca_defaults: {
+            conditions_default: {
+                defaults: ["wpa_supplicant_qca_default"],
+            },
         },
     },
     vintf_fragment_modules: ["android.hardware.wifi.supplicant.xml"],
