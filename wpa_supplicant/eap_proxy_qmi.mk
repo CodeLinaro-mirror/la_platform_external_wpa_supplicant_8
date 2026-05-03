@@ -1,4 +1,3 @@
-#  QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 
 LOCAL_PATH := $(call my-dir)
 
@@ -12,16 +11,10 @@ endif
 
 LIB_SHARED_EAP_PROXY := libqmi_cci libqmiservices libidl
 
-#  QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
-#  QTI_BEGIN: 2021-07-26: WLAN: eap_proxy: use libdataqmiservices_headers_ext & libqmi_common_headers
 LIB_HEADER_EAP_PROXY := libqmi_common_headers
 LIB_HEADER_EAP_PROXY += libril-qc-qmi-services-headers
 LIB_HEADER_EAP_PROXY += libdataqmiservices_headers_ext
-#  QTI_END: 2021-07-26: WLAN: eap_proxy: use libdataqmiservices_headers_ext & libqmi_common_headers
-#  QTI_BEGIN: 2018-05-03: WLAN: Use libril-qc-qmi-services-headers library
 
-#  QTI_END: 2018-05-03: WLAN: Use libril-qc-qmi-services-headers library
-#  QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 ifdef CONFIG_EAP_PROXY_MDM_DETECT
 L_CFLAGS += -DCONFIG_EAP_PROXY_MDM_DETECT
 INCLUDES += $(TARGET_OUT_HEADERS)/libmdmdetect/inc
@@ -39,15 +32,10 @@ ifdef CONFIG_EAP_PROXY_MSM8994_TARGET
 L_CFLAGS += -DCONFIG_EAP_PROXY_MSM8994_TARGET
 endif
 
-#  QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
-#  QTI_BEGIN: 2018-11-02: WLAN: eap_proxy: build eap identity every time to avoid using stale entry.
 ifeq ($(CONFIG_EAP_PROXY_USE_CONFIG_IDENTITY), y)
 L_CFLAGS += -DEAP_PROXY_USE_CONFIG_IDENTITY
 endif
 
-#  QTI_END: 2018-11-02: WLAN: eap_proxy: build eap identity every time to avoid using stale entry.
-#  QTI_BEGIN: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
 #ANDROID_SETGROUPS_OVERRIDE := AID_RADIO AID_WIFI AID_KEYSTORE AID_DIAG AID_INET AID_QCOM_DIAG AID_NET_RAW AID_LOG
 L_CFLAGS += -DANDROID_SETGROUPS_OVERRIDE=1001,1010,1017,2002,1003,3009,3004,1007
 endif
-#  QTI_END: 2018-04-23: WConnect/WLAN_3RDPARTY_GOOGLE: Revert "Remove QCOM QMI interface for eap_proxy"
