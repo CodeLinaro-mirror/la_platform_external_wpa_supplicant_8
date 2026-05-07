@@ -1608,6 +1608,9 @@ struct wpa_supplicant {
 	unsigned int wait_for_dscp_req:1;
 
 	struct wpa_signal_info last_signal_info;
+	bool ext_auth_to_same_bss; /* Whether external authentication has been
+				    * completed successfully with the BSS that
+				    * we are already associated with. */
 };
 
 
