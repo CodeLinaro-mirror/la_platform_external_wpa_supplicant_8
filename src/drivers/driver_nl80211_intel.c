@@ -90,12 +90,18 @@ int wpa_driver_nl80211_driver_cmd_intel(void* priv, char* cmd, char* buf, size_t
 		// Example: cmd = "COUNTRY US"
 		memcpy(alpha2, cmd + strlen("COUNTRY") + 1, strlen(cmd) - strlen("COUNTRY") - 1);
 		alpha2[2] = '\0';
-		if (!nl80211_cmd(drv, msg, 0, NL80211_CMD_RELOAD_REGDB)) {
-			wpa_printf(MSG_ERROR, "debug for fw reload\n");
-			nlmsg_free(msg);
-			return -EINVAL;
+		/* Self-managed regulatory: firmware/driver controls regdom, cfg80211 inputs are ignored,
+		 * therefore check the WPA_DRIVER_FLAGS_SELF_MANAGED_REGULATORY flag before calling the driver
+		 * for reloading the regulatory db
+		 */
+		if (!(drv->capa.flags & WPA_DRIVER_FLAGS_SELF_MANAGED_REGULATORY)) {
+			if (!nl80211_cmd(drv, msg, 0, NL80211_CMD_RELOAD_REGDB)) {
+				wpa_printf(MSG_ERROR, "debug for fw reload\n");
+				nlmsg_free(msg);
+				return -EINVAL;
+			}
+			if (send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL)) return -EINVAL;
 		}
-		if (send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL)) return -EINVAL;
 
 		msg = nlmsg_alloc();
 		if (!msg) ret = -ENOMEM;
