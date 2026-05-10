@@ -5848,6 +5848,7 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(bgscan_enabled, 0, 1), 0 },
 	{ INT(pr_pasn_type), 0 },
 	{ INT_RANGE(pr_preferred_role, 0, 1), 0},
+	{ INT_RANGE(use_priv_cmd_mbo_cell_status, 0, 1), 0 },
 	/* NOTE: When adding new parameters here, add_interface() in
 	 * wpa_supplicant/dbus_new_introspect.c may need to be modified to
 	 * increase the size of the iface->xml buffer. */

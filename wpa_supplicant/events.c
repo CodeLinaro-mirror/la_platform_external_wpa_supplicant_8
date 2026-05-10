@@ -4492,10 +4492,16 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	if (ft_completed &&
+	if ((ft_completed || ether_addr_equal(bssid, wpa_s->bssid)) &&
 	    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_BSS_SELECTION)) {
 		wpa_msg(wpa_s, MSG_INFO, "Attempt to roam to " MACSTR,
 			MAC2STR(bssid));
+
+		if (ether_addr_equal(bssid, wpa_s->bssid)) {
+			wpa_printf(MSG_ERROR, "Roam to same bssid!");
+			wpa_supplicant_update_scan_results(wpa_s, bssid);
+		}
+
 		if (!wpa_supplicant_update_current_bss(wpa_s, bssid)) {
 			wpa_printf(MSG_ERROR,
 				   "Can't find target AP's information!");
@@ -4901,6 +4907,10 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 		wpa_bssid_ignore_add(wpa_s, bssid);
 		wpas_auth_failed(wpa_s, "WRONG_KEY", wpa_s->pending_bssid);
 		wpas_notify_psk_mismatch(wpa_s);
+		/* Clear PMK cache after 4-way handshake timeout to avoid PMKID reuse issues */
+		wpa_dbg(wpa_s, MSG_DEBUG, "Drop PMKSA cache entry after 4-way handshake failure");
+		wpa_sm_aborted_cached(wpa_s->wpa);
+		wpa_sm_pmksa_cache_flush(wpa_s->wpa, wpa_s->current_ssid);
 	}
 	if (!wpa_s->disconnected &&
 	    (!wpa_s->auto_reconnect_disabled ||
