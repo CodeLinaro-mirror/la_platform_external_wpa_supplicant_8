@@ -713,8 +713,17 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
 #endif /* CONFIG_IEEE80211AX */
 #ifdef CONFIG_IEEE80211AC
 	if (iface->conf->ieee80211ac &&
-	    !ieee80211ac_supported_vht_capab(iface))
-		return -1;
+	    !ieee80211ac_supported_vht_capab(iface)) {
+		if (iface->current_mode->vht_capab == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "Hardware mode %d has no VHT capabilities; disabling ieee80211ac and clearing vht_capab 0x%x",
+				   iface->current_mode->mode,
+				   iface->conf->vht_capab);
+				   iface->conf->ieee80211ac = 0;
+				   iface->conf->vht_capab = 0;
+		} else
+			return -1;
+	}
 #endif /* CONFIG_IEEE80211AC */
 	ret = ieee80211n_check_40mhz(iface);
 	if (ret)
