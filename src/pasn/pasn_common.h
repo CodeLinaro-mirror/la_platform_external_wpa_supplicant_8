@@ -280,6 +280,7 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 
 struct pasn_data * pasn_data_init(void);
 void pasn_data_deinit(struct pasn_data *pasn);
+#define PASN_CALLBACKS_WITH_EPPKE 1
 void pasn_register_callbacks(struct pasn_data *pasn, void *cb_ctx,
 			     int (*send_mgmt)(void *ctx, const u8 *data,
 					      size_t data_len, int noack,

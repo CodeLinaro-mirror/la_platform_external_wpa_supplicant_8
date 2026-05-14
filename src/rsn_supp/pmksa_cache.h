@@ -82,6 +82,7 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
 int pmksa_cache_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len);
 struct rsn_pmksa_cache_entry * pmksa_cache_head(struct rsn_pmksa_cache *pmksa);
 struct rsn_pmksa_cache_entry *
+#define PMKSA_ADD_WITH_AUTH_ALG 1
 pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 		const u8 *pmkid, const u8 *kck, size_t kck_len,
 		const u8 *aa, const u8 *spa, void *network_ctx, int akmp,
@@ -98,6 +99,7 @@ int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid,
 struct rsn_pmksa_cache_entry *
 pmksa_cache_get_opportunistic(struct rsn_pmksa_cache *pmksa,
 			      void *network_ctx, const u8 *aa, int akmp);
+#define PMKSA_FLUSH_WITH_AA 1
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
 		       const u8 *pmk, size_t pmk_len, bool external_only,
 		       const u8 *addr);
