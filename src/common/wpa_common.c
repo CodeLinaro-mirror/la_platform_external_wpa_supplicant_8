@@ -1532,6 +1532,39 @@ bool pasn_use_sha384(int akmp, int cipher)
 
 
 /**
+ * pasn_select_hash_alg - Select hash algorithm for PTK derivation
+ * @akmp: Authentication and key management protocol
+ * @cipher: The cipher suite
+ * @pmk_len: PMK length in octets
+ *
+ * According to IEEE Std 802.11-2024, Table 9-190 (AKM suite selectors), AKMs
+ * 00-0F-AC:24 and 00-0F-AC:25 have the length of the PMK, the length
+ * of the SAE key confirmation key, SAE-KCK, and PTK-KCK, and the length of
+ * PTK-KEK depending on the hash algorithm specified in 12.4.2 (see 12.7.1.3
+ * and 12.7.3), i.e, the hash algorithm depends on the prime length associated
+ * with the selected group per Table 12-1 (Hash algorithm based on length of
+ * prime).
+ */
+static enum rsn_hash_alg pasn_select_hash_alg(int akmp, int cipher,
+					      size_t pmk_len)
+{
+#ifdef CONFIG_SAE
+	if (wpa_key_mgmt_sae_ext_key(akmp)) {
+		if (pmk_len == 64)
+			return RSN_HASH_SHA512;
+		if (pmk_len == 48)
+			return RSN_HASH_SHA384;
+	}
+#endif /* CONFIG_SAE */
+
+	if (pasn_use_sha384(akmp, cipher))
+		return RSN_HASH_SHA384;
+
+	return RSN_HASH_SHA256;
+}
+
+
+/**
  * pasn_pmk_to_ptk - Calculate PASN PTK from PMK, addresses, etc.
  * @pmk: Pairwise master key
  * @pmk_len: Length of PMK
@@ -1545,13 +1578,14 @@ bool pasn_use_sha384(int akmp, int cipher)
  * @cipher: Negotiated pairwise cipher
  * @kdk_len: the length in octets that should be derived for HTLK. Can be zero.
  * @kek_len: The length in octets that should be derived for KEK. Can be zero.
+ * @alg: Output variable for indicating the selected hash algorithm
  * Returns: 0 on success, -1 on failure
  */
 int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 		    const u8 *spa, const u8 *bssid,
 		    const u8 *dhss, size_t dhss_len,
 		    struct wpa_ptk *ptk, int akmp, int cipher,
-		    size_t kdk_len, size_t kek_len)
+		    size_t kdk_len, size_t kek_len, enum rsn_hash_alg *alg)
 {
 	u8 tmp[WPA_KCK_MAX_LEN + WPA_KEK_MAX_LEN + WPA_TK_MAX_LEN +
 	       WPA_KDK_MAX_LEN];
@@ -1605,18 +1639,38 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 	if (ptk_len > sizeof(tmp))
 		goto err;
 
-	if (pasn_use_sha384(akmp, cipher)) {
+	*alg = pasn_select_hash_alg(akmp, cipher, pmk_len);
+
+	switch (*alg) {
+	case RSN_HASH_SHA512:
+#ifdef CONFIG_SHA512
+		wpa_printf(MSG_DEBUG, "PASN: PTK derivation using SHA512");
+
+		if (sha512_prf(pmk, pmk_len, label, data, data_len, tmp,
+			       ptk_len) < 0)
+			goto err;
+		break;
+#endif
+	case RSN_HASH_SHA384:
+#ifdef CONFIG_SHA384
 		wpa_printf(MSG_DEBUG, "PASN: PTK derivation using SHA384");
 
 		if (sha384_prf(pmk, pmk_len, label, data, data_len, tmp,
 			       ptk_len) < 0)
 			goto err;
-	} else {
+		break;
+#endif
+	case RSN_HASH_SHA256:
 		wpa_printf(MSG_DEBUG, "PASN: PTK derivation using SHA256");
 
 		if (sha256_prf(pmk, pmk_len, label, data, data_len, tmp,
 			       ptk_len) < 0)
 			goto err;
+		break;
+	default:
+		wpa_printf(MSG_DEBUG, "PASN: Unsupported hash algorithm %d",
+			   *alg);
+		goto err;
 	}
 
 	wpa_printf(MSG_DEBUG,
@@ -1659,13 +1713,19 @@ err:
 
 /*
  * pasn_mic_len - Returns the MIC length for PASN authentication
+ * @alg: Selected hash algorithm from pasn_pmk_to_ptk()
  */
-u8 pasn_mic_len(int akmp, int cipher)
+size_t pasn_mic_len(enum rsn_hash_alg alg)
 {
-	if (pasn_use_sha384(akmp, cipher))
+	switch (alg) {
+	case RSN_HASH_SHA512:
+		return 32;
+	case RSN_HASH_SHA384:
 		return 24;
-
-	return 16;
+	case RSN_HASH_SHA256:
+	default:
+		return 16;
+	}
 }
 
 
@@ -1727,9 +1787,9 @@ int wpa_ltf_keyseed(struct wpa_ptk *ptk, int akmp, int cipher)
 
 /**
  * pasn_mic - Calculate PASN MIC
+ * @alg: Selected hash algorithm from pasn_pmk_to_ptk()
  * @kck: The key confirmation key for the PASN PTKSA
- * @akmp: Negotiated AKM
- * @cipher: Negotiated pairwise cipher
+ * @kck_len: KCK length in octets
  * @addr1: For the 2nd PASN frame supplicant address; for the 3rd frame the
  *	BSSID
  * @addr2: For the 2nd PASN frame the BSSID; for the 3rd frame the supplicant
@@ -1745,18 +1805,26 @@ int wpa_ltf_keyseed(struct wpa_ptk *ptk, int akmp, int cipher)
  *	maximal MIC length
  * Returns: 0 on success, -1 on failure
  */
-int pasn_mic(const u8 *kck, int akmp, int cipher,
+int pasn_mic(enum rsn_hash_alg alg, const u8 *kck, size_t kck_len,
 	     const u8 *addr1, const u8 *addr2,
 	     const u8 *data, size_t data_len,
 	     const u8 *frame, size_t frame_len, u8 *mic)
 {
 	u8 *buf;
-	u8 hash[SHA384_MAC_LEN];
+	u8 hash[SHA512_MAC_LEN];
 	size_t buf_len = 2 * ETH_ALEN + data_len + frame_len;
 	int ret = -1;
+	size_t mic_len;
 
 	if (!kck) {
 		wpa_printf(MSG_ERROR, "PASN: No KCK for MIC calculation");
+		return -1;
+	}
+
+	if (kck_len != WPA_PASN_KCK_LEN) {
+		wpa_printf(MSG_ERROR,
+			   "PASN: Unexpected KCK length %zu for MIC calculation",
+			   kck_len);
 		return -1;
 	}
 
@@ -1783,26 +1851,39 @@ int pasn_mic(const u8 *kck, int akmp, int cipher,
 	wpa_hexdump_key(MSG_DEBUG, "PASN: MIC: frame", frame, frame_len);
 	os_memcpy(buf + 2 * ETH_ALEN + data_len, frame, frame_len);
 
-	wpa_hexdump_key(MSG_DEBUG, "PASN: MIC: KCK", kck, WPA_PASN_KCK_LEN);
+	wpa_hexdump_key(MSG_DEBUG, "PASN: MIC: KCK", kck, kck_len);
 	wpa_hexdump_key(MSG_DEBUG, "PASN: MIC: buf", buf, buf_len);
 
-	if (pasn_use_sha384(akmp, cipher)) {
+	mic_len = pasn_mic_len(alg);
+
+	switch (alg) {
+#ifdef CONFIG_SHA512
+	case RSN_HASH_SHA512:
+		wpa_printf(MSG_DEBUG, "PASN: MIC using HMAC-SHA512");
+		if (hmac_sha512(kck, kck_len, buf, buf_len, hash))
+			goto err;
+		break;
+#endif /* CONFIG_SHA512 */
+#ifdef CONFIG_SHA384
+	case RSN_HASH_SHA384:
 		wpa_printf(MSG_DEBUG, "PASN: MIC using HMAC-SHA384");
-
-		if (hmac_sha384(kck, WPA_PASN_KCK_LEN, buf, buf_len, hash))
+		if (hmac_sha384(kck, kck_len, buf, buf_len, hash))
 			goto err;
-
-		os_memcpy(mic, hash, 24);
-		wpa_hexdump_key(MSG_DEBUG, "PASN: MIC: mic: ", mic, 24);
-	} else {
+		break;
+#endif /* CONFIG_SHA384 */
+	case RSN_HASH_SHA256:
 		wpa_printf(MSG_DEBUG, "PASN: MIC using HMAC-SHA256");
-
-		if (hmac_sha256(kck, WPA_PASN_KCK_LEN, buf, buf_len, hash))
+		if (hmac_sha256(kck, kck_len, buf, buf_len, hash))
 			goto err;
-
-		os_memcpy(mic, hash, 16);
-		wpa_hexdump_key(MSG_DEBUG, "PASN: MIC: mic: ", mic, 16);
+		break;
+	default:
+		wpa_printf(MSG_ERROR,
+			   "PASN: Unsupported alg=%d for MIC calculation", alg);
+		goto err;
 	}
+
+	os_memcpy(mic, hash, mic_len);
+	wpa_hexdump_key(MSG_DEBUG, "PASN: MIC", mic, mic_len);
 
 	ret = 0;
 err:
@@ -1813,23 +1894,33 @@ err:
 
 /**
  * pasn_auth_frame_hash - Computes a hash of an Authentication frame body
- * @akmp: Negotiated AKM
- * @cipher: Negotiated pairwise cipher
+ * @alg: Selected hash algorithm from pasn_pmk_to_ptk()
  * @data: Pointer to the Authentication frame body
  * @len: Length of the Authentication frame body
  * @hash: On return would hold the computed hash. Should be big enough to handle
- *	SHA384.
+ *	SHA512.
  * Returns: 0 on success, -1 on failure
  */
-int pasn_auth_frame_hash(int akmp, int cipher, const u8 *data, size_t len,
+int pasn_auth_frame_hash(enum rsn_hash_alg alg, const u8 *data, size_t len,
 			 u8 *hash)
 {
-	if (pasn_use_sha384(akmp, cipher)) {
+	switch (alg) {
+#ifdef CONFIG_SHA512
+	case RSN_HASH_SHA512:
+		wpa_printf(MSG_DEBUG, "PASN: Frame hash using SHA-512");
+		return sha512_vector(1, &data, &len, hash);
+#endif /* CONFIG_SHA512 */
+#ifdef CONFIG_SHA384
+	case RSN_HASH_SHA384:
 		wpa_printf(MSG_DEBUG, "PASN: Frame hash using SHA-384");
 		return sha384_vector(1, &data, &len, hash);
-	} else {
+#endif /* CONFIG_SHA384 */
+	case RSN_HASH_SHA256:
 		wpa_printf(MSG_DEBUG, "PASN: Frame hash using SHA-256");
 		return sha256_vector(1, &data, &len, hash);
+	default:
+		wpa_printf(MSG_ERROR, "PASN: Unsupported alg=%d", alg);
+		return -1;
 	}
 }
 
