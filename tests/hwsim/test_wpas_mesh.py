@@ -353,7 +353,8 @@ def _test_mesh_open_rssi_threshold(dev, apdev, value, expected):
 
     cmd = subprocess.Popen(["iw", "dev", dev[0].ifname, "get", "mesh_param",
                             "mesh_rssi_threshold"], stdout=subprocess.PIPE)
-    mesh_rssi_threshold = int(cmd.stdout.read().decode().split(" ")[0])
+    out, err = cmd.communicate()
+    mesh_rssi_threshold = int(out.decode().split(" ")[0])
 
     dev[0].mesh_group_remove()
     check_mesh_group_removed(dev[0])
@@ -1226,9 +1227,9 @@ def _test_mesh_open_vht_160(dev, apdev):
                 break
 
         cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
-        reg = cmd.stdout.read()
+        out, err = cmd.communicate()
         found = False
-        for entry in reg.splitlines():
+        for entry in out.splitlines():
             entry = entry.decode()
             if "@ 160)" in entry and "DFS" not in entry:
                 found = True
@@ -2562,6 +2563,7 @@ def test_mesh_link_probe(dev, apdev, params):
         check_mesh_group_added(dev[i])
     for i in range(3):
         check_mesh_peer_connected(dev[i])
+        check_mesh_peer_connected(dev[i])
 
     res = dev[0].request("MESH_LINK_PROBE " + addr1)
     if "FAIL" in res:
@@ -2585,3 +2587,62 @@ def test_mesh_link_probe(dev, apdev, params):
                 continue
             if i + "\t" + j not in out:
                 raise Exception("Did not see probe %s --> %s" % (i, j))
+
+def test_wpas_mesh_sae_inject(dev, apdev):
+    """wpa_supplicant secure mesh and injected SAE messages"""
+    check_mesh_support(dev[0], secure=True)
+    dev[0].set("sae_groups", "")
+    add_mesh_secure_net(dev[0])
+    dev[0].mesh_group_add(id)
+
+    dev[1].set("sae_groups", "")
+    add_mesh_secure_net(dev[1])
+    dev[1].mesh_group_add(id)
+
+    check_mesh_joined_connected(dev, connectivity=True)
+
+    addr0 = binascii.unhexlify(dev[0].own_addr().replace(':', ''))
+    addr1 = binascii.unhexlify(dev[1].own_addr().replace(':', ''))
+
+    try:
+        sock = start_monitor(apdev[1]["ifname"])
+        radiotap = radiotap_build()
+
+        frame = build_sae_commit(addr1, addr0)
+        for i in range(5):
+            sock.send(radiotap + frame)
+        time.sleep(10)
+    finally:
+        stop_monitor(apdev[1]["ifname"])
+
+def test_wpas_mesh_secure_6ghz_320(dev, apdev):
+    """wpa_supplicant secure 6 GHz mesh network connectivity in 320 MHz"""
+    check_mesh_support(dev[0], secure=True)
+    check_mesh_support(dev[1], secure=True)
+
+    try:
+        # CA enables 320 MHz channels without NO-IR restriction
+        set_reg(dev, 'CA')
+
+        dev[0].set("sae_groups", "")
+        id = add_mesh_secure_net(dev[0])
+        dev[0].set_network(id, "frequency", "5975")
+        dev[0].set_network(id, "max_oper_chwidth", "9")
+        dev[0].mesh_group_add(id)
+
+        dev[1].set("sae_groups", "")
+        id = add_mesh_secure_net(dev[1])
+        dev[1].set_network(id, "frequency", "5975")
+        dev[1].set_network(id, "max_oper_chwidth", "9")
+        dev[1].mesh_group_add(id)
+
+        check_mesh_joined_connected(dev, connectivity=True)
+
+        state = dev[0].get_status_field("wpa_state")
+        if state != "COMPLETED":
+            raise Exception("Unexpected wpa_state on dev0: " + state)
+        state = dev[1].get_status_field("wpa_state")
+        if state != "COMPLETED":
+            raise Exception("Unexpected wpa_state on dev1: " + state)
+    finally:
+        clear_reg_setting(dev)

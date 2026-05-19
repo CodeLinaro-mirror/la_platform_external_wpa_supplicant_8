@@ -91,9 +91,6 @@ static struct wpa_bss_anqp * wpa_bss_anqp_clone(struct wpa_bss_anqp *anqp)
 	ANQP_DUP(hs20_wan_metrics);
 	ANQP_DUP(hs20_connection_capability);
 	ANQP_DUP(hs20_operating_class);
-	ANQP_DUP(hs20_osu_providers_list);
-	ANQP_DUP(hs20_operator_icon_metadata);
-	ANQP_DUP(hs20_osu_providers_nai_list);
 #endif /* CONFIG_HS20 */
 #undef ANQP_DUP
 
@@ -176,9 +173,6 @@ static void wpa_bss_anqp_free(struct wpa_bss_anqp *anqp)
 	wpabuf_free(anqp->hs20_wan_metrics);
 	wpabuf_free(anqp->hs20_connection_capability);
 	wpabuf_free(anqp->hs20_operating_class);
-	wpabuf_free(anqp->hs20_osu_providers_list);
-	wpabuf_free(anqp->hs20_operator_icon_metadata);
-	wpabuf_free(anqp->hs20_osu_providers_nai_list);
 #endif /* CONFIG_HS20 */
 
 	os_free(anqp);
@@ -220,6 +214,7 @@ void wpa_bss_remove(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 		    const char *reason)
 {
 	struct wpa_connect_work *cwork;
+	unsigned int j;
 
 	if (wpa_s->last_scan_res) {
 		unsigned int i;
@@ -245,6 +240,45 @@ void wpa_bss_remove(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 		wpa_ssid_txt(bss->ssid, bss->ssid_len), reason);
 	wpas_notify_bss_removed(wpa_s, bss->bssid, bss->id);
 	wpa_bss_anqp_free(bss->anqp);
+
+	if (wpa_s->current_bss == bss) {
+		wpa_printf(MSG_DEBUG,
+			   "BSS: Clear current_bss due to bss removal");
+		wpa_s->current_bss = NULL;
+	}
+
+#ifdef CONFIG_INTERWORKING
+	if (wpa_s->interworking_gas_bss == bss) {
+		wpa_printf(MSG_DEBUG,
+			   "BSS: Clear interworking_gas_bss due to bss removal");
+		wpa_s->interworking_gas_bss = NULL;
+	}
+#endif /* CONFIG_INTERWORKING */
+
+#ifdef CONFIG_WNM
+	if (wpa_s->wnm_target_bss == bss) {
+		wpa_printf(MSG_DEBUG,
+			   "BSS: Clear wnm_target_bss due to bss removal");
+		wpa_s->wnm_target_bss = NULL;
+	}
+#endif /* CONFIG_WNM */
+
+	if (wpa_s->ml_connect_probe_bss == bss) {
+		wpa_printf(MSG_DEBUG,
+			   "BSS: Clear ml_connect_probe_bss due to bss removal");
+		wpa_s->ml_connect_probe_bss = NULL;
+	}
+
+	for (j = 0; j < MAX_NUM_MLD_LINKS; j++) {
+		if (wpa_s->links[j].bss == bss) {
+			wpa_printf(MSG_DEBUG,
+				   "BSS: Clear links[%d].bss due to bss removal",
+				   j);
+			wpa_s->valid_links &= ~BIT(j);
+			wpa_s->links[j].bss = NULL;
+		}
+	}
+
 	os_free(bss);
 }
 
@@ -269,6 +303,58 @@ struct wpa_bss * wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
 		    bss->ssid_len == ssid_len &&
 		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
 			return bss;
+	}
+	return NULL;
+}
+
+/**
+ * wpa_bss_get_connection - Fetch a BSS table entry based on BSSID and SSID.
+ * @wpa_s: Pointer to wpa_supplicant data
+ * @bssid: BSSID, or %NULL to match any BSSID
+ * @ssid: SSID
+ * @ssid_len: Length of @ssid
+ * Returns: Pointer to the BSS entry or %NULL if not found
+ *
+ * This function is similar to wpa_bss_get() but it will also return OWE
+ * transition mode encrypted networks for which transition-element matches
+ * @ssid.
+ */
+struct wpa_bss * wpa_bss_get_connection(struct wpa_supplicant *wpa_s,
+					const u8 *bssid,
+					const u8 *ssid, size_t ssid_len)
+{
+	struct wpa_bss *bss;
+#ifdef CONFIG_OWE
+	const u8 *owe, *owe_bssid, *owe_ssid;
+	size_t owe_ssid_len;
+#endif /* CONFIG_OWE */
+
+	if (bssid && !wpa_supplicant_filter_bssid_match(wpa_s, bssid))
+		return NULL;
+	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+		if (bssid && !ether_addr_equal(bss->bssid, bssid))
+			continue;
+
+		if (bss->ssid_len == ssid_len &&
+		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
+			return bss;
+
+#ifdef CONFIG_OWE
+		/* Check if OWE transition mode element is present and matches
+		 * the SSID */
+		owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
+		if (!owe)
+			continue;
+
+		if (wpas_get_owe_trans_network(owe, &owe_bssid, &owe_ssid,
+					       &owe_ssid_len))
+			continue;
+
+		if (bss->ssid_len &&
+		    owe_ssid_len == ssid_len &&
+		    os_memcmp(owe_ssid, ssid, ssid_len) == 0)
+			return bss;
+#endif /* CONFIG_OWE */
 	}
 	return NULL;
 }
@@ -371,6 +457,28 @@ static bool is_p2p_pending_bss(struct wpa_supplicant *wpa_s,
 }
 
 
+#ifdef CONFIG_OWE
+static int wpa_bss_owe_trans_known(struct wpa_supplicant *wpa_s,
+				   struct wpa_bss *bss,
+				   const u8 *entry_ssid, size_t entry_ssid_len)
+{
+	const u8 *owe, *owe_bssid, *owe_ssid;
+	size_t owe_ssid_len;
+
+	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
+	if (!owe)
+		return 0;
+
+	if (wpas_get_owe_trans_network(owe, &owe_bssid, &owe_ssid,
+				       &owe_ssid_len))
+		return 0;
+
+	return entry_ssid_len == owe_ssid_len &&
+		os_memcmp(owe_ssid, entry_ssid, owe_ssid_len) == 0;
+}
+#endif /* CONFIG_OWE */
+
+
 static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 {
 	struct wpa_ssid *ssid;
@@ -384,6 +492,11 @@ static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
 		if (ssid->ssid_len == bss->ssid_len &&
 		    os_memcmp(ssid->ssid, bss->ssid, ssid->ssid_len) == 0)
 			return 1;
+#ifdef CONFIG_OWE
+		if (wpa_bss_owe_trans_known(wpa_s, bss, ssid->ssid,
+					    ssid->ssid_len))
+			return 1;
+#endif /* CONFIG_OWE */
 	}
 
 	return 0;
@@ -434,6 +547,7 @@ static int wpa_bss_remove_oldest_unknown(struct wpa_supplicant *wpa_s)
 
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
 		if (!wpa_bss_known(wpa_s, bss) &&
+		    !wpa_bss_in_use(wpa_s, bss) &&
 		    !wpa_bss_is_wps_candidate(wpa_s, bss)) {
 			wpa_bss_remove(wpa_s, bss, __func__);
 			return 0;
@@ -744,9 +858,17 @@ wpa_bss_update(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 		struct wpa_bss *nbss;
 		struct dl_list *prev = bss->list_id.prev;
 		struct wpa_connect_work *cwork;
-		unsigned int i;
+		unsigned int i, j;
 		bool update_current_bss = wpa_s->current_bss == bss;
 		bool update_ml_probe_bss = wpa_s->ml_connect_probe_bss == bss;
+		int update_link_bss = -1;
+
+		for (j = 0; j < MAX_NUM_MLD_LINKS; j++) {
+			if (wpa_s->links[j].bss == bss) {
+				update_link_bss = j;
+				break;
+			}
+		}
 
 		cwork = wpa_bss_check_pending_connect(wpa_s, bss);
 
@@ -767,6 +889,9 @@ wpa_bss_update(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 
 			if (update_ml_probe_bss)
 				wpa_s->ml_connect_probe_bss = nbss;
+
+			if (update_link_bss >= 0)
+				wpa_s->links[update_link_bss].bss = nbss;
 
 			if (cwork)
 				wpa_bss_update_pending_connect(cwork, nbss);
@@ -1032,6 +1157,7 @@ void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age)
 		if (wpa_s->reassoc_same_ess &&
 		    wpa_s->wpa_state != WPA_COMPLETED &&
 		    wpa_s->last_ssid &&
+		    wpa_s->last_ssid->ssid &&
 		    bss->ssid_len == wpa_s->last_ssid->ssid_len &&
 		    os_memcmp(bss->ssid, wpa_s->last_ssid->ssid,
 			      bss->ssid_len) == 0)
@@ -1222,6 +1348,31 @@ struct wpa_bss * wpa_bss_get_id_range(struct wpa_supplicant *wpa_s,
 const u8 * wpa_bss_get_ie(const struct wpa_bss *bss, u8 ie)
 {
 	return get_ie(wpa_bss_ie_ptr(bss), bss->ie_len, ie);
+}
+
+
+/**
+ * wpa_bss_get_ie_beacon - Fetch a specified information element from a BSS entry
+ * @bss: BSS table entry
+ * @ie: Information element identitifier (WLAN_EID_*)
+ * Returns: Pointer to the information element (id field) or %NULL if not found
+ *
+ * This function returns the first matching information element in the BSS
+ * entry.
+ *
+ * This function is like wpa_bss_get_ie(), but uses IE buffer only from Beacon
+ * frames instead of either Beacon or Probe Response frames.
+ */
+const u8 * wpa_bss_get_ie_beacon(const struct wpa_bss *bss, u8 ie)
+{
+	const u8 *ies;
+
+	if (bss->beacon_ie_len == 0)
+		return NULL;
+
+	ies = wpa_bss_ie_ptr(bss);
+	ies += bss->ie_len;
+	return get_ie(ies, bss->beacon_ie_len, ie);
 }
 
 
@@ -1512,25 +1663,28 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 	end = pos + len;
 	pos += sizeof(*ap_info);
 
-	for (i = 0; i < count; i++) {
-		u8 bss_params;
-
+	for (i = 0; i < count; i++, pos += ap_info->tbtt_info_len) {
 		if (end - pos < ap_info->tbtt_info_len)
 			break;
 
-		bss_params = pos[1 + ETH_ALEN + 4];
 		mld_params = pos + mld_params_offset;
 
 		link_id = *(mld_params + 1) & EHT_ML_LINK_ID_MSK;
 		if (link_id >= MAX_NUM_MLD_LINKS)
-			return;
+			continue;
 
 		if (*mld_params != mbssid_idx) {
 			wpa_printf(MSG_DEBUG,
 				   "MLD: Reported link not part of MLD");
 		} else if (!(BIT(link_id) & *seen)) {
-			struct wpa_bss *neigh_bss =
-				wpa_bss_get_bssid(wpa_s, pos + 1);
+			struct wpa_bss *neigh_bss;
+
+			if (ssid && ssid->ssid_len)
+				neigh_bss = wpa_bss_get(wpa_s, pos + 1,
+							ssid->ssid,
+							ssid->ssid_len);
+			else
+				neigh_bss = wpa_bss_get_bssid(wpa_s, pos + 1);
 
 			*seen |= BIT(link_id);
 			wpa_printf(MSG_DEBUG, "MLD: mld ID=%u, link ID=%u",
@@ -1539,10 +1693,8 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 			if (!neigh_bss) {
 				*missing |= BIT(link_id);
 			} else if ((!ssid ||
-				    (bss_params & (RNR_BSS_PARAM_SAME_SSID |
-						   RNR_BSS_PARAM_CO_LOCATED)) ||
 				    wpa_scan_res_match(wpa_s, 0, neigh_bss,
-						       ssid, 1, 0)) &&
+						       ssid, 1, 0, true)) &&
 				   !wpa_bssid_ignore_is_listed(
 					   wpa_s, neigh_bss->bssid)) {
 				struct mld_link *l;
@@ -1555,8 +1707,6 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
 					RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
 			}
 		}
-
-		pos += ap_info->tbtt_info_len;
 	}
 }
 
@@ -1626,10 +1776,22 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
 
 	if (ssid) {
 		struct wpa_ie_data ie;
+		const u8 *rsne;
+		size_t rsne_len;
 
-		if (!elems.rsn_ie ||
-		    wpa_parse_wpa_ie(elems.rsn_ie - 2, 2 + elems.rsn_ie_len,
-				     &ie)) {
+		if (elems.rsne_override_2 && wpas_rsn_overriding(wpa_s, ssid)) {
+			rsne = elems.rsne_override_2;
+			rsne_len = elems.rsne_override_2_len;
+		} else if (elems.rsne_override &&
+			   wpas_rsn_overriding(wpa_s, ssid)) {
+			rsne = elems.rsne_override;
+			rsne_len = elems.rsne_override_len;
+		} else {
+			rsne = elems.rsn_ie;
+			rsne_len = elems.rsn_ie_len;
+		}
+		if (!rsne ||
+		    wpa_parse_wpa_ie(rsne - 2, 2 + rsne_len, &ie)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "MLD: No RSN element");
 			goto out;
 		}
@@ -1728,8 +1890,8 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
 				goto out;
 
 			wpa_bss_parse_ml_rnr_ap_info(wpa_s, bss, mbssid_idx,
-						     ap_info, len, &seen,
-						     &missing, ssid);
+						     ap_info, ap_info_len,
+						     &seen, &missing, ssid);
 
 			pos += ap_info_len;
 			len -= ap_info_len;
@@ -1771,8 +1933,9 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 	const u8 *pos = wpa_bss_ie_ptr(bss);
 	size_t len = bss->ie_len ? bss->ie_len : bss->beacon_ie_len;
 	const struct ieee80211_eht_ml *ml;
+	const struct eht_ml_reconf_common_info *common_info;
 	u16 removed_links = 0;
-	u8 ml_common_len;
+	u8 expected_ml_common_len;
 
 	if (ieee802_11_parse_elems(pos, len, &elems, 1) == ParseFailed)
 		return 0;
@@ -1787,22 +1950,33 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 	ml = (const struct ieee80211_eht_ml *) wpabuf_head(mlbuf);
 	len = wpabuf_len(mlbuf);
 
-	if (len < sizeof(*ml))
+	/* There must be at least one octet for the Common Info Length subfield
+	 */
+	if (len < sizeof(*ml) + 1UL)
 		goto out;
 
-	ml_common_len = 1;
-	if (ml->ml_control & RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
-		ml_common_len += ETH_ALEN;
+	expected_ml_common_len = 1;
+	if (le_to_host16(ml->ml_control) &
+	    RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
+		expected_ml_common_len += ETH_ALEN;
 
-	if (len < sizeof(*ml) + ml_common_len) {
+	common_info = (const struct eht_ml_reconf_common_info *) ml->variable;
+	if (len < sizeof(*ml) + common_info->len) {
 		wpa_printf(MSG_DEBUG,
 			   "MLD: Unexpected Reconfiguration ML element length: (%zu < %zu)",
-			   len, sizeof(*ml) + ml_common_len);
+			   len, sizeof(*ml) + common_info->len);
 		goto out;
 	}
 
-	pos = ml->variable + ml_common_len;
-	len -= sizeof(*ml) + ml_common_len;
+	if (common_info->len < expected_ml_common_len) {
+		wpa_printf(MSG_DEBUG,
+			   "MLD: Invalid common info len=%u; min expected=%u",
+			   common_info->len, expected_ml_common_len);
+		goto out;
+	}
+
+	pos = ml->variable + common_info->len;
+	len -= sizeof(*ml) + common_info->len;
 
 	while (len >= 2 + sizeof(struct ieee80211_eht_per_sta_profile)) {
 		size_t sub_elem_len = *(pos + 1);
@@ -1814,7 +1988,8 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 			goto out;
 		}
 
-		if  (*pos == EHT_ML_SUB_ELEM_PER_STA_PROFILE) {
+		if  (*pos == EHT_ML_SUB_ELEM_PER_STA_PROFILE &&
+		     sub_elem_len >= 2) {
 			const struct ieee80211_eht_per_sta_profile *sta_prof =
 				(const struct ieee80211_eht_per_sta_profile *)
 				(pos + 2);
@@ -1834,4 +2009,208 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
 out:
 	wpabuf_free(mlbuf);
 	return removed_links;
+}
+
+
+#ifndef CONFIG_NO_WPA
+
+static bool wpa_bss_supported_cipher(struct wpa_supplicant *wpa_s,
+				     int pairwise_cipher)
+{
+	if (!wpa_s->drv_enc)
+		return true;
+
+	if ((pairwise_cipher & WPA_CIPHER_CCMP) &&
+	    (wpa_s->drv_enc & WPA_DRIVER_CAPA_ENC_CCMP))
+		return true;
+
+	if ((pairwise_cipher & WPA_CIPHER_GCMP) &&
+	    (wpa_s->drv_enc & WPA_DRIVER_CAPA_ENC_GCMP))
+		return true;
+
+	if ((pairwise_cipher & WPA_CIPHER_CCMP_256) &&
+	    (wpa_s->drv_enc & WPA_DRIVER_CAPA_ENC_CCMP_256))
+		return true;
+
+	if ((pairwise_cipher & WPA_CIPHER_GCMP_256) &&
+	    (wpa_s->drv_enc & WPA_DRIVER_CAPA_ENC_GCMP_256))
+		return true;
+
+	return false;
+}
+
+
+static bool wpa_bss_supported_key_mgmt(struct wpa_supplicant *wpa_s,
+				       int key_mgmt)
+{
+	if (!wpa_s->drv_key_mgmt)
+		return true;
+
+	if ((key_mgmt & WPA_KEY_MGMT_IEEE8021X) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_WPA2))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA256) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_802_1X_SHA256))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_IEEE8021X) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_IEEE8021X_SHA384) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B_192) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_PSK) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_PSK) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT_PSK))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_PSK_SHA256) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_PSK_SHA256))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_SAE) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SAE))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_SAE_EXT_KEY) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_SAE) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_SAE_EXT_KEY) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE_EXT_KEY))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_OWE) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_DPP) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_DPP))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FILS_SHA256) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FILS_SHA256))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FILS_SHA384) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FILS_SHA384))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT_FILS_SHA256))
+		return true;
+	if ((key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384) &&
+	    (wpa_s->drv_key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT_FILS_SHA384))
+		return true;
+
+	return false;
+}
+
+
+static bool wpa_bss_supported_rsne(struct wpa_supplicant *wpa_s,
+				   struct wpa_ssid *ssid, const u8 *ie)
+{
+	struct wpa_ie_data data;
+
+	if (wpa_parse_wpa_ie_rsn(ie, 2 + ie[1], &data) < 0)
+		return false;
+
+	/* Check that there is a supported AKM and pairwise cipher based on
+	 * overall capabilities */
+	if (!data.pairwise_cipher || !data.key_mgmt)
+		return false;
+
+	if (wpa_s->drv_capa_known) {
+		if (!wpa_bss_supported_cipher(wpa_s, data.pairwise_cipher) ||
+		    !wpa_bss_supported_key_mgmt(wpa_s, data.key_mgmt))
+			return false;
+	}
+
+	if (ssid) {
+		/* Check that there is a supported AKM and pairwise cipher
+		 * based on the specific network profile. */
+		if ((ssid->pairwise_cipher & data.pairwise_cipher) == 0)
+			return false;
+		if ((ssid->key_mgmt & data.key_mgmt) == 0)
+			return false;
+	}
+
+	return true;
+}
+
+#endif /* CONFIG_NO_WPA */
+
+
+const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			    bool mlo)
+{
+#ifndef CONFIG_NO_WPA
+	const u8 *ie;
+
+	if (wpas_rsn_overriding(wpa_s, ssid)) {
+		if (!ssid)
+			ssid = wpa_s->current_ssid;
+
+		/* MLO cases for RSN overriding are required to use RSNE
+		 * Override 2 element and RSNXE Override element together. */
+		ie = wpa_bss_get_vendor_ie(bss, RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
+		if (mlo && ie &&
+		    !wpa_bss_get_vendor_ie(bss,
+					   RSNXE_OVERRIDE_IE_VENDOR_TYPE)) {
+			wpa_printf(MSG_DEBUG, "BSS " MACSTR
+				   " advertises RSNE Override 2 element without RSNXE Override element - ignore RSNE Override 2 element for MLO",
+				   MAC2STR(bss->bssid));
+		} else if (ie && wpa_bss_supported_rsne(wpa_s, ssid, ie)) {
+			return ie;
+		}
+
+		if (!mlo) {
+			ie = wpa_bss_get_vendor_ie(
+				bss, RSNE_OVERRIDE_IE_VENDOR_TYPE);
+			if (ie && wpa_bss_supported_rsne(wpa_s, ssid, ie))
+				return ie;
+		}
+	}
+#endif /* CONFIG_NO_WPA */
+
+	return wpa_bss_get_ie(bss, WLAN_EID_RSN);
+}
+
+
+const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+			     const struct wpa_bss *bss, struct wpa_ssid *ssid,
+			     bool mlo)
+{
+	const u8 *ie;
+
+	if (wpas_rsn_overriding(wpa_s, ssid)) {
+		ie = wpa_bss_get_vendor_ie(bss, RSNXE_OVERRIDE_IE_VENDOR_TYPE);
+		if (ie) {
+			const u8 *tmp;
+
+			tmp = wpa_bss_get_rsne(wpa_s, bss, ssid, mlo);
+			if (!tmp || tmp[0] == WLAN_EID_RSN) {
+				/* An acceptable RSNE override element was not
+				 * found, so need to ignore RSNXE overriding. */
+				goto out;
+			}
+
+			return ie;
+		}
+
+		/* MLO cases for RSN overriding are required to use RSNE
+		 * Override 2 element and RSNXE Override element together. */
+		if (mlo && wpa_bss_get_vendor_ie(
+			    bss, RSNE_OVERRIDE_2_IE_VENDOR_TYPE)) {
+			wpa_printf(MSG_DEBUG, "BSS " MACSTR
+				   " advertises RSNXE Override element without RSNE Override 2 element - ignore RSNXE Override element for MLO",
+				   MAC2STR(bss->bssid));
+			goto out;
+		}
+	}
+
+out:
+	return wpa_bss_get_ie(bss, WLAN_EID_RSNX);
 }

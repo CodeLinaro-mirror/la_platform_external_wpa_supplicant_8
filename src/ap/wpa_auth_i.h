@@ -97,6 +97,7 @@ struct wpa_state_machine {
 #endif /* CONFIG_IEEE80211R_AP */
 	unsigned int is_wnmsleep:1;
 	unsigned int pmkid_set:1;
+	unsigned int spp_amsdu:1;
 
 	unsigned int ptkstart_without_success;
 
@@ -111,6 +112,8 @@ struct wpa_state_machine {
 	size_t wpa_ie_len;
 	u8 *rsnxe;
 	size_t rsnxe_len;
+	u8 *rsn_selection;
+	size_t rsn_selection_len;
 
 	enum {
 		WPA_VERSION_NO_WPA = 0 /* WPA not used */,
@@ -124,6 +127,9 @@ struct wpa_state_machine {
 	u32 dot11RSNAStatsTKIPLocalMICFailures;
 	u32 dot11RSNAStatsTKIPRemoteMICFailures;
 
+	bool rsn_override;
+	bool rsn_override_2;
+
 #ifdef CONFIG_IEEE80211R_AP
 	u8 xxkey[PMK_LEN_MAX]; /* PSK or the second 256 bits of MSK, or the
 				* first 384 bits of MSK */
@@ -136,7 +142,7 @@ struct wpa_state_machine {
 	size_t r0kh_id_len;
 	u8 *assoc_resp_ftie;
 
-	void (*ft_pending_cb)(void *ctx, const u8 *dst, const u8 *bssid,
+	void (*ft_pending_cb)(void *ctx, const u8 *dst,
 			      u16 auth_transaction, u16 status,
 			      const u8 *ies, size_t ies_len);
 	void *ft_pending_cb_ctx;
@@ -183,6 +189,8 @@ struct wpa_state_machine {
 		struct wpa_authenticator *wpa_auth;
 	} mld_links[MAX_NUM_MLD_LINKS];
 #endif /* CONFIG_IEEE80211BE */
+
+	bool ssid_protection;
 };
 
 
@@ -259,6 +267,8 @@ struct wpa_authenticator {
 #endif /* CONFIG_P2P */
 
 #ifdef CONFIG_IEEE80211BE
+	/* MLD-level PMKSA cache for non-AP MLD entries only. */
+	struct rsn_pmksa_cache *ml_pmksa;
 	bool is_ml;
 	u8 mld_addr[ETH_ALEN];
 	u8 link_id;
