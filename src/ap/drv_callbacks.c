@@ -317,6 +317,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 				   "Failed to initialize WPA state machine");
 			return -1;
 		}
+		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
 					  hapd->iface->freq,
 					  ie, ielen,
@@ -382,8 +383,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		}
 		if (status != WLAN_STATUS_SUCCESS) {
 			wpa_printf(MSG_DEBUG,
-				   "WPA/RSN information element rejected? (res %u)",
-				   res);
+				   "WPA/RSN information element rejected? (res %u) auth_algo %d",
+				   res, sta->auth_alg);
 			wpa_hexdump(MSG_DEBUG, "IE", ie, ielen);
 			goto fail;
 		}
