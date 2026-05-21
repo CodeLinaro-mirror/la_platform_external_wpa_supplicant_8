@@ -247,6 +247,25 @@ void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
 	set_wpa_sm_for_each_partner_link(hapd, psta, NULL);
 }
 
+
+void clear_wpa_sm_for_all_sta(struct hostapd_data *hapd,
+			      struct wpa_state_machine *wpa_sm)
+{
+	struct hostapd_data *lhapd;
+
+	if (!hapd->mld)
+		return;
+
+	for_each_mld_link(lhapd, hapd) {
+		struct sta_info *sta;
+
+		for (sta = lhapd->sta_list; sta; sta = sta->next) {
+			if (sta->wpa_sm == wpa_sm)
+				sta->wpa_sm = NULL;
+		}
+	}
+}
+
 #endif /* CONFIG_IEEE80211BE */
 
 
@@ -515,6 +534,12 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	wpabuf_free(sta->sae_pw_id);
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	crypto_ecdh_deinit(sta->eap_auth_data.ecdh);
+	wpabuf_clear_free(sta->eap_auth_data.dhss);
+	os_free(sta->eap_auth_data.rsnxe);
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	os_free(sta);
 }
@@ -1281,8 +1306,9 @@ retry:
 }
 
 
-int ap_sta_set_vlan(struct hostapd_data *hapd, struct sta_info *sta,
-		    struct vlan_description *vlan_desc)
+static int ap_sta_set_vlan_helper(struct hostapd_data *hapd,
+				  struct sta_info *sta,
+				  struct vlan_description *vlan_desc)
 {
 	struct hostapd_vlan *vlan = NULL, *wildcard_vlan = NULL;
 	struct hostapd_data *vlan_bss = hapd;
@@ -1393,7 +1419,41 @@ done:
 }
 
 
-int ap_sta_bind_vlan(struct hostapd_data *hapd, struct sta_info *sta)
+int ap_sta_set_vlan(struct hostapd_data *hapd, struct sta_info *sta,
+		    struct vlan_description *vlan_desc)
+{
+	int ret;
+#ifdef CONFIG_IEEE80211BE
+	size_t i;
+	struct hapd_interfaces *interfaces = hapd->iface->interfaces;
+#endif /* CONFIG_IEEE80211BE */
+
+	ret = ap_sta_set_vlan_helper(hapd, sta, vlan_desc);
+	if (ret)
+		return ret;
+#ifdef CONFIG_IEEE80211BE
+	for (i = 0; interfaces && i < interfaces->count; i++) {
+		struct sta_info *tmp_sta;
+		struct hostapd_data *tmp_hapd = interfaces->iface[i]->bss[0];
+
+		if (!tmp_hapd->conf->mld_ap ||
+		    hapd == tmp_hapd ||
+		    !hostapd_is_ml_partner(hapd, tmp_hapd))
+			continue;
+
+		tmp_sta = ap_get_sta(tmp_hapd, sta->addr);
+		if (tmp_sta)
+			ap_sta_set_vlan_helper(tmp_hapd, tmp_sta, vlan_desc);
+	}
+
+#endif /* CONFIG_IEEE80211BE */
+
+	return 0;
+}
+
+
+static int ap_sta_bind_vlan_helper(struct hostapd_data *hapd,
+				   struct sta_info *sta)
 {
 #ifndef CONFIG_NO_VLAN
 	const char *iface;
@@ -1465,7 +1525,8 @@ skip_counting:
 		       HOSTAPD_LEVEL_DEBUG, "binding station to interface "
 		       "'%s'", iface);
 
-	if (wpa_auth_sta_set_vlan(sta->wpa_sm, sta->vlan_id) < 0)
+	if (wpa_auth_sta_set_vlan(sta->wpa_sm, hapd->wpa_auth,
+				  sta->vlan_id) < 0)
 		wpa_printf(MSG_INFO, "Failed to update VLAN-ID for WPA");
 
 	ret = hostapd_drv_set_sta_vlan(iface, hapd, sta->addr, sta->vlan_id,
@@ -1485,6 +1546,37 @@ done:
 #else /* CONFIG_NO_VLAN */
 	return 0;
 #endif /* CONFIG_NO_VLAN */
+}
+
+
+int ap_sta_bind_vlan(struct hostapd_data *hapd, struct sta_info *sta)
+{
+	int ret;
+#ifdef CONFIG_IEEE80211BE
+	size_t i;
+	struct hapd_interfaces *interfaces = hapd->iface->interfaces;
+#endif /* CONFIG_IEEE80211BE */
+
+	ret = ap_sta_bind_vlan_helper(hapd, sta);
+	if (ret)
+		return ret;
+#ifdef CONFIG_IEEE80211BE
+	for (i = 0; interfaces && i < interfaces->count; i++) {
+		struct sta_info *tmp_sta;
+		struct hostapd_data *tmp_hapd = interfaces->iface[i]->bss[0];
+
+		if (!tmp_hapd->conf->mld_ap ||
+		    hapd == tmp_hapd ||
+		    !hostapd_is_ml_partner(hapd, tmp_hapd))
+			continue;
+
+		tmp_sta = ap_get_sta(tmp_hapd, sta->addr);
+		if (tmp_sta)
+			ap_sta_bind_vlan_helper(tmp_hapd, tmp_sta);
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	return 0;
 }
 
 
@@ -1987,9 +2079,12 @@ static void ap_sta_remove_link_sta(struct hostapd_data *hapd,
 int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
 {
 	const u8 *mld_link_addr = NULL;
-	bool mld_link_sta = false;
+	bool mld_link_sta = false, epp_sta = false;
 	u16 eml_cap = 0;
 
+#ifdef CONFIG_ENC_ASSOC
+	epp_sta = sta->epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 	/*
 	 * If a station that is already associated to the AP, is trying to
 	 * authenticate again, remove the STA entry, in order to make sure the
@@ -2023,7 +2118,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
 			    sta->supported_rates_len,
 			    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
 			    sta->flags, 0, 0, 0, 0,
-			    mld_link_addr, mld_link_sta, eml_cap)) {
+			    mld_link_addr, mld_link_sta, eml_cap, epp_sta)) {
 		hostapd_logger(hapd, sta->addr,
 			       HOSTAPD_MODULE_IEEE80211,
 			       HOSTAPD_LEVEL_NOTICE,

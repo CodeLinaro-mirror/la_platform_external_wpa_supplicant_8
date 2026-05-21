@@ -11,6 +11,7 @@
 
 #include "common/nan_defs.h"
 #include "common/wpa_common.h"
+#include "utils/list.h"
 
 
 #ifdef ANDROID
@@ -23,9 +24,13 @@ struct nan_cluster_config;
 enum nan_reason;
 struct ieee80211_mgmt;
 
+struct nan_de_pmkid {
+	struct dl_list list;
+	u8 pmkid[PMKID_LEN];
+};
+
 /*
- * struct nan_device_capabilities - NAN device capabilities.
- *
+ * struct nan_device_capabilities - NAN device capabilities
  * @cdw_info: Committed DW information
  * @supported_bands: Supported bands
  * @op_mode: Operation mode
@@ -404,10 +409,9 @@ struct nan_peer_schedule {
 
 /**
  * struct nan_peer_potential_avail - NAN peer potential availability
- *
  * @n_maps: Number of maps
  * @maps: Array of maps
- * @is_band: Indicates whether the entries are bands or channels
+ * @is_band: Indicates whether the entries are bands (true) or channels (false)
  * @preference: Preference value for the availability entry
  * @utilization: Utilization value for the availability entry
  * @rx_nss: Number of spatial streams supported by the peer for RX during
@@ -416,7 +420,7 @@ struct nan_peer_schedule {
  * @entries: Array of band/channel entries
  */
 struct nan_peer_potential_avail {
-	u8 n_maps;
+	unsigned int n_maps;
 	struct pot_entry {
 		bool is_band;
 		u8 preference;
@@ -457,8 +461,8 @@ struct nan_config {
 
 	struct nan_device_capabilities dev_capa;
 
-	/* See Table 141 (Capability Info Field) */
-	u8 dev_capa_ext_reg_info;
+	/* Wi-Fi Aware spec v4.0, Table 141 (Capability Info field) */
+	u8 dev_capa_ext_reg_info; /* NAN_DEV_CAPA_EXT_INFO_0_* */
 
 	struct nan_pairing_cfg pairing_cfg;
 	u8 nik[NAN_NIK_LEN];
@@ -476,21 +480,24 @@ struct nan_config {
 
 	/*
 	 * Supported Pairing Bootstrapping Methods (PBM).
-	 * See Table 128 (NPBA format)
+	 * See Wi-Fi Aware spec v4.0, Table 128 (NPBA format).
 	 */
 	u16 supported_bootstrap_methods;
 
-	/* Auto-accepted bootstrapping methods. See Table 128 */
+	/* Auto-accepted bootstrapping methods.
+	 * See Wi-Fi Aware spec v4.0, Table 128 (NPBA format). */
 	u16 auto_accept_bootstrap_methods;
 
 	/*
-	 * Bootstrap comeback timeout in TUs. This value would be used to
-	 * indicate to the peer NAN device requesting bootstrapping to be
-	 * performed, when to send the bootstrapping request again
+	 * Bootstrap comeback timeout in TUs. This value is used to indicate to
+	 * the peer NAN device requesting bootstrapping to be performed, when
+	 * to send the bootstrapping request again.
 	 */
 	u16 bootstrap_comeback_timeout;
 
-	/* Security capabilities. See Table 122, capabilities field */
+	/* Security capabilities. See Wi-Fi Aware spec v4.0, Table 122 (Cipher
+	 * Suite Information attribute (CSIA) field format), Capabilities field.
+	 */
 	u8 security_capab;
 
 	/**
@@ -498,7 +505,7 @@ struct nan_config {
 	 * @ctx: Callback context from cb_ctx
 	 * @config: NAN cluster configuration
 	 */
-	int (*start)(void *ctx, struct nan_cluster_config *config);
+	int (*start)(void *ctx, const struct nan_cluster_config *config);
 
 	/**
 	 * stop - Stop NAN
@@ -511,7 +518,8 @@ struct nan_config {
 	 * @ctx: Callback context from cb_ctx
 	 * @config: NAN cluster configuration
 	 */
-	int (*update_config)(void *ctx, struct nan_cluster_config *config);
+	int (*update_config)(void *ctx,
+			     const struct nan_cluster_config *config);
 
 	/**
 	 * ndp_action_notif - Notify NDP action is required
@@ -578,9 +586,9 @@ struct nan_config {
 	 *     with the prioritized frequencies. On successful return the
 	 *     channels should be sorted having the higher priority channels
 	 *     first.
-	 * Returns 0 on success, -1 on failure.
+	 * Returns: 0 on success, -1 on failure.
 	 *
-	 * Note: the callback is responsible for allocating chans->chans as
+	 * Note: The callback is responsible for allocating chans->chans as
 	 * needed. The caller (the NAN module) is responsible for freeing the
 	 * memory allocated for the chans->chans.
 	 *
@@ -590,13 +598,12 @@ struct nan_config {
 	int (*get_chans)(void *ctx, u8 map_id, struct nan_channels *chans);
 
 	/**
-	 * send_naf - Transmit a NAN action frame
-	 *
+	 * send_naf - Transmit a NAN Action frame
 	 * @ctx: Callback context from cb_ctx
 	 * @dst: Destination MAC address
 	 * @src: Source MAC address. Can be NULL.
-	 * @cluster_id: The cluster ID.
-	 * @buf: Frame body (starting from Category field)
+	 * @cluster_id: The cluster ID
+	 * @buf: Frame body (starting from the Category field)
 	 * Returns: 0 on success, -1 on failure
 	 */
 	int (*send_naf)(void *ctx, const u8 *dst, const u8 *src,
@@ -636,7 +643,7 @@ struct nan_config {
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
 	 * @pbm: Pairing Bootstrapping Methods from the request. As defined in
-	 *     Table 128 (NPBA format).
+	 *     Wi-Fi Aware spec v4.0, Table 128 (NPBA format).
 	 * @handle: Service handle
 	 * @requestor_instance_id: Requestor instance ID
 	 */
@@ -683,8 +690,7 @@ struct nan_config {
 	u16 (*get_supported_bootstrap_methods)(void *ctx, int handle);
 
 	/**
-	 * send_pasn - Function handler to transmit a PASN auth frame
-	 *
+	 * send_pasn - Transmit a PASN Authentication frame
 	 * @ctx: Callback context from cb_ctx
 	 * @data: Frame to transmit
 	 * @data_len: Length of frame to transmit
@@ -694,7 +700,6 @@ struct nan_config {
 
 	/**
 	 * pairing_status_cb - Callback for reporting NAN pairing result
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_addr: Peer NAN device address
 	 * @akmp: AKMP used in the pairing
@@ -707,7 +712,7 @@ struct nan_config {
 	 *	WLAN_STATUS_UNSPECIFIED_FAILURE, -1 otherwise
 	 */
 	int (*pairing_result_cb)(void *ctx, const u8 *peer_addr, int akmp,
-				 int cipher, u8 status, struct wpa_ptk *ptk,
+				 int cipher, u16 status, struct wpa_ptk *ptk,
 				 const u8 *nd_pmk);
 
 	/**
@@ -743,19 +748,17 @@ struct nan_config {
 	 *	the NPKSA.
 	 * Returns: The NPK on success, NULL on failure
 	 */
-	const struct wpabuf *(*get_npk_akmp)(void *ctx, const u8 *peer_nmi,
-					     const u8 *nonce, const u8 *tag,
-					     int *akmp);
-
+	const struct wpabuf * (*get_npk_akmp)(void *ctx, const u8 *peer_nmi,
+					      const u8 *nonce, const u8 *tag,
+					      int *akmp);
 
 	/**
 	 * pairing_request - Notify about received pairing request
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
 	 * @csid: Cipher suite ID requested by the peer
 	 * @instance_id: Service instance ID for which the pairing is requested
-	 * @rsn_data: Parsed RSN IE data from peer's Auth frame
+	 * @rsn_data: Parsed RSNE data from peer's Authentication frame
 	 */
 	void (*pairing_request)(void *ctx, const u8 *peer_nmi, u8 csid,
 				u8 instance_id,
@@ -817,8 +820,9 @@ struct nan_config {
 
 struct nan_data * nan_init(const struct nan_config *cfg);
 void nan_deinit(struct nan_data *nan);
-int nan_start(struct nan_data *nan, struct nan_cluster_config *config);
-int nan_update_config(struct nan_data *nan, struct nan_cluster_config *config);
+int nan_start(struct nan_data *nan, const struct nan_cluster_config *config);
+int nan_update_config(struct nan_data *nan,
+		      const struct nan_cluster_config *config);
 void nan_stop(struct nan_data *nan);
 void nan_flush(struct nan_data *nan);
 
@@ -840,16 +844,13 @@ void nan_set_cluster_id(struct nan_data *nan, const u8 *cluster_id);
 int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 		  size_t len);
 int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
-		  size_t data_len, u8 acked);
+		  size_t data_len, bool acked);
 int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params);
-
-int nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr,
-				     u8 map_id,
-				     struct nan_device_capabilities *capa);
+struct nan_device_capabilities *
+nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr, u8 map_id);
 int nan_peer_get_tk(struct nan_data *nan, const u8 *addr,
 		    const u8 *peer_ndi, const u8 *local_ndi,
-		    u8 *tk, size_t *tk_len,
-		    enum nan_cipher_suite_id *csid);
+		    u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid);
 int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,
 			       struct nan_peer_schedule *sched);
 int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
@@ -872,11 +873,15 @@ void nan_local_sched_update(struct nan_data *nan, struct nan_schedule *sched);
 bool nan_peer_pairing_supported(struct nan_data *nan, const u8 *addr);
 bool nan_peer_npk_nik_caching_supported(struct nan_data *nan, const u8 *addr);
 int nan_get_peer_ndc_freq(struct nan_data *nan ,
-			  struct nan_peer_schedule *peer_sched,
+			  const struct nan_peer_schedule *peer_sched,
 			  u8 map_idx);
 int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
 			     enum nan_cipher_suite_id csid,
 			     const u8 *peer_nmi, u8 *nd_pmk);
+int nan_crypto_pmkid_list(struct dl_list *pmkid_list, const u8 *raddr,
+			  const u8 *srv_id, const int *cipher_suites_list,
+			  const u8 *pmk);
+void nan_crypto_clear_pmkid_list(struct dl_list *pmkid_list);
 void nan_add_dev_capa_attr(struct nan_data *nan, struct wpabuf *buf);
 int nan_peer_del_all_ndps(struct nan_data *nan, const u8 *addr);
 int nan_get_chan_entry(struct nan_data *nan, const struct nan_sched_chan *chan,
@@ -902,7 +907,7 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 				   u8 auth_mode, int cipher, int handle,
 				   u8 peer_instance_id, bool responder,
 				   const char *password,
-				   struct nan_schedule *sched);
+				   const struct nan_schedule *sched);
 int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 				    size_t data_len, bool acked);
 int nan_pairing_auth_rx(struct nan_data *nan_data,
@@ -916,7 +921,7 @@ int nan_pairing_set_nik_lifetime(struct nan_data *nan, u32 lifetime);
 bool nan_pairing_is_peer_paired(struct nan_data *nan_data, const u8 *peer_addr);
 int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr);
 void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr);
-#else
+#else /* CONFIG_PASN */
 static inline int nan_pairing_add_attrs(struct nan_data *nan_data,
 					struct wpabuf *buf)
 {
@@ -928,7 +933,7 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 				   u8 auth_mode, int cipher, int handle,
 				   u8 peer_instance_id, bool responder,
 				   const char *password,
-				   struct nan_schedule *sched)
+				   const struct nan_schedule *sched)
 {
 	return -1;
 }

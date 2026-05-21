@@ -27,6 +27,7 @@ struct sae_pt;
 struct sae_password_entry;
 struct mld_info;
 struct mld_link_info;
+struct rsn_pmksa_cache_entry;
 
 enum link_parse_type {
 	LINK_PARSE_ASSOC,
@@ -304,14 +305,16 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
 				  struct sta_info *sta,
 				  const u8 *ies, size_t ies_len,
 				  bool reassoc, int tx_link_status,
-				  bool offload);
+				  bool offload,
+				  bool *set_beacon);
 
 void ml_deinit_link_reconf_req(struct link_reconf_req_list **req_list_ptr);
 int ieee80211_ml_process_link(struct hostapd_data *hapd,
 			      struct sta_info *origin_sta,
 			      struct mld_link_info *link,
 			      const u8 *ies, size_t ies_len,
-			      enum link_parse_type type, bool offload);
+			      enum link_parse_type type, bool offload,
+			      bool *set_beacon);
 void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
 				   struct mld_link_info *link);
 
@@ -322,5 +325,13 @@ void hostapd_link_reconf_resp_tx_status(struct hostapd_data *hapd,
 					struct sta_info *sta,
 					const struct ieee80211_mgmt *mgmt,
 					size_t len, int ok);
+
+size_t hostapd_eid_eht_ml_tid_to_link_map_len(struct hostapd_data *hapd);
+u8 * hostapd_eid_eht_ml_tid_to_link_map(struct hostapd_data *hapd, u8 *eid);
+
+void ieee80211_send_eap_req(struct hostapd_data *hapd, struct sta_info *sta,
+			    u8 type, u16 auth_transaction, u16 status,
+			    struct rsn_pmksa_cache_entry *cached_pmk,
+			    const u8 *eap_req, size_t eap_req_len);
 
 #endif /* IEEE802_11_H */

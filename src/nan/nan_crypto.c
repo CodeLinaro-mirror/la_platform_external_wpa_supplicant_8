@@ -25,7 +25,7 @@
 /* NAN ciphers use only SHA256 and SHA384, and SHA384 has a bigger digest */
 #define MAX_MAC_LEN SHA384_MAC_LEN
 
-static u32 nan_crypto_cipher_kck_len(enum nan_cipher_suite_id cipher)
+static size_t nan_crypto_cipher_kck_len(enum nan_cipher_suite_id cipher)
 {
 	switch (cipher) {
 	case NAN_CS_SK_CCM_128:
@@ -40,7 +40,7 @@ static u32 nan_crypto_cipher_kck_len(enum nan_cipher_suite_id cipher)
 }
 
 
-static u32 nan_crypto_cipher_kek_len(enum nan_cipher_suite_id cipher)
+static size_t nan_crypto_cipher_kek_len(enum nan_cipher_suite_id cipher)
 {
 	switch (cipher) {
 	case NAN_CS_SK_CCM_128:
@@ -55,7 +55,7 @@ static u32 nan_crypto_cipher_kek_len(enum nan_cipher_suite_id cipher)
 }
 
 
-static u32 nan_cipher_key_len(enum nan_cipher_suite_id cipher)
+static size_t nan_cipher_key_len(enum nan_cipher_suite_id cipher)
 {
 	switch (cipher) {
 	case NAN_CS_SK_CCM_128:
@@ -70,7 +70,7 @@ static u32 nan_cipher_key_len(enum nan_cipher_suite_id cipher)
 }
 
 
-static int nan_crypto_sha256(const u8 *plaintext, u32 psize, u8 *output)
+static int nan_crypto_sha256(const u8 *plaintext, size_t psize, u8 *output)
 {
 	const u8 *addrs[1];
 	size_t lens[1];
@@ -78,11 +78,11 @@ static int nan_crypto_sha256(const u8 *plaintext, u32 psize, u8 *output)
 	addrs[0] = plaintext;
 	lens[0] = psize;
 
-	return sha256_vector(1, addrs,  lens, output);
+	return sha256_vector(1, addrs, lens, output);
 }
 
 
-static int nan_crypto_sha384(const u8 *plaintext, u32 psize, u8 *output)
+static int nan_crypto_sha384(const u8 *plaintext, size_t psize, u8 *output)
 {
 	const u8 *addrs[1];
 	size_t lens[1];
@@ -107,83 +107,6 @@ static int nan_crypto_hmac_sha384(const u8 *key, u32 ksize,
 				  u32 psize, u8 *output)
 {
 	return hmac_sha384(key, ksize, plaintext, psize, output);
-}
-
-
-/*
- * nan_crypto_kdf - NAN key derivation function
- *
- * @key: PMK
- * @key_len: PMK length
- * @label: Unique string used for the key derivation for NAN
- * @data: Input for the key derivation
- * @data_len: Length of &input
- * @buf: Buffer to hold the derived keys
- * @buf_len: Length of &buf
- * @hmac_func: Pointer to a hmac function that will be used to compute the
- *         digest for each iteration.
- * @mac_len: the size of the digest computed by %hmac_func
- */
-static int nan_crypto_kdf(const u8 *key, size_t key_len, const char *label,
-			  const u8 *data, size_t data_len, u8 *buf,
-			  size_t buf_len,
-			  int (*hmac_func)(const u8 *key, u32 ksize,
-					   const u8 *plaintext, u32 psize,
-					   u8 *output),
-			  u32 mac_len)
-{
-	u16 label_len = os_strlen(label);
-	u32 input_len, pos;
-	u8 *input;
-	int res = -1;
-	u16 counter = 1;
-
-	/*
-	 * counter length (2) + label length + data length +
-	 * number of bits (2)
-	 */
-	input_len = 2 + label_len + data_len + 2;
-	input = os_zalloc(input_len);
-	if (!input)
-		return -1;
-
-	os_memcpy(input + 2, label, os_strlen(label));
-	os_memcpy(input + 2 + label_len, data, data_len);
-	WPA_PUT_LE16(input + 2 + label_len + data_len, (buf_len * 8));
-
-	pos = 0;
-	while (pos < buf_len) {
-		u32 plen = buf_len - pos;
-
-		WPA_PUT_LE16(input, counter);
-
-		wpa_hexdump_key(MSG_DEBUG, "NAN: KDF: RAW DATA",
-				input, input_len);
-		if (plen >= mac_len) {
-			if ((*hmac_func)(key, key_len, input, input_len,
-					 &buf[pos]) < 0)
-				goto fail;
-			pos += mac_len;
-		} else {
-			u8 hash[MAX_MAC_LEN];
-
-			if ((*hmac_func)(key, key_len, input, input_len,
-					 hash) < 0)
-				goto fail;
-			os_memcpy(&buf[pos], hash, plen);
-			pos += plen;
-			forced_memzero(hash, sizeof(hash));
-			break;
-		}
-		counter++;
-	}
-
-	res = 0;
-fail:
-	forced_memzero(input, input_len);
-	os_free(input);
-
-	return res;
 }
 
 
@@ -227,16 +150,11 @@ int nan_crypto_pmk_to_ptk(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	ptk_len = ptk->kck_len + ptk->kek_len + ptk->tk_len;
 
 	if (NAN_CS_IS_128(cipher))
-		ret = nan_crypto_kdf(pmk, PMK_LEN, NAN_PTK_LABEL, data,
-				     sizeof(data), tmp, ptk_len,
-				     nan_crypto_hmac_sha256,
-				     SHA256_MAC_LEN);
+		ret = sha256_prf(pmk, PMK_LEN, NAN_PTK_LABEL, data,
+				 sizeof(data), tmp, ptk_len);
 	else
-		ret = nan_crypto_kdf(pmk, PMK_LEN, NAN_PTK_LABEL, data,
-				     sizeof(data), tmp, ptk_len,
-				     nan_crypto_hmac_sha384,
-				     SHA384_MAC_LEN);
-
+		ret = sha384_prf(pmk, PMK_LEN, NAN_PTK_LABEL, data,
+				 sizeof(data), tmp, ptk_len);
 	if (ret)
 		goto out;
 
@@ -271,7 +189,7 @@ out:
  * @serv_id: ID of the service providing the PMK
  * @cipher: Negotiated pairwise cipher
  * @pmkid: Buffer to hold the pmkid
- * returns: 0 on success, negative value of failure
+ * Returns: 0 on success, negative value of failure
  */
 int nan_crypto_calc_pmkid(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 			  const u8 *serv_id,
@@ -279,7 +197,7 @@ int nan_crypto_calc_pmkid(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 {
 	u8 data[sizeof(NAN_PMKID_LABEL) - 1 + 2 * ETH_ALEN +
 		NAN_SERVICE_ID_LEN];
-	u8 digest[SHA384_MAC_LEN];
+	u8 digest[MAX_MAC_LEN];
 	int ret;
 
 	os_memset(data, 0, sizeof(data));
@@ -288,10 +206,7 @@ int nan_crypto_calc_pmkid(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	if (!NAN_CS_IS_VALID_NDP(cipher))
 		return -1;
 
-	if (!serv_id)
-		return -1;
-
-	if (is_zero_ether_addr(serv_id))
+	if (!serv_id || is_zero_ether_addr(serv_id))
 		return -1;
 
 	os_memcpy(data, NAN_PMKID_LABEL, sizeof(NAN_PMKID_LABEL) - 1);
@@ -322,14 +237,13 @@ out:
 }
 
 
-/*
- * nan_crypto_calc_auth_token - calculate authentication token
- *
+/**
+ * nan_crypto_calc_auth_token - Calculate authentication token
  * @buf: Buffer on which to calculate the authentication token
- * @len: Length of &buf
- * @cipher: Negotiated nan cipher
+ * @len: Length of &buf in octets
+ * @cipher: Negotiated NAN cipher
  * @token: Buffer to hold the token (NAN_AUTH_TOKEN_LEN octets)
- * returns 0 on success, and a negative error value on failure.
+ * Returns: 0 on success, and a negative error value on failure.
  */
 int nan_crypto_calc_auth_token(enum nan_cipher_suite_id cipher,
 			       const u8 *buf, size_t len, u8 *token)
@@ -361,19 +275,18 @@ int nan_crypto_calc_auth_token(enum nan_cipher_suite_id cipher,
 
 /*
  * nan_crypto_key_mic - Calculate MIC over the given buffer
- *
  * @buf: Buffer on which to calculate the MIC
  * @len: Length of &buf
  * @kck: Key Confirmation Key
  * @kck_len: Length of &kck
  * @cipher: Cipher suite identifier.
  * @mic: On successful return, would hold the MIC.
- * return 0 on success, and a negative error value on failure.
+ * Return: 0 on success, and a negative error value on failure.
  */
 int nan_crypto_key_mic(const u8 *buf, size_t len, const u8 *kck,
 		       size_t kck_len, u8 cipher, u8 *mic)
 {
-	u8 digest[SHA384_MAC_LEN];
+	u8 digest[MAX_MAC_LEN];
 	u8 mic_len;
 	int ret;
 
@@ -429,11 +342,11 @@ int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
 	return -1;
 }
 
+
 /**
  * nan_crypto_derive_nira_tag - Derive NIRA tag
- *
  * @nik: NAN Identity Key
- * @nik_len: Length of &nik
+ * @nik_len: Length of &nik in bytes
  * @nmi_addr: NAN Management Interface address (6 bytes)
  * @nira_nonce: NIRA nonce (8 bytes)
  * Returns: wpabuf containing the derived tag (8 bytes) or %NULL on failure
@@ -443,42 +356,44 @@ int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
  * The caller is responsible for freeing the returned wpabuf using
  * wpabuf_free().
  */
-struct wpabuf *nan_crypto_derive_nira_tag(const u8 *nik, size_t nik_len,
-					  const u8 *nmi_addr,
-					  const u8 *nira_nonce)
+struct wpabuf * nan_crypto_derive_nira_tag(const u8 *nik, size_t nik_len,
+					   const u8 *nmi_addr,
+					   const u8 *nira_nonce)
 {
 	u8 data[NAN_NIRA_STR_LEN + ETH_ALEN + NAN_NIRA_NONCE_LEN];
 	u8 tag[SHA256_MAC_LEN];
 	struct wpabuf *tag_buf;
 
 	if (!nik || nik_len != NAN_NIK_LEN) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Invalid NIK for tag derivation (len=%zu)",
 			   nik ? nik_len : 0);
 		return NULL;
 	}
 
 	if (!nmi_addr || !nira_nonce) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Invalid parameters for tag derivation");
 		return NULL;
 	}
 
+	/* Tag = Truncate-64(HMAC-SHA-256(NIK, “NIR”, NMI || Nonce)) */
+
 	/* Construct data: "NIR" || NMI Address || Nonce */
-	os_memcpy(data, "NIR", NAN_NIRA_STR_LEN);
+	os_memcpy(data, NAN_NIRA_STR, NAN_NIRA_STR_LEN);
 	os_memcpy(&data[NAN_NIRA_STR_LEN], nmi_addr, ETH_ALEN);
 	os_memcpy(&data[NAN_NIRA_STR_LEN + ETH_ALEN], nira_nonce,
 		  NAN_NIRA_NONCE_LEN);
 
 	/* Compute HMAC-SHA-256(NIK, data) */
 	if (hmac_sha256(nik, NAN_NIK_LEN, data, sizeof(data), tag) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to compute HMAC for tag");
+		wpa_printf(MSG_INFO, "NAN: Failed to compute HMAC for tag");
 		return NULL;
 	}
 
 	tag_buf = wpabuf_alloc_copy(tag, NAN_NIRA_TAG_LEN);
 	if (!tag_buf)
-		wpa_printf(MSG_DEBUG, "NAN: Failed to allocate tag buffer");
+		wpa_printf(MSG_INFO, "NAN: Failed to allocate tag buffer");
 	else
 		wpa_hexdump(MSG_DEBUG, "NAN: Derived NIRA tag",
 			    wpabuf_head(tag_buf), wpabuf_len(tag_buf));
@@ -488,9 +403,8 @@ struct wpabuf *nan_crypto_derive_nira_tag(const u8 *nik, size_t nik_len,
 }
 
 
-/*
+/**
  * nan_crypto_derive_from_kdk - Derive a key from KDK using KDF-HASH-NNN
- *
  * @kdk: Key Derivation Key
  * @kdk_len: Length of KDK in bytes
  * @cipher: Cipher suite identifier (NAN_CS_PK_PASN_128 or NAN_CS_PK_PASN_256)
@@ -508,15 +422,15 @@ static int nan_crypto_derive_from_kdk(const u8 *kdk, size_t kdk_len,
 				      enum nan_cipher_suite_id cipher,
 				      const char *label,
 				      const u8 *initiator_nmi,
-				      const u8 *responder_nmi, u8 *key,
-				      size_t key_len)
+				      const u8 *responder_nmi,
+				      u8 *key, size_t key_len)
 {
 	u8 data[ETH_ALEN * 2];
 	int ret = 0;
 
-	if (!kdk || !label || !initiator_nmi || !responder_nmi || !key ||
-	    !key_len) {
-		wpa_printf(MSG_DEBUG,
+	if (!kdk || !kdk_len || !label || !initiator_nmi || !responder_nmi ||
+	    !key || !key_len) {
+		wpa_printf(MSG_INFO,
 			   "NAN: Invalid parameters for NPK/KEK derivation");
 		return -1;
 	}
@@ -532,33 +446,32 @@ static int nan_crypto_derive_from_kdk(const u8 *kdk, size_t kdk_len,
 		ret = sha384_prf(kdk, kdk_len, label, data, sizeof(data), key,
 				 key_len);
 	} else {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Unsupported cipher suite for key derivation: %d",
 			   cipher);
 		return -1;
 	}
 
 	if (ret) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: NPK/KEK derivation failed (ret=%d)", ret);
 		return ret;
 	}
 
 	wpa_hexdump_key(MSG_DEBUG, "NAN: KDK", kdk, kdk_len);
 	wpa_printf(MSG_DEBUG, "NAN: Label: %s", label);
-	wpa_hexdump_key(MSG_DEBUG, "NAN: Initiator NMI", initiator_nmi,
-			ETH_ALEN);
-	wpa_hexdump_key(MSG_DEBUG, "NAN: Responder NMI", responder_nmi,
-			ETH_ALEN);
+	wpa_printf(MSG_DEBUG, "NAN: Initiator NMI " MACSTR,
+		   MAC2STR(initiator_nmi));
+	wpa_printf(MSG_DEBUG, "NAN: Responder NMI " MACSTR,
+		   MAC2STR(responder_nmi));
 	wpa_hexdump_key(MSG_DEBUG, "NAN: Derived key", key, key_len);
 
 	return 0;
 }
 
 
-/*
+/**
  * nan_crypto_derive_npk - Derive NPK from NM-KDK for opportunistic pairing
- *
  * @kdk: NM-KDK (NAN Master Key Derivation Key)
  * @kdk_len: Length of KDK in bytes
  * @cipher: Cipher suite identifier (NAN_CS_PK_PASN_128 or NAN_CS_PK_PASN_256)
@@ -577,9 +490,9 @@ static int nan_crypto_derive_from_kdk(const u8 *kdk, size_t kdk_len,
  * SHA-384 as defined in Wi-Fi Aware Specification v4.0, section 7.1.2. But for
  * opportunistic pairing, section 7.6.4.3 specifies KDF-HASH-256 only for NPK
  * derivation. Does this mean that SHA-256 must be used? In IEEE 802.11-2024,
- * section 12.13.8, where KDF-HASH-NNN is defined, NNN is the number of bits to
- * derive, not the hash function. Therefore, we follow the latter
- * interpretation and use the hash function corresponding to the cipher suite.
+ * 12.13.8, where KDF-HASH-NNN is defined, NNN is the number of bits to derive,
+ * not the hash function. Therefore, we follow the latter interpretation and use
+ * the hash function corresponding to the cipher suite.
  */
 int nan_crypto_derive_npk(const u8 *kdk, size_t kdk_len,
 			  enum nan_cipher_suite_id cipher,
@@ -591,8 +504,7 @@ int nan_crypto_derive_npk(const u8 *kdk, size_t kdk_len,
 	wpa_printf(MSG_DEBUG, "NAN: Deriving NPK from NM-KDK");
 
 	if (buf_len < NAN_NPK_LEN) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: NPK buffer too small: %zu bytes",
+		wpa_printf(MSG_INFO, "NAN: NPK buffer too small: %zu bytes",
 			   buf_len);
 		return -1;
 	}
@@ -603,9 +515,8 @@ int nan_crypto_derive_npk(const u8 *kdk, size_t kdk_len,
 }
 
 
-/*
+/**
  * nan_crypto_derive_kek - Derive KEK from NM-KDK
- *
  * @kdk: NM-KDK (NAN Master Key Derivation Key)
  * @kdk_len: Length of KDK in bytes
  * @cipher: Cipher suite identifier (NAN_CS_PK_PASN_128 or NAN_CS_PK_PASN_256)
@@ -614,8 +525,8 @@ int nan_crypto_derive_npk(const u8 *kdk, size_t kdk_len,
  * @ptk: Buffer for the derived KEK
  * Returns: 0 on success, -1 on failure
  *
- * KEK = KDF-HASH-NNN(NM-KDK, "NAN Management KEK Derivation",
- *                    Pairing Initiator NMI || Pairing Responder NMI)
+ * NM-KEK = KDF-HASH-MMM(NM-KDK, "NAN Management KEK Derivation",
+ *                       Pairing Initiator NMI || Pairing Responder NMI)
  */
 int nan_crypto_derive_kek(const u8 *kdk, size_t kdk_len,
 			  enum nan_cipher_suite_id cipher,
@@ -628,7 +539,7 @@ int nan_crypto_derive_kek(const u8 *kdk, size_t kdk_len,
 
 	if (cipher != NAN_CS_PK_PASN_128 &&
 	    cipher != NAN_CS_PK_PASN_256) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Unsupported cipher suite for KEK derivation: %d",
 			   cipher);
 		return -1;
@@ -642,9 +553,8 @@ int nan_crypto_derive_kek(const u8 *kdk, size_t kdk_len,
 }
 
 
-/*
+/**
  * nan_crypto_derive_nd_pmk_from_kdk - Derive ND-PMK from NM-KDK
- *
  * @kdk: NM-KDK (NAN Master Key Derivation Key)
  * @kdk_len: Length of KDK in bytes
  * @cipher: Cipher suite identifier (NAN_CS_PK_PASN_128 or NAN_CS_PK_PASN_256)
@@ -672,7 +582,7 @@ int nan_crypto_derive_nd_pmk_from_kdk(const u8 *kdk, size_t kdk_len,
 }
 
 
-/*
+/**
  * nan_crypto_encrypt_key - Encrypt key data using AES Key Wrap (RFC 3394)
  *
  * @key_data: Key data to be encrypted
@@ -697,14 +607,14 @@ struct wpabuf *nan_crypto_encrypt_key_data(const struct wpabuf *key_data,
 	struct wpabuf *encrypted_key_data;
 
 	if (!key_data || !kek || !kek_len) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Invalid parameters for key data encryption");
 		return NULL;
 	}
 
 	key_data_len = wpabuf_len(key_data);
 	if (!key_data_len) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Key data is empty for encryption");
 		return NULL;
 	}
@@ -751,9 +661,8 @@ fail:
 }
 
 
-/*
+/**
  * nan_crypto_decrypt_key_data - Decrypt NAN key data using AES-UNWRAP
- *
  * @kek: Key Encryption Key
  * @kek_len: KEK length in bytes
  * @encrypted_data: Encrypted key data to decrypt
@@ -765,16 +674,16 @@ fail:
  * (AES-WRAP requirement). The caller is responsible for freeing the returned
  * wpabuf using wpabuf_free().
  */
-struct wpabuf *nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
-					   const u8 *encrypted_data,
-					   size_t encrypted_len)
+struct wpabuf * nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
+					    const u8 *encrypted_data,
+					    size_t encrypted_len)
 {
 	struct wpabuf *decrypted;
 	size_t plain_len;
 	u8 *buf;
 
 	if (!encrypted_data || !encrypted_len) {
-		wpa_printf(MSG_ERROR, "NAN: Invalid encrypted key data");
+		wpa_printf(MSG_INFO, "NAN: Invalid encrypted key data");
 		return NULL;
 	}
 
@@ -782,7 +691,7 @@ struct wpabuf *nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
 			encrypted_data, encrypted_len);
 
 	if (!kek || !kek_len) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: No KEK available for key data decryption");
 		return NULL;
 	}
@@ -791,7 +700,7 @@ struct wpabuf *nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
 
 	/* AES-WRAP adds 8 bytes overhead */
 	if (encrypted_len < 16 || encrypted_len % 8 != 0) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: Invalid encrypted key data length %zu",
 			   encrypted_len);
 		return NULL;
@@ -800,14 +709,14 @@ struct wpabuf *nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
 	plain_len = encrypted_len - 8;
 	decrypted = wpabuf_alloc(plain_len);
 	if (!decrypted) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: Failed to allocate decryption buffer");
 		return NULL;
 	}
 
 	buf = wpabuf_put(decrypted, plain_len);
 	if (aes_unwrap(kek, kek_len, plain_len / 8, encrypted_data, buf)) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: AES unwrap failed - could not decrypt key data");
 		wpabuf_free(decrypted);
 		return NULL;
@@ -820,9 +729,8 @@ struct wpabuf *nan_crypto_decrypt_key_data(const u8 *kek, size_t kek_len,
 }
 
 
-/*
+/**
  * nan_crypto_clear_pmkid_list - Clear and free all entries in a PMKID list
- *
  * @pmkid_list: List of PMKIDs to clear
  *
  * This function removes and frees all PMKID entries from the provided list.
@@ -838,14 +746,13 @@ void nan_crypto_clear_pmkid_list(struct dl_list *pmkid_list)
 }
 
 
-/*
+/**
  * nan_crypto_pmkid_list - Generate PMKIDs for multiple cipher suites
- *
- * @pmkid_list: List to append generated PMKIDs to
+ * @pmkid_list: List to which the generated PMKIDs are appended
  * @raddr: Responder MAC address
  * @srv_id: Service ID (6 bytes)
- * @cipher_suites: Array of cipher suite identifiers (0 terminated)
- * @pmk: Pairwise Master Key to generate PMKIDs from
+ * @cipher_suites: Array of cipher suite identifiers (int_array)
+ * @pmk: PMK for which the PMKIDs are generated
  * Returns: 0 on success, -1 on failure
  *
  * This function generates a PMKID for each cipher suite in the provided array
@@ -864,9 +771,11 @@ int nan_crypto_pmkid_list(struct dl_list *pmkid_list, const u8 *raddr,
 	for (i = 0; i < cs_num; i++) {
 		struct nan_de_pmkid *p;
 		int ret;
-		u8 iaddr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+		static const u8 iaddr[ETH_ALEN] = {
+			0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+		};
 		enum nan_cipher_suite_id csid =
-			(enum nan_cipher_suite_id)cipher_suites[i];
+			(enum nan_cipher_suite_id) cipher_suites[i];
 
 		p = os_zalloc(sizeof(*p));
 		if (!p)

@@ -45,7 +45,7 @@ struct weighted_pcl;
 /**
  * P2P_MAX_REG_CLASSES - Maximum number of regulatory classes
  */
-#define P2P_MAX_REG_CLASSES 15
+#define P2P_MAX_REG_CLASSES 20
 
 /**
  * P2P_MAX_REG_CLASS_CHANNELS - Maximum number of channels per regulatory class
@@ -1441,6 +1441,14 @@ struct p2p_config {
 	 * Returns: 0 on success, -1 on failure
 	 */
 	int (*pasn_validate_pmkid)(void *ctx, const u8 *addr, const u8 *pmkid);
+
+	/**
+	 *
+	 * is_p2p_dfs_chan - DFS channel check
+	 *
+	 * To check if a channel is a DFS channel.
+	 */
+	bool (*is_p2p_dfs_chan)(void *ctx, int freq, u8 op_class, u8 chan);
 };
 
 
@@ -2823,5 +2831,8 @@ void p2p_pasn_store_ptk(struct p2p_data *p2p, struct wpa_ptk *ptk);
 int p2p_pasn_get_ptk(struct p2p_data *p2p, const u8 **buf, size_t *buf_len);
 void p2p_usd_service_hash(struct p2p_data *p2p, const char *service_name);
 int p2p_get_dira_info(struct p2p_data *p2p, char *buf, size_t buflen);
+
+void p2p_update_dfs_ap_info(struct p2p_data *p2p, int freq,
+			    enum chan_width ap_ch_width, bool disconnect_evt);
 
 #endif /* P2P_H */

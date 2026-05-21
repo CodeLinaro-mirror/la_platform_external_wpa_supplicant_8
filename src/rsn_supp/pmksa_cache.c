@@ -223,6 +223,7 @@ static void pmksa_cache_set_expiration(struct rsn_pmksa_cache *pmksa)
  * @network_ctx: Network configuration context for this PMK
  * @akmp: WPA_KEY_MGMT_* used in key derivation
  * @cache_id: Pointer to FILS Cache Identifier or %NULL if not advertised
+ * @auth_alg: Authentication algorithm used for PMK derivation
  * Returns: Pointer to the added PMKSA cache entry or %NULL on error
  *
  * This function create a PMKSA entry for a new PMK and adds it to the PMKSA
@@ -234,7 +235,7 @@ struct rsn_pmksa_cache_entry *
 pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 		const u8 *pmkid, const u8 *kck, size_t kck_len,
 		const u8 *aa, const u8 *spa, void *network_ctx, int akmp,
-		const u8 *cache_id)
+		const u8 *cache_id, u16 auth_alg)
 {
 	struct rsn_pmksa_cache_entry *entry;
 	struct os_reltime now;
@@ -279,6 +280,7 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 	entry->reauth_time = now.sec +
 		pmk_lifetime * pmk_reauth_threshold / 100;
 	entry->akmp = akmp;
+	entry->auth_alg = auth_alg;
 	if (cache_id) {
 		entry->fils_cache_id_set = 1;
 		os_memcpy(entry->fils_cache_id, cache_id, FILS_CACHE_ID_LEN);
@@ -377,7 +379,7 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
 			if (!pos->opportunistic)
 				pmksa_cache_flush(pmksa, entry->network_ctx,
 						  pos->pmk, pos->pmk_len,
-						  false);
+						  false, NULL);
 			pmksa_cache_free_entry(pmksa, pos, PMKSA_REPLACE);
 			break;
 		}
@@ -452,9 +454,11 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
  * @pmk_len: PMK length
  * @external_only: Flush only PMKSA cache entries configured by external
  * applications
+ * @addr: AA to match or %NULL to match all addresses
  */
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
-		       const u8 *pmk, size_t pmk_len, bool external_only)
+		       const u8 *pmk, size_t pmk_len, bool external_only,
+		       const u8 *addr)
 {
 	struct rsn_pmksa_cache_entry *entry, *prev = NULL, *tmp;
 	int removed = 0;
@@ -561,7 +565,8 @@ pmksa_cache_clone_entry(struct rsn_pmksa_cache *pmksa,
 				    aa, pmksa->sm->own_addr,
 				    old_entry->network_ctx, old_entry->akmp,
 				    old_entry->fils_cache_id_set ?
-				    old_entry->fils_cache_id : NULL);
+				    old_entry->fils_cache_id : NULL,
+				    old_entry->auth_alg);
 	if (new_entry == NULL)
 		return NULL;
 
@@ -935,7 +940,7 @@ struct rsn_pmksa_cache_entry *
 pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
 		const u8 *pmkid, const u8 *kck, size_t kck_len,
 		const u8 *aa, const u8 *spa, void *network_ctx, int akmp,
-		const u8 *cache_id)
+		const u8 *cache_id, u16 auth_alg)
 {
 	return NULL;
 }
@@ -955,7 +960,8 @@ int pmksa_cache_set_current(struct wpa_sm *sm, const u8 *pmkid, const u8 *bssid,
 
 
 void pmksa_cache_flush(struct rsn_pmksa_cache *pmksa, void *network_ctx,
-		       const u8 *pmk, size_t pmk_len, bool external_only)
+		       const u8 *pmk, size_t pmk_len, bool external_only,
+		       const u8 *addr)
 {
 }
 

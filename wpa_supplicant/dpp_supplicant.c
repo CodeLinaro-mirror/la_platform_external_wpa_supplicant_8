@@ -1086,8 +1086,8 @@ static int wpas_dpp_listen_start(struct wpa_supplicant *wpa_s,
 		return -1;
 	lwork->freq = freq;
 
-	if (radio_add_work(wpa_s, freq, "dpp-listen", 0, dpp_start_listen_cb,
-			   lwork) < 0) {
+	if (!radio_add_work(wpa_s, freq, "dpp-listen", 0, dpp_start_listen_cb,
+			    lwork)) {
 		wpas_dpp_listen_work_free(lwork);
 		return -1;
 	}
@@ -1840,6 +1840,7 @@ static int wpas_dpp_handle_config_obj(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->dpp_pb_result_indicated) {
 		wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_PB_RESULT "success");
 		wpa_s->dpp_pb_result_indicated = true;
+		wpas_dpp_push_button_stop(wpa_s);
 	}
 
 #endif /* CONFIG_DPP3 */
@@ -5821,6 +5822,7 @@ int wpas_dpp_push_button(struct wpa_supplicant *wpa_s, const char *cmd)
 	wpa_s->scan_req = MANUAL_SCAN_REQ;
 	wpa_s->scan_res_handler = wpas_dpp_pb_scan_res_handler;
 	wpa_supplicant_cancel_sched_scan(wpa_s);
+	wpa_drv_dpp_listen(wpa_s, true);
 	wpa_supplicant_req_scan(wpa_s, 0, 0);
 	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_PB_STATUS "started");
 	return 0;
@@ -5837,6 +5839,8 @@ void wpas_dpp_push_button_stop(struct wpa_supplicant *wpa_s)
 	wpa_s->dpp_pb_announcement = NULL;
 	if (wpa_s->dpp_pb_bi) {
 		char id[20];
+
+		wpa_drv_dpp_listen(wpa_s, false);
 
 		if (wpa_s->dpp_pb_bi == wpa_s->dpp_pkex_bi)
 			wpa_s->dpp_pkex_bi = NULL;

@@ -148,7 +148,7 @@ static int ieee802_11_send_wnmsleep_resp(struct hostapd_data *hapd,
 #define MAX_GTK_SUBELEM_LEN 45
 #define MAX_IGTK_SUBELEM_LEN 26
 #define MAX_BIGTK_SUBELEM_LEN 26
-	mgmt = os_zalloc(sizeof(*mgmt) + wnmsleep_ie_len +
+	mgmt = os_zalloc(sizeof(*mgmt) + wnmsleep_ie_len + wnmtfs_ie_len +
 			 MAX_GTK_SUBELEM_LEN + MAX_IGTK_SUBELEM_LEN +
 			 MAX_BIGTK_SUBELEM_LEN +
 			 oci_ie_len);
@@ -740,7 +740,7 @@ static void ieee802_11_rx_wnm_event_report(struct hostapd_data *hapd,
 	switch (report_ie->type) {
 #ifdef CONFIG_IEEE80211AX
 	case WNM_EVENT_TYPE_BSS_COLOR_COLLISION:
-		if (!hapd->iconf->ieee80211ax || hapd->conf->disable_11ax)
+		if (!hostapd_is_he_enabled(hapd))
 			return;
 		if (report_ie->len <
 		    fixed_field_len + tsf_len + 8) {
@@ -756,7 +756,7 @@ static void ieee802_11_rx_wnm_event_report(struct hostapd_data *hapd,
 		hostapd_switch_color(hapd->iface->bss[0], bitmap);
 		break;
 	case WNM_EVENT_TYPE_BSS_COLOR_IN_USE:
-		if (!hapd->iconf->ieee80211ax || hapd->conf->disable_11ax)
+		if (!hostapd_is_he_enabled(hapd))
 			return;
 		if (report_ie->len < fixed_field_len + tsf_len + 1) {
 			wpa_printf(MSG_DEBUG,

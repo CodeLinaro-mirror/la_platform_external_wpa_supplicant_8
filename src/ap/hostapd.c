@@ -68,10 +68,6 @@ static int setup_interface2(struct hostapd_iface *iface);
 static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx);
 static void hostapd_interface_setup_failure_handler(void *eloop_ctx,
 						    void *timeout_ctx);
-#ifdef CONFIG_IEEE80211AX
-static void hostapd_switch_color_timeout_handler(void *eloop_data,
-						 void *user_ctx);
-#endif /* CONFIG_IEEE80211AX */
 
 
 int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
@@ -795,12 +791,6 @@ static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd)
 		hostapd_set_privacy(hapd, 1);
 		return 0;
 	}
-
-	/*
-	 * When IEEE 802.1X is not enabled, the driver may need to know how to
-	 * set authentication algorithms for static WEP.
-	 */
-	hostapd_drv_set_authmode(hapd, hapd->conf->auth_algs);
 
 	for (i = 0; i < 4; i++) {
 		if (hapd->conf->ssid.wep.key[i] &&
@@ -1704,6 +1694,9 @@ setup_mld:
 		wpa_printf(MSG_ERROR, "IEEE 802.1X initialization failed.");
 		return -1;
 	}
+#ifdef CONFIG_IEEE8021X_AUTH
+	hapd->send_eap_req = ieee80211_send_eap_req;
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	if (conf->wpa && hostapd_setup_wpa(hapd))
 		return -1;
@@ -2606,8 +2599,12 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 		}
 
 #ifdef NEED_AP_MLME
-		/* Handle DFS only if it is not offloaded to the driver */
-		if (!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+		if (iface->assisted_dfs) {
+			wpa_printf(MSG_DEBUG,
+				   "Request to start AP with assisted DFS");
+		} else if (!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+			/* Handle DFS only if it is not offloaded to the driver
+			 */
 			/* Check DFS */
 			res = hostapd_handle_dfs(iface);
 			if (res <= 0) {
@@ -2729,17 +2726,11 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 
 	hostapd_set_acl(hapd);
 
-	if (hostapd_driver_commit(hapd) < 0) {
-		wpa_printf(MSG_ERROR, "%s: Failed to commit driver "
-			   "configuration", __func__);
-		goto fail;
-	}
-
 	/*
 	 * WPS UPnP module can be initialized only when the "upnp_iface" is up.
 	 * If "interface" and "upnp_iface" are the same (e.g., non-bridge
-	 * mode), the interface is up only after driver_commit, so initialize
-	 * WPS after driver_commit.
+	 * mode), the interface is up only after the driver interface has been
+	 * initialized, so initialize WPS after that.
 	 */
 	for (j = 0; j < iface->num_bss; j++) {
 		if (hostapd_init_wps_complete(iface->bss[j]))
@@ -2747,7 +2738,7 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 	}
 
 	if ((iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) &&
-	    !res_dfs_offload) {
+	    !res_dfs_offload && !iface->assisted_dfs) {
 		/*
 		 * If freq is DFS, and DFS is offloaded to the driver, then wait
 		 * for CAC to complete.
@@ -3148,8 +3139,7 @@ void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
 
 	conf = hapd->conf;
 
-	if (!hapd->iconf || !hapd->iconf->ieee80211be || !conf->mld_ap ||
-	    conf->disable_11be)
+	if (!hapd->iconf || !conf->mld_ap || !hostapd_is_eht_enabled(hapd))
 		return;
 
 	for (i = 0; i < interfaces->mld_count; i++) {
@@ -4196,6 +4186,43 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 
 	/* Start IEEE 802.1X authentication process for new stations */
 	ieee802_1x_new_station(hapd, sta);
+
+#ifdef CONFIG_ENC_ASSOC
+		if (ap_sta_is_epp(sta) && sta->wpa_sm) {
+			const struct wpa_ptk *ptk;
+			const u8 *pmk;
+			size_t pmk_len;
+
+			switch (sta->auth_alg) {
+			case WLAN_AUTH_EPPKE:
+				if (!sta->pasn) {
+					wpa_printf(MSG_INFO,
+						   "EPP: Missing PASN data");
+					return;
+				}
+				ptk = &sta->pasn->ptk;
+				pmk = sta->pasn->pmk;
+				pmk_len = sta->pasn->pmk_len;
+				break;
+#ifdef CONFIG_IEEE8021X_AUTH
+			case WLAN_AUTH_802_1X:
+				ptk = &sta->eap_auth_data.ptk;
+				pmk = sta->eap_auth_data.pmk;
+				pmk_len = sta->eap_auth_data.pmk_len;
+				break;
+#endif /* CONFIG_IEEE8021X_AUTH */
+			default:
+				wpa_printf(MSG_INFO,
+					   "EPP: Unsupported auth alg=%d for an EPP station",
+					   sta->auth_alg);
+				return;
+			}
+			wpa_store_eppke_pmk_ptk_sm(sta->wpa_sm, ptk, pmk,
+						   pmk_len);
+			wpa_auth_set_ptk_rekey_timer(sta->wpa_sm);
+		}
+#endif /* CONFIG_ENC_ASSOC */
+
 	if (reassoc) {
 		if (sta->auth_alg != WLAN_AUTH_FT &&
 		    sta->auth_alg != WLAN_AUTH_FILS_SK &&
@@ -4649,8 +4676,10 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
 	ret = hostapd_build_beacon_data(hapd, &settings->beacon_after);
 
 	/* change back the configuration */
-	hostapd_change_config_freq(iface->bss[0], iface->conf,
-				   &old_freq, NULL);
+	if (hostapd_change_config_freq(iface->bss[0], iface->conf,
+				       &old_freq, NULL) < 0)
+		wpa_printf(MSG_INFO,
+			   "Failed to switch back to old frequency after preparing beacon data for CSA");
 
 	if (ret)
 		return ret;
@@ -4922,8 +4951,7 @@ int hostapd_fill_cca_settings(struct hostapd_data *hapd,
 }
 
 
-static void hostapd_switch_color_timeout_handler(void *eloop_data,
-						 void *user_ctx)
+void hostapd_switch_color_timeout_handler(void *eloop_data, void *user_ctx)
 {
 	struct hostapd_data *hapd = (struct hostapd_data *) eloop_data;
 	os_time_t delta_t;
@@ -4983,11 +5011,24 @@ static void hostapd_switch_color_timeout_handler(void *eloop_data,
 }
 
 
+bool hostapd_is_cca_in_progress(struct hostapd_iface *iface)
+{
+	size_t i;
+
+	for (i = 0; i < iface->num_bss; i++) {
+		if (iface->bss[i]->cca_in_progress)
+			return true;
+	}
+
+	return false;
+}
+
+
 void hostapd_switch_color(struct hostapd_data *hapd, u64 bitmap)
 {
 	struct os_reltime now;
 
-	if (hapd->cca_in_progress)
+	if (hostapd_is_cca_in_progress(hapd->iface))
 		return;
 
 	if (os_get_reltime(&now))
@@ -5290,4 +5331,70 @@ hostapd_get_mbssid_bss_by_idx(struct hostapd_data *hapd, size_t idx)
 		return hapd->iface->bss[idx];
 
 	return NULL;
+}
+
+
+static bool hostapd_acceptable_sta_addr_bss(struct hostapd_data *hapd,
+					    const u8 *addr, const u8 *addr_ml,
+					    bool mld)
+{
+	if (ether_addr_equal(addr, hapd->own_addr))
+		return false;
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->mld && mld &&
+	    (ether_addr_equal(addr_ml, hapd->own_addr) ||
+	     ether_addr_equal(addr_ml, hapd->mld->mld_addr)))
+		return false;
+	if (hapd->mld && ether_addr_equal(addr, hapd->mld->mld_addr))
+		return false;
+#endif /* CONFIG_IEEE80211BE */
+
+	return true;
+}
+
+
+struct hostapd_acceptable_sta_add_ctx {
+	const u8 *addr;
+	const u8 *addr_ml;
+	bool mld;
+};
+
+
+static int hostapd_acceptable_sta_addr_iface(struct hostapd_iface *iface,
+					     void *_ctx)
+{
+	struct hostapd_acceptable_sta_add_ctx *ctx = _ctx;
+	size_t i;
+
+	for (i = 0; i < iface->num_bss; i++) {
+		struct hostapd_data *hapd = iface->bss[i];
+
+		if (!hostapd_acceptable_sta_addr_bss(hapd, ctx->addr,
+						     ctx->addr_ml, ctx->mld))
+			return -1;
+	}
+
+	return 0;
+}
+
+
+bool hostapd_acceptable_sta_addr(struct hostapd_data *hapd, const u8 *addr,
+				 const u8 *addr_ml, bool mld)
+{
+	struct hostapd_acceptable_sta_add_ctx ctx;
+
+	if (!hostapd_acceptable_sta_addr_bss(hapd, addr, addr_ml, mld))
+		return false;
+
+	ctx.addr = addr;
+	ctx.addr_ml = addr_ml;
+	ctx.mld = mld;
+	if (hapd->iface->interfaces &&
+	    hostapd_for_each_interface(hapd->iface->interfaces,
+				       hostapd_acceptable_sta_addr_iface,
+				       &ctx) < 0)
+		return false;
+
+	return true;
 }

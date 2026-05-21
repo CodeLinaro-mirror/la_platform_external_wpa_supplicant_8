@@ -8,9 +8,10 @@
 
 #include "includes.h"
 #include "common.h"
-#include "nan_i.h"
+#include "utils/bitfield.h"
+#include "common/wpa_common.h"
 #include "common/ieee802_11_common.h"
-#include "bitfield.h"
+#include "nan_i.h"
 
 
 static void nan_attrs_clear_list(struct nan_data *nan,
@@ -18,8 +19,7 @@ static void nan_attrs_clear_list(struct nan_data *nan,
 {
 	struct nan_attrs_entry *entry, *pentry;
 
-	dl_list_for_each_safe(entry, pentry, list,
-			      struct nan_attrs_entry,
+	dl_list_for_each_safe(entry, pentry, list, struct nan_attrs_entry,
 			      list) {
 		dl_list_del(&entry->list);
 		os_free(entry);
@@ -28,8 +28,7 @@ static void nan_attrs_clear_list(struct nan_data *nan,
 
 
 /*
- * nan_attrs_clear - Free data from nan parsing
- *
+ * nan_attrs_clear - Free data from NAN parsing
  * @nan: NAN module context from nan_init()
  * @attrs: Parsed nan_attrs
  */
@@ -47,7 +46,6 @@ void nan_attrs_clear(struct nan_data *nan, struct nan_attrs *attrs)
 
 /*
  * nan_parse_attrs - Parse NAN attributes
- *
  * @nan: NAN module context from nan_init()
  * @data: Buffer holding the attributes
  * @len: Length of &data
@@ -72,17 +70,17 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 	dl_list_init(&attrs->dev_capa);
 	dl_list_init(&attrs->element_container);
 
-	while (pos + 3 < end) {
+	while (end - pos > 3) {
 		u8 id = *pos++;
 		u16 attr_len = WPA_GET_LE16(pos);
 
 		pos += 2;
-		if ((pos + attr_len) > end)
+		if (attr_len > end - pos)
 			goto fail;
 
 		switch (id) {
 		case NAN_ATTR_SDEA:
-			entry = os_malloc(sizeof(*entry));
+			entry = os_zalloc(sizeof(*entry));
 			if (!entry)
 				goto fail;
 
@@ -92,10 +90,10 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			break;
 		case NAN_ATTR_DEVICE_CAPABILITY:
 			/* Validate Device Capability attribute length */
-			if (attr_len != sizeof(struct nan_device_capa))
+			if (attr_len < sizeof(struct nan_device_capa))
 				break;
 
-			entry = os_malloc(sizeof(*entry));
+			entry = os_zalloc(sizeof(*entry));
 			if (!entry)
 				goto fail;
 
@@ -116,7 +114,7 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			if (attr_len < sizeof(struct nan_avail))
 				break;
 
-			entry = os_malloc(sizeof(*entry));
+			entry = os_zalloc(sizeof(*entry));
 			if (!entry)
 				goto fail;
 
@@ -129,7 +127,7 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			if (attr_len < sizeof(struct ieee80211_ndc))
 				break;
 
-			entry = os_malloc(sizeof(*entry));
+			entry = os_zalloc(sizeof(*entry));
 			if (!entry)
 				goto fail;
 
@@ -147,20 +145,19 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			break;
 		case NAN_ATTR_NDL_QOS:
 			/* Validate QoS attribute length */
-			if (attr_len != sizeof(struct ieee80211_nan_qos))
+			if (attr_len < sizeof(struct ieee80211_nan_qos))
 				break;
 
 			attrs->ndl_qos = pos;
 			attrs->ndl_qos_len = attr_len;
 			break;
 		case NAN_ATTR_ELEM_CONTAINER:
-			/*
-			 * Validate minimal Element Container attribute length
+			/* Validate minimal Element Container attribute length
 			 */
 			if (attr_len < 1)
 				break;
 
-			entry = os_malloc(sizeof(*entry));
+			entry = os_zalloc(sizeof(*entry));
 			if (!entry)
 				goto fail;
 
@@ -171,7 +168,7 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			break;
 		case NAN_ATTR_CSIA:
 			if (attr_len < sizeof(struct nan_cipher_suite_info) +
-				       sizeof(struct nan_cipher_suite))
+			    sizeof(struct nan_cipher_suite))
 				break;
 
 			attrs->cipher_suite_info = pos;
@@ -186,7 +183,7 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			break;
 		case NAN_ATTR_SHARED_KEY_DESCR:
 			if (attr_len < sizeof(struct nan_shared_key) +
-				       sizeof(struct wpa_eapol_key))
+			    sizeof(struct wpa_eapol_key))
 				break;
 
 			attrs->shared_key_desc = pos;
@@ -196,15 +193,15 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			attrs->dev_capa_ext = pos;
 			attrs->dev_capa_ext_len = attr_len;
 			break;
-		case NAN_ATTR_BPBA:
+		case NAN_ATTR_NPBA:
 			/*
 			 * Validate minimal NPBA element length: dialog token
 			 * (1) + type and stats (1) + reason code (1) + pbm (2)
 			 */
 			if (attr_len < 5)
 				break;
-			attrs->bpba = pos;
-			attrs->bpba_len = attr_len;
+			attrs->npba = pos;
+			attrs->npba_len = attr_len;
 			break;
 		case NAN_ATTR_NIRA:
 			if (pos[0] != NAN_NIRA_CIPHER_VER_128)
@@ -279,31 +276,26 @@ fail:
 
 
 /*
- * nan_is_naf - Check if a given frame is a NAN action frame
- *
- * @nan: NAN module context from nan_init()
- * @mgmt: NAN action frame
- * @len: Length of the management frame in octets
+ * nan_is_naf - Check if a given frame is a NAN Action frame
+ * @mgmt: NAN Action frame
+ * @len: Length of the Management frame in octets
  * Returns: true if NAF; otherwise false
  */
-bool nan_is_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
-		size_t len)
+bool nan_is_naf(const struct ieee80211_mgmt *mgmt, size_t len)
 {
 	u8 subtype;
 
 	/*
-	 * 802.11 header + category + NAN action frame minimal + subtype (1)
+	 * 802.11 header + category + NAN Action frame minimal + subtype (1)
 	 */
 	if (len < IEEE80211_MIN_ACTION_LEN(naf)) {
-		wpa_printf(MSG_DEBUG, "Too short NAN frame");
+		wpa_printf(MSG_DEBUG, "NAN: Too short NAN frame");
 		return false;
 	}
 
-	if (mgmt->u.action.u.naf.action_code != WLAN_PA_VENDOR_SPECIFIC ||
-	    mgmt->u.action.u.naf.oui[0] != ((OUI_WFA >> 16) & 0xff) ||
-	    mgmt->u.action.u.naf.oui[1] != ((OUI_WFA >> 8)  & 0xff) ||
-	    mgmt->u.action.u.naf.oui[2] != (OUI_WFA & 0xff) ||
-	    mgmt->u.action.u.naf.oui_type != NAN_TYPE_NAF)
+	if (mgmt->u.action.u.naf.action != WLAN_PA_VENDOR_SPECIFIC ||
+	    WPA_GET_BE24(mgmt->u.action.u.naf.oui) != OUI_WFA ||
+	    mgmt->u.action.u.naf.oui_type != NAN_NAF_OUI_TYPE)
 		return false;
 
 	subtype = mgmt->u.action.u.naf.subtype;
@@ -322,9 +314,8 @@ bool nan_is_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 
 /*
  * nan_parse_naf - Parse a NAN Action frame content
- *
  * @nan: NAN module context from nan_init()
- * @mgmt: NAN action frame.
+ * @mgmt: NAN action frame
  * @len: Length of the management frame in octets
  * @msg: Buffer for returning parsed attributes
  * Returns: 0 on success; positive or negative indicate an error
@@ -332,13 +323,13 @@ bool nan_is_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
  * Note: in case of success, the caller must free temporary memory allocations
  * by calling nan_attrs_clear() when the parsed data is not needed anymore. In
  * addition, as the &mgmt is referenced from the returned structure, the caller
- * must ensure that the frame buffer remains valid an unmodified as long as the
+ * must ensure that the frame buffer remains valid and unmodified as long as the
  * &msg object is used.
  */
 int nan_parse_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 		  size_t len, struct nan_msg *msg)
 {
-	if (!nan_is_naf(nan, mgmt, len))
+	if (!nan_is_naf(mgmt, len))
 		return -1;
 
 	wpa_printf(MSG_DEBUG, "NAN: Parse NAF");
@@ -357,8 +348,7 @@ int nan_parse_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 
 
 /*
- * nan_add_dev_capa_attr - Add NAN device capability attribute
- *
+ * nan_add_dev_capa_attr - Add Device Capability attribute
  * @nan: NAN module context from nan_init()
  * @buf: wpabuf to which the attribute would be added
  */
@@ -379,66 +369,6 @@ void nan_add_dev_capa_attr(struct nan_data *nan, struct wpabuf *buf)
 
 
 /*
- * nan_add_dev_capa_ext_attr - Add NAN device capability extension attribute
- *
- * @nan: NAN module context from nan_init()
- * @buf: wpabuf to which the attribute would be added
- */
-void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf)
-{
-	u8 pairing_and_npk_caching = 0;
-
-	if (nan->cfg->pairing_cfg.pairing_setup)
-		pairing_and_npk_caching |=
-		    NAN_DEV_CAPA_EXT_INFO_1_PAIRING_SETUP;
-	if (nan->cfg->pairing_cfg.npk_caching)
-		pairing_and_npk_caching |=
-		    NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING;
-
-	if (!nan->cfg->dev_capa_ext_reg_info && !pairing_and_npk_caching)
-		return;
-
-	wpabuf_put_u8(buf, NAN_ATTR_DCEA);
-	wpabuf_put_le16(buf, 2);
-	wpabuf_put_u8(buf, nan->cfg->dev_capa_ext_reg_info);
-	wpabuf_put_u8(buf, pairing_and_npk_caching);
-}
-
-/*
- * nan_add_nira_attr - Add NIRA (NAN Identity Resolution Attribute) to a buffer
- *
- * @buf: Buffer to append the NIRA attribute to
- * @nira_tag: Pointer to NIRA tag data (NAN_NIRA_TAG_LEN bytes)
- * @nira_nonce: Pointer to NIRA nonce data (NAN_NIRA_NONCE_LEN bytes)
- *
- * This function constructs and appends a NAN Identity Resolution Attribute
- * (NIRA) to the provided buffer.
- *
- * Returns: 0 on success, -1 if there is insufficient space in the buffer
- */
-int nan_add_nira_attr(struct wpabuf *buf, const u8 *nira_tag,
-		      const u8 *nira_nonce)
-{
-	u16 attr_len = 1 + NAN_NIRA_NONCE_LEN + NAN_NIRA_TAG_LEN;
-
-	if (wpabuf_tailroom(buf) <
-	    (unsigned int)(NAN_ATTR_HDR_LEN + attr_len)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Not enough space to add NIRA attribute");
-		return -1;
-	}
-
-	wpabuf_put_u8(buf, NAN_ATTR_NIRA);
-	wpabuf_put_le16(buf, attr_len);
-	wpabuf_put_u8(buf, NAN_NIRA_CIPHER_VER_128);
-	wpabuf_put_data(buf, nira_nonce, NAN_NIRA_NONCE_LEN);
-	wpabuf_put_data(buf, nira_tag, NAN_NIRA_TAG_LEN);
-
-	return 0;
-}
-
-
-/*
  * nan_add_csia - Add Cipher Suite Information Attribute (CSIA) to a buffer
  *
  * @buf: Buffer to add the attribute to
@@ -452,7 +382,7 @@ int nan_add_nira_attr(struct wpabuf *buf, const u8 *nira_tag,
  * Returns: 0 on success, -1 on failure (insufficient buffer space)
  */
 int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
-		 struct nan_cipher_suite *cs_list)
+		 const struct nan_cipher_suite *cs_list)
 {
 	size_t i;
 
@@ -460,7 +390,7 @@ int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
 	size_t attr_len = sizeof(capab) + cs_list_len * sizeof(*cs_list);
 
 	if (wpabuf_tailroom(buf) <
-	    (unsigned int)(NAN_ATTR_HDR_LEN + attr_len)) {
+	    (size_t)(NAN_ATTR_HDR_LEN + attr_len)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Not enough space to add CSIA attribute");
 		return -1;
@@ -480,36 +410,87 @@ int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
 
 
 /**
- * nan_chan_to_chan_idx_map - convert an op_class and chan to channel
- * bitmap
+ * nan_add_dev_capa_ext_attr - Add NAN Device Capability Extension attribute
+ * @nan: NAN module context from nan_init()
+ * @buf: wpabuf to which the attribute would be added
+ */
+void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf)
+{
+	u8 pairing_and_npk_caching = 0;
+
+	if (nan->cfg->pairing_cfg.pairing_setup)
+		pairing_and_npk_caching |=
+			NAN_DEV_CAPA_EXT_INFO_1_PAIRING_SETUP;
+	if (nan->cfg->pairing_cfg.npk_caching)
+		pairing_and_npk_caching |=
+			NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING;
+
+	if (!nan->cfg->dev_capa_ext_reg_info &&
+	    !pairing_and_npk_caching)
+		return;
+
+	wpabuf_put_u8(buf, NAN_ATTR_DCEA);
+	wpabuf_put_le16(buf, 2);
+	wpabuf_put_u8(buf, nan->cfg->dev_capa_ext_reg_info);
+	wpabuf_put_u8(buf, pairing_and_npk_caching);
+}
+
+
+/**
+ * nan_add_nira - Add NIRA (NAN Identity Resolution Attribute) to a buffer
+ * @buf: Buffer to which the NIRA is appended
+ * @tag: Pointer to NIRA tag data (NAN_NIRA_TAG_LEN bytes)
+ * @nonce: Pointer to NIRA nonce data (NAN_NIRA_NONCE_LEN bytes)
+ * Returns: 0 on success, -1 if there is insufficient space in the buffer
  *
+ * This function constructs and appends a NAN Identity Resolution Attribute
+ * (NIRA) to the provided buffer.
+ */
+int nan_add_nira(struct wpabuf *buf, const u8 *tag, const u8 *nonce)
+{
+	u16 attr_len = 1 + NAN_NIRA_NONCE_LEN + NAN_NIRA_TAG_LEN;
+
+	if (wpabuf_tailroom(buf) < (size_t) (NAN_ATTR_HDR_LEN + attr_len)) {
+		wpa_printf(MSG_INFO, "NAN: Not enough space to add NIRA");
+		return -1;
+	}
+
+	wpabuf_put_u8(buf, NAN_ATTR_NIRA);
+	wpabuf_put_le16(buf, attr_len);
+	wpabuf_put_u8(buf, NAN_NIRA_CIPHER_VER_128);
+	wpabuf_put_data(buf, nonce, NAN_NIRA_NONCE_LEN);
+	wpabuf_put_data(buf, tag, NAN_NIRA_TAG_LEN);
+
+	return 0;
+}
+
+
+/**
+ * nan_chan_to_chan_idx_map - Convert an op_class and chan to channel bitmap
  * @nan: NAN module context from nan_init()
  * @op_class: the operating class
  * @channel: channel number
  * @chan_idx_map: On success, would hold the channel index bitmap
- * Returns 0 on success, otherwise a negative value
+ * Returns: 0 on success, otherwise a negative value
  */
 int nan_chan_to_chan_idx_map(struct nan_data *nan,
 			     u8 op_class, u8 channel, u16 *chan_idx_map)
 {
-	u32 i;
 	int ret;
+	const struct oper_class_map *op_c;
 
 	if (!chan_idx_map)
 		return -1;
 
-	for (i = 0; global_op_class[i].op_class; i++)
-		if (global_op_class[i].op_class == op_class)
-			break;
-
-	if (!global_op_class[i].op_class)
+	op_c = get_oper_class(NULL, op_class);
+	if (!op_c)
 		return -1;
 
-	ret = op_class_chan_to_idx(&global_op_class[i], channel);
+	ret = op_class_chan_to_idx(op_c, channel);
 	if (ret < 0)
 		return ret;
 
-	if ((u16)ret >= (sizeof(*chan_idx_map) * 8))
+	if ((size_t) ret >= (sizeof(*chan_idx_map) * 8))
 		return -1;
 
 	*chan_idx_map = BIT(ret);
@@ -519,9 +500,8 @@ int nan_chan_to_chan_idx_map(struct nan_data *nan,
 
 static u16 nan_add_avail_entry(struct nan_data *nan,
 			       struct nan_time_bitmap *tbm,
-			       u8 type, u8 op_class,
-			       u16 chan_bm, u8 prim_chan_bm,
-			       struct wpabuf *buf)
+			       u8 type, u8 op_class, u16 chan_bm,
+			       u8 prim_chan_bm, struct wpabuf *buf)
 {
 	u16 ctrl;
 	u8 chan_ctrl;
@@ -557,7 +537,6 @@ static u16 nan_add_avail_entry(struct nan_data *nan,
 	wpabuf_put_le16(buf, ctrl);
 
 	wpabuf_put_u8(buf, tbm->len);
-
 	wpabuf_put_data(buf, tbm->bitmap, tbm->len);
 
 	/* Add the channel entry: single contiguous channel entry */
@@ -568,8 +547,8 @@ static u16 nan_add_avail_entry(struct nan_data *nan,
 	wpabuf_put_le16(buf, chan_bm);
 	wpabuf_put_u8(buf, prim_chan_bm);
 
-	WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
-	return (u8 *)wpabuf_put(buf, 0) - len_ptr;
+	WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
+	return (u8 *) wpabuf_put(buf, 0) - len_ptr;
 }
 
 
@@ -624,11 +603,11 @@ int nan_get_chan_bm(struct nan_data *nan, const struct nan_sched_chan *chan,
 		   freq_offsset);
 
 	/* For bandwidths >= 80 need to use the center frequency */
-	mode = ieee80211_freq_to_channel_ext(bandwidth == CONF_OPER_CHWIDTH_USE_HT ?
+	mode = ieee80211_freq_to_channel_ext(bandwidth ==
+					     CONF_OPER_CHWIDTH_USE_HT ?
 					     chan->freq : chan->center_freq1,
 					     sec_channel_offset,
-					     bandwidth,
-					     op_class, &channel);
+					     bandwidth, op_class, &channel);
 	if (mode == NUM_HOSTAPD_MODES) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Cannot get channel and op_class");
@@ -640,8 +619,7 @@ int nan_get_chan_bm(struct nan_data *nan, const struct nan_sched_chan *chan,
 
 	ret = nan_chan_to_chan_idx_map(nan, *op_class, channel, chan_bm);
 	if (ret) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Failed to derive channel bitmap");
+		wpa_printf(MSG_DEBUG, "NAN: Failed to derive channel bitmap");
 		return -1;
 	}
 
@@ -651,7 +629,7 @@ int nan_get_chan_bm(struct nan_data *nan, const struct nan_sched_chan *chan,
 
 static void nan_add_pot_avail_entry(struct nan_data *nan,
 				    struct nan_chan_entry *entries,
-				    size_t n_entries, u8 pref,
+				    unsigned int n_entries, u8 pref,
 				    struct wpabuf *buf)
 {
 	u16 ctrl;
@@ -660,7 +638,7 @@ static void nan_add_pot_avail_entry(struct nan_data *nan,
 	u8 nss = BITS(nan->cfg->dev_capa.n_antennas, NAN_DEV_CAPA_RX_ANT_MASK,
 		      NAN_DEV_CAPA_RX_ANT_POS);
 
-	wpa_printf(MSG_DEBUG, "NAN: Adding potential entry: n_entries=%zu",
+	wpa_printf(MSG_DEBUG, "NAN: Adding potential entry: n_entries=%u",
 		   n_entries);
 
 	if (!n_entries)
@@ -671,7 +649,7 @@ static void nan_add_pot_avail_entry(struct nan_data *nan,
 		n_entries = (wpabuf_tailroom(buf) - 5) / 4;
 
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Not enough space to add potential entries, reduce to %zu",
+			   "NAN: Not enough space to add potential entries, reduce to %u",
 			   n_entries);
 	}
 
@@ -704,9 +682,8 @@ static void nan_add_pot_avail_entry(struct nan_data *nan,
 
 static void
 nan_build_pot_avail_entry_with_chans(struct nan_data *nan,
-				     struct nan_channels *pot_chans,
-				     struct wpabuf *buf,
-				     u8 map_id)
+				     const struct nan_channels *pot_chans,
+				     struct wpabuf *buf, u8 map_id)
 {
 	struct nan_chan_entry chan_entries[global_op_class_size];
 	size_t i, n_entries;
@@ -724,7 +701,7 @@ nan_build_pot_avail_entry_with_chans(struct nan_data *nan,
 		size_t j;
 		int ret;
 
-		if ((i > 0) && (pot_chans->chans[i - 1].pref != chan->pref)) {
+		if (i > 0 && pot_chans->chans[i - 1].pref != chan->pref) {
 			nan_add_pot_avail_entry(nan, chan_entries, n_entries,
 						pot_chans->chans[i - 1].pref,
 						buf);
@@ -742,8 +719,7 @@ nan_build_pot_avail_entry_with_chans(struct nan_data *nan,
 		for (j = 0, cur = NULL; j < n_entries; j++) {
 			cur = &chan_entries[j];
 
-			if (!cur->op_class ||
-			    cur->op_class == chan->op_class)
+			if (!cur->op_class || cur->op_class == chan->op_class)
 				break;
 		}
 
@@ -773,15 +749,16 @@ static void nan_build_pot_avail_entry(struct nan_data *nan, struct wpabuf *buf,
 
 	os_memset(&pot_chans, 0, sizeof(pot_chans));
 
-	if (nan->cfg->get_chans(nan->cfg->cb_ctx, map_id, &pot_chans) < 0) {
+	if (!nan->cfg->get_chans ||
+	    nan->cfg->get_chans(nan->cfg->cb_ctx, map_id, &pot_chans) < 0) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Failed to get channels. Not adding potential");
 		return;
 	}
 
 	if (pot_chans.n_chans != 0)
-		nan_build_pot_avail_entry_with_chans(nan, &pot_chans,
-						     buf, map_id);
+		nan_build_pot_avail_entry_with_chans(nan, &pot_chans, buf,
+						     map_id);
 	else
 		wpa_printf(MSG_DEBUG,
 			   "NAN: No channels available. Not adding potential: map_id=%u",
@@ -801,7 +778,7 @@ static void nan_build_pot_avail_entry(struct nan_data *nan, struct wpabuf *buf,
  * @n_chans: Number of channels in chans
  * @chans: Channel schedules
  * @buf: Frame buffer to which the attribute would be added
- * @include_potential: If true, potential availability entries would be added
+ * @include_potential: Whether to add potential availability entries
  * Returns: 0 on success, negative on failure.
  *
  * An availability attribute is added for each map (identified by map ID) in the
@@ -848,13 +825,13 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 		if (last_map_id != NAN_INVALID_MAP_ID &&
 		    last_map_id > chan->map_id) {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: map IDs not sorted properly");
+				   "NAN: Map IDs not sorted properly");
 			return -1;
 		}
 
 		if (!(map_ids_bitmap & BIT(chan->map_id))) {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: skip adding availability for map_id=%u",
+				   "NAN: Skip adding availability for map_id=%u",
 				   chan->map_id);
 			continue;
 		}
@@ -914,7 +891,7 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 	if (last_map_id != NAN_INVALID_MAP_ID) {
 		if (include_potential)
 			nan_build_pot_avail_entry(nan, buf, last_map_id);
-		WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
+		WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
 
 		wpa_printf(MSG_DEBUG, "NAN: Add avail attr done: map_id=%u",
 			   last_map_id);
@@ -949,7 +926,8 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 
 		os_memset(&pot_chans, 0, sizeof(pot_chans));
 
-		if (nan->cfg->get_chans(nan->cfg->cb_ctx, map_id,
+		if (!nan->cfg->get_chans ||
+		    nan->cfg->get_chans(nan->cfg->cb_ctx, map_id,
 					&pot_chans) < 0 ||
 		    !pot_chans.chans) {
 			wpa_printf(MSG_DEBUG,
@@ -967,7 +945,7 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 						     map_id);
 		os_free(pot_chans.chans);
 
-		WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
+		WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
 	}
 
 	return 0;
@@ -976,11 +954,12 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 
 /**
  * nan_del_avail_entry - Delete an availability entry
- *
  * @entry: The availability entry to delete
  */
 void nan_del_avail_entry(struct nan_avail_entry *entry)
 {
+	if (!entry)
+		return;
 	os_free(entry->band_chan);
 	os_free(entry);
 }
@@ -988,7 +967,6 @@ void nan_del_avail_entry(struct nan_avail_entry *entry)
 
 /**
  * nan_flush_avail_entries - Flush a list of availability entries
- *
  * @avail_entries: List of availability entries
  */
 void nan_flush_avail_entries(struct dl_list *avail_entries)
@@ -1016,7 +994,7 @@ void nan_flush_avail_entries(struct dl_list *avail_entries)
  */
 int nan_sched_entries_to_avail_entries(struct nan_data *nan,
 				       struct dl_list *avail_entries,
-				       u8 *sched_entries,
+				       const u8 *sched_entries,
 				       u16 sched_entries_len)
 {
 	dl_list_init(avail_entries);
@@ -1025,17 +1003,17 @@ int nan_sched_entries_to_avail_entries(struct nan_data *nan,
 		return 0;
 
 	if (sched_entries_len < sizeof(struct nan_sched_entry)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Schedule entry too short=%u",
+		wpa_printf(MSG_DEBUG, "NAN: Schedule entry too short=%u",
 			   sched_entries_len);
 		return -1;
 	}
 
 	while (sched_entries_len > 0) {
-		struct nan_sched_entry *sched_entry =
-			(struct nan_sched_entry *)sched_entries;
+		const struct nan_sched_entry *sched_entry =
+			(const struct nan_sched_entry *) sched_entries;
 		struct nan_avail_entry *avail_entry;
 		u16 ctrl;
+		size_t elen;
 
 		if (sched_entries_len < sizeof(struct nan_sched_entry)) {
 			wpa_printf(MSG_DEBUG,
@@ -1043,9 +1021,8 @@ int nan_sched_entries_to_avail_entries(struct nan_data *nan,
 				   sched_entries_len);
 			goto fail;
 		}
-
-		if (sched_entries_len <
-		    sizeof(struct nan_sched_entry) + sched_entry->len) {
+		elen = sizeof(struct nan_sched_entry) + sched_entry->len;
+		if (sched_entries_len < elen) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Invalid schedule entry len=%u",
 				   sched_entry->len);
@@ -1097,18 +1074,17 @@ fail:
 
 /**
  * nan_tbm_to_bf - Convert a time bitmap to bitfield
- *
  * @nan: NAN module context from nan_init()
  * @tbm: Time bitmap
- * Returns the converted bitfield on success; otherwise returns NULL
+ * Returns: The converted bitfield on success; otherwise, NULL
  *
  * The function takes a time bitmap and converts it to a bitfield that
  * represents a time bitmap with 16 TUs slots that covers a period of 8192 TUs.
  * The conversion takes into account the duration, period, and offset fields of
  * the time bitmap.
  */
-struct bitfield *nan_tbm_to_bf(struct nan_data *nan,
-			       struct nan_time_bitmap *tbm)
+struct bitfield * nan_tbm_to_bf(struct nan_data *nan,
+				const struct nan_time_bitmap *tbm)
 {
 	struct bitfield *bf, *base;
 	u32 slot_duration, period, len;
@@ -1193,16 +1169,15 @@ done:
  *
  * @nan: NAN module context from nan_init()
  * @sched: List of availability entries representing the schedule entries
- * @map_id: On return would hold the map_id covered by the schedule entires
- * @reason: In case of failure contains the reason.
- * Returns A bitfield representing the schedule on success; otherwise NULL
+ * @map_id: On return holds the map_id covered by the schedule entries
+ * @reason: In case of failure contains the reason
+ * Returns: A bitfield representing the schedule on success; otherwise NULL
  *
  * Note: The function only supports converting a schedule where all map IDs are
  * identical. There is no support for a schedule that uses different maps
  */
-struct bitfield *nan_sched_to_bf(struct nan_data *nan,
-				 struct dl_list *sched,
-				 u8 *map_id, enum nan_reason *reason)
+struct bitfield * nan_sched_to_bf(struct nan_data *nan, struct dl_list *sched,
+				  u8 *map_id, enum nan_reason *reason)
 {
 	struct bitfield *sched_bf = NULL;
 	struct nan_avail_entry *cur;
@@ -1210,8 +1185,7 @@ struct bitfield *nan_sched_to_bf(struct nan_data *nan,
 	*map_id = NAN_INVALID_MAP_ID;
 
 	/* Convert all schedule availability entries to bf */
-	dl_list_for_each(cur, sched, struct nan_avail_entry,
-			 list) {
+	dl_list_for_each(cur, sched, struct nan_avail_entry, list) {
 		struct bitfield *tmp;
 
 		if (*map_id == NAN_INVALID_MAP_ID) {
@@ -1277,13 +1251,12 @@ fail:
  */
 bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 				      struct nan_avail_entry *avail,
-				      struct bitfield *sched_bf,
-				      u8 map_id)
+				      struct bitfield *sched_bf, u8 map_id)
 {
 	struct bitfield *avail_bf = NULL;
 	int ret;
 
-	/* No schedule entries, avail_entry is good ... */
+	/* No schedule entries, avail_entry is good.. */
 	if (!sched_bf)
 		return true;
 
@@ -1306,8 +1279,7 @@ bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 	bitfield_dump(avail_bf, "NAN: Availability entry bitmap");
 
 	ret = bitfield_is_subset(avail_bf, sched_bf);
-	wpa_printf(MSG_DEBUG,
-		   "NAN: Is schedule subset of entry=%d", ret);
+	wpa_printf(MSG_DEBUG, "NAN: Is schedule subset of entry=%d", ret);
 
 	bitfield_free(avail_bf);
 
@@ -1318,8 +1290,7 @@ bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 static struct bitfield *
 nan_sched_bf_from_avail_and_chan(struct nan_data *nan,
 				 const struct dl_list *avail_entries,
-				 u8 map_id,
-				 u8 op_class, u16 cbm)
+				 u8 map_id, u8 op_class, u16 cbm)
 {
 	struct nan_avail_entry *avail;
 	struct bitfield *res_bf = NULL;
@@ -1331,21 +1302,20 @@ nan_sched_bf_from_avail_and_chan(struct nan_data *nan,
 		if (avail->map_id != map_id)
 			continue;
 
-		/* schedule can only be covered by committed/conditional */
+		/* Schedule can only be covered by committed/conditional */
 		if (avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED &&
 		    avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COND)
 			continue;
 
 		/* Now check channel, if it is given */
-		if (op_class && cbm) {
-			if (avail->n_band_chan < 1 ||
-			    avail->band_chan_type != NAN_TYPE_CHANNEL ||
-			    avail->band_chan[0].u.chan.op_class != op_class ||
-			    !(avail->band_chan[0].u.chan.chan_bitmap & cbm))
-				continue;
-		}
+		if (op_class && cbm &&
+		    (avail->n_band_chan < 1 ||
+		     avail->band_chan_type != NAN_TYPE_CHANNEL ||
+		     avail->band_chan[0].u.chan.op_class != op_class ||
+		     !(avail->band_chan[0].u.chan.chan_bitmap & cbm)))
+			continue;
 
-		/* convert the availability entry to bf */
+		/* Convert the availability entry to bitfield */
 		avail_bf = nan_tbm_to_bf(nan, &avail->tbm);
 		if (!avail_bf)
 			goto fail;
@@ -1382,11 +1352,11 @@ fail:
  * @avail_entries: A list of availability entries (see &struct nan_avail_entry)
  * @sched: An array with 0 or more &struct nan_sched_entry entries
  * @sched_len: Length of the &sched array
- * Returns true if schedule is covered by the entries; otherwise false.
+ * Returns: true if schedule is covered by the entries; otherwise false.
  */
 bool nan_sched_covered_by_avail_entries(struct nan_data *nan,
 					struct dl_list *avail_entries,
-					u8 *sched, u8 sched_len)
+					const u8 *sched, size_t sched_len)
 {
 	struct dl_list sched_entries;
 	struct bitfield *sched_bf, *avail_bf;
@@ -1399,10 +1369,9 @@ bool nan_sched_covered_by_avail_entries(struct nan_data *nan,
 
 	dl_list_init(&sched_entries);
 	if (nan_sched_entries_to_avail_entries(nan,
-						&sched_entries,
-						sched, sched_len)) {
+					       &sched_entries,
+					       sched, sched_len))
 		return false;
-	}
 
 	sched_bf = nan_sched_to_bf(nan, &sched_entries, &map_id, &reason);
 	if (!sched_bf) {
@@ -1436,30 +1405,26 @@ bool nan_sched_covered_by_avail_entries(struct nan_data *nan,
  * @sched_bf: the bitfield representing the schedule
  * @map_id: Map ID associated with the schedule
  * @op_class: Operating class to match against
- * @cbm: Channel bit map to match against
- * Returns true of schedule is covered by the entries; otherwise false
+ * @cbm: Channel bitmap to match against
+ * Returns: true of schedule is covered by the entries; otherwise false
  */
-bool
-nan_sched_bf_covered_by_avail_entries_and_chan(struct nan_data *nan,
-					       const struct dl_list *avail_entries,
-					       struct bitfield *sched_bf,
-					       u8 map_id,
-					       u8 op_class, u16 cbm)
+bool nan_sched_bf_covered_by_avail_entries_and_chan(
+	struct nan_data *nan, const struct dl_list *avail_entries,
+	struct bitfield *sched_bf, u8 map_id, u8 op_class, u16 cbm)
 {
 	struct bitfield *avail_bf;
 	bool ret = false;
 
 	/*
 	 * Build a schedule bitfield from all the availability entries matching
-	 * the map id and channel configuration
+	 * the map ID and channel configuration.
 	 */
 	avail_bf = nan_sched_bf_from_avail_and_chan(nan, avail_entries,
-						    map_id,
-						    op_class, cbm);
+						    map_id, op_class, cbm);
 
 	/*
-	 * If there is such schedule, verify that it is a superset of the given
-	 * schedule
+	 * If there is such a schedule, verify that it is a superset of the
+	 * given schedule.
 	 */
 	if (avail_bf && bitfield_is_subset(avail_bf, sched_bf))
 		ret = true;
@@ -1501,9 +1466,9 @@ static int nan_get_control_channel(struct nan_data *nan, u8 op_class,
 	freq = ieee80211_chan_to_freq(NULL, op_class, chan_id);
 
 	/*
-	 * For operating classes with bandwidth < 80 the frequency is the
+	 * For operating classes with bandwidth < 80 MHz, the frequency is the
 	 * control channel frequency. For operating classes with
-	 * bandwidth >= 80, the frequency is the center frequency of the
+	 * bandwidth >= 80 MHz, the frequency is the center frequency of the
 	 * primary segment, so we need to derive the control channel frequency
 	 * from the primary channel bitmap.
 	 */
@@ -1537,9 +1502,9 @@ static int nan_get_control_channel(struct nan_data *nan, u8 op_class,
  * @nan: NAN module context from nan_init()
  * @avail_entries: A list of availability entries. See &struct nan_avail_entry
  * @op_class: Operating class to match against
- * @cbm: Channel bit map to match against
- * @pri_cbm: Primary channel bit map to match against
- * Returns NULL on error or no match; otherwise returns a bitfield describing
+ * @cbm: Channel bitmap to match against
+ * @pri_cbm: Primary channel bitmap to match against
+ * Returns: NULL on error or no match; otherwise returns a bitfield describing
  * all the available slots.
  */
 struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
@@ -1553,14 +1518,14 @@ struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
 			 list) {
 		struct bitfield *avail_bf;
 
-		/* Schedule can only be covered by committed/conditional */
+		/* Schedule can only be covered by committed/conditional. */
 		if (avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED &&
 		    avail->type != NAN_AVAIL_ENTRY_CTRL_TYPE_COND)
 			continue;
 
 		/*
-		 * Committed/conditional entries should only have a single
-		 * channel entry
+		 * Committed/conditional entries should have only a single
+		 * channel entry.
 		 */
 		if (avail->n_band_chan != 1 ||
 		    avail->band_chan_type != NAN_TYPE_CHANNEL)
@@ -1569,19 +1534,24 @@ struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
 		/*
 		 * Check that the availability entry channel matches. If it does
 		 * not match, check if the channels are compatible, i.e., have
-		 * the same control channel
+		 * the same control channel.
 		 */
 		if (avail->band_chan[0].u.chan.op_class != op_class ||
 		    avail->band_chan[0].u.chan.chan_bitmap != cbm ||
 		    avail->band_chan[0].u.chan.pri_chan_bitmap != pri_cbm) {
 			int freq1, freq2;
+			u16 chan_bitmap, pri_chan_bitmap;
 
 			freq1 = nan_get_control_channel(nan, op_class,
 							cbm, pri_cbm);
-			freq2 = nan_get_control_channel(nan,
-							avail->band_chan[0].u.chan.op_class,
-							le_to_host16(avail->band_chan[0].u.chan.chan_bitmap),
-							le_to_host16(avail->band_chan[0].u.chan.pri_chan_bitmap));
+
+			chan_bitmap = le_to_host16(
+				avail->band_chan[0].u.chan.chan_bitmap);
+			pri_chan_bitmap = le_to_host16(
+				avail->band_chan[0].u.chan.pri_chan_bitmap);
+			freq2 = nan_get_control_channel(
+				nan, avail->band_chan[0].u.chan.op_class,
+				chan_bitmap, pri_chan_bitmap);
 
 			if (freq2 == -1 || freq1 != freq2)
 				continue;
@@ -1591,7 +1561,7 @@ struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
 				   freq1);
 		}
 
-		/* Convert the availability entry to bf */
+		/* Convert the availability entry to a bitfield */
 		avail_bf = nan_tbm_to_bf(nan, &avail->tbm);
 		if (!avail_bf)
 			goto fail;
@@ -1620,7 +1590,6 @@ fail:
 
 /**
  * nan_peer_dump_sched_to_buf - Dump peer schedule to a buffer
- *
  * @sched: Peer schedule
  * @buf: Output buffer
  * @buflen: The length of &buf in bytes
@@ -1651,7 +1620,8 @@ int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
 			ret = wpa_scnprintf(pos, end - pos,
 					    "\tchannel[%u]: committed=%u rx_nss=%u freq=%u bw=%u cfreq1=%u cfreq2=%u\n",
 					    j, chan->committed, chan->rx_nss,
-					    chan->chan.freq, chan->chan.bandwidth,
+					    chan->chan.freq,
+					    chan->chan.bandwidth,
 					    chan->chan.center_freq1,
 					    chan->chan.center_freq2);
 			if (os_snprintf_error(end - pos, ret))
@@ -1735,8 +1705,8 @@ err:
 
 
 /**
- * nan_peer_dump_pot_avail_to_buf - Dump peer potential availability to a
- * buffer.
+ * nan_peer_dump_pot_avail_to_buf - Dump peer potential availability to a text
+ * buffer
  *
  * @pot_avail: Peer potential availability
  * @buf: Output buffer
@@ -1748,7 +1718,7 @@ err:
 int nan_peer_dump_pot_avail_to_buf(struct nan_peer_potential_avail *pot_avail,
 				   char *buf, size_t buflen)
 {
-	u8 i, j;
+	unsigned int i, j;
 	int ret;
 	char *pos = buf;
 	char *end = buf + buflen;
@@ -1770,10 +1740,11 @@ int nan_peer_dump_pot_avail_to_buf(struct nan_peer_potential_avail *pot_avail,
 						    "\tband[%u]: band_id=%u\n",
 						    j, pot->entries[j].band_id);
 			} else {
-				ret = wpa_scnprintf(pos, end - pos,
-						    "\tchan[%u]: op_class=%u chan_bitmap=0x%04x\n",
-						    j, pot->entries[j].op_class,
-						    pot->entries[j].chan_bitmap);
+				ret = wpa_scnprintf(
+					pos, end - pos,
+					"\tchan[%u]: op_class=%u chan_bitmap=0x%04x\n",
+					j, pot->entries[j].op_class,
+					pot->entries[j].chan_bitmap);
 			}
 			if (os_snprintf_error(end - pos, ret))
 				goto err;
@@ -1791,19 +1762,17 @@ err:
 
 /**
  * nan_get_peer_ndc_freq - Get peer NDC frequency from schedule
- *
  * @nan: Pointer to NAN data struct
  * @peer_sched: Pointer to peer schedule struct
  * @map_idx: Index of the availability map to check
- *
  * Returns: Frequency of the committed channel that intersects with NDC,
  *          or -1 on failure or if no intersection found
  *
  * In case NDC bitmap spans across multiple channels, only one channel is
  * returned (that corresponds to the first NDC bit).
  */
-int nan_get_peer_ndc_freq(struct nan_data *nan ,
-			  struct nan_peer_schedule *peer_sched,
+int nan_get_peer_ndc_freq(struct nan_data *nan,
+			  const struct nan_peer_schedule *peer_sched,
 			  u8 map_idx)
 {
 	struct bitfield *ndc_bf;
@@ -1849,13 +1818,13 @@ int nan_get_peer_ndc_freq(struct nan_data *nan ,
 	return -1;
 }
 
+
 /**
  * nan_get_chan_entry - Get channel entry for a given NAN scheduled channel
- *
  * @nan: NAN module context from nan_init()
  * @chan: NAN scheduled channel
  * @chan_entry: On successful return holds the channel entry.
- * Returns 0 on success; otherwise -1
+ * Returns: 0 on success; otherwise -1
  */
 int nan_get_chan_entry(struct nan_data *nan, const struct nan_sched_chan *chan,
 		       struct nan_chan_entry *chan_entry)
@@ -1880,25 +1849,24 @@ int nan_get_chan_entry(struct nan_data *nan, const struct nan_sched_chan *chan,
 }
 
 
-/*
+/**
  * nan_convert_chan_sched_to_bf - Convert channel schedule to bitfield
  * and get the channel information.
  *
  * @nan: NAN module context from nan_init()
  * @chan: Channel schedule to convert
- * @avail_bf: On successful return would hold the availability bit map of the
- *     given channel schedule
- * @map_id: On successful return would hold the map ID for the schedule
- * @op_class: On successful return would hold the operating class for the
- *     schedule with the peer
- * @cbm: On successful return holds the channel bitmap for the operating
- *     class
+ * @avail_bf: On successful return holds the availability bitmap of the given
+ *     channel schedule
+ * @map_id: On successful return holds the map ID for the schedule
+ * @op_class: On successful return holds the operating class for the schedule
+ *     with the peer
+ * @cbm: On successful return holds the channel bitmap for the operating class
  * @pcbm: On successful return holds the primary channel bitmap for the
  *     channel in case of bandwidth greater than 40 MHz
- * Returns 0 on success; -1 on failure
+ * Returns: 0 on success; -1 on failure
  */
 int nan_convert_chan_sched_to_bf(struct nan_data *nan,
-				 struct nan_chan_schedule *chan,
+				 const struct nan_chan_schedule *chan,
 				 struct bitfield **avail_bf, u8 *map_id,
 				 u8 *op_class, u16 *cbm, u16 *pcbm)
 {
@@ -1913,21 +1881,21 @@ int nan_convert_chan_sched_to_bf(struct nan_data *nan,
 	ret = nan_get_chan_bm(nan, &chan->chan, op_class, cbm, pcbm);
 	if (ret) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NDL: failed to convert channel info");
+			   "NAN: NDL: Failed to convert channel info");
 		return -1;
 	}
 
 	committed_bf = nan_tbm_to_bf(nan, &chan->committed);
 	if (!committed_bf) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NDL: failed to build committed bitfield");
+			   "NAN: NDL: Failed to build committed bitfield");
 		return -1;
 	}
 
 	conditional_bf = nan_tbm_to_bf(nan, &chan->conditional);
 	if (!conditional_bf) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NDL: failed to build conditional bitfield");
+			   "NAN: NDL: Failed to build conditional bitfield");
 		bitfield_free(committed_bf);
 		return -1;
 	}
@@ -1938,7 +1906,7 @@ int nan_convert_chan_sched_to_bf(struct nan_data *nan,
 
 	if (!*avail_bf) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NDL: failed to unify committed and conditional bitfields");
+			   "NAN: NDL: Failed to unify committed and conditional bitfields");
 		return -1;
 	}
 
@@ -1949,7 +1917,7 @@ int nan_convert_chan_sched_to_bf(struct nan_data *nan,
 
 
 /*
- * nan_peer_schedule_intersection - Get local and peer schedules intersection
+ * nan_peer_schedule_intersects - Check if local and peer schedules intersect
  *
  * @nan: NAN module context from nan_init()
  * @peer: The peer with whom to intersect the schedule

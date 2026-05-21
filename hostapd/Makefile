@@ -619,6 +619,21 @@ OBJS += ../src/ap/nan_usd_ap.o
 CFLAGS += -DCONFIG_NAN_USD
 endif
 
+ifdef CONFIG_PMKSA_PRIVACY
+CONFIG_ENC_ASSOC=y
+CFLAGS += -DCONFIG_PMKSA_PRIVACY
+endif
+
+ifdef CONFIG_IEEE8021X_AUTH
+CONFIG_ENC_ASSOC=y
+CFLAGS += -DCONFIG_IEEE8021X_AUTH
+endif
+
+ifdef CONFIG_ENC_ASSOC
+CONFIG_PASN=y
+CFLAGS += -DCONFIG_ENC_ASSOC
+endif
+
 ifdef CONFIG_PASN
 CFLAGS += -DCONFIG_PASN
 CFLAGS += -DCONFIG_PTKSA_CACHE
@@ -1072,6 +1087,9 @@ endif
 endif
 
 ifdef CONFIG_SAE
+ifdef CONFIG_IEEE80211BE
+NEED_SHA384=y
+endif
 ifdef NEED_SHA384
 # Need to add HMAC-SHA384 KDF as well, if SHA384 was enabled.
 NEED_HMAC_SHA384_KDF=y
@@ -1218,6 +1236,7 @@ OBJS += ../src/pasn/pasn_common.o
 OBJS += ../src/ap/ieee802_11.o
 OBJS += ../src/ap/hw_features.o
 OBJS += ../src/ap/dfs.o
+OBJS += ../src/ap/interference.o
 CFLAGS += -DNEED_AP_MLME
 endif
 OBJS += ../src/ap/ieee802_11_ht.o

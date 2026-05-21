@@ -348,6 +348,15 @@ ifdef NEED_NAN
 OBJS += nan_supplicant.o
 OBJS += src/nan/nan.o
 OBJS += src/common/nan_de.c
+OBJS += src/nan/nan_util.c
+OBJS += src/nan/nan_ndp.c
+OBJS += src/nan/nan_ndl.c
+OBJS += src/nan/nan_crypto.c
+OBJS += src/nan/nan_sec.c
+OBJS += src/nan/nan_bootstrap.c
+ifdef CONFIG_PASN
+OBJS += src/nan/nan_pairing.c
+endif
 endif
 
 ifeq ($(CONFIG_OWE),y)
@@ -444,6 +453,21 @@ OBJS += wifi_display.c
 endif
 endif
 
+ifdef CONFIG_PMKSA_PRIVACY
+CONFIG_ENC_ASSOC=y
+L_CFLAGS += -DCONFIG_PMKSA_PRIVACY
+endif
+
+ifdef CONFIG_IEEE8021X_AUTH
+CONFIG_ENC_ASSOC=y
+L_CFLAGS += -DCONFIG_IEEE8021X_AUTH
+endif
+
+ifdef CONFIG_ENC_ASSOC
+CONFIG_PASN=y
+L_CFLAGS += -DCONFIG_ENC_ASSOC
+endif
+
 ifdef CONFIG_PASN
 L_CFLAGS += -DCONFIG_PASN
 L_CFLAGS += -DCONFIG_PTKSA_CACHE
@@ -451,6 +475,7 @@ NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
+NEED_DRAGONFLY=y
 OBJS += src/pasn/pasn_initiator.c
 OBJS += src/pasn/pasn_common.c
 OBJS += pasn_supplicant.c
@@ -1051,6 +1076,7 @@ OBJS += src/pasn/pasn_responder.c
 OBJS += src/ap/ieee802_11.c
 OBJS += src/ap/hw_features.c
 OBJS += src/ap/dfs.c
+OBJS += src/ap/interference.c
 L_CFLAGS += -DNEED_AP_MLME
 endif
 ifdef CONFIG_WPS

@@ -173,8 +173,13 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 
 #ifdef CONFIG_IEEE80211BE
 	if (conf->mld_ap) {
-		if (!hapd->mld)
-			hostapd_bss_setup_multi_link(hapd, iface->interfaces);
+		hostapd_bss_setup_multi_link(hapd, iface->interfaces);
+		if (!hapd->mld) {
+			wpa_printf(MSG_ERROR,
+				   "MLD: Failed to initialize context for %s",
+				   conf->iface);
+			return -1;
+		}
 		h_hapd = hostapd_mld_get_first_bss(hapd);
 	}
 
@@ -841,7 +846,9 @@ int main(int argc, char *argv[])
 #ifdef CONFIG_DPP
 	struct dpp_global_config dpp_conf;
 #endif /* CONFIG_DPP */
+#ifdef CONFIG_PROCESS_COORDINATION
 	const char *proc_coord_dir = NULL;
+#endif /* CONFIG_PROCESS_COORDINATION */
 
 	if (os_program_init())
 		return -1;
