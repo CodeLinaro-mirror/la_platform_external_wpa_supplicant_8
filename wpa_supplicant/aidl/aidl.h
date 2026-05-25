@@ -187,6 +187,8 @@ extern "C"
 	void wpas_aidl_notify_nan_subscribe_terminated(
 		struct wpa_supplicant* wpa_s, int subscribe_id,
 		enum nan_de_reason reason);
+	void wpas_aidl_notify_nan_transmit_status(struct wpa_supplicant *wpa_s,
+		u32 cookie, bool ack);
 	void wpas_aidl_notify_nan_cluster_event(
 		struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr);
 	void wpas_aidl_notify_nan_match_expired(
@@ -448,6 +450,8 @@ static void wpas_aidl_notify_nan_publish_terminated(
     struct wpa_supplicant* wpa_s, int subscribe_id, enum nan_de_reason reason) {}
 static void wpas_aidl_notify_nan_subscribe_terminated(
     struct wpa_supplicant* wpa_s, int subscribe_id, enum nan_de_reason reason) {}
+static void wpas_aidl_notify_nan_transmit_status(struct wpa_supplicant *wpa_s,
+		u32 cookie, bool ack) {}
 static void wpas_aidl_notify_nan_cluster_event(
     struct wpa_supplicant* wpa_s, u8 event_type, const u8* peer_addr) {}
 static void wpas_aidl_notify_nan_match_expired(

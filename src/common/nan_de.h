@@ -24,6 +24,24 @@ enum nan_de_reason {
 	NAN_DE_REASON_FAILURE,
 };
 
+struct nan_discovery_result {
+	int subscribe_id;
+	enum nan_service_protocol_type srv_proto_type;
+	const u8 *ssi;
+	size_t ssi_len;
+	int peer_publish_id;
+	const u8 *peer_addr;
+	bool fsd;
+	bool fsd_gas;
+	const u8 *pmkid_list;
+	size_t pmkid_count;
+	const u8 *cipher_suites;
+	size_t n_cipher_suites;
+	bool pairing_setup_supp;
+	bool npk_nik_caching_supp;
+	u16 pbm;
+};
+
 struct nan_callbacks {
 	void *ctx;
 
@@ -33,17 +51,8 @@ struct nan_callbacks {
 	int (*listen)(void *ctx, unsigned int freq, unsigned int duration);
 
 	/* NAN DE Events */
-	void (*discovery_result)(void *ctx, int subscribe_id,
-				 enum nan_service_protocol_type srv_proto_type,
-				 const u8 *ssi, size_t ssi_len,
-				 int peer_publish_id,
-				 const u8 *peer_addr, bool fsd, bool fsd_gas,
-				 const u8 *pmkid_list, size_t pmkid_count,
-				 const u8 *cipher_suite,
-				 size_t n_cipher_suite,
-				 const u8 *match_filter,
-				 size_t match_filter_len);
-
+	void (*discovery_result)(void *ctx, struct nan_discovery_result *res,
+				 const u8 *match_filter, size_t match_filter_len);
 	void (*replied)(void *ctx, int publish_id, const u8 *peer_addr,
 			int peer_subscribe_id,
 			enum nan_service_protocol_type srv_proto_type,
@@ -72,6 +81,7 @@ struct nan_callbacks {
 				     unsigned int freq);
 	void (*add_extra_attrs)(void *ctx, struct wpabuf *buf);
 	bool (*is_peer_paired)(void *ctx, const u8 *addr);
+	void (*transmit_req_status)(void *ctx, u32 cookie, bool ack);
 };
 
 bool nan_de_is_nan_network_id(const u8 *addr);
@@ -86,7 +96,8 @@ void nan_de_listen_started(struct nan_de *de, unsigned int freq,
 			   unsigned int duration);
 void nan_de_listen_ended(struct nan_de *de, unsigned int freq);
 void nan_de_update_nmi(struct nan_de *de, const u8 *nmi);
-void nan_de_tx_status(struct nan_de *de, unsigned int freq, const u8 *dst);
+void nan_de_tx_status(struct nan_de *de, unsigned int freq, const u8 *dst,
+		      const u8 *data, size_t data_len, bool ack);
 void nan_de_tx_wait_ended(struct nan_de *de);
 
 bool nan_de_rx_sdf(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
@@ -154,6 +165,12 @@ struct nan_publish_params {
 
 	/* ND-PMK to use for creating a list of PMKIDs for the service */
 	const u8 *nd_pmk;
+
+	/*
+	 * GTK protection required for group-addressed data frames transmitted
+	 * and received for the service
+	 */
+	bool gtk_required;
 };
 
 /* Returns -1 on failure or >0 publish_id */
@@ -221,6 +238,12 @@ struct nan_subscribe_params {
 	 * Aware specification v4.0
 	 */
 	u16 pbm;
+
+	/*
+	 * GTK protection required for group-addressed data frames transmitted
+	 * and received for the service
+	 */
+	bool gtk_required;
 };
 
 /* Returns -1 on failure or >0 subscribe_id */
@@ -236,13 +259,15 @@ void nan_de_cancel_subscribe(struct nan_de *de, int subscribe_id);
 int nan_de_transmit(struct nan_de *de, int handle,
 		    const struct wpabuf *ssi, const struct wpabuf *elems,
 		    const u8 *peer_addr, u8 req_instance_id,
-		    const struct wpabuf *nan_attrs);
+		    const struct wpabuf *nan_attrs, u32 *cookie);
 
 void nan_de_dw_trigger(struct nan_de *de, int freq);
 void nan_de_set_cluster_id(struct nan_de *de, const u8 *cluster_id);
 bool nan_de_is_valid_instance_id(struct nan_de *de, int handle,
 				 bool publish, u8 *service_id);
 u16 nan_de_get_service_bootstrap_methods(struct nan_de *de, int handle);
+bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid);
+int nan_de_get_status(struct nan_de *de, char *buf, size_t buflen);
 
 int nan_de_stop_listen(struct nan_de *de, int handle);
 

@@ -29,6 +29,7 @@
 #include <netinet/in.h>
 #include <netinet/in6.h>
 #include "pasn/pasn_common.h"
+#include "nan/nan.h"
 
 extern const char *const wpa_supplicant_version;
 extern const char *const wpa_supplicant_license;
@@ -1107,6 +1108,7 @@ struct wpa_supplicant {
 		unsigned int sae_pmksa_caching:1;
 		u16 seq_num;
 		u8 ext_auth_bssid[ETH_ALEN];
+		unsigned int ext_auth_freq;
 		struct wpa_ssid *ext_auth_wpa_ssid;
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
@@ -1719,10 +1721,16 @@ struct wpa_supplicant {
 	struct nan_cluster_config nan_cluster_config;
 	u8 schedule_sequence_id;
 	struct nan_schedule_config nan_sched[MAX_NAN_RADIOS];
+	struct nan_schedule_update {
+		struct nan_schedule_config sched;
+		u8 map_id;
+	} nan_sched_update;
+	struct wpabuf *nan_ulw_attr;
 	struct wpa_freq_range_list nan_disallowed_freqs;
 	u16 nan_max_bw;
 	u16 nan_supported_csids;
 	unsigned int nan_ndi_ndp_refcount; /* Active NDP count on this NDI */
+	struct nan_gtk ndi_gtk;
 #endif
 };
 

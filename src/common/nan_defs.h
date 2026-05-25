@@ -250,15 +250,22 @@ enum nan_ndp_status {
 	NAN_NDP_STATUS_REJECTED  = 2,
 };
 
-/* See Table 84 (NDP Control field) */
+/*
+ * See Table 84 (NDP Control field) and Table 87 (NDPE Control Field).
+ * Bits 0-4 are identical for NDP and NDPE the only differences are in
+ * Bit 5
+ */
 #define NAN_NDP_CTRL_CONFIRM_REQUIRED       BIT(0)
 /* Bit position 1 is reserved in the spec */
 #define NAN_NDP_CTRL_SECURITY_PRESENT       BIT(2)
 #define NAN_NDP_CTRL_PUBLISH_ID_PRESENT     BIT(3)
 #define NAN_NDP_CTRL_RESPONDER_NDI_PRESENT  BIT(4)
-#define NAN_NDP_CTRL_SPEC_INFO_PRESENT      BIT(5)
 
-/* NDP type: See Table 82 (NDP attribute format)
+#define NAN_NDP_CTRL_SPEC_INFO_PRESENT      BIT(5)
+#define NAN_NDPE_CTRL_GTK_REQUIRED          BIT(5)
+
+/* NDP and NDPE type: See Table 82 (NDP attribute format) and
+ * Table 86 (NDP Extension attribute format)
  * Note: the structure does not include the id and length.
  */
 struct ieee80211_ndp {
@@ -272,6 +279,14 @@ struct ieee80211_ndp {
 	/* followed by optional fields based on ndp_ctrl */
 	u8 optional[0];
 } STRUCT_PACKED;
+
+/* TLV types for NDPE attribute: See Table 89 */
+enum nan_ndpe_tlv_type {
+	NAN_NDPE_TLV_IPV6_LINK_LOCAL = 0,
+	NAN_NDPE_TLV_SRV_INFO        = 1,
+};
+
+#define NAN_NDPE_TLV_IPV6_LINK_LOCAL_LEN 8
 
 /* See Table 97 (Time Bitmap Control field format) */
 #define NAN_TIME_BM_CTRL_BIT_DURATION_POS  0
@@ -505,6 +520,16 @@ enum nan_cipher_suite_id {
 	/* Keep last */
 	NAN_CS_MAX,
 };
+
+/* Helper macros to check CSID properties */
+#define NAN_CS_IS_128(csid) \
+	((csid) == NAN_CS_SK_CCM_128 || (csid) == NAN_CS_PK_PASN_128)
+#define NAN_CS_IS_256(csid) \
+	((csid) == NAN_CS_SK_GCM_256 || (csid) == NAN_CS_PK_PASN_256)
+#define NAN_CS_IS_VALID_NDP(csid) \
+	(NAN_CS_IS_128(csid) || NAN_CS_IS_256(csid))
+#define NAN_CS_IS_PASN(csid) \
+	((csid) == NAN_CS_PK_PASN_128 || (csid) == NAN_CS_PK_PASN_256)
 
 /* See Table 121 (Cipher Suite attribute field format) */
 struct nan_cipher_suite {

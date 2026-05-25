@@ -2891,7 +2891,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	int reqInstanceId = messageInfo.peerId;
 	int status = wpas_nan_transmit(
 		retrieveIfacePtr(), handle, msgBuffer.get(), nullptr /* elems */,
-		messageInfo.peerMacAddress.data(), reqInstanceId);
+		messageInfo.peerMacAddress.data(), reqInstanceId, nullptr/*cookie*/);
 	if (status < 0) {
 		wpa_printf(MSG_INFO, "Failed to send USD message");
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
