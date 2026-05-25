@@ -218,6 +218,19 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			attrs->nira = pos;
 			attrs->nira_len = attr_len;
 			break;
+		case NAN_ATTR_NDP_EXT:
+			/*
+			 * Validate minimal NDPE attribute length. NDP and NDPE
+			 * attributes have the common structure and thus the
+			 * same minimal length requirement based on the common
+			 * fields (see struct ieee80211_ndp).
+			 */
+			if (attr_len < sizeof(struct ieee80211_ndp))
+				break;
+
+			attrs->ndpe = pos;
+			attrs->ndpe_len = attr_len;
+			break;
 		case NAN_ATTR_MASTER_INDICATION:
 		case NAN_ATTR_CLUSTER:
 		case NAN_ATTR_NAN_ATTR_SERVICE_ID_LIST:
@@ -242,7 +255,6 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 		case NAN_ATTR_EXT_MESH:
 		case NAN_ATTR_PUBLIC_AVAILABILITY:
 		case NAN_ATTR_SUBSC_SERVICE_ID_LIST:
-		case NAN_ATTR_NDP_EXT:
 		case NAN_ATTR_S3:
 		case NAN_ATTR_TPEA:
 		case NAN_ATTR_VENDOR_SPECIFIC:
@@ -789,6 +801,7 @@ static void nan_build_pot_avail_entry(struct nan_data *nan, struct wpabuf *buf,
  * @n_chans: Number of channels in chans
  * @chans: Channel schedules
  * @buf: Frame buffer to which the attribute would be added
+ * @include_potential: If true, potential availability entries would be added
  * Returns: 0 on success, negative on failure.
  *
  * An availability attribute is added for each map (identified by map ID) in the
@@ -800,7 +813,7 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 			u32 map_ids_bitmap,
 			u8 type_for_conditional,
 			size_t n_chans, struct nan_chan_schedule *chans,
-			struct wpabuf *buf)
+			struct wpabuf *buf, bool include_potential)
 {
 	u8 last_map_id = NAN_INVALID_MAP_ID;
 	u32 handled_map_ids = 0;
@@ -854,8 +867,9 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 					   "NAN: Add avail attr done: map_id=%u",
 					   last_map_id);
 
-				nan_build_pot_avail_entry(nan, buf,
-							  last_map_id);
+				if (include_potential)
+					nan_build_pot_avail_entry(nan, buf,
+								  last_map_id);
 				WPA_PUT_LE16(len_ptr,
 					     (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
 			}
@@ -898,7 +912,8 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 	}
 
 	if (last_map_id != NAN_INVALID_MAP_ID) {
-		nan_build_pot_avail_entry(nan, buf, last_map_id);
+		if (include_potential)
+			nan_build_pot_avail_entry(nan, buf, last_map_id);
 		WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
 
 		wpa_printf(MSG_DEBUG, "NAN: Add avail attr done: map_id=%u",
@@ -907,6 +922,9 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 		wpa_printf(MSG_DEBUG,
 			   "NAN: No committed/conditional entries were added");
 	}
+
+	if (!include_potential)
+		return 0;
 
 	/*
 	 * Add NAN availability attributes with a single potential availability
@@ -1152,7 +1170,7 @@ struct bitfield *nan_tbm_to_bf(struct nan_data *nan,
 				u32 target_slot =
 					start_slot + (i * dur_factor + j);
 
-				if (target_slot > NAN_MAX_TIME_BITMAP_SLOTS)
+				if (target_slot >= NAN_MAX_TIME_BITMAP_SLOTS)
 					goto done;
 
 				if (slot_set)
@@ -1702,6 +1720,13 @@ int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
 		pos += ret;
 	}
 
+	ret = wpa_scnprintf(pos, end - pos, "max_idle_period=%u",
+			    sched->max_idle_period);
+
+	if (os_snprintf_error(end - pos, ret))
+		goto err;
+
+	pos += ret;
 	return pos - buf;
 err:
 	wpa_printf(MSG_DEBUG, "NAN: Buffer too small to dump peer schedule");
@@ -1924,20 +1949,25 @@ int nan_convert_chan_sched_to_bf(struct nan_data *nan,
 
 
 /*
- * nan_peer_schedule_intersects - Check if local and peer schedules intersect
+ * nan_peer_schedule_intersection - Get local and peer schedules intersection
  *
  * @nan: NAN module context from nan_init()
  * @peer: The peer with whom to intersect the schedule
  * @sched: Local device schedule
- * Returns: True if schedules intersect, false otherwise
+ * Returns: Bitfield representing the intersection of schedules, or NULL if
+ *	no intersection
  *
  * The function checks if the local device schedule intersects with the peer
- * device schedule.
+ * device schedule and return a bitfield representing the intersection, or NULL
+ *	if no intersection.
  */
-bool nan_peer_schedule_intersects(struct nan_data *nan, struct nan_peer *peer,
-				  struct nan_schedule *sched)
+struct bitfield *nan_peer_schedule_intersection(struct nan_data *nan,
+						struct nan_peer *peer,
+						struct nan_schedule *sched)
 {
 	size_t i;
+	struct bitfield *common_bf = NULL;
+	bool intersects = false;
 
 	/*
 	 * Iterate over all the channels included in the local schedule. For
@@ -1964,7 +1994,7 @@ bool nan_peer_schedule_intersects(struct nan_data *nan, struct nan_peer *peer,
 		if (ret) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: NDL: Failed to convert chan sched to bitfield");
-			return false;
+			return NULL;
 		}
 
 		/* Get the peer availability for the current channel */
@@ -1977,14 +2007,57 @@ bool nan_peer_schedule_intersects(struct nan_data *nan, struct nan_peer *peer,
 			continue;
 		}
 
-		ret = bitfield_intersects(own_chan_bf, peer_chan_bf);
+		intersects |= bitfield_intersects(own_chan_bf, peer_chan_bf);
+
+		ret = bitfield_intersect_in_place(own_chan_bf, peer_chan_bf);
+		if (ret < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Failed to intersect own and peer chan bitfields");
+			bitfield_free(own_chan_bf);
+			bitfield_free(peer_chan_bf);
+			bitfield_free(common_bf);
+			return NULL;
+		}
 
 		bitfield_free(peer_chan_bf);
-		bitfield_free(own_chan_bf);
 
-		if (ret == 1)
-			return true;
+		if (common_bf) {
+			ret = bitfield_union_in_place(common_bf, own_chan_bf);
+			if (ret) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Failed to unify own chan bitfields");
+
+				bitfield_free(own_chan_bf);
+				bitfield_free(common_bf);
+				return NULL;
+			}
+		} else {
+			common_bf = bitfield_dup(own_chan_bf);
+			if (!common_bf) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Failed to dup own chan bitfield");
+
+				bitfield_free(own_chan_bf);
+				bitfield_free(common_bf);
+				return NULL;
+			}
+		}
+
+		bitfield_free(own_chan_bf);
 	}
 
-	return false;
+	if (!intersects) {
+		bitfield_free(common_bf);
+		return NULL;
+	}
+
+	return common_bf;
+}
+
+
+void nan_add_kde_hdr(struct wpabuf *buf, u32 kde, size_t data_len)
+{
+	wpabuf_put_u8(buf, WLAN_EID_VENDOR_SPECIFIC);
+	wpabuf_put_u8(buf, RSN_SELECTOR_LEN + data_len);
+	RSN_SELECTOR_PUT(wpabuf_put(buf, RSN_SELECTOR_LEN), kde);
 }

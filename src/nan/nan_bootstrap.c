@@ -661,7 +661,7 @@ int nan_bootstrap_request(struct nan_data *nan, int handle,
 
 	nan_bootstrap_reset(nan, peer);
 
-	peer->bootstrap.dialog_token = ++nan->next_dialog_token;
+	peer->bootstrap.dialog_token = nan_get_next_dialog_token(nan);
 	peer->bootstrap.requested_pbm = pbm;
 	peer->bootstrap.in_progress = true;
 	peer->bootstrap.handle = handle;

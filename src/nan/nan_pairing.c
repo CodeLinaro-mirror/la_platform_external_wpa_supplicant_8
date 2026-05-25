@@ -98,32 +98,6 @@ void nan_pairing_deinit_peer(struct nan_peer *peer)
 }
 
 
-int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr)
-{
-	struct nan_peer *peer;
-
-	peer = nan_get_peer(nan_data, peer_addr);
-	if (!peer) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing abort: Peer " MACSTR " not found",
-			   MAC2STR(peer_addr));
-		return -1;
-	}
-
-	if (!peer->pairing.pasn && !peer->pairing.pending_auth1) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing abort: No PASN in progress with peer "
-			   MACSTR, MAC2STR(peer_addr));
-		return -1;
-	}
-
-	wpa_printf(MSG_DEBUG, "NAN: Aborting pairing with peer " MACSTR,
-		   MAC2STR(peer_addr));
-	nan_pairing_deinit_peer(peer);
-	return 0;
-}
-
-
 static bool nan_pairing_is_supported(struct nan_data *nan_data,
 				     struct nan_peer *peer, u8 auth_mode)
 {
@@ -454,11 +428,7 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 
 	cs.instance_id = publish_id;
 
-	/*
-	 * TODO: get security capabilities from somewhere. For now, it doesn't
-	 * matter as the capability field is not used in pairing anyway
-	 */
-	nan_add_csia(extra_ies, 0, 1, &cs);
+	nan_add_csia(extra_ies, nan_data->cfg->security_capab, 1, &cs);
 
 	if (auth_mode == NAN_PASN_AUTH_MODE_SAE ||
 	    auth_mode == NAN_PASN_AUTH_MODE_PASN) {
@@ -607,11 +577,14 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 	u8 npk[NAN_NPK_LEN];
 	struct pasn_data *pasn = peer->pairing.pasn;
 	int cipher = pasn_get_cipher(pasn);
-	enum nan_cipher_suite_id csid;
 	u8 *initiator_nmi, *responder_nmi;
 	int ret;
 
 	peer->pairing.flags |= NAN_PAIRING_FLAG_PAIRED;
+
+	peer->pairing.pairing_csid = cipher == WPA_CIPHER_GCMP_256 ?
+				     NAN_CS_PK_PASN_256 : NAN_CS_PK_PASN_128;
+	peer->pairing.pairing_akmp = pasn_get_akmp(pasn);
 
 	if (!nan_data->cfg->pairing_cfg.npk_caching ||
 	    !peer->pairing.pairing_cfg.npk_caching ||
@@ -628,10 +601,8 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 		responder_nmi = nan_data->cfg->nmi_addr;
 	}
 
-	csid = cipher == WPA_CIPHER_GCMP_256 ? NAN_CS_PK_PASN_256 :
-					       NAN_CS_PK_PASN_128;
-
-	ret = nan_crypto_derive_kek(pasn->ptk.kdk, pasn->ptk.kdk_len, csid,
+	ret = nan_crypto_derive_kek(pasn->ptk.kdk, pasn->ptk.kdk_len,
+				    peer->pairing.pairing_csid,
 				    initiator_nmi, responder_nmi,
 				    &pasn->ptk);
 	if (ret) {
@@ -650,7 +621,8 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 
 	wpa_printf(MSG_DEBUG, "NAN: Pairing: Derive NPK after PASN pairing");
 
-	ret = nan_crypto_derive_npk(pasn->ptk.kdk, pasn->ptk.kdk_len, csid,
+	ret = nan_crypto_derive_npk(pasn->ptk.kdk, pasn->ptk.kdk_len,
+				    peer->pairing.pairing_csid,
 				    initiator_nmi, responder_nmi, npk,
 				    sizeof(npk));
 	if (ret) {
@@ -659,14 +631,6 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 		os_memcpy(pasn->pmk, npk, NAN_NPK_LEN);
 		pasn->pmk_len = NAN_NPK_LEN;
 	}
-}
-
-
-static void nan_add_kde_hdr(struct wpabuf *buf, u32 kde, size_t data_len)
-{
-	wpabuf_put_u8(buf, WLAN_EID_VENDOR_SPECIFIC);
-	wpabuf_put_u8(buf, RSN_SELECTOR_LEN + data_len);
-	RSN_SELECTOR_PUT(wpabuf_put(buf, RSN_SELECTOR_LEN), kde);
 }
 
 
@@ -864,14 +828,23 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 	const struct ieee80211_mgmt *mgmt =
 		(const struct ieee80211_mgmt *) data;
 
-	if (!nan || !data || data_len < sizeof(*mgmt))
+	if (!nan || !data ||
+	    data_len < offsetof(struct ieee80211_mgmt, u.auth.variable))
 		return -1;
 
 	peer = nan_get_peer(nan, mgmt->da);
-	if (!peer || !peer->pairing.pasn) {
+	if (!peer) {
 		wpa_printf(MSG_DEBUG, "NAN: Pairing: Peer not found " MACSTR,
 			   MAC2STR(mgmt->da));
 		return -1;
+	}
+
+	/* Pairing was rejected. Clear peer schedule if no active NDPs */
+	if (!peer->pairing.pasn) {
+		if (dl_list_empty(&peer->ndps) && !peer->ndp_setup.ndp)
+			nan_clear_peer_schedule(nan, peer);
+
+		return 0;
 	}
 
 	pasn = peer->pairing.pasn;
@@ -888,9 +861,7 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 		}
 
 		ret = nan->cfg->pairing_result_cb(nan->cfg->cb_ctx,
-						  peer->nmi_addr,
-						  peer->pairing.peer_instance_id,
-						  pasn->akmp,
+						  peer->nmi_addr, pasn->akmp,
 						  pasn->cipher, pasn->status,
 						  &pasn->ptk,
 						  pasn->status ==
@@ -903,12 +874,12 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 
 		nan_pairing_done(nan, peer);
 
-                /*
-                 * The peer installs the key upon receiving 3d authentication
-                 * message. Give the peer some time to install the key before
-                 * sending the NIK.
-                 */
-                os_sleep(0, 50000);
+		/*
+		 * Allow the peer to install the keys before transmitting the
+		 * follow up
+		 */
+		os_sleep(0, 30000);
+
 		if (nan_send_nik(nan, peer) < 0) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Pairing: Failed to send NIK");
@@ -1102,9 +1073,7 @@ static int nan_pairing_handle_auth_2(struct nan_data *nan_data,
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: wpa_pasn_auth_rx() failed");
 		nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
-						 peer->nmi_addr,
-						 peer->pairing.peer_instance_id,
-						 pasn->akmp,
+						 peer->nmi_addr, pasn->akmp,
 						 pasn->cipher,
 						 WLAN_STATUS_UNSPECIFIED_FAILURE,
 						 NULL, NULL);
@@ -1140,9 +1109,7 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
 	}
 
 	ret = nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
-					       peer->nmi_addr,
-					       peer->pairing.peer_instance_id,
-					       pasn->akmp,
+					       peer->nmi_addr, pasn->akmp,
 					       pasn->cipher, status,
 					       &pasn->ptk,
 					       status == WLAN_STATUS_SUCCESS ?
@@ -1278,6 +1245,12 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 	}
 
 	if (status_code != WLAN_STATUS_SUCCESS) {
+		struct pasn_data *pasn = peer->pairing.pasn;
+
+		nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
+						 peer->nmi_addr, pasn->akmp,
+						 pasn->cipher, status_code,
+						 NULL, NULL);
 		nan_pairing_deinit_peer(peer);
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Authentication rejected - status=%u",
@@ -1553,4 +1526,99 @@ bool nan_pairing_is_peer_paired(struct nan_data *nan_data, const u8 *peer_addr)
 		return 0;
 
 	return !!(peer->pairing.flags & NAN_PAIRING_FLAG_PAIRED);
+}
+
+
+void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr)
+{
+	struct nan_peer *peer;
+
+	peer = nan_get_peer(nan_data, peer_addr);
+	if (!peer)
+		return;
+
+	wpa_printf(MSG_DEBUG, "NAN: Unpair peer " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	peer->pairing.flags &= ~NAN_PAIRING_FLAG_PAIRED;
+	nan_pairing_deinit_peer(peer);
+}
+
+
+int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr)
+{
+	struct nan_peer *peer;
+	int cipher;
+	struct wpabuf *extra_ies;
+	int ret = -1;
+
+	peer = nan_get_peer(nan_data, peer_addr);
+	if (!peer) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing abort: Peer " MACSTR " not found",
+			   MAC2STR(peer_addr));
+		return -1;
+	}
+
+	if (!peer->pairing.pasn && !peer->pairing.pending_auth1) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing abort: No PASN in progress with peer "
+			   MACSTR, MAC2STR(peer_addr));
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: Aborting pairing with peer " MACSTR,
+		   MAC2STR(peer_addr));
+
+	if (!peer->pairing.pending_auth1) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing abort: No pending Auth1 frame for peer "
+			   MACSTR, MAC2STR(peer_addr));
+		ret = 0;
+		goto done;
+	}
+
+	/* The auth mode and cipher are not important when rejecting.
+	 * Just make sure to use a supported cipher so
+	 * nan_pairing_pasn_initialize won't fail.
+	 */
+	cipher = (nan_data->cfg->pairing_cfg.cipher_suites &
+		  NAN_PAIRING_PASN_128) ? WPA_CIPHER_CCMP : WPA_CIPHER_GCMP_256;
+
+	if (nan_pairing_pasn_initialize(nan_data, peer, NAN_PASN_AUTH_MODE_PASN,
+					cipher, "",
+					NAN_PAIRING_ROLE_RESPONDER)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: Initialize failed");
+		goto done;
+	}
+
+	extra_ies = wpabuf_alloc(NAN_IE_MAX_SIZE);
+	if (!extra_ies) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: Failed to allocate buffer for extra IEs");
+		goto done;
+	}
+
+	nan_pairing_prepare_pasn_elems(nan_data, peer, extra_ies,
+				       peer->pairing.peer_instance_id,
+				       NAN_PASN_AUTH_MODE_PASN);
+	pasn_set_extra_ies(peer->pairing.pasn, wpabuf_head_u8(extra_ies),
+			   wpabuf_len(extra_ies));
+	wpabuf_free(extra_ies);
+
+	nan_configure_peer_schedule(nan_data, peer, &nan_data->sched);
+
+	ret = handle_auth_pasn_resp(peer->pairing.pasn, nan_data->cfg->nmi_addr,
+				    peer_addr, NULL,
+				    WLAN_STATUS_UNSPECIFIED_FAILURE);
+	if (ret < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing abort: Failed to send response");
+		nan_clear_peer_schedule(nan_data, peer);
+	}
+
+done:
+	nan_pairing_deinit_peer(peer);
+	return ret;
 }

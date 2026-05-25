@@ -1537,6 +1537,33 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 	}
 #endif /* CONFIG_NAN */
 
+#ifdef CONFIG_NAN
+	if (info->nan_supported) {
+		if (info->nan_ndp_supported) {
+			if (info->nan_phy_capabilities_valid) {
+				wpa_printf(MSG_DEBUG, "nl80211: NAN supported");
+				drv->capa.nan_capa.drv_flags |=
+					WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP;
+
+			} else {
+				wpa_printf(MSG_DEBUG,
+					   "nl80211: NAN NDP supported but NAN PHY capabilities not valid");
+			}
+		}
+
+		/* TODO: Currently support only a single radio */
+		drv->capa.nan_capa.num_radios = 1;
+		drv->capa.nan_capa.sched_chans = info->num_multichan_concurrent_nan;
+
+		/*
+		 * nl80211 supports only a single configuration that uses 16 TU
+		 * slots and a period of 512 TUs
+		 */
+		drv->capa.nan_capa.slot_duration = 16;
+		drv->capa.nan_capa.schedule_period = 512;
+	}
+#endif /* CONFIG_NAN */
+
 	return 0;
 }
 

@@ -1887,21 +1887,21 @@ static int wpa_cli_cmd_interface_add(struct wpa_ctrl *ctrl, int argc,
 		printf("Invalid INTERFACE_ADD command: needs at least one "
 		       "argument (interface name)\n"
 		       "All arguments: ifname confname driver ctrl_interface "
-		       "driver_param bridge_name [create]\n");
+		       "driver_param bridge_name [create <type> [addr]]\n");
 		return -1;
 	}
 
 	/*
 	 * INTERFACE_ADD <ifname>TAB<confname>TAB<driver>TAB<ctrl_interface>TAB
-	 * <driver_param>TAB<bridge_name>[TAB<create>[TAB<type>]]
+	 * <driver_param>TAB<bridge_name>[TAB<create>[TAB<type>][TAB<addr>]]
 	 */
 	res = os_snprintf(cmd, sizeof(cmd),
-			  "INTERFACE_ADD %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+			  "INTERFACE_ADD %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			  argv[0],
 			  argc > 1 ? argv[1] : "", argc > 2 ? argv[2] : "",
 			  argc > 3 ? argv[3] : "", argc > 4 ? argv[4] : "",
 			  argc > 5 ? argv[5] : "", argc > 6 ? argv[6] : "",
-			  argc > 7 ? argv[7] : "");
+			  argc > 7 ? argv[7] : "", argc > 8 ? argv[8] : "");
 	if (os_snprintf_error(sizeof(cmd), res))
 		return -1;
 	cmd[sizeof(cmd) - 1] = '\0';
@@ -3452,6 +3452,12 @@ static int wpa_cli_cmd_nan_peer_info(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "NAN_PEER_INFO", 2, argc, argv);
 }
 
+static int wpa_cli_cmd_nan_status(struct wpa_ctrl *ctrl, int argc,
+				  char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "NAN_STATUS");
+}
+
 static int wpa_cli_cmd_nan_bootstrap(struct wpa_ctrl *ctrl, int argc,
 				     char *argv[])
 {
@@ -4276,7 +4282,9 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "nan_ndp_terminate", wpa_cli_cmd_nan_ndp_terminate, NULL,
 	  cli_cmd_flag_none, "peer_nmi=<nmi> init_ndi=<ndi> ndp_id=<id> = Terminate NAN data path" },
 	{ "nan_peer_info", wpa_cli_cmd_nan_peer_info, NULL,
-	  cli_cmd_flag_none, "<addr> <schedule|potential|capa> [map_id] = Get NAN peer information" },
+	  cli_cmd_flag_none, "<addr> <schedule|potential|capa|ndps> [map_id] = Get NAN peer information" },
+	{ "nan_status", wpa_cli_cmd_nan_status, NULL,
+	  cli_cmd_flag_none, "= Get NAN status" },
 	{ "nan_bootstrap", wpa_cli_cmd_nan_bootstrap, NULL,
 	  cli_cmd_flag_none,
 	  " = <peer_mac> <handle=<service handle>> <req_instance_id=<peer requestor id>> <method=<Bootstrap method>> [auth] = Request or authorize NAN boostrapping with peer" },

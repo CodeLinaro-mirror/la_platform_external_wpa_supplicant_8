@@ -104,6 +104,8 @@ const char * event_to_string(enum wpa_event_type event)
 	E2S(SETUP_LINK_RECONFIG);
 	E2S(NAN_CLUSTER_JOIN);
 	E2S(NAN_NEXT_DW);
+	E2S(NAN_SCHED_UPDATE_DONE);
+	E2S(NAN_ULW_UPDATE);
 	}
 
 	return "UNKNOWN";
