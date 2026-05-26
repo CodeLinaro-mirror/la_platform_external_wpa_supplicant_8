@@ -27,7 +27,7 @@ static const struct bgscan_ops * bgscan_modules[] = {
 int bgscan_init(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 		const char *name)
 {
-	if (!wpa_s->conf->bgscan_enabled) {
+	if (!wpa_s || !wpa_s->conf || !wpa_s->conf->bgscan_enabled) {
 		return 0;
 	}
 
@@ -73,10 +73,6 @@ int bgscan_init(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
 
 void bgscan_deinit(struct wpa_supplicant *wpa_s)
 {
-	if (!wpa_s->conf->bgscan_enabled) {
-		return;
-	}
-
 	if (wpa_s->bgscan && wpa_s->bgscan_priv) {
 		wpa_printf(MSG_DEBUG, "bgscan: Deinitializing module '%s'",
 			   wpa_s->bgscan->name);
