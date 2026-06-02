@@ -2883,6 +2883,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				   line, bss->wpa_deny_ptk0_rekey);
 			return 1;
 		}
+	} else if (os_strcmp(buf, "ignore_sta_gtk_rekey") == 0) {
+		bss->ignore_sta_gtk_rekey = atoi(pos);
 	} else if (os_strcmp(buf, "wpa_group_update_count") == 0) {
 		char *endp;
 		unsigned long val = strtoul(pos, &endp, 0);

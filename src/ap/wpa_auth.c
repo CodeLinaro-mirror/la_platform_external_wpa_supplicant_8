@@ -1917,19 +1917,24 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
 					"received EAPOL-Key Request for new 4-Way Handshake");
 			wpa_request_new_ptk(sm);
 		} else {
-			wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
-					LOGGER_INFO,
-					"received EAPOL-Key Request for GTK rekeying");
+			if (wpa_auth->conf.ignore_sta_gtk_rekey == 1)
+				wpa_auth_logger(wpa_auth, sm->addr, LOGGER_INFO,
+					"Ignore received EAPOL-Key Request for GTK rekeying");
+			else {
+				wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+						LOGGER_INFO,
+						"received EAPOL-Key Request for GTK rekeying");
 
-			eloop_cancel_timeout(wpa_rekey_gtk,
-					     wpa_get_primary_auth(wpa_auth),
-					     NULL);
-			if (wpa_auth_gtk_rekey_in_process(wpa_auth))
-				wpa_auth_logger(wpa_auth, NULL, LOGGER_DEBUG,
-						"skip new GTK rekey - already in process");
-			else
-				wpa_rekey_gtk(wpa_get_primary_auth(wpa_auth),
-					      NULL);
+				eloop_cancel_timeout(wpa_rekey_gtk,
+						     wpa_get_primary_auth(wpa_auth),
+						     NULL);
+				if (wpa_auth_gtk_rekey_in_process(wpa_auth))
+					wpa_auth_logger(wpa_auth, NULL, LOGGER_DEBUG,
+							"skip new GTK rekey - already in process");
+				else
+					wpa_rekey_gtk(wpa_get_primary_auth(wpa_auth),
+						      NULL);
+			}
 		}
 	} else {
 		/* Do not allow the same key replay counter to be reused. */
