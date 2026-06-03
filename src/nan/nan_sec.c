@@ -266,7 +266,7 @@ static int nan_sec_rx_m2(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * Due to the different MIC size, need to handle the fields starting
-	 * with the mic differently
+	 * with the MIC differently.
 	 */
 	pos = (const u8 *) (key + 1);
 	if (NAN_CS_IS_128(ndp_sec->i_csid))
@@ -349,13 +349,12 @@ static int nan_sec_rx_m3(struct nan_data *nan, struct nan_peer *peer,
 	os_memcpy(mic, pos, mic_len);
 	os_memset(pos, 0, mic_len);
 	os_memcpy(buf, ndp_sec->auth_token, NAN_AUTH_TOKEN_LEN);
-	os_memcpy(buf + NAN_AUTH_TOKEN_LEN, (u8 *)&msg->mgmt->u, msg->len - 24);
+	os_memcpy(buf + NAN_AUTH_TOKEN_LEN, (const u8 *) &msg->mgmt->u,
+		  msg->len - 24);
 
 	ret = nan_crypto_key_mic(buf, msg->len - 24 + NAN_AUTH_TOKEN_LEN,
-				 ndp_sec->ptk.kck,
-				 ndp_sec->ptk.kck_len,
-				 ndp_sec->i_csid,
-				 pos);
+				 ndp_sec->ptk.kck, ndp_sec->ptk.kck_len,
+				 ndp_sec->i_csid, pos);
 	os_free(buf);
 
 	if (ret) {
@@ -443,7 +442,7 @@ static int nan_sec_rx_key_data(struct nan_data *nan,
 		return 0;
 	}
 
-	if (peer_capab & NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_256) {
+	if (peer_capab & NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_GMAC_256) {
 		cipher = WPA_CIPHER_BIP_GMAC_256;
 		alg = WPA_ALG_BIP_GMAC_256;
 	} else {
@@ -469,7 +468,8 @@ static int nan_sec_rx_key_data(struct nan_data *nan,
 	}
 
 	if (ie.igtk && ie.igtk_len) {
-		struct wpa_igtk_kde *igtk_kde = (struct wpa_igtk_kde *)ie.igtk;
+		const struct wpa_igtk_kde *igtk_kde =
+			(const struct wpa_igtk_kde *) ie.igtk;
 		u16 key_idx;
 
 		if (ie.igtk_len != WPA_IGTK_KDE_PREFIX_LEN + key_len) {
@@ -506,8 +506,8 @@ static int nan_sec_rx_key_data(struct nan_data *nan,
 	}
 
 	if (ie.bigtk && ie.bigtk_len) {
-		struct wpa_bigtk_kde *bigtk_kde =
-			(struct wpa_bigtk_kde *)ie.bigtk;
+		const struct wpa_bigtk_kde *bigtk_kde =
+			(const struct wpa_bigtk_kde *) ie.bigtk;
 		u16 key_idx;
 
 		if (ie.bigtk_len != WPA_BIGTK_KDE_PREFIX_LEN + key_len) {
@@ -541,8 +541,8 @@ static int nan_sec_rx_key_data(struct nan_data *nan,
 	}
 
 	if (ie.gtk && ie.gtk_len) {
-		struct wpa_gtk_kde *gtk_kde =
-			(struct wpa_gtk_kde *)ie.gtk;
+		const struct wpa_gtk_kde *gtk_kde =
+			(const struct wpa_gtk_kde *) ie.gtk;
 		int gtk_cipher = ndp_sec->peer_gtk.csid == NAN_CS_GTK_GCMP_256 ?
 			WPA_CIPHER_GCMP_256 : WPA_CIPHER_CCMP;
 		size_t gtk_len = wpa_cipher_key_len(gtk_cipher);
@@ -555,8 +555,8 @@ static int nan_sec_rx_key_data(struct nan_data *nan,
 			goto fail;
 		}
 
-		/* GTK key ID must be 1 or 2, see Wi-Fi Aware Specification v4.0,
-		 * section 7.1.3.2
+		/* GTK key ID must be 1 or 2, see Wi-Fi Aware Specification
+		 * v4.0, section 7.1.3.2.
 		 */
 		if (gtk_kde->keyid < 1 || gtk_kde->keyid > 2) {
 			wpa_printf(MSG_DEBUG,
@@ -579,12 +579,11 @@ fail:
 }
 
 
-/*
+/**
  * nan_sec_rx - Handle security context for Rx frames
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer from which the original message was received
- * @msg: Parsed nan action frame
+ * @msg: Parsed NAN Action frame
  * Returns: 0 on success, negative on failure
  */
 int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
@@ -597,7 +596,7 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	size_t shared_key_desc_len;
 	u16 info, desc, key_data_len;
 	size_t total_len;
-	u8 instance_id, cipher, capab, gtk_csid;
+	u8 instance_id, cipher, capab, gtk_csid = NAN_CS_NONE;
 	u8 *pos;
 	int ret;
 
@@ -649,8 +648,8 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 
 	if (NAN_CS_IS_128(cipher)) {
 		if (shared_key_desc_len <
-		    (sizeof(struct nan_shared_key) + sizeof(*key) +
-		     NAN_KEY_MIC_LEN + 2)) {
+		    sizeof(struct nan_shared_key) + sizeof(*key) +
+		    NAN_KEY_MIC_LEN + 2) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: SEC: Shared key descriptor too small");
 			return -1;
@@ -696,7 +695,6 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	 * be ignored:
 	 * key->len: as the key length is derived from the cipher suite.
 	 * key->iv: not needed for AES Key WRAP
-	 * key->rsc: to avoid implicit assumption of a single GTK.
 	 */
 	if (key->type != NAN_KEY_DESC) {
 		wpa_printf(MSG_DEBUG,
@@ -737,6 +735,8 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	}
 
 	if (gtk_csid != NAN_CS_NONE) {
+		wpa_printf(MSG_DEBUG, "NAN: SEC: Peer GTK CSID=%u", gtk_csid);
+
 		os_memcpy(ndp_sec->peer_gtk_rsc, key->key_rsc,
 			  sizeof(key->key_rsc));
 		ndp_sec->peer_gtk.csid = gtk_csid;
@@ -832,7 +832,7 @@ static int nan_sec_add_m1_attrs(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_cipher_suite cs[2];
 	size_t cs_len = 1;
 	u16 info;
-	u8 key_len = sizeof(struct wpa_eapol_key) + 2;
+	size_t key_len = sizeof(struct wpa_eapol_key) + 2;
 	int ret;
 
 	if (NAN_CS_IS_128(ndp_sec->i_csid))
@@ -924,7 +924,7 @@ static int nan_sec_add_m2_attrs(struct nan_data *nan, struct nan_peer *peer,
 	size_t cs_len = 1;
 
 	u16 info;
-	u8 key_len;
+	size_t key_len;
 
 	key_len = sizeof(struct wpa_eapol_key) + 2;
 	if (NAN_CS_IS_128(ndp_sec->i_csid))
@@ -993,7 +993,7 @@ static int nan_sec_igtk_kde(struct nan_data *nan, struct wpabuf *buf)
 
 	if (nan->cfg->get_seqnum(nan->cfg->cb_ctx, nan->igtk_id, tsc,
 				 NULL) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to get IGTK seqnum");
+		wpa_printf(MSG_INFO, "NAN: Failed to get IGTK seqnum");
 		return -1;
 	}
 
@@ -1005,10 +1005,6 @@ static int nan_sec_igtk_kde(struct nan_data *nan, struct wpabuf *buf)
 	return 0;
 }
 
-#define NAN_KDES_MAX_LEN                                           \
-	(KDE_HDR_LEN + sizeof(struct wpa_igtk_kde) + KDE_HDR_LEN + \
-	 sizeof(struct wpa_bigtk_kde) + KDE_HDR_LEN +              \
-	 sizeof(struct wpa_gtk_kde))
 
 static int nan_sec_bigtk_kde(struct nan_data *nan, struct nan_ndp_sec *ndp_sec,
 			     struct wpabuf *buf)
@@ -1058,7 +1054,7 @@ static int nan_sec_gtk_kde(struct nan_data *nan, struct wpabuf *buf,
 
 	nan_add_kde_hdr(buf, RSN_KEY_DATA_GROUPKEY,
 			WPA_GTK_KDE_PREFIX_LEN +
-				ndp_sec->local_gtk.gtk.gtk_len);
+			ndp_sec->local_gtk.gtk.gtk_len);
 	wpabuf_put_u8(buf, ndp_sec->local_gtk.id);
 	wpabuf_put_u8(buf, 0);
 	wpabuf_put_data(buf, ndp_sec->local_gtk.gtk.gtk,
@@ -1073,14 +1069,18 @@ static bool nan_sec_igtk_supported(struct nan_ndp_sec *ndp_sec)
 	return ((ndp_sec->i_capab & NAN_CS_INFO_CAPA_GTK_SUPP_MASK) >>
 		NAN_CS_INFO_CAPA_GTK_SUPP_POS) !=
 		NAN_CS_INFO_CAPA_GTK_SUPP_NONE &&
-	       ((ndp_sec->r_capab & NAN_CS_INFO_CAPA_GTK_SUPP_MASK) >>
-		NAN_CS_INFO_CAPA_GTK_SUPP_POS) !=
+		((ndp_sec->r_capab & NAN_CS_INFO_CAPA_GTK_SUPP_MASK) >>
+		 NAN_CS_INFO_CAPA_GTK_SUPP_POS) !=
 		NAN_CS_INFO_CAPA_GTK_SUPP_NONE;
 }
 
 
-static int nan_sec_add_kdes(struct nan_data *nan,
-			    struct nan_ndp_sec *ndp_sec,
+#define NAN_KDES_MAX_LEN                                           \
+	(KDE_HDR_LEN + sizeof(struct wpa_igtk_kde) + KDE_HDR_LEN + \
+	 sizeof(struct wpa_bigtk_kde) + KDE_HDR_LEN +              \
+	 sizeof(struct wpa_gtk_kde))
+
+static int nan_sec_add_kdes(struct nan_data *nan, struct nan_ndp_sec *ndp_sec,
 			    struct wpabuf *buf)
 {
 	struct wpabuf *kde_buf;
@@ -1102,8 +1102,7 @@ static int nan_sec_add_kdes(struct nan_data *nan,
 
 	kde_buf = wpabuf_alloc(NAN_KDES_MAX_LEN);
 	if (!kde_buf) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: Failed to allocate KDE buffer");
+		wpa_printf(MSG_INFO, "NAN: SEC: Failed to allocate KDE buffer");
 		return -1;
 	}
 
@@ -1119,8 +1118,7 @@ static int nan_sec_add_kdes(struct nan_data *nan,
 	enc_kde = nan_crypto_encrypt_key_data(kde_buf, ndp_sec->ptk.kek,
 					      ndp_sec->ptk.kek_len);
 	if (!enc_kde) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: Failed to encrypt KDEs");
+		wpa_printf(MSG_INFO, "NAN: SEC: Failed to encrypt KDEs");
 		goto fail;
 	}
 
@@ -1135,7 +1133,6 @@ fail:
 
 /*
  * nan_sec_add_key_attrs - Add security key attributes to NAN message
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer which is the recipient of the message
  * @buf: Buffer to which the attribute should be added
@@ -1151,7 +1148,7 @@ static int nan_sec_add_key_attrs(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_ndp_sec *ndp_sec = &peer->ndp_setup.sec;
 	struct wpa_eapol_key *key;
 	u16 info;
-	u8 key_len = sizeof(struct wpa_eapol_key);
+	size_t key_len = sizeof(struct wpa_eapol_key);
 	u8 *key_len_pos;
 	int kde_len;
 	u8 *key_data_len_pos;
@@ -1177,7 +1174,7 @@ static int nan_sec_add_key_attrs(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * Copy replay counter. It was already incremented while processing m2
-	 * so no need to increment it again
+	 * so no need to increment it again.
 	 */
 	os_memcpy(key->replay_counter, ndp_sec->replaycnt,
 		  sizeof(key->replay_counter));
@@ -1192,9 +1189,9 @@ static int nan_sec_add_key_attrs(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 	}
 
-	/* When GTK is present, the key RSC field is set to the GTK RSC */
+	/* When GTK is present, the Key RSC field is set to the GTK RSC */
 	if (ndp_sec->local_gtk.gtk.gtk_len) {
-		u8 *local_ndi;
+		const u8 *local_ndi;
 		struct nan_ndp *pndp = peer->ndp_setup.ndp;
 
 		if (pndp->initiator)
@@ -1500,19 +1497,19 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 		ret = nan_crypto_key_mic(data, len,
 					 ndp_sec->ptk.kck,
 					 ndp_sec->ptk.kck_len,
-					 ndp_sec->i_csid,
-					 mic_ptr);
+					 ndp_sec->i_csid, mic_ptr);
 		break;
-	default:
-		return -1;
 	}
 
 	return ret;
 }
 
 
-/*
+/**
  * nan_sec_get_strength - Get security strength level for a cipher suite
+ * @csid: Cipher suite ID
+ * @pairing_akmp: AKMP used for pairing (to distinguish SAE vs opportunistic)
+ * Returns: Security strength level (higher = stronger), 0 for no security
  *
  * Per Wi-Fi Aware Specification v4.0 section 7.4, security strength ordering
  * (from highest to lowest):
@@ -1523,11 +1520,6 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
  * - CSID 8 (NCS-PK-PASN-256) using opportunistic bootstrapping (PASN)
  * - CSID 7 (NCS-PK-PASN-128) using opportunistic bootstrapping (PASN)
  * - No security
- *
- * @csid: Cipher suite ID
- * @pairing_akmp: AKMP used for pairing (to distinguish SAE vs opportunistic)
- *
- * Returns: Security strength level (higher = stronger), 0 for no security
  */
 static int nan_sec_get_strength(enum nan_cipher_suite_id csid, int pairing_akmp)
 {
@@ -1584,8 +1576,8 @@ bool nan_sec_ndp_store_keys(struct nan_data *nan, struct nan_peer *peer,
 
 	dl_list_for_each_safe(cur, next, &peer->info.sec,
 			      struct nan_peer_sec_info_entry, list) {
-		if (os_memcmp(peer_ndi, cur->peer_ndi, ETH_ALEN) != 0 ||
-		    os_memcmp(local_ndi, cur->local_ndi, ETH_ALEN) != 0)
+		if (!ether_addr_equal(peer_ndi, cur->peer_ndi) ||
+		    !ether_addr_equal(local_ndi, cur->local_ndi))
 			continue;
 
 		/*
@@ -1593,12 +1585,14 @@ bool nan_sec_ndp_store_keys(struct nan_data *nan, struct nan_peer *peer,
 		 * The security configuration should be updated if the new
 		 * security strength is same or greater than the existing SA.
 		 * Otherwise, the existing higher-strength SA continues to be
-		 * used and any key material derived shall be discarded.
+		 * used and any key material derived for the NDP setup shall be
+		 * discarded.
 		 */
-		cur_strength = nan_sec_get_strength(cur->csid, cur->pairing_akmp);
+		cur_strength = nan_sec_get_strength(cur->csid,
+						    cur->pairing_akmp);
 
 		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: Comparing strength: new=%d (csid=%u, akmp=0x%x) vs cur=%d (csid=%u, akmp=0x%x)",
+			   "NAN: SEC: Comparing strength: new=%d (csid=%u, akmp=0x%x) vs. cur=%d (csid=%u, akmp=0x%x)",
 			   new_strength, ndp_sec->i_csid, new_akmp,
 			   cur_strength, cur->csid, cur->pairing_akmp);
 
@@ -1627,10 +1621,10 @@ store:
 	cur->csid = ndp_sec->i_csid;
 	if (peer->pairing.flags & NAN_PAIRING_FLAG_PAIRED)
 		cur->pairing_akmp = peer->pairing.pairing_akmp;
-
 	os_memcpy(cur->pmkid, ndp_sec->i_pmkid, PMKID_LEN);
 	os_memcpy(cur->pmk, ndp_sec->pmk, PMK_LEN);
 	os_memcpy(&cur->ptk, &ndp_sec->ptk, sizeof(cur->ptk));
+
 	return true;
 }
 

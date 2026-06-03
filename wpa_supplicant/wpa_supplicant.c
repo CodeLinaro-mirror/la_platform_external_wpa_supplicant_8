@@ -1169,6 +1169,15 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 	if (state == WPA_INTERFACE_DISABLED) {
 		/* Assure normal scan when interface is restored */
 		wpa_s->normal_scans = 0;
+
+		/*
+		 * A NAN management interface is not expected to be disabled. If
+		 * it disabled, it means that NAN functionality is no longer
+		 * possible so deinit (which would also stop any ongoing NAN
+		 * operations).
+		 */
+		if (wpa_s->nan_mgmt)
+			wpas_nan_deinit(wpa_s);
 	}
 
 	if (state == WPA_COMPLETED) {
@@ -2267,7 +2276,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_USE_EXT_KEY_ID, 0);
 	}
 
-	/* Mark WMM enabled for any HT/VHT/HE/EHT association to get more
+	/* Mark WMM enabled for any HT/VHT/HE/EHT/UHR association to get more
 	 * appropriate advertisement of the supported number of PTKSA receive
 	 * counters. In theory, this could be based on a driver capability, but
 	 * in practice all cases using WMM support at least eight replay
@@ -2278,7 +2287,8 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	 * is far more likely for any current device to support WMM. */
 	wmm = wpa_s->connection_set &&
 		(wpa_s->connection_ht || wpa_s->connection_vht ||
-		 wpa_s->connection_he || wpa_s->connection_eht);
+		 wpa_s->connection_he || wpa_s->connection_eht ||
+		 wpa_s->connection_uhr);
 	if (!wmm && bss)
 		wmm = !!wpa_bss_get_vendor_ie(bss, WMM_IE_VENDOR_TYPE);
 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_WMM_ENABLED, wmm);
@@ -3379,6 +3389,7 @@ static bool ibss_mesh_select_80_160mhz(struct wpa_supplicant *wpa_s,
 	};
 
 	struct hostapd_freq_params vht_freq;
+	struct hostapd_channel_info info;
 	int i;
 	unsigned int j, k;
 	int chwidth, seg0, seg1;
@@ -3543,15 +3554,25 @@ static bool ibss_mesh_select_80_160mhz(struct wpa_supplicant *wpa_s,
 	}
 
 skip_80mhz:
-	if (hostapd_set_freq_params(&vht_freq, mode->mode, freq->freq,
-				    freq->channel, ssid->enable_edmg,
-				    ssid->edmg_channel, freq->ht_enabled,
-				    freq->vht_enabled, freq->he_enabled,
-				    freq->eht_enabled,
-				    freq->sec_channel_offset,
-				    chwidth, seg0, seg1, vht_caps,
-				    &mode->he_capab[ieee80211_mode],
-				    &mode->eht_capab[ieee80211_mode], 0) != 0)
+	info = (struct hostapd_channel_info) {
+		.mode = mode->mode,
+		.freq = freq->freq,
+		.channel = freq->channel,
+		.edmg.enabled = ssid->enable_edmg,
+		.edmg.channel = ssid->edmg_channel,
+		.ht.enabled = freq->ht_enabled,
+		.vht.enabled = freq->vht_enabled,
+		.he.enabled = freq->he_enabled,
+		.eht.enabled = freq->eht_enabled,
+		.ht.sec_channel_offset = freq->sec_channel_offset,
+		.oper_chwidth = chwidth,
+		.center_segment0 = seg0,
+		.center_segment1 = seg1,
+		.vht.caps = vht_caps,
+		.he.cap = &mode->he_capab[ieee80211_mode],
+		.eht.cap = &mode->eht_capab[ieee80211_mode],
+	};
+	if (hostapd_set_freq_params(&vht_freq, &info))
 		return false;
 
 	*freq = vht_freq;
@@ -3969,6 +3990,17 @@ static u8 * wpas_populate_assoc_ies(
 	if (wpa_key_mgmt_sae(wpa_s->key_mgmt))
 		algs = WPA_AUTH_ALG_SAE;
 #endif /* CONFIG_SAE */
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	if (ssid->eap_over_auth_frame &&
+	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_802_1X_AUTH) &&
+	    wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt &
+				       ~WPA_KEY_MGMT_IEEE8021X)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"IEEE 802.1X Authentication using Authentication frames");
+		algs = WPA_AUTH_ALG_802_1X;
+	}
+#endif /* CONFIG_IEEE8021X_AUTH */
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Automatic auth_alg selection: 0x%x", algs);
 	if (ssid->auth_alg) {
@@ -4956,7 +4988,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	    wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) {
 		params.eppke_supported = true;
 		if (wpa_key_mgmt_sae_ext_key(params.key_mgmt_suite) ||
-		    wpa_key_mgmt_sae_ext_key(params.allowed_key_mgmts)) {
+		    wpa_key_mgmt_sae_ext_key(params.allowed_key_mgmts) ||
+		    wpa_key_mgmt_eppke(params.key_mgmt_suite)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "EPPKE authentication");
 			params.auth_alg = WPA_AUTH_ALG_EPPKE;
 		}
@@ -5010,6 +5043,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	wpa_supplicant_apply_he_overrides(wpa_s, ssid, &params);
 #endif /* CONFIG_HE_OVERRIDES */
 	wpa_supplicant_apply_eht_overrides(wpa_s, ssid, &params);
+	wpa_supplicant_apply_uhr_overrides(wpa_s, ssid, &params);
 
 #ifdef CONFIG_P2P
 	/*
@@ -6967,6 +7001,17 @@ void wpa_supplicant_apply_eht_overrides(
 }
 
 
+void wpa_supplicant_apply_uhr_overrides(
+	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+	struct wpa_driver_associate_params *params)
+{
+	if (!ssid)
+		return;
+
+	params->disable_uhr = ssid->disable_uhr;
+}
+
+
 static int pcsc_reader_init(struct wpa_supplicant *wpa_s)
 {
 #ifdef PCSC_FUNCS
@@ -8140,8 +8185,12 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	if (wpas_pr_init(wpa_s->global, wpa_s, &capa) < 0)
+	if (!capa.ranging_type.pd_support) {
+		wpa_printf(MSG_DEBUG,
+			   "PR: Driver does not support Proximity Ranging - PR disabled");
+	} else if (wpas_pr_init(wpa_s->global, wpa_s, &capa) < 0) {
 		return -1;
+	}
 
 	if (wpa_bss_init(wpa_s) < 0)
 		return -1;
@@ -10294,9 +10343,7 @@ bool wpas_ap_supports_rsn_overriding(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->valid_links)
 		return false;
 
-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
-		if (!(wpa_s->valid_links & BIT(i)))
-			continue;
+	for_each_link(wpa_s->valid_links, i) {
 		if (wpa_s->links[i].bss &&
 		    (wpa_bss_get_vendor_ie(wpa_s->links[i].bss,
 					   RSNE_OVERRIDE_IE_VENDOR_TYPE) ||
@@ -10322,9 +10369,7 @@ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->valid_links)
 		return false;
 
-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
-		if (!(wpa_s->valid_links & BIT(i)))
-			continue;
+	for_each_link(wpa_s->valid_links, i) {
 		if (wpa_s->links[i].bss &&
 		    wpa_bss_get_vendor_ie(wpa_s->links[i].bss,
 					  RSNE_OVERRIDE_2_IE_VENDOR_TYPE))

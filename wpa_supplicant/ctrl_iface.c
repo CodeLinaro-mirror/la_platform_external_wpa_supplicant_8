@@ -2379,12 +2379,14 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 
 		if (wpa_s->connection_set &&
 		    (wpa_s->connection_ht || wpa_s->connection_vht ||
-		     wpa_s->connection_he || wpa_s->connection_eht)) {
+		     wpa_s->connection_he || wpa_s->connection_eht ||
+		     wpa_s->connection_uhr)) {
 			ret = os_snprintf(pos, end - pos,
 					  "wifi_generation=%u\n",
+					  wpa_s->connection_uhr ? 8 :
 					  wpa_s->connection_eht ? 7 :
-					  (wpa_s->connection_he ? 6 :
-					   (wpa_s->connection_vht ? 5 : 4)));
+					  wpa_s->connection_he ? 6 :
+					  wpa_s->connection_vht ? 5 : 4);
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
@@ -9227,8 +9229,9 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 
 	wpa_s->conf->ignore_old_scan_res = 0;
 
-	wpas_pr_flush(wpa_s);
 	wpas_nan_de_flush(wpa_s);
+
+	wpas_pr_flush(wpa_s);
 }
 
 
@@ -11560,51 +11563,148 @@ static int wpas_ctrl_iface_pr_pasn_start(struct wpa_supplicant *wpa_s,
 					 char *cmd)
 {
 	char *token, *context = NULL;
-	u8 addr[ETH_ALEN];
-	int freq = 0, forced_pr_freq = 0;
-	u8 ranging_type = 0, role = 0, auth_mode = 0;
+	struct pr_pasn_ranging_params params;
 	bool got_addr = false;
+	int interval_time = 0;
+
+	os_memset(&params, 0, sizeof(params));
+	params.action = PR_PASN_AND_RANGING;
 
 	while ((token = str_token(cmd, " ", &context))) {
 		if (os_strncmp(token, "addr=", 5) == 0) {
-			if (hwaddr_aton(token + 5, addr))
+			if (hwaddr_aton(token + 5, params.peer_addr))
 				return -1;
 			got_addr = true;
 		} else if (os_strcmp(token, "role=ISTA") == 0) {
-			role |= PR_ISTA_SUPPORT;
+			params.ranging_role |= PR_ISTA_SUPPORT;
 		} else if (os_strcmp(token, "role=RSTA") == 0) {
-			role |= PR_RSTA_SUPPORT;
+			params.ranging_role |= PR_RSTA_SUPPORT;
 		} else if (os_strcmp(token, "ranging_type=EDCA") == 0) {
-			ranging_type |= PR_EDCA_BASED_RANGING;
+			params.ranging_type |= PR_EDCA_BASED_RANGING;
 		} else if (os_strcmp(token, "ranging_type=NTB-OPEN-PHY") == 0) {
-			ranging_type |= PR_NTB_OPEN_BASED_RANGING;
+			params.ranging_type |= PR_NTB_OPEN_BASED_RANGING;
 		} else if (os_strcmp(token, "ranging_type=NTB-SEC-PHY") == 0) {
-			ranging_type |= PR_NTB_SECURE_LTF_BASED_RANGING;
+			params.ranging_type |= PR_NTB_SECURE_LTF_BASED_RANGING;
 		} else if (os_strncmp(token, "freq=", 5) == 0) {
-			freq = atoi(token + 5);
+			params.freq = atoi(token + 5);
 		} else if (os_strncmp(token, "auth=", 5) == 0) {
-			auth_mode = atoi(token + 5);
+			params.auth_mode = atoi(token + 5);
 		} else if (os_strncmp(token, "forced_pr_freq=", 15) == 0) {
-			forced_pr_freq = atoi(token + 15);
+			params.forced_pr_freq = atoi(token + 15);
+		} else if (os_strncmp(token, "num_bursts_exp=", 15) == 0) {
+			params.num_bursts_exp = atoi(token + 15);
+		} else if (os_strncmp(token, "ftmr_retries=", 13) == 0) {
+			params.ftmr_retries = atoi(token + 13);
+		} else if (os_strncmp(token, "burst_duration=", 15) == 0) {
+			params.burst_duration = atoi(token + 15);
+		} else if (os_strncmp(token, "ftms_per_burst=", 15) == 0) {
+			params.ftms_per_burst = atoi(token + 15);
+		} else if (os_strncmp(token, "interval_time=", 14) == 0) {
+			interval_time = atoi(token + 14);
+		} else if (os_strncmp(token, "min_time_between_meas=", 22) ==
+			   0) {
+			params.min_time_between_measurements = atoi(token + 22);
+		} else if (os_strncmp(token, "max_time_between_meas=", 22) ==
+			   0) {
+			params.max_time_between_measurements = atoi(token + 22);
+		} else if (os_strncmp(token, "availability_window=", 20) == 0) {
+			params.availability_window = atoi(token + 20);
+		} else if (os_strcmp(token, "request_lci=1") == 0) {
+			params.request_lci = true;
+		} else if (os_strcmp(token, "request_civicloc=1") == 0) {
+			params.request_civicloc = true;
+		} else if (os_strncmp(token, "continuous_session_time=", 24) ==
+			   0) {
+			params.continuous_ranging_session_time =
+				atoi(token + 24);
+		} else if (os_strncmp(token, "src_addr=", 9) == 0) {
+			if (hwaddr_aton(token + 9, params.src_addr))
+				return -1;
+		} else if (os_strcmp(token, "pasn_role=INITIATOR") == 0) {
+			params.pasn_role = PR_ROLE_PASN_INITIATOR;
+		} else if (os_strcmp(token, "pasn_role=RESPONDER") == 0) {
+			params.pasn_role = PR_ROLE_PASN_RESPONDER;
+		} else if (os_strcmp(token, "lmr_feedback=1") == 0) {
+			params.lmr_feedback = true;
+		} else if (os_strncmp(token, "ingress_threshold=", 18) == 0) {
+			params.ingress_threshold = atoll(token + 18);
+		} else if (os_strncmp(token, "egress_threshold=", 17) == 0) {
+			params.egress_threshold = atoll(token + 17);
+		} else if (os_strcmp(token, "pd_suppress_results=1") == 0) {
+			params.pr_suppress_results = true;
+		} else if (os_strncmp(token, "password=", 9) == 0) {
+			size_t pwd_len = os_strlen(token + 9);
+
+			if (pwd_len == 0 ||
+			    pwd_len >= sizeof(params.password)) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: PR_PASN_START invalid password length %zu",
+					   pwd_len);
+				return -1;
+			}
+			os_strlcpy(params.password, token + 9,
+				   sizeof(params.password));
+			params.password_valid = true;
+		} else if (os_strncmp(token, "pmk=", 4) == 0) {
+			size_t pmk_len = os_strlen(token + 4) / 2;
+
+			if (pmk_len != 32 && pmk_len != 48 && pmk_len != 64) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: PR_PASN_START invalid PMK length %zu",
+					   pmk_len);
+				return -1;
+			}
+			if (hexstr2bin(token + 4, params.pmk, pmk_len)) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: PR_PASN_START invalid PMK");
+				return -1;
+			}
+			params.pmk_len = pmk_len;
 		} else {
 			wpa_printf(MSG_DEBUG,
-				   "CTRL: PASN invalid parameter: '%s'",
+				   "CTRL: PR_PASN_START invalid parameter: '%s'",
 				   token);
 			return -1;
 		}
 	}
 
-	if (!got_addr || ranging_type == 0 || role == 0 || freq == 0) {
+	/*
+	 * Map interval_time to the appropriate protocol-specific field:
+	 * - EDCA: burst_period
+	 * - NTB: nominal_time (nominal time between measurements)
+	 */
+	if (interval_time > 0) {
+		if (params.ranging_type & PR_EDCA_BASED_RANGING)
+			params.burst_period = interval_time;
+		else if (params.ranging_type &
+			 (PR_NTB_OPEN_BASED_RANGING |
+			  PR_NTB_SECURE_LTF_BASED_RANGING))
+			params.nominal_time = interval_time;
+	}
+
+	if (!got_addr || params.ranging_type == 0 || params.ranging_role == 0 ||
+	    params.freq == 0) {
 		wpa_printf(MSG_DEBUG,
-			   "CTRL: Proximity Ranging PASN missing parameter");
+			   "CTRL: PR_PASN_START missing parameter");
 		return -1;
 	}
+
+	/* pmk and password are only valid for authenticated modes */
+	if (params.auth_mode == PR_PASN_AUTH_MODE_PASN &&
+	    (params.pmk_len > 0 || params.password_valid)) {
+		wpa_printf(MSG_INFO,
+			   "CTRL: PR_PASN_START pmk/password not applicable for unauthenticated mode");
+		return -1;
+	}
+
 	wpa_printf(MSG_DEBUG,
-		   "CTRL: PR PASN params: ranging type=0x%x, role=0x%x, auth_mode=%d, forced pr freq=%d, addr=" MACSTR,
-		   ranging_type, role, auth_mode, forced_pr_freq,
-		   MAC2STR(addr));
-	return wpas_pr_initiate_pasn_auth(wpa_s, addr, freq, auth_mode, role,
-					  ranging_type, forced_pr_freq);
+		   "CTRL: PR_PASN_START params: ranging type=0x%x, role=0x%x,"
+		   " auth_mode=%d, freq=%d, addr=" MACSTR " src_addr=" MACSTR " pasn_role=%d",
+		   params.ranging_type, params.ranging_role, params.auth_mode,
+		   params.freq, MAC2STR(params.peer_addr),
+		   MAC2STR(params.src_addr), params.pasn_role);
+
+	return wpas_pr_pasn_trigger(wpa_s, &params);
 }
 
 
@@ -12769,7 +12869,7 @@ static int wpas_ctrl_ml_probe(struct wpa_supplicant *wpa_s, char *cmd)
 
 static bool wpas_nan_gtk_cs_supported(const int *cipher_list)
 {
-	size_t i;
+	unsigned int i;
 
 	for (i = 0; cipher_list && cipher_list[i]; i++) {
 		if (cipher_list[i] == NAN_CS_GTK_CCMP_128 ||
@@ -12795,6 +12895,8 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 	int *cipher_list = NULL;
 	u8 nd_pmk[PMK_LEN];
 	bool p2p = false;
+	u8 forced_addr[ETH_ALEN];
+	bool security_required_set = false;
 
 	os_memset(&params, 0, sizeof(params));
 	/* USD shall use both solicited and unsolicited transmissions */
@@ -12941,10 +13043,35 @@ static int wpas_ctrl_nan_publish(struct wpa_supplicant *wpa_s, char *cmd,
 			continue;
 		}
 
+		if (os_strcmp(token, "data_path=1") == 0) {
+			params.data_path = true;
+			continue;
+		}
+
+		if (os_strncmp(token, "forced_addr=", 12) == 0) {
+			if (hwaddr_aton(token + 12, forced_addr)) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: Invalid forced_addr");
+				goto fail;
+			}
+			params.forced_addr = forced_addr;
+			continue;
+		}
+
+		if (os_strcmp(token, "security_required=0") == 0) {
+			params.security_required = false;
+			security_required_set = true;
+			continue;
+		}
+
 		wpa_printf(MSG_INFO, "CTRL: Invalid NAN_PUBLISH parameter: %s",
 			   token);
 		goto fail;
 	}
+
+	/* Default security_required to true when cipher suites are specified */
+	if (params.cipher_suites_list && !security_required_set)
+		params.security_required = true;
 
 	if (params.gtk_required &&
 	    !wpas_nan_gtk_cs_supported(params.cipher_suites_list)) {
@@ -13069,6 +13196,7 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 	enum nan_service_protocol_type srv_proto_type = 0;
 	int *freq_list = NULL;
 	bool p2p = false;
+	u8 forced_addr[ETH_ALEN];
 
 	os_memset(&params, 0, sizeof(params));
 	params.freq = NAN_USD_DEFAULT_FREQ;
@@ -13181,6 +13309,16 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
 
 		if (os_strncmp(token, "pbm=", 4) == 0) {
 			params.pbm = strtol(token + 4, NULL, 0);
+			continue;
+		}
+
+		if (os_strncmp(token, "forced_addr=", 12) == 0) {
+			if (hwaddr_aton(token + 12, forced_addr)) {
+				wpa_printf(MSG_INFO,
+					   "CTRL: Invalid forced_addr");
+				goto fail;
+			}
+			params.forced_addr = forced_addr;
 			continue;
 		}
 
@@ -14435,6 +14573,8 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 			reply_len = -1;
 	} else if (os_strcmp(buf, "PR_CLEAR_DIK_CONTEXT") == 0) {
 		wpas_pr_clear_dev_iks(wpa_s);
+	} else if (os_strcmp(buf, "PR_RANGING_ABORT") == 0) {
+		wpas_pr_abort_ranging(wpa_s);
 #endif /* CONFIG_PR */
 #ifdef CONFIG_TESTING_OPTIONS
 	} else if (os_strncmp(buf, "PASN_DRIVER ", 12) == 0) {
@@ -14496,8 +14636,8 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 	} else if (os_strncmp(buf, "NAN_NDP_RESPONSE ", 17) == 0) {
 		if (wpas_nan_ndp_response(wpa_s, buf + 17) < 0)
 			reply_len = -1;
-	} else if (os_strncmp(buf, "NAN_NDP_TERMINATE ", 17) == 0) {
-		if (wpas_nan_ndp_terminate(wpa_s, buf + 17) < 0)
+	} else if (os_strncmp(buf, "NAN_NDP_TERMINATE ", 18) == 0) {
+		if (wpas_nan_ndp_terminate(wpa_s, buf + 18) < 0)
 			reply_len = -1;
 	} else if (os_strncmp(buf, "NAN_PEER_INFO ", 14) == 0) {
 		reply_len = wpas_nan_peer_info(wpa_s, buf + 14, reply,
@@ -14541,7 +14681,8 @@ static int wpa_supplicant_global_iface_add(struct wpa_global *global,
 	char *pos, *extra;
 	struct wpa_supplicant *wpa_s;
 	unsigned int create_iface = 0;
-	u8 mac_addr[ETH_ALEN], *addr_ptr = NULL;
+	u8 mac_addr[ETH_ALEN];
+	const u8 *addr_ptr = NULL;
 	enum wpa_driver_if_type type = WPA_IF_STATION;
 
 	/*

@@ -8,7 +8,7 @@
 
 #include "includes.h"
 #include "common.h"
-#include "eloop.h"
+#include "utils/eloop.h"
 #include "nan_i.h"
 
 #define NAN_BOOTSTRAP_RETRY_TIMEOUT_US (1 * 1000 * 1000) /* 1 second */
@@ -308,8 +308,7 @@ static void nan_bootstrap_handle_rx_request(struct nan_data *nan,
 	else
 		peer->bootstrap.cookie_len = 0;
 
-	peer->bootstrap.comeback_after =
-		nan->cfg->bootstrap_comeback_timeout;
+	peer->bootstrap.comeback_after = nan->cfg->bootstrap_comeback_timeout;
 
 	if (nan->cfg->bootstrap_request)
 		nan->cfg->bootstrap_request(nan->cfg->cb_ctx, peer->nmi_addr,
@@ -335,7 +334,6 @@ send_response:
 					      handle, req_instance_id);
 		goto done;
 	}
-
 
 	if (peer->bootstrap.status == NAN_PBA_STATUS_COMEBACK) {
 		wpa_printf(MSG_DEBUG,
@@ -560,7 +558,8 @@ bool nan_bootstrap_handle_rx(struct nan_data *nan, const u8 *peer_nmi,
 
 		eloop_cancel_timeout(nan_bootstrap_timeout, nan, peer);
 		eloop_register_timeout(peer->bootstrap.comeback_after / 1024,
-				       (peer->bootstrap.comeback_after % 1024) * 1000,
+				       (peer->bootstrap.comeback_after % 1024) *
+				       1000,
 				       nan_bootstrap_timeout, nan, peer);
 	} else {
 		wpa_printf(MSG_DEBUG,

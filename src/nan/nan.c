@@ -26,8 +26,11 @@ static void nan_idle_period_timeout(void *eloop_ctx, void *timeout_ctx);
 static void nan_ndp_disconnected(struct nan_data *nan, struct nan_peer *peer,
 				 enum nan_reason reason,
 				 bool locally_generated);
+static void nan_set_peer_timeout(struct nan_data *nan, struct nan_peer *peer,
+				 unsigned int sec, unsigned int usec);
 static int nan_action_send(struct nan_data *nan, struct nan_peer *peer,
 			   enum nan_subtype subtype);
+
 
 struct nan_data * nan_init(const struct nan_config *cfg)
 {
@@ -66,7 +69,7 @@ struct nan_data * nan_init(const struct nan_config *cfg)
 
 	dl_list_init(&nan->peer_list);
 
-	wpa_printf(MSG_DEBUG, "NAN: initialized");
+	wpa_printf(MSG_DEBUG, "NAN: Initialized");
 
 	return nan;
 }
@@ -102,6 +105,48 @@ static void nan_peer_flush_elem_container(struct nan_peer_info *info)
 }
 
 
+static void nan_peer_flush_ulw(struct nan_peer_info *info)
+{
+	struct nan_ulw_entry *cur, *next;
+
+	dl_list_for_each_safe(cur, next, &info->ulw,
+			      struct nan_ulw_entry, list) {
+		dl_list_del(&cur->list);
+		os_free(cur);
+	}
+}
+
+
+static struct wpabuf *
+nan_peer_build_ulw_attrs(const struct nan_peer_info *info)
+{
+	struct nan_ulw_entry *entry;
+	struct wpabuf *buf;
+	size_t len = 0;
+
+	if (dl_list_empty(&info->ulw))
+		return NULL;
+
+	dl_list_for_each(entry, &info->ulw, struct nan_ulw_entry, list)
+		len += NAN_ATTR_HDR_LEN + entry->len;
+
+	buf = wpabuf_alloc(len);
+	if (!buf) {
+		wpa_printf(MSG_INFO,
+			   "NAN: Failed to allocate buffer for ULW attributes");
+		return NULL;
+	}
+
+	dl_list_for_each(entry, &info->ulw, struct nan_ulw_entry, list) {
+		wpabuf_put_u8(buf, NAN_ATTR_UNALIGNED_SCHEDULE);
+		wpabuf_put_le16(buf, entry->len);
+		wpabuf_put_data(buf, entry->data, entry->len);
+	}
+
+	return buf;
+}
+
+
 static void nan_ndp_setup_stop(struct nan_data *nan, struct nan_peer *peer)
 {
 	eloop_cancel_timeout(nan_peer_state_timeout, nan, peer);
@@ -120,13 +165,13 @@ static void nan_peer_flush_sec(struct nan_peer_info *info)
 	dl_list_for_each_safe(cur, next, &info->sec,
 			      struct nan_peer_sec_info_entry, list) {
 		dl_list_del(&cur->list);
-		os_memset(cur, 0, sizeof(*cur));
-		os_free(cur);
+		bin_clear_free(cur, sizeof(*cur));
 	}
 }
 
 
-static void nan_peer_del_sec_entry(struct nan_peer_info *info, const u8 *peer_ndi)
+static void nan_peer_del_sec_entry(struct nan_peer_info *info,
+				   const u8 *peer_ndi)
 {
 	struct nan_peer_sec_info_entry *cur, *next;
 
@@ -136,12 +181,11 @@ static void nan_peer_del_sec_entry(struct nan_peer_info *info, const u8 *peer_nd
 			continue;
 
 		wpa_printf(MSG_DEBUG,
-				"NAN: Removing sec entry for peer_ndi=" MACSTR
-				" local_ndi=" MACSTR,
-				MAC2STR(peer_ndi), MAC2STR(cur->local_ndi));
+			   "NAN: Removing sec entry for peer_ndi=" MACSTR
+			   " local_ndi=" MACSTR,
+			   MAC2STR(peer_ndi), MAC2STR(cur->local_ndi));
 		dl_list_del(&cur->list);
-		os_memset(cur, 0, sizeof(*cur));
-		os_free(cur);
+		bin_clear_free(cur, sizeof(*cur));
 	}
 }
 
@@ -203,9 +247,11 @@ static void nan_del_peer(struct nan_data *nan, struct nan_peer *peer)
 	nan_bootstrap_reset(nan, peer);
 	dl_list_del(&peer->list);
 	nan_peer_flush_avail(&peer->info);
+	nan_peer_flush_ulw(&peer->info);
 	nan_peer_flush_dev_capa(&peer->info);
 	nan_peer_flush_elem_container(&peer->info);
 	nan_remove_group_keys(nan, peer);
+
 	nan_ndl_reset(nan, peer);
 	nan_peer_flush_sec(&peer->info);
 	eloop_cancel_timeout(nan_peer_state_timeout, nan, peer);
@@ -227,7 +273,10 @@ static void nan_peer_clear_all(struct nan_data *nan)
 void nan_deinit(struct nan_data *nan)
 {
 	wpa_printf(MSG_DEBUG, "NAN: Deinit");
-	nan_peer_clear_all(nan);
+
+	nan_stop(nan);
+	nan_flush(nan);
+
 #ifdef CONFIG_PASN
 	pasn_initiator_pmksa_cache_deinit(nan->initiator_pmksa);
 	pasn_responder_pmksa_cache_deinit(nan->responder_pmksa);
@@ -248,7 +297,8 @@ static int nan_gen_igtk(struct nan_data *nan)
 	     NAN_CS_INFO_CAPA_GTK_SUPP_POS) == NAN_CS_INFO_CAPA_GTK_SUPP_NONE)
 		return 0;
 
-	if (nan->cfg->security_capab & NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_256) {
+	if (nan->cfg->security_capab &
+	    NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_GMAC_256) {
 		alg = WPA_ALG_BIP_GMAC_256;
 		cipher = WPA_CIPHER_BIP_GMAC_256;
 	} else {
@@ -258,13 +308,14 @@ static int nan_gen_igtk(struct nan_data *nan)
 
 	nan->igtk.igtk_len = wpa_cipher_key_len(cipher);
 	nan->igtk_id = 4;
-	os_get_random(nan->igtk.igtk, nan->igtk.igtk_len);
+	if (os_get_random(nan->igtk.igtk, nan->igtk.igtk_len) < 0)
+		return -1;
 	os_memset(tsc, 0, sizeof(tsc));
 	if (nan->cfg->set_group_key(nan->cfg->cb_ctx, alg, broadcast_ether_addr,
 				    nan->igtk_id, tsc, nan->igtk.igtk,
 				    nan->igtk.igtk_len,
 				    KEY_FLAG_GROUP_TX_DEFAULT) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to install own IGTK");
+		wpa_printf(MSG_INFO, "NAN: Failed to install own IGTK");
 		return -1;
 	}
 
@@ -286,7 +337,8 @@ static int nan_gen_bigtk(struct nan_data *nan)
 		return 0;
 	}
 
-	if (nan->cfg->security_capab & NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_256) {
+	if (nan->cfg->security_capab &
+	    NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_GMAC_256) {
 		alg = WPA_ALG_BIP_GMAC_256;
 		cipher = WPA_CIPHER_BIP_GMAC_256;
 	} else {
@@ -296,13 +348,14 @@ static int nan_gen_bigtk(struct nan_data *nan)
 
 	nan->bigtk.bigtk_len = wpa_cipher_key_len(cipher);
 	nan->bigtk_id = 6;
-	os_get_random(nan->bigtk.bigtk, nan->bigtk.bigtk_len);
+	if (os_get_random(nan->bigtk.bigtk, nan->bigtk.bigtk_len) < 0)
+		return -1;
 	os_memset(tsc, 0, sizeof(tsc));
 	if (nan->cfg->set_group_key(nan->cfg->cb_ctx, alg, broadcast_ether_addr,
 				    nan->bigtk_id, tsc, nan->bigtk.bigtk,
 				    nan->bigtk.bigtk_len,
 				    KEY_FLAG_GROUP_TX_DEFAULT) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to install own BIGTK");
+		wpa_printf(MSG_INFO, "NAN: Failed to install own BIGTK");
 		return -1;
 	}
 
@@ -360,16 +413,36 @@ int nan_update_config(struct nan_data *nan,
 }
 
 
+void nan_set_cdw_overwrite(struct nan_data *nan, int map_id_2g, int map_id_5g)
+{
+	u16 cdw_info;
+
+	if (!nan)
+		return;
+
+	cdw_info = nan->cfg->dev_capa.cdw_info;
+
+	if (map_id_2g >= 0) {
+		cdw_info &= ~NAN_CDW_INFO_2G_OVERRIDE_MASK;
+		cdw_info |= ((map_id_2g << NAN_CDW_INFO_2G_OVERRIDE_POS) &
+			     NAN_CDW_INFO_2G_OVERRIDE_MASK);
+	}
+
+	if (map_id_5g >= 0) {
+		cdw_info &= ~NAN_CDW_INFO_5G_OVERRIDE_MASK;
+		cdw_info |= ((map_id_5g << NAN_CDW_INFO_5G_OVERRIDE_POS) &
+			     NAN_CDW_INFO_5G_OVERRIDE_MASK);
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: Updated cdw_info=0x%04x", cdw_info);
+	nan->cfg->dev_capa.cdw_info = cdw_info;
+}
+
+
 void nan_flush(struct nan_data *nan)
 {
 	wpa_printf(MSG_DEBUG, "NAN: Reset internal state");
 
-	if (!nan->nan_started) {
-		wpa_printf(MSG_DEBUG, "NAN: Already stopped");
-		return;
-	}
-
-	nan->nan_started = 0;
 	nan_peer_clear_all(nan);
 	wpabuf_free(nan->sched.elems);
 	os_memset(&nan->sched, 0, sizeof(nan->sched));
@@ -391,7 +464,7 @@ void nan_stop(struct nan_data *nan)
 		if (nan->cfg->set_group_key(nan->cfg->cb_ctx, WPA_ALG_NONE,
 					    NULL, nan->igtk_id, NULL, NULL,
 					    0, KEY_FLAG_GROUP))
-			wpa_printf(MSG_DEBUG, "NAN: Failed to clear Own IGTK");
+			wpa_printf(MSG_DEBUG, "NAN: Failed to clear own IGTK");
 
 		nan->igtk.igtk_len = 0;
 		nan->igtk_id = 0;
@@ -401,13 +474,15 @@ void nan_stop(struct nan_data *nan)
 		if (nan->cfg->set_group_key(nan->cfg->cb_ctx, WPA_ALG_NONE,
 					    NULL, nan->bigtk_id, NULL, NULL,
 					    0, KEY_FLAG_GROUP))
-			wpa_printf(MSG_DEBUG, "NAN: Failed to clear Own BIGTK");
+			wpa_printf(MSG_DEBUG, "NAN: Failed to clear own BIGTK");
 
 		nan->bigtk.bigtk_len = 0;
 		nan->bigtk_id = 0;
 	}
 
+	/* Even though NAN is stopping, flush internal state */
 	nan_flush(nan);
+	nan->nan_started = 0;
 	nan->cfg->stop(nan->cfg->cb_ctx);
 }
 
@@ -714,12 +789,6 @@ static int nan_parse_avail_entry(struct nan_data *nan,
 
 	preference = BITS(ctrl, NAN_AVAIL_ENTRY_CTRL_USAGE_PREF_MASK,
 			  NAN_AVAIL_ENTRY_CTRL_USAGE_PREF_POS);
-	if (!preference && type == NAN_AVAIL_ENTRY_CTRL_TYPE_POTENTIAL) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Skip potential entry with 0 usage preference");
-		return 0;
-	}
-
 	utilization = BITS(ctrl, NAN_AVAIL_ENTRY_CTRL_UTIL_MASK,
 			   NAN_AVAIL_ENTRY_CTRL_UTIL_POS);
 
@@ -784,12 +853,12 @@ static int nan_parse_avail_entry(struct nan_data *nan,
 
 	/*
 	 * An entry with committed/conditional can either have a single channel
-	 * entry, or multiple channel entries. The later case is allowed only if
-	 * the entry is also potential, in which case the fist channel entry
-	 * belongs to the committed entry and the other channels are potential
+	 * entry, or multiple channel entries. The latter case is allowed only
+	 * if the entry is also potential, in which case the first channel entry
+	 * belongs to the committed entry and the other channels are potential.
 	 */
-	if ((entry->type & NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED) ||
-	    (entry->type & NAN_AVAIL_ENTRY_CTRL_TYPE_COND)) {
+	if (entry->type & (NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED |
+			   NAN_AVAIL_ENTRY_CTRL_TYPE_COND)) {
 		if (entry->band_chan_type != NAN_TYPE_CHANNEL) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Committed/cond avail entry with band");
@@ -957,12 +1026,10 @@ static void nan_peer_disconnect_all_ndps(struct nan_data *nan,
 	struct nan_ndp_id ndp_id;
 
 	if (peer->ndp_setup.ndp)
-		nan_ndp_disconnected(nan, peer,
-				     NAN_REASON_UNSPECIFIED_REASON,
+		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
 				     false);
 
-	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp,
-			      list) {
+	dl_list_for_each_safe(ndp, tmp, &peer->ndps, struct nan_ndp, list) {
 		if (ndp->initiator) {
 			local_ndi = ndp->init_ndi;
 			peer_ndi = ndp->resp_ndi;
@@ -979,13 +1046,11 @@ static void nan_peer_disconnect_all_ndps(struct nan_data *nan,
 		peer->ndp_setup.state = NAN_NDP_STATE_DONE;
 		peer->ndp_setup.status = NAN_NDP_STATUS_REJECTED;
 		peer->ndp_setup.reason = NAN_REASON_UNSPECIFIED_REASON;
-		nan_action_send(nan, peer,
-				NAN_SUBTYPE_DATA_PATH_TERMINATION);
+		nan_action_send(nan, peer, NAN_SUBTYPE_DATA_PATH_TERMINATION);
 		peer->ndp_setup.ndp = NULL;
 
 		dl_list_del(&ndp->list);
-		nan_ndp_terminated(nan, peer, &ndp_id, local_ndi,
-				   peer_ndi,
+		nan_ndp_terminated(nan, peer, &ndp_id, local_ndi, peer_ndi,
 				   NAN_REASON_UNSPECIFIED_REASON,
 				   ndp->gtk_id);
 		os_free(ndp);
@@ -1020,11 +1085,14 @@ static void nan_peer_update_schedule(struct nan_data *nan,
  * Update the old peer info with information from the new peer info.
  * Information that is available in the old peer info but is not available
  * in the new peer info will not be changed.
+ * Peer schedule may be updated if the peer availabilty or ULW changed.
  */
 static void nan_merge_peer_info(struct nan_data *nan, struct nan_peer *peer,
 				struct nan_peer_info *old,
 				struct nan_peer_info *new)
 {
+	bool schedule_changed = false;
+
 	if (!dl_list_empty(&new->avail_entries)) {
 		struct nan_avail_entry *avail, *tmp;
 
@@ -1037,12 +1105,29 @@ static void nan_merge_peer_info(struct nan_data *nan, struct nan_peer *peer,
 			dl_list_add(&old->avail_entries, &avail->list);
 		}
 		old->seq_id = new->seq_id;
+		schedule_changed = true;
+	}
 
-		if (peer->ndl && peer->ndl->state == NAN_NDL_STATE_DONE)
-			nan_peer_update_schedule(nan, peer, &nan->sched);
+	if (!dl_list_empty(&new->ulw)) {
+		struct nan_ulw_entry *entry, *tmp;
+
+		nan_peer_flush_ulw(old);
+		dl_list_init(&old->ulw);
+
+		dl_list_for_each_safe(entry, tmp, &new->ulw,
+				      struct nan_ulw_entry, list) {
+			dl_list_del(&entry->list);
+			dl_list_add(&old->ulw, &entry->list);
+		}
+
+		schedule_changed = true;
 	}
 
 	old->last_seen = new->last_seen;
+
+	if (schedule_changed && peer->ndl &&
+	    peer->ndl->state == NAN_NDL_STATE_DONE)
+		nan_peer_update_schedule(nan, peer, &nan->sched);
 }
 
 
@@ -1199,6 +1284,60 @@ static void nan_parse_peer_elem_container(struct nan_data *nan,
 		nan_parse_peer_elem_container_attr(nan, peer, attr);
 }
 
+
+static int nan_parse_peer_ulw(const struct nan_attrs *attrs,
+			      const struct nan_peer_info *cur_info,
+			      struct nan_peer_info *info)
+{
+	struct nan_ulw_entry *cur;
+	struct nan_attrs_entry *attr;
+	u8 max_seq_id = 0;
+	bool max_seq_id_valid = false;
+
+	if (dl_list_empty(&attrs->ulw))
+		return 0;
+
+	dl_list_for_each(cur, &cur_info->ulw, struct nan_ulw_entry, list) {
+		const struct nan_unaligned_sched *ulw;
+
+		ulw = (const struct nan_unaligned_sched *) cur->data;
+		if (!max_seq_id_valid || ulw->seq_id > max_seq_id) {
+			max_seq_id = ulw->seq_id;
+			max_seq_id_valid = true;
+		}
+	}
+
+	dl_list_for_each(attr, &attrs->ulw, struct nan_attrs_entry, list) {
+		struct nan_ulw_entry *entry;
+		const struct nan_unaligned_sched *ulw =
+			(const struct nan_unaligned_sched *) attr->ptr;
+
+		if (max_seq_id_valid && ulw->seq_id <= max_seq_id) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Skip old ULW entry with seq_id=%u",
+				   ulw->seq_id);
+			continue;
+		}
+
+		entry = os_zalloc(sizeof(*entry) + attr->len);
+		if (!entry) {
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to allocate ULW entry");
+			nan_peer_flush_ulw(info);
+			return -1;
+		}
+
+		dl_list_init(&entry->list);
+		dl_list_add(&info->ulw, &entry->list);
+
+		entry->len = attr->len;
+		os_memcpy(entry->data, attr->ptr, entry->len);
+	}
+
+	return 0;
+}
+
+
 void nan_parse_peer_dev_capa_ext(struct nan_data *nan, struct nan_peer *peer,
 				 struct nan_attrs *attrs)
 {
@@ -1269,6 +1408,7 @@ int nan_parse_device_attrs(struct nan_data *nan, struct nan_peer *peer,
 
 	os_memset(&info, 0, sizeof(info));
 	dl_list_init(&info.avail_entries);
+	dl_list_init(&info.ulw);
 	os_get_reltime(&info.last_seen);
 
 	if (nan_parse_attrs(nan, attrs_data, attrs_len, &attrs)) {
@@ -1283,6 +1423,11 @@ int nan_parse_device_attrs(struct nan_data *nan, struct nan_peer *peer,
 		goto out;
 	}
 
+	if (nan_parse_peer_ulw(&attrs, &peer->info, &info)) {
+		ret = -1;
+		goto out;
+	}
+
 	nan_merge_peer_info(nan, peer, &peer->info, &info);
 	nan_parse_peer_device_capa(nan, peer, &attrs);
 	nan_parse_peer_elem_container(nan, peer, &attrs);
@@ -1293,12 +1438,14 @@ int nan_parse_device_attrs(struct nan_data *nan, struct nan_peer *peer,
 	nan_peer_dump(nan, peer);
 	ret = 0;
 out:
+	nan_peer_flush_avail(&info);
+	nan_peer_flush_ulw(&info);
 	nan_attrs_clear(nan, &attrs);
 	return ret;
 }
 
 
-static struct nan_peer *nan_alloc_peer(struct nan_data *nan)
+static struct nan_peer * nan_alloc_peer(struct nan_data *nan)
 {
 	struct nan_peer *peer, *oldest = NULL;
 	size_t count = 0;
@@ -1334,6 +1481,7 @@ static struct nan_peer *nan_alloc_peer(struct nan_data *nan)
 		return NULL;
 
 	dl_list_init(&peer->info.avail_entries);
+	dl_list_init(&peer->info.ulw);
 	dl_list_init(&peer->info.dev_capa);
 	dl_list_init(&peer->info.element_container);
 	dl_list_init(&peer->info.sec);
@@ -1350,8 +1498,7 @@ int nan_add_peer(struct nan_data *nan, const u8 *addr,
 	struct nan_peer *peer;
 
 	/* Allow adding peer devices even if NAN was not started, to support
-	 * discovery during USD etc.
-	 */
+	 * discovery during USD, etc. */
 	if (!nan)
 		return -1;
 
@@ -1371,8 +1518,8 @@ int nan_add_peer(struct nan_data *nan, const u8 *addr,
 	}
 
 	nan_parse_device_attrs(nan, peer, device_attrs, device_attrs_len);
-	os_get_reltime(&peer->last_seen);
 
+	os_get_reltime(&peer->last_seen);
 	return 0;
 }
 
@@ -1390,7 +1537,7 @@ static void nan_action_build_header(struct nan_data *nan, struct nan_peer *peer,
 	wpabuf_put_u8(buf, category);
 	wpabuf_put_u8(buf, WLAN_PA_VENDOR_SPECIFIC);
 	wpabuf_put_be24(buf, OUI_WFA);
-	wpabuf_put_u8(buf, NAN_TYPE_NAF);
+	wpabuf_put_u8(buf, NAN_NAF_OUI_TYPE);
 	wpabuf_put_u8(buf, subtype);
 }
 
@@ -1518,8 +1665,16 @@ int nan_configure_peer_schedule(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_device_capabilities *capa = NULL;
 	struct nan_peer_schedule sched;
 	struct bitfield *common_bf;
+	struct wpabuf *ulw_elems;
 
-	wpa_printf(MSG_DEBUG, "NAN: Configure peer schedule");
+	wpa_printf(MSG_DEBUG, "NAN: Configure peer schedule for " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	if (nan->sched_update_pending) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Skip peer schedule config - local schedule update pending");
+		return 0;
+	}
 
 	os_memset(&sched, 0, sizeof(sched));
 	common_bf = nan_peer_schedule_intersection(nan, peer, local_sched);
@@ -1547,14 +1702,16 @@ int nan_configure_peer_schedule(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 	}
 
+	ulw_elems = nan_peer_build_ulw_attrs(&peer->info);
+
 	ret = nan->cfg->set_peer_schedule(nan->cfg->cb_ctx, peer->nmi_addr,
 					  !peer->configured, capa->cdw_info,
 					  peer->info.seq_id,
 					  capa->channel_switch_time, &sched,
-					  NULL);
+					  ulw_elems);
+	wpabuf_free(ulw_elems);
 	if (ret) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Failed to set peer schedule");
+		wpa_printf(MSG_DEBUG, "NAN: Failed to set peer schedule");
 		return ret;
 	}
 
@@ -1585,15 +1742,13 @@ int nan_clear_peer_schedule(struct nan_data *nan, struct nan_peer *peer)
 
 
 /**
- * nan_process_followup - Process a received NAN Followup action frame
- *
+ * nan_process_followup - Process a received NAN Follow-up Action frame
  * @nan: NAN module context from nan_init()
  * @addr: Source address of the received frame
  * @buf: Buffer containing the received frame
  * @len: Length of the received frame in octets
  * @req_instance_id: Instance ID of the request that triggered this followup
  * @handle: Service handle of the service associated with this followup
- *
  * Returns: true if the frame was processed successfully, false on failure
  */
 bool nan_process_followup(struct nan_data *nan, const u8 *addr, const u8 *buf,
@@ -1604,7 +1759,7 @@ bool nan_process_followup(struct nan_data *nan, const u8 *addr, const u8 *buf,
 
 	if (nan_parse_attrs(nan, buf, len, &attrs)) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Followup: Failed parsing attributes");
+			   "NAN: Follow-up: Failed parsing attributes");
 		return false;
 	}
 
@@ -1625,8 +1780,6 @@ bool nan_process_followup(struct nan_data *nan, const u8 *addr, const u8 *buf,
 }
 
 
-static void nan_set_peer_timeout(struct nan_data *nan, struct nan_peer *peer,
-				 unsigned int sec, unsigned int usec);
 static void nan_peer_state_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct nan_data *nan = eloop_ctx;
@@ -1643,8 +1796,8 @@ static void nan_peer_state_timeout(void *eloop_ctx, void *timeout_ctx)
 	    peer->ndp_setup.status == NAN_NDP_STATUS_REJECTED) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Timeout (NDP setup is done), disconnecting");
-		nan_ndp_disconnected(nan, peer,
-				     NAN_REASON_UNSPECIFIED_REASON, true);
+		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
+				     true);
 		return;
 	}
 
@@ -1663,8 +1816,8 @@ static void nan_peer_state_timeout(void *eloop_ctx, void *timeout_ctx)
 	if (nan_action_send(nan, peer, NAN_SUBTYPE_DATA_PATH_TERMINATION)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Failed to send termination on timeout");
-		nan_ndp_disconnected(nan, peer,
-				     NAN_REASON_UNSPECIFIED_REASON, true);
+		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
+				     true);
 		return;
 	}
 
@@ -1720,7 +1873,8 @@ static void nan_ndp_action_notif(struct nan_data *nan, struct nan_peer *peer)
 	}
 
 	wpa_printf(MSG_DEBUG,
-		   "NAN: NDP action notification peer=" MACSTR ", ndp_status=%u, ndl_status=%u",
+		   "NAN: NDP action notification peer=" MACSTR
+		   ", ndp_status=%u, ndl_status=%u",
 		   MAC2STR(peer->nmi_addr), notify.ndp_status,
 		   notify.ndl_status);
 
@@ -1767,8 +1921,7 @@ static void nan_terminate_ndps_for_ndi(struct nan_data *nan,
 
 		/* Temporarily set the NDP being disconnected */
 		peer->ndp_setup.ndp = ndp;
-		nan_ndp_disconnected(nan, peer,
-				     NAN_REASON_UNSPECIFIED_REASON,
+		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
 				     true);
 	}
 
@@ -1798,8 +1951,7 @@ static void nan_handle_idle_period(struct nan_data *nan)
 		if (dl_list_empty(&peer->ndps) || !peer->ndl)
 			continue;
 
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Check idle period for peer=" MACSTR,
+		wpa_printf(MSG_DEBUG, "NAN: Check idle period for peer=" MACSTR,
 			   MAC2STR(peer->nmi_addr));
 
 		/* Find the minimal inactive time over all NDPs */
@@ -1820,7 +1972,8 @@ static void nan_handle_idle_period(struct nan_data *nan)
 							      local_ndi,
 							      peer_ndi);
 			wpa_printf(MSG_DEBUG,
-				   "NAN: local=" MACSTR ", peer" MACSTR " : inactivity=%d sec",
+				   "NAN: local=" MACSTR ", peer" MACSTR
+				   " : inactivity=%d sec",
 				   MAC2STR(local_ndi), MAC2STR(peer_ndi),
 				   inactive);
 
@@ -1835,20 +1988,20 @@ static void nan_handle_idle_period(struct nan_data *nan)
 				peer_inactive = inactive;
 		}
 
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Peer " MACSTR " has been inactive for %d seconds",
+		wpa_printf(MSG_DEBUG, "NAN: Peer " MACSTR
+			   " has been inactive for %d seconds",
 			   MAC2STR(peer->nmi_addr), peer_inactive);
 
 		if (peer_inactive >= nan->cfg->max_ndl_idle_period) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Peer " MACSTR
+			wpa_printf(MSG_DEBUG, "NAN: Peer " MACSTR
 				   " has been inactive for too long, removing NDPs",
 				   MAC2STR(peer->nmi_addr));
 			nan_peer_del_all_ndps(nan, peer->nmi_addr);
 			continue;
-		} else if (peer_inactive == -1) {
-			peer_inactive = 0;
 		}
+
+		if (peer_inactive == -1)
+			peer_inactive = 0;
 
 		if (!next_timeout ||
 		    next_timeout >
@@ -1879,8 +2032,7 @@ static int nan_ndp_connected(struct nan_data *nan, struct nan_peer *peer)
 
 	os_memset(&params, 0, sizeof(params));
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: NDP connected notification peer=" MACSTR,
+	wpa_printf(MSG_DEBUG, "NAN: NDP connected notification peer=" MACSTR,
 		   MAC2STR(peer->nmi_addr));
 
 	os_memcpy(params.ndp_id.peer_nmi, peer->nmi_addr, ETH_ALEN);
@@ -1920,14 +2072,18 @@ static int nan_ndp_connected(struct nan_data *nan, struct nan_peer *peer)
 	}
 
 	params.new_ndi_sta = !nan_peer_ndi_in_use(peer, params.peer_ndi);
-	ret = nan->cfg->ndp_connected(nan->cfg->cb_ctx, &params);
-	if (ret) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: NDP connected notification failed ret=%d", ret);
-		if (ret == -2)
-			nan_terminate_ndps_for_ndi(nan, peer, params.peer_ndi);
+	if (nan->cfg->ndp_connected) {
+		ret = nan->cfg->ndp_connected(nan->cfg->cb_ctx, &params);
+		if (ret) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: NDP connected notification failed ret=%d",
+				   ret);
+			if (ret == -2)
+				nan_terminate_ndps_for_ndi(nan, peer,
+							   params.peer_ndi);
 
-		return ret;
+			return ret;
+		}
 	}
 
 	/* Move the NDP to the list of tracked NDPs */
@@ -1983,22 +2139,24 @@ static void nan_ndp_disconnected(struct nan_data *nan, struct nan_peer *peer,
 	 * the failure flag should be false.
 	 */
 	fail = peer->ndp_setup.state != NAN_NDP_STATE_NONE;
-	nan->cfg->ndp_disconnected(nan->cfg->cb_ctx, &ndp_id,
-				   local_ndi, peer_ndi, reason,
-				   locally_generated, remove_sta, fail,
-				   peer->ndp_setup.ndp->gtk_id);
+
+	if (nan->cfg->ndp_disconnected)
+		nan->cfg->ndp_disconnected(nan->cfg->cb_ctx, &ndp_id,
+					   local_ndi, peer_ndi, reason,
+					   locally_generated, remove_sta,
+					   fail, peer->ndp_setup.ndp->gtk_id);
 
 	nan_ndp_setup_stop(nan, peer);
 }
 
 
-/*
+/**
  * nan_action_rx_ndp - Process a received NAN Data Path Action Frame
  * @nan: NAN module context from nan_init()
  * @peer: NAN peer
  * @msg: Parsed NAN message
  * @resp_oui: OUI subtype to use in case a response is needed
- * Return 0 on success; -1 on failure.
+ * Returns: 0 on success; -1 on failure.
  */
 static int nan_action_rx_ndp(struct nan_data *nan, struct nan_peer *peer,
 			     struct nan_msg *msg, enum nan_subtype resp_oui)
@@ -2014,7 +2172,7 @@ static int nan_action_rx_ndp(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * NDP request: Also process the NDL/NDC/QoS attributes and store the
-	 * data without actually scheduling. send an indication to the
+	 * data without actually scheduling. Send an indication to the
 	 * encapsulating logic.
 	 */
 	if (peer->ndp_setup.state == NAN_NDP_STATE_REQ_RECV) {
@@ -2026,25 +2184,33 @@ static int nan_action_rx_ndp(struct nan_data *nan, struct nan_peer *peer,
 			return -1;
 		}
 
-		nan_ndp_action_notif(nan, peer);
+		if (peer->ndl->status == NAN_NDL_STATUS_REJECTED) {
+			nan_ndp_setup_failure(nan, peer,
+					      NAN_REASON_NDL_UNACCEPTABLE,
+					      false);
+			if (peer->ndl->send_naf_on_error)
+				nan_action_send(nan, peer, resp_oui);
+			nan_ndp_setup_stop(nan, peer);
+		} else {
+			nan_ndp_action_notif(nan, peer);
+		}
 		return 0;
 	}
 
 	/*
 	 * NDP was rejected by the peer. Clear the ongoing setup and send an
-	 * event. There is no need to send a NAF in this case.
+	 * event. There is no need to send an NAF in this case.
 	 */
 	if (peer->ndp_setup.status == NAN_NDP_STATUS_REJECTED) {
 		wpa_printf(MSG_DEBUG, "NAN: NAF: NDP rejected");
 
-		nan_ndp_disconnected(nan, peer,
-				     peer->ndp_setup.reason, false);
+		nan_ndp_disconnected(nan, peer, peer->ndp_setup.reason, false);
 		return 0;
 	}
 
 	/*
 	 * NDP state machine is either done or continued, need to trigger NDL
-	 * state machine
+	 * state machine.
 	 */
 	ret = nan_ndl_handle_ndl_attr(nan, peer, msg);
 	if (ret || !peer->ndl)
@@ -2092,9 +2258,9 @@ static int nan_action_rx_ndp(struct nan_data *nan, struct nan_peer *peer,
 	ret = nan_action_send(nan, peer, resp_oui);
 	if (ret) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NAF: failed to send NAF. Resetting ...");
-		nan_ndp_disconnected(nan, peer,
-				     NAN_REASON_UNSPECIFIED_REASON, true);
+			   "NAN: NAF: Failed to send NAF. Resetting..");
+		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
+				     true);
 	}
 
 	nan_set_peer_timeout(nan, peer, NAN_NDP_SETUP_TIMEOUT_SHORT, 0);
@@ -2167,8 +2333,8 @@ static void nan_action_substitute_src(struct nan_data *nan,
 /*
  * nan_action_rx - Process a received NAN Action Frame
  * @nan: NAN module context from nan_init()
- * @mgmt: Pointer to the IEEE 802.11 management frame
- * @len: Length of the management frame in octets
+ * @mgmt: Pointer to the IEEE 802.11 Management frame
+ * @len: Length of the Management frame in octets
  * Return 0 on success; -1 on failure.
  */
 int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
@@ -2190,8 +2356,7 @@ int nan_action_rx(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 	if (ret)
 		return ret;
 
-	ret = nan_add_peer(nan, mgmt->sa,
-			   mgmt->u.action.u.naf.variable,
+	ret = nan_add_peer(nan, mgmt->sa, mgmt->u.action.u.naf.variable,
 			   len - IEEE80211_MIN_ACTION_LEN(naf));
 	if (ret)
 		wpa_printf(MSG_DEBUG, "NAN: Failed to parse peer from NAF");
@@ -2241,13 +2406,12 @@ done:
 
 
 /*
- * nan_publish_instance_id_valid - Check is instance ID is a valid publish ID
- *
+ * nan_publish_instance_id_valid - Check if instance ID is a valid publish ID
  * @nan: NAN module context from nan_init()
  * @instance_id: Instance ID to check
- * @service_id: On return would hold the service ID if instance ID is valid
- * Return true iff there is a local publish service ID with the given instance
- * ID.
+ * @service_id: On return, holds the service ID if the instance ID is valid
+ * Returns: true if there is a local publish service ID with the given instance
+ * ID; false otherwise
  */
 bool nan_publish_instance_id_valid(struct nan_data *nan, u8 instance_id,
 				   u8 *service_id)
@@ -2266,7 +2430,7 @@ bool nan_publish_instance_id_valid(struct nan_data *nan, u8 instance_id,
 /*
  * nan_set_cluster_id - Set the cluster ID
  * @nan: NAN module context from nan_init()
- * @cluster_id: the cluster ID (6 bytes)
+ * @cluster_id: The cluster ID (6 bytes)
  */
 void nan_set_cluster_id(struct nan_data *nan, const u8 *cluster_id)
 {
@@ -2356,14 +2520,12 @@ int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
 	if (!nan_is_naf(mgmt, data_len) || !dst)
 		return -1;
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: TX status: peer=" MACSTR " ,acked=%u",
+	wpa_printf(MSG_DEBUG, "NAN: TX status: peer=" MACSTR ", acked=%u",
 		   MAC2STR(dst), acked);
 
 	peer = nan_tx_status_get_peer(nan, dst);
 	if (!peer) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: TX status: peer not found");
+		wpa_printf(MSG_DEBUG, "NAN: TX status: peer not found");
 		return 0;
 	}
 
@@ -2375,12 +2537,11 @@ int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
 	if (ret || peer->ndp_setup.status == NAN_NDP_STATUS_REJECTED ||
 	    !peer->ndl || peer->ndl->status == NAN_NDL_STATUS_REJECTED) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: TX status: stopping NDP establishment. ret=%d",
-			ret);
+			   "NAN: TX status: Stopping NDP establishment. ret=%d",
+			   ret);
 
 		if (peer->ndp_setup.ndp)
-			nan_ndp_disconnected(nan, peer,
-					     peer->ndp_setup.reason,
+			nan_ndp_disconnected(nan, peer, peer->ndp_setup.reason,
 					     true);
 		return 0;
 	}
@@ -2388,7 +2549,7 @@ int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
 	/* Both state machines are done */
 	if (peer->ndp_setup.state == NAN_NDP_STATE_DONE &&
 	    peer->ndl->state == NAN_NDL_STATE_DONE) {
-		wpa_printf(MSG_DEBUG, "NAN: TX status:  NDP setup done");
+		wpa_printf(MSG_DEBUG, "NAN: TX status: NDP setup done");
 
 		if (nan_configure_peer_schedule(nan, peer, &nan->sched) ||
 		    nan_ndp_connected(nan, peer))
@@ -2413,7 +2574,7 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 
 	peer = nan_get_peer(nan, params->ndp_id.peer_nmi);
 	if (!peer) {
-		wpa_printf(MSG_DEBUG, "NAN: NDP Peer not found");
+		wpa_printf(MSG_DEBUG, "NAN: NDP peer not found");
 		return -1;
 	}
 
@@ -2455,7 +2616,6 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 			nan_ndp_setup_stop(nan, peer);
 			return ret;
 		}
-
 		break;
 	case NAN_NDP_ACTION_RESP:
 		/*
@@ -2481,9 +2641,9 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 
 			if (ret) {
 				if (peer->ndl && peer->ndl->send_naf_on_error) {
-					nan_ndp_setup_failure(nan, peer,
-							      NAN_REASON_NDL_UNACCEPTABLE,
-							      0);
+					nan_ndp_setup_failure(
+						nan, peer,
+						NAN_REASON_NDL_UNACCEPTABLE, 0);
 				} else {
 					nan_ndp_setup_stop(nan, peer);
 					return ret;
@@ -2497,11 +2657,12 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 
 		/*
 		 * In case of counter proposal, allow the peer more time to
-		 * process the counter request
+		 * process the counter request.
 		 */
-		timeout = (peer->ndl->status == NAN_NDL_STATUS_CONTINUED) ?
-			  NAN_NDP_SETUP_TIMEOUT_LONG :
-			  NAN_NDP_SETUP_TIMEOUT_SHORT;
+		timeout = (peer->ndl &&
+			   peer->ndl->status == NAN_NDL_STATUS_CONTINUED) ?
+			NAN_NDP_SETUP_TIMEOUT_LONG :
+			NAN_NDP_SETUP_TIMEOUT_SHORT;
 		break;
 	case NAN_NDP_ACTION_CONF:
 		ret = nan_ndl_setup(nan, peer, params,
@@ -2515,9 +2676,9 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 
 		if (ret) {
 			if (peer->ndl && peer->ndl->send_naf_on_error) {
-				nan_ndp_setup_failure(nan, peer,
-						      NAN_REASON_NDL_UNACCEPTABLE,
-						      0);
+				nan_ndp_setup_failure(
+					nan, peer,
+					NAN_REASON_NDL_UNACCEPTABLE, 0);
 			} else {
 				nan_ndp_setup_stop(nan, peer);
 				return ret;
@@ -2542,11 +2703,9 @@ int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params)
 	}
 
 	ret = nan_action_send(nan, peer, naf_oui);
-
 	if (ret) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Failed sending NAF. Resetting: ret=%d",
-			   ret);
+			   "NAN: Failed sending NAF. Resetting: ret=%d", ret);
 		nan_ndp_disconnected(nan, peer, peer->ndp_setup.reason, true);
 		return 0;
 	}
@@ -2573,8 +2732,8 @@ void nan_ndp_terminated(struct nan_data *nan, struct nan_peer *peer,
 
 	if (nan->cfg->ndp_disconnected)
 		nan->cfg->ndp_disconnected(nan->cfg->cb_ctx, ndp_id, local_ndi,
-					peer_ndi, reason, false, remove_sta, false,
-					gtk_id);
+					   peer_ndi, reason, false, remove_sta,
+					   false, gtk_id);
 
 	/* Need to also remove the NDL if it is not needed */
 	if (dl_list_empty(&peer->ndps) && !peer->ndp_setup.ndp)
@@ -2584,7 +2743,7 @@ void nan_ndp_terminated(struct nan_data *nan, struct nan_peer *peer,
 
 struct nan_device_capabilities *
 nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr,
-				     u8 map_id)
+				 u8 map_id)
 {
 	struct nan_dev_capa_entry *cur, *next;
 	struct nan_peer *peer;
@@ -2608,8 +2767,7 @@ nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr,
 
 int nan_peer_get_tk(struct nan_data *nan, const u8 *addr,
 		    const u8 *peer_ndi, const u8 *local_ndi,
-		    u8 *tk, size_t *tk_len,
-		    enum nan_cipher_suite_id *csid)
+		    u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid)
 {
 	struct nan_peer *peer;
 
@@ -2755,12 +2913,12 @@ nan_peer_get_committed_avail_add(const struct nan_data *nan,
 			freq = freq - 70 + idx * 20;
 
 		/* TODO: Missing support for 80 + 80 */
-
-		/* Skip channels that are not in local schedule */
-		if (local_sched &&
-		    !nan_peer_channel_in_local_sched(nan, freq, local_sched))
-			return;
 	}
+
+	/* Skip channels that are not in local schedule */
+	if (local_sched &&
+	    !nan_peer_channel_in_local_sched(nan, freq, local_sched))
+		return;
 
 	/* Assume committed for conditional slots if setup is done */
 	committed = (avail->type == NAN_AVAIL_ENTRY_CTRL_TYPE_COMMITTED) ||
@@ -2956,6 +3114,7 @@ int nan_peer_get_schedule_info(struct nan_data *nan, const u8 *addr,
 	return 0;
 }
 
+
 /*
  * nan_peer_get_pot_avail - Get peer's potential availability entries
  * @nan: NAN module context from nan_init()
@@ -2999,20 +3158,26 @@ int nan_peer_get_pot_avail(struct nan_data *nan, const u8 *addr,
 		pot->is_band = avail->band_chan_type == NAN_TYPE_BAND;
 
 		for (i = 0; i < avail->n_band_chan; i++, pot->n_band_chan++) {
+			const struct nan_band_chan *band_chan;
+
 			if (pot->n_band_chan == NAN_MAX_CHAN_ENTRIES) {
 				wpa_printf(MSG_DEBUG,
 					   "NAN: Too many band_chan entries stored for potential entry");
 				break;
 			}
 
+			band_chan = &avail->band_chan[i];
+
 			if (pot->is_band) {
 				pot->entries[i].band_id =
-					avail->band_chan[i].u.band_id;
+					band_chan->u.band_id;
 			} else {
-				pot->entries[i].op_class =
-					avail->band_chan[i].u.chan.op_class;
+				const struct nan_chan_entry *bc_chan;
+
+				bc_chan = &band_chan->u.chan;
+				pot->entries[i].op_class = bc_chan->op_class;
 				pot->entries[i].chan_bitmap =
-					le_to_host16(avail->band_chan[i].u.chan.chan_bitmap);
+					le_to_host16(bc_chan->chan_bitmap);
 			}
 		}
 	}
@@ -3021,9 +3186,8 @@ int nan_peer_get_pot_avail(struct nan_data *nan, const u8 *addr,
 }
 
 
-/*
+/**
  * nan_convert_sched_to_avail_attrs - Convert NAN schedule to availability attrs
- *
  * @nan: NAN module context from nan_init()
  * @map_ids_bitmap: Bitmap of map IDs for which NAN availability attributes
  * should be added. Not all map IDs are covered by &chans. For map IDs that
@@ -3036,10 +3200,9 @@ int nan_peer_get_pot_avail(struct nan_data *nan, const u8 *addr,
  * @include_potential: Whether to include potential availability entries
  * Returns: 0 on success; -1 on failure
  *
- * Convert the given NAN schedule information to availability attributes
- * and add them to the given buffer. For each given map ID the get_chans()
- * callback will be used to get the channel entries for the potential
- * availability entries.
+ * Convert the given NAN schedule information to availability attributes and add
+ * them to the given buffer. For each given map ID the get_chans() callback will
+ * be used to get the channel entries for the potential availability entries.
  */
 int nan_convert_sched_to_avail_attrs(struct nan_data *nan, u8 sequence_id,
 				     u32 map_ids_bitmap,
@@ -3048,8 +3211,7 @@ int nan_convert_sched_to_avail_attrs(struct nan_data *nan, u8 sequence_id,
 				     struct wpabuf *buf,
 				     bool include_potential)
 {
-	return nan_add_avail_attrs(nan, sequence_id,
-				   map_ids_bitmap,
+	return nan_add_avail_attrs(nan, sequence_id, map_ids_bitmap,
 				   NAN_AVAIL_ENTRY_CTRL_TYPE_COND,
 				   n_chans, chans, buf, include_potential);
 }
@@ -3070,8 +3232,7 @@ bool nan_peer_pairing_supported(struct nan_data *nan, const u8 *addr)
 }
 
 
-bool nan_peer_npk_nik_caching_supported(struct nan_data *nan,
-					const u8 *addr)
+bool nan_peer_npk_nik_caching_supported(struct nan_data *nan, const u8 *addr)
 {
 	struct nan_peer *peer;
 
@@ -3086,14 +3247,13 @@ bool nan_peer_npk_nik_caching_supported(struct nan_data *nan,
 }
 
 
-/*
+/**
  * nan_peer_del_all_ndps - Delete all NDPs with a given peer
- *
  * @nan: NAN module context from nan_init()
  * @addr: NAN MAC address of the peer
- * Return 0 on success; -1 on failure.
+ * Returns: 0 on success, -1 on failure
  *
- * The function deletes all NDPs with the given peer and stops any ongoing
+ * This function deletes all NDPs with the given peer and stops any ongoing
  * NDP setup. It also resets the NDL state machine and flushes any security
  * context with the peer. The function doesn't delete the peer itself and
  * doesn't send any NAFs to the peer notifying about the deletions.
@@ -3110,19 +3270,16 @@ int nan_peer_del_all_ndps(struct nan_data *nan, const u8 *addr)
 	if (!peer)
 		return -1;
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: Deleting all NDPs with peer " MACSTR,
+	wpa_printf(MSG_DEBUG, "NAN: Deleting all NDPs with peer " MACSTR,
 		   MAC2STR(addr));
 
 	if (peer->ndp_setup.ndp)
 		nan_ndp_setup_stop(nan, peer);
 
-	dl_list_for_each_safe(ndp, tndp, &peer->ndps,
-			      struct nan_ndp, list) {
+	dl_list_for_each_safe(ndp, tndp, &peer->ndps, struct nan_ndp, list) {
 		dl_list_del(&ndp->list);
 		peer->ndp_setup.ndp = ndp;
-		nan_ndp_disconnected(nan, peer,
-				     NAN_REASON_UNSPECIFIED_REASON,
+		nan_ndp_disconnected(nan, peer, NAN_REASON_UNSPECIFIED_REASON,
 				     true);
 	}
 
@@ -3200,12 +3357,11 @@ int nan_get_peer_elems(struct nan_data *nan, const u8 *addr, u8 **elems)
 
 /**
  * nan_set_bootstrap_configuration - Set NAN bootstrap configuration
- *
  * @nan: NAN module context from nan_init()
  * @supported_bootstrap_methods: Bitmap of supported bootstrap methods
  * @auto_accept_bootstrap_methods: Bitmap of bootstrap methods to auto-accept
  * @bootstrap_comeback_timeout: Timeout in TUs for bootstrap comeback
- * Return 0 on success; -1 on failure.
+ * Returns: 0 on success, -1 on failure.
  */
 int nan_set_bootstrap_configuration(struct nan_data *nan,
 				    u16 supported_bootstrap_methods,
@@ -3228,9 +3384,9 @@ int nan_set_bootstrap_configuration(struct nan_data *nan,
  * nan_is_ndpe_supported - Check if NDPE attribute is supported with peer
  * @nan: NAN module context from nan_init()
  * @peer: NAN peer
- * Return true if the peer supports NDPE attribute; false otherwise.
+ * Returns: true if the peer supports NDPE attribute; false otherwise.
  */
-bool nan_is_ndpe_supported(struct nan_data *nan, struct nan_peer *peer)
+bool nan_is_ndpe_supported(struct nan_data *nan, const struct nan_peer *peer)
 {
 	struct nan_dev_capa_entry *cur;
 
@@ -3241,7 +3397,7 @@ bool nan_is_ndpe_supported(struct nan_data *nan, struct nan_peer *peer)
 			 struct nan_dev_capa_entry, list) {
 		/*
 		 * Take the first one, as NDPE support should be identical
-		 * across all attributes
+		 * across all attributes.
 		 */
 		return !!(cur->capa.capa & NAN_DEV_CAPA_NDPE_ATTR_SUPP);
 	}
@@ -3252,15 +3408,13 @@ bool nan_is_ndpe_supported(struct nan_data *nan, struct nan_peer *peer)
 
 /**
  * nan_set_mgmt_group_cipher - Set NAN management group cipher
- *
  * @nan: Pointer to NAN data structure
  * @cipher: Cipher suite to be set (WPA_CIPHER_AES_128_CMAC or
  *	WPA_CIPHER_BIP_GMAC_256)
+ * Returns: 0 on success, -1 on failure
  *
  * This function sets the management group cipher for NAN communication.
  * The cipher can only be changed when NAN is not started.
- *
- * Returns: 0 on success, -1 on failure
  */
 int nan_set_mgmt_group_cipher(struct nan_data *nan, int cipher)
 {
@@ -3283,20 +3437,62 @@ int nan_set_mgmt_group_cipher(struct nan_data *nan, int cipher)
 
 	if (cipher == WPA_CIPHER_BIP_GMAC_256)
 		nan->cfg->security_capab |=
-			NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_256;
+			NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_GMAC_256;
 	else
 		nan->cfg->security_capab &=
-			~NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_256;
+			~NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_GMAC_256;
+	return 0;
+}
+
+
+/**
+ * nan_set_beacon_prot - Enable or disable NAN beacon protection
+ * @nan: Pointer to NAN data structure
+ * @enable: true to enable beacon protection, false to disable
+ * Returns: 0 on success, -1 on failure
+ *
+ * This function enables or disables NAN beacon protection. Beacon protection
+ * can only be changed when NAN is not started. Additionally, the device must
+ * support management frame protection for beacon protection to be enabled.
+ */
+int nan_set_beacon_prot(struct nan_data *nan, bool enable)
+{
+	u8 gtk_supp;
+
+	if (!nan)
+		return -1;
+
+	if (nan->nan_started) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Cannot change beacon protection setting while NAN is started");
+		return -1;
+	}
+
+	if (((nan->cfg->security_capab & NAN_CS_INFO_CAPA_GTK_SUPP_MASK) >>
+	     NAN_CS_INFO_CAPA_GTK_SUPP_POS) == NAN_CS_INFO_CAPA_GTK_SUPP_NONE) {
+		if (enable) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Management frame protection is not supported by the device");
+			return -1;
+		}
+		return 0;
+	}
+
+	if (enable)
+		gtk_supp = NAN_CS_INFO_CAPA_GTK_SUPP_ALL;
+	else
+		gtk_supp = NAN_CS_INFO_CAPA_GTK_SUPP_NO_BIGTK;
+
+	nan->cfg->security_capab &= ~NAN_CS_INFO_CAPA_GTK_SUPP_MASK;
+	nan->cfg->security_capab |= gtk_supp << NAN_CS_INFO_CAPA_GTK_SUPP_POS;
 	return 0;
 }
 
 
 /**
  * nan_set_max_ndl_idle_period - Set maximum NDL idle period
- *
  * @nan: Pointer to NAN data structure
  * @max_idle_period: Maximum idle period in seconds
- *
  * Returns: 0 on success, -1 on failure
  */
 int nan_set_max_ndl_idle_period(struct nan_data *nan, u16 max_idle_period)
@@ -3327,8 +3523,7 @@ int nan_set_max_ndl_idle_period(struct nan_data *nan, u16 max_idle_period)
 	 */
 	eloop_cancel_timeout(nan_idle_period_timeout, nan, NULL);
 	if (max_idle_period)
-		eloop_register_timeout(1, 0,
-				       nan_idle_period_timeout,
+		eloop_register_timeout(1, 0, nan_idle_period_timeout,
 				       nan, NULL);
 	return 0;
 }
@@ -3347,6 +3542,16 @@ bool nan_has_active_ndp(struct nan_data *nan)
 	}
 
 	return false;
+}
+
+
+void nan_set_sched_update_pending(struct nan_data *nan, bool pending)
+{
+	if (!nan)
+		return;
+
+	wpa_printf(MSG_DEBUG, "NAN: Set sched_update_pending to %d", pending);
+	nan->sched_update_pending = pending;
 }
 
 
@@ -3374,6 +3579,7 @@ int nan_get_status(struct nan_data *nan, char *buf, size_t buflen)
 {
 	char *pos, *end;
 	struct nan_peer *peer;
+	int ret;
 
 	if (!nan)
 		return -1;
@@ -3381,14 +3587,15 @@ int nan_get_status(struct nan_data *nan, char *buf, size_t buflen)
 	pos = buf;
 	end = buf + buflen;
 
-	pos += os_snprintf(pos, end - pos,
-			   "nan_started=%d\n"
-			   "nmi=" MACSTR "\n"
-			   "cluster_id=" MACSTR "\n",
-			   nan->nan_started, MAC2STR(nan->cfg->nmi_addr),
-			   MAC2STR(nan->cluster_id));
-	if (pos >= end)
+	ret = os_snprintf(pos, end - pos,
+			  "nan_started=%d\n"
+			  "nmi=" MACSTR "\n"
+			  "cluster_id=" MACSTR "\n",
+			  nan->nan_started, MAC2STR(nan->cfg->nmi_addr),
+			  MAC2STR(nan->cluster_id));
+	if (os_snprintf_error(end - pos, ret))
 		return pos - buf;
+	pos += ret;
 
 	dl_list_for_each(peer, &nan->peer_list, struct nan_peer, list) {
 		struct nan_ndp *ndp;
@@ -3397,14 +3604,15 @@ int nan_get_status(struct nan_data *nan, char *buf, size_t buflen)
 		dl_list_for_each(ndp, &peer->ndps, struct nan_ndp, list)
 			ndp_count++;
 
-		pos += os_snprintf(pos, end - pos,
-				   "peer=" MACSTR " paired=%d ndp_count=%u\n",
-				   MAC2STR(peer->nmi_addr),
-				   !!(peer->pairing.flags &
-				      NAN_PAIRING_FLAG_PAIRED),
-				   ndp_count);
-		if (pos >= end)
+		ret = os_snprintf(pos, end - pos,
+				  "peer=" MACSTR " paired=%d ndp_count=%u\n",
+				  MAC2STR(peer->nmi_addr),
+				  !!(peer->pairing.flags &
+				     NAN_PAIRING_FLAG_PAIRED),
+				  ndp_count);
+		if (os_snprintf_error(end - pos, ret))
 			return pos - buf;
+		pos += ret;
 	}
 
 	return pos - buf;
@@ -3432,17 +3640,47 @@ int nan_peer_dump_ndps_to_buf(struct nan_data *nan, const u8 *addr,
 	end = buf + buflen;
 
 	dl_list_for_each(ndp, &peer->ndps, struct nan_ndp, list) {
-		pos += os_snprintf(pos, end - pos,
-				   "ndp_id=%u initiator=%d "
-				   "init_ndi=" MACSTR " resp_ndi=" MACSTR
-				   " qos_min_slots=%u qos_max_latency=%u\n",
-				   ndp->ndp_id, ndp->initiator,
-				   MAC2STR(ndp->init_ndi),
-				   MAC2STR(ndp->resp_ndi),
-				   ndp->qos.min_slots, ndp->qos.max_latency);
-		if (pos >= end)
+		int ret;
+
+		ret = os_snprintf(pos, end - pos,
+				  "ndp_id=%u initiator=%d "
+				  "init_ndi=" MACSTR " resp_ndi=" MACSTR
+				  " qos_min_slots=%u qos_max_latency=%u\n",
+				  ndp->ndp_id, ndp->initiator,
+				  MAC2STR(ndp->init_ndi),
+				  MAC2STR(ndp->resp_ndi),
+				  ndp->qos.min_slots, ndp->qos.max_latency);
+		if (os_snprintf_error(end - pos, ret))
 			return pos - buf;
+		pos += ret;
 	}
 
 	return pos - buf;
+}
+
+
+/**
+ * nan_terminate_ndi_ndps - Terminate all NDPs with a given NDI address
+ * @nan: NAN module context from nan_init()
+ * @ndi_addr: NDI address for which all NDPs should be terminated
+ *
+ * This function terminates all NDPs that have the given NDI address as either
+ * initiator or responder NDI.
+ */
+void nan_terminate_ndi_ndps(struct nan_data *nan, const u8 *ndi_addr)
+{
+	struct nan_peer *peer;
+
+	if (!nan)
+		return;
+
+	dl_list_for_each(peer, &nan->peer_list, struct nan_peer, list) {
+		/*
+		 * It is possible that an NDP setup in progress is not on the
+		 * NDI that is being removed. However, to simplify things, stop
+		 * the setup, so the other NDPs could be cleanly removed.
+		 */
+		nan_ndp_setup_stop(nan, peer);
+		nan_terminate_ndps_for_ndi(nan, peer, ndi_addr);
+	}
 }

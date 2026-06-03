@@ -13,6 +13,7 @@
 #include "utils/list.h"
 #include "eap_peer/eap_config.h"
 
+
 #define DEFAULT_EAP_WORKAROUND ((unsigned int) -1)
 #define DEFAULT_EAPOL_FLAGS (EAPOL_FLAG_REQUIRE_KEY_UNICAST | \
 			     EAPOL_FLAG_REQUIRE_KEY_BROADCAST)
@@ -1298,6 +1299,14 @@ struct wpa_ssid {
 	 * to 1 to have it disabled.
 	 */
 	int disable_eht;
+
+	/**
+	 * disable_uhr - Disable UHR (IEEE 802.11bn) for this network
+	 *
+	 * By default, use it if it is available, but this can be configured
+	 * to 1 to have it disabled.
+	 */
+	int disable_uhr;
 
 	/**
 	 * enable_4addr_mode - Set 4addr mode after association

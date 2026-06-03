@@ -1450,8 +1450,8 @@ static int tls_is_pin_error(unsigned int err)
 #endif /* OPENSSL_NO_ENGINE */
 
 
-// Imported from system/security/keystore-engine
 #if defined(ANDROID)
+/* EVP_PKEY_from_keystore comes from system/security/keystore-engine. */
 EVP_PKEY * EVP_PKEY_from_keystore(const char *key_id);
 #endif /* ANDROID */
 
@@ -1467,7 +1467,6 @@ static int tls_engine_init(struct tls_connection *conn, const char *engine_id,
 		return TLS_SET_PARAMS_ENGINE_PRV_INIT_FAILED;
 	conn->engine = NULL;
 	conn->private_key = EVP_PKEY_from_keystore(key_id);
-
 	if (!conn->private_key) {
 		wpa_printf(MSG_ERROR,
 			   "ENGINE: cannot load private key with id '%s' [%s]",
@@ -2805,7 +2804,6 @@ static int tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
 			u8 hash[32];
 			const u8 *addr[1];
 			size_t len[1];
-
 			addr[0] = wpabuf_head(cert);
 			len[0] = wpabuf_len(cert);
 			if (sha256_vector(1, addr, len, hash) < 0 ||

@@ -569,6 +569,7 @@ struct hostapd_bss_config {
 	bool disable_11ac;
 	bool disable_11ax;
 	bool disable_11be;
+	bool disable_11bn;
 
 	/* IEEE 802.11v */
 	int time_advertisement;
@@ -1246,6 +1247,13 @@ struct hostapd_config {
 	u8 eht_default_pe_duration;
 	u8 eht_bw320_offset;
 #endif /* CONFIG_IEEE80211BE */
+
+	int ieee80211bn;
+#ifdef CONFIG_IEEE80211BN
+	bool require_uhr;
+	u8 dbe_bandwidth;
+	u16 dbe_punct_bitmap;
+#endif /* CONFIG_IEEE80211BN */
 
 	/* EHT enable/disable config from CHAN_SWITCH */
 #define CH_SWITCH_EHT_ENABLED BIT(0)

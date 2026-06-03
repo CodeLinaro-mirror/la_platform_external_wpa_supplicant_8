@@ -22,8 +22,9 @@
 #define NAN_PTK_LABEL       "NAN Pairwise key expansion"
 #define NAN_PMKID_LABEL     "NAN PMK Name"
 
-/* NAN ciphers use only SHA256 and SHA384, and SHA384 has a bigger digest */
+/* NAN ciphers use only SHA-256 and SHA-384, and SHA-384 has a bigger digest */
 #define MAX_MAC_LEN SHA384_MAC_LEN
+
 
 static size_t nan_crypto_cipher_kck_len(enum nan_cipher_suite_id cipher)
 {
@@ -94,25 +95,8 @@ static int nan_crypto_sha384(const u8 *plaintext, size_t psize, u8 *output)
 }
 
 
-static int nan_crypto_hmac_sha256(const u8 *key, u32 ksize,
-				  const u8 *plaintext,
-				  u32 psize, u8 *output)
-{
-	return hmac_sha256(key, ksize, plaintext, psize, output);
-}
-
-
-static int nan_crypto_hmac_sha384(const u8 *key, u32 ksize,
-				  const u8 *plaintext,
-				  u32 psize, u8 *output)
-{
-	return hmac_sha384(key, ksize, plaintext, psize, output);
-}
-
-
-/*
+/**
  * nan_crypto_pmk_to_ptk - Calculate PTK from PMK, addresses, and nonces
- *
  * @pmk: Pairwise master key
  * @iaddr: Initiator address
  * @raddr: Remote address
@@ -216,15 +200,12 @@ int nan_crypto_calc_pmkid(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	os_memcpy(data + sizeof(NAN_PMKID_LABEL) - 1 + 2 * ETH_ALEN, serv_id,
 		  NAN_SERVICE_ID_LEN);
 
-	wpa_hexdump_key(MSG_DEBUG, "NAN: PMKID DATA", data, sizeof(data));
+	wpa_hexdump_key(MSG_DEBUG, "NAN: PMKID data", data, sizeof(data));
 
 	if (NAN_CS_IS_128(cipher))
-		ret = nan_crypto_hmac_sha256(pmk, PMK_LEN, data,
-					     sizeof(data), digest);
+		ret = hmac_sha256(pmk, PMK_LEN, data, sizeof(data), digest);
 	else
-		ret = nan_crypto_hmac_sha384(pmk, PMK_LEN, data,
-					     sizeof(data), digest);
-
+		ret = hmac_sha384(pmk, PMK_LEN, data, sizeof(data), digest);
 	if (ret)
 		goto out;
 
@@ -258,7 +239,6 @@ int nan_crypto_calc_auth_token(enum nan_cipher_suite_id cipher,
 		ret = nan_crypto_sha256(buf, len, hash);
 	else
 		ret = nan_crypto_sha384(buf, len, hash);
-
 	if (ret)
 		return ret;
 
@@ -295,24 +275,23 @@ int nan_crypto_key_mic(const u8 *buf, size_t len, const u8 *kck,
 	if (!NAN_CS_IS_VALID_NDP(cipher))
 		return -1;
 
-	wpa_hexdump_key(MSG_DEBUG, "MIC DATA", buf, len);
-	wpa_hexdump_key(MSG_DEBUG, "MIC KEY", kck, kck_len);
+	wpa_hexdump_key(MSG_DEBUG, "NAN: MIC data", buf, len);
+	wpa_hexdump_key(MSG_DEBUG, "NAN: KCK", kck, kck_len);
 
 	if (NAN_CS_IS_128(cipher)) {
 		mic_len = NAN_KEY_MIC_LEN;
-		ret = nan_crypto_hmac_sha256(kck, kck_len, buf, len, digest);
+		ret = hmac_sha256(kck, kck_len, buf, len, digest);
 	} else {
 		mic_len = NAN_KEY_MIC_24_LEN;
-		ret = nan_crypto_hmac_sha384(kck, kck_len, buf, len, digest);
+		ret = hmac_sha384(kck, kck_len, buf, len, digest);
 	}
-
 	if (ret)
 		return ret;
 
 	os_memcpy(mic, digest, mic_len);
 	forced_memzero(digest, sizeof(digest));
 
-	wpa_hexdump_key(MSG_DEBUG, "MIC", mic, mic_len);
+	wpa_hexdump_key(MSG_DEBUG, "NAN: MIC", mic, mic_len);
 	return 0;
 }
 
@@ -324,7 +303,7 @@ int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
 	u8 salt[1 + 1 + NAN_SERVICE_ID_LEN + ETH_ALEN];
 
 	salt[0] = 0;
-	salt[1] = (u8)csid;
+	salt[1] = (u8) csid;
 	os_memcpy(salt + 2, service_id, NAN_SERVICE_ID_LEN);
 	os_memcpy(salt + 2 + NAN_SERVICE_ID_LEN, peer_nmi, ETH_ALEN);
 
@@ -338,8 +317,6 @@ int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
 	default:
 		return -1;
 	}
-
-	return -1;
 }
 
 
@@ -584,21 +561,20 @@ int nan_crypto_derive_nd_pmk_from_kdk(const u8 *kdk, size_t kdk_len,
 
 /**
  * nan_crypto_encrypt_key - Encrypt key data using AES Key Wrap (RFC 3394)
- *
  * @key_data: Key data to be encrypted
  * @kek: Key Encryption Key (KEK)
  * @kek_len: Length of KEK in octets
+ * Returns: Encrypted key data in a newly allocated wpabuf, or NULL on failure.
  *
  * This function encrypts the provided key data using AES Key Wrap algorithm
  * as defined in RFC 3394. The input data is padded to 8-byte alignment before
  * encryption. The padding scheme uses 0xdd as the first padding byte followed
  * by zeros.
  *
- * Returns: Encrypted key data in a newly allocated wpabuf, or NULL on failure.
  * The caller is responsible for freeing the returned wpabuf.
  */
-struct wpabuf *nan_crypto_encrypt_key_data(const struct wpabuf *key_data,
-					   const u8 *kek, size_t kek_len)
+struct wpabuf * nan_crypto_encrypt_key_data(const struct wpabuf *key_data,
+					    const u8 *kek, size_t kek_len)
 {
 	size_t key_data_len;
 	size_t pad;
@@ -645,18 +621,17 @@ struct wpabuf *nan_crypto_encrypt_key_data(const struct wpabuf *key_data,
 	/* Encrypt the padded data using AES Key Wrap */
 	if (aes_wrap(kek, kek_len, padded_len / 8, padded_key_data,
 		     wpabuf_put(encrypted_key_data, padded_len + 8))) {
-		wpa_printf(MSG_ERROR, "NAN: Pairing: AES wrap failed");
+		wpa_printf(MSG_INFO, "NAN: Pairing: AES wrap failed");
 		wpabuf_free(encrypted_key_data);
 		encrypted_key_data = NULL;
 	} else {
-		wpa_hexdump_key(MSG_DEBUG, "NAN: Encrypted key data",
-				wpabuf_head(encrypted_key_data),
-				wpabuf_len(encrypted_key_data));
+		wpa_hexdump(MSG_DEBUG, "NAN: Encrypted key data",
+			    wpabuf_head(encrypted_key_data),
+			    wpabuf_len(encrypted_key_data));
 	}
 
 fail:
-	os_memset(padded_key_data, 0, padded_len);
-	os_free(padded_key_data);
+	bin_clear_free(padded_key_data, padded_len);
 	return encrypted_key_data;
 }
 
