@@ -925,6 +925,7 @@ std::string CreateHostapdConfig(
 		"ignore_broadcast_ssid=%d\n"
 		"wowlan_triggers=any\n"
 		"dtim_period=1\n"
+		"bss_transition=1\n"
 #ifdef CONFIG_INTERWORKING
 		"%s\n"
 #endif /* CONFIG_INTERWORKING */
