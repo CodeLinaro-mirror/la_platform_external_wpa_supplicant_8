@@ -10,7 +10,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <set>
 #include <net/if.h>
 #include <sys/socket.h>
 #include <linux/if_bridge.h>
@@ -35,8 +34,6 @@ extern "C"
 #include "common/wpa_ctrl.h"
 #include "common/ieee802_11_common.h"
 #include "drivers/linux_ioctl.h"
-
-#define MAX_HE80_ALLOWED_PRI_CHANNEL     157
 }
 
 
@@ -133,9 +130,6 @@ using aidl::android::hardware::wifi::hostapd::HostapdStatusCode;
 using aidl::android::hardware::wifi::hostapd::IfaceParams;
 using aidl::android::hardware::wifi::hostapd::NetworkParams;
 using aidl::android::hardware::wifi::hostapd::ParamSizeLimits;
-
-std::set<int> allowed_ht40_first_channel_list = { 36, 44, 52, 60, 100, 108, 116,
-					124, 132, 140, 149, 157, 165, 184, 192 };
 
 int band2Ghz = (int)BandMask::BAND_2_GHZ;
 int band5Ghz = (int)BandMask::BAND_5_GHZ;
@@ -578,8 +572,7 @@ std::string CreateHostapdConfig(
 	std::string enable_edmg_as_string;
 	std::string edmg_channel_as_string;
 	bool is_60Ghz_used = false;
-	std::string channel_config_as_string;
-	bool isFirst = true;
+
 	if (((band & band60Ghz) != 0)) {
 		hw_mode_as_string = "hw_mode=ad";
 		if (iface_params.hwModeParams.enableEdmg) {
@@ -733,20 +726,8 @@ std::string CreateHostapdConfig(
 			if (iface_params.hwModeParams.enable80211AC) {
 				chanwidth = CONF_OPER_CHWIDTH_80MHZ;
 				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string =
+					"ht_capab=[HT40+]\n"
 					"vht_oper_chwidth=1\n";
-				if (allowed_ht40_first_channel_list.end()
-				    == allowed_ht40_first_channel_list.find(channelParams.channel)) {
-				    ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
-					"ht_capab=[HT40-]\n";
-				} else {
-					if (channelParams.channel >
-					    MAX_HE80_ALLOWED_PRI_CHANNEL) {
-						channel_config_as_string.replace(8, 3,
-							std::to_string(MAX_HE80_ALLOWED_PRI_CHANNEL));
-					}
-					ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string +=
-						"ht_capab=[HT40+]\n";
-				}
 			}
 			if (band & band6Ghz) {
 				chanwidth = CONF_OPER_CHWIDTH_160MHZ;
@@ -777,12 +758,12 @@ std::string CreateHostapdConfig(
 				ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string += "eht_oper_chwidth=1\n";
 			}
 #endif
-		} else if (is_2Ghz_band_only) {
-			ht_cap_vht_oper_he_oper_eht_oper_chwidth_as_string = "ht_capab=[HT40+][HT40-]";
 		}
 		break;
 	}
 
+	std::string channel_config_as_string;
+	bool isFirst = true;
 	if (channelParams.enableAcs) {
 		std::string freqList_as_string;
 		for (const auto &range :
