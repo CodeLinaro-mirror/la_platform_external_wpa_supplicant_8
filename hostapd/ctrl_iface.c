@@ -4668,7 +4668,7 @@ done:
 #ifdef CONFIG_IEEE80211BE
 #ifndef CONFIG_CTRL_IFACE_UDP
 
-static int hostapd_mld_ctrl_iface_receive_process(struct hostapd_mld *mld,
+int hostapd_mld_ctrl_iface_receive_process(struct hostapd_mld *mld,
 						  char *buf, char *reply,
 						  size_t reply_size,
 						  struct sockaddr_storage *from,

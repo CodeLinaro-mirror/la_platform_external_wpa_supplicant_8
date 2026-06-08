@@ -25,6 +25,15 @@ int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
         int reply_size,
         struct sockaddr_storage *from,
         socklen_t fromlen);
+#ifdef CONFIG_IEEE80211BE
+#ifndef CONFIG_CTRL_IFACE_UDP
+int hostapd_mld_ctrl_iface_receive_process(struct hostapd_mld *mld,
+        char *buf, char *reply,
+        size_t reply_size,
+        struct sockaddr_storage *from,
+        socklen_t fromlen);
+#endif /* CONFIG_CTRL_IFACE_UDP */
+#endif /* CONFIG_IEEE80211BE */
 #else /* CONFIG_NO_CTRL_IFACE */
 static inline int hostapd_ctrl_iface_init(struct hostapd_data *hapd)
 {
