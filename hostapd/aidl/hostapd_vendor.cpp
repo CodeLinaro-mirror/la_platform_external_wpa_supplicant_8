@@ -205,9 +205,24 @@ HostapdVendor::doDriverCmdInternal(const std::string& iface_name, const std::str
 	if (reply == NULL) {
 		return {"", createStatus(HostapdStatusCode::FAILURE_UNKNOWN)};
 	}
-	reply_len = hostapd_ctrl_iface_receive_process(iface_hapd, (char *)cmd.c_str(),
-		reply, reply_size,
-		NULL, 0);
+#ifdef CONFIG_IEEE80211BE
+#ifndef CONFIG_CTRL_IFACE_UDP
+	if (iface_hapd->mld && os_strncmp(cmd.c_str(), "LINKID ", 7) == 0) {
+		reply_len = hostapd_mld_ctrl_iface_receive_process(
+			iface_hapd->mld, (char *)cmd.c_str(),
+			reply, reply_size,
+			NULL, 0);
+	} else {
+#endif /* CONFIG_CTRL_IFACE_UDP */
+#endif /* CONFIG_IEEE80211BE */
+		reply_len = hostapd_ctrl_iface_receive_process(iface_hapd, (char *)cmd.c_str(),
+			reply, reply_size,
+			NULL, 0);
+#ifdef CONFIG_IEEE80211BE
+#ifndef CONFIG_CTRL_IFACE_UDP
+	}
+#endif /* CONFIG_CTRL_IFACE_UDP */
+#endif /* CONFIG_IEEE80211BE */
 	if (reply_len > reply_size) reply_len = reply_size;
 	reply[reply_len] = '\0'; // make sure '\0' terminated.
 	wpa_printf(MSG_INFO, "reply = %s", reply);
