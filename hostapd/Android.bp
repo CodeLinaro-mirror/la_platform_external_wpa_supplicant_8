@@ -482,6 +482,8 @@ hostapd_cc_defaults_type {
         "-DCONFIG_OCV",
         "-DCONFIG_PASN",
         "-DCONFIG_PTKSA_CACHE",
+        "-DCONFIG_WNM",
+        "-DCONFIG_WNM_AP",
     ],
     local_include_dirs: [
         "src/fst",
@@ -497,6 +499,7 @@ hostapd_cc_defaults_type {
         "src/fst/fst_session.c",
         "src/fst/fst_ctrl_aux.c",
         "src/fst/fst_ctrl_iface.c",
+        "src/ap/wnm_ap.c",
     ],
     soong_config_variables: {
         enable_vendor_aidl: {
