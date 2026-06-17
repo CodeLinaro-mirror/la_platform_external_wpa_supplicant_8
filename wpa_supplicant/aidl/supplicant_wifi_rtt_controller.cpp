@@ -18,6 +18,7 @@
 #include "aidl_manager.h"
 #include "aidl_return_util.h"
 #include "misc_utils.h"
+#include "sta_iface.h"
 #include "src/common/proximity_ranging.h"
 #include "src/drivers/driver.h"
 
@@ -289,8 +290,20 @@ SupplicantWifiRttController::setProximityRangingMacAddressInternal(
 	// set the new MAC address to driver when a new PASN ranging starts.
 	proximity_ranging_mac_address_ = macAddress;
 
-	// TODO(b/502795225): Update the new MAC address to the USD engine, so that it can do
-	// discovery with the PD randomized MAC address.
+	AidlManager* aidl_manager = AidlManager::getInstance();
+	if (aidl_manager) {
+		std::shared_ptr<ISupplicantStaIface> sta_iface_interface;
+		if (aidl_manager->getStaIfaceAidlObjectByIfname(ifname_, &sta_iface_interface) == 0
+		    && sta_iface_interface != nullptr) {
+			std::shared_ptr<StaIface> sta_iface =
+				std::static_pointer_cast<StaIface>(sta_iface_interface);
+			sta_iface->setProximityRangingMacAddress(macAddress);
+		} else {
+			wpa_printf(MSG_WARNING, "RTT: Failed to get StaIface for %s to update MAC",
+				   ifname_.c_str());
+		}
+	}
+
 	return ndk::ScopedAStatus::ok();
 }
 
