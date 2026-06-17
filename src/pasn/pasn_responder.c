@@ -511,8 +511,11 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 	wpa_pasn_build_auth_header(buf, pasn->bssid, own_addr, peer_addr, 2,
 				   status);
 
-	if (status != WLAN_STATUS_SUCCESS)
+	if (status != WLAN_STATUS_SUCCESS) {
+		wpa_pasn_add_extra_ies(buf, pasn->extra_ies,
+				       pasn->extra_ies_len);
 		goto done;
+	}
 
 	if (pmksa && pasn->custom_pmkid_valid)
 		pmkid = pasn->custom_pmkid;

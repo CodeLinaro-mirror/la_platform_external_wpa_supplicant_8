@@ -3366,10 +3366,15 @@ struct nan_cluster_config {
 /**
  * struct nan_schedule_config - NAN schedule configuration
  *
+ * @deferred: True if the driver should announce the schedule update to peers
+ *	before applying it
  * @num_channels: Number of channels in the schedule
  * @channels: Channel specific schedule information
+ * @avail_attr: NAN Availability attribute as defined in Wi-Fi Aware (TM) 4.0
+ *	specification Table 93
  */
 struct nan_schedule_config {
+	bool deferred;
 	u8 num_channels;
 
 	/**
@@ -3402,6 +3407,8 @@ struct nan_schedule_config {
 		u8 chan_entry[6];
 
 	} channels[MAX_NUM_NAN_SCHEDULE_CHANNELS];
+
+	struct wpabuf *avail_attr;
 };
 
 /**
@@ -6511,6 +6518,22 @@ enum wpa_event_type {
 	 * The event data includes the DW frequency.
 	 */
 	EVENT_NAN_NEXT_DW,
+
+	/**
+	 * EVENT_NAN_SCHED_UPDATE_DONE - NAN schedule update completed
+	 *
+	 * This event is used to notify wpa_supplicant that a NAN schedule
+	 * update has been completed by the driver/firmware.
+	 */
+	EVENT_NAN_SCHED_UPDATE_DONE,
+
+	/**
+	 * EVENT_NAN_ULW_UPDATE - NAN ULW blob update
+	 *
+	 * This event is used to notify wpa_supplicant that the device ULW blob
+	 * has changed and can be attached to outgoing NAN frames.
+	 */
+	EVENT_NAN_ULW_UPDATE,
 };
 
 
@@ -7519,6 +7542,27 @@ union wpa_event_data {
 	struct nan_next_dw_info {
 		int freq;
 	} nan_next_dw_info;
+
+	/**
+	 * struct nan_sched_update_done_info - Data for EVENT_NAN_SCHED_UPDATE_DONE
+	 * @success: Indicates whether the NAN schedule update was successful
+	 */
+	struct nan_sched_update_done_info {
+		bool success;
+	} nan_sched_update_done_info;
+
+	/**
+	 * struct nan_ulw_update_info - Data for EVENT_NAN_ULW_UPDATE
+	 * @ulw: Pointer to ULW blob data, containing one or more Unaligned
+	 *	Schedule attributes as defined in the Wi-Fi Aware (TM) 4.0
+	 *	specification Table 109, including attribute header for each
+	 *	attribute.
+	 * @ulw_len: ULW blob length in bytes
+	 */
+	struct nan_ulw_update_info {
+		const u8 *ulw;
+		size_t ulw_len;
+	} nan_ulw_update_info;
 };
 
 /**

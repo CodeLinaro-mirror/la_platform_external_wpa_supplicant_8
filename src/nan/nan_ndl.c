@@ -117,12 +117,7 @@ static void nan_ndl_clear(struct nan_data *nan, struct nan_peer *peer)
 		   MAC2STR(peer->nmi_addr),
 		   nan_ndl_state_str(peer->ndl->state), peer->ndl->state);
 
-	if (peer->configured) {
-		nan->cfg->set_peer_schedule(nan->cfg->cb_ctx, peer->nmi_addr,
-					    false, 0, 0, 0, NULL,
-					    NULL);
-		peer->configured = false;
-	}
+	nan_clear_peer_schedule(nan, peer);
 
 	os_free(ndl->ndc_sched);
 	ndl->ndc_sched = NULL;
@@ -141,9 +136,6 @@ static void nan_ndl_clear(struct nan_data *nan, struct nan_peer *peer)
 	ndl->local_qos.max_latency = NAN_QOS_MAX_LATENCY_NO_PREF;
 
 	ndl->setup_reason = NAN_NDL_SETUP_REASON_NONE;
-
-	wpabuf_free(ndl->sched.elems);
-	os_memset(&ndl->sched, 0, sizeof(ndl->sched));
 }
 
 
@@ -197,8 +189,7 @@ struct nan_ndl *nan_ndl_alloc(struct nan_data *nan)
 }
 
 
-static bool nan_ndl_validate_peer_avail(struct nan_data *nan,
-					struct nan_peer *peer)
+bool nan_ndl_validate_peer_avail(struct nan_data *nan, struct nan_peer *peer)
 {
 	struct nan_ndl *ndl = peer->ndl;
 	bool ret;
@@ -344,16 +335,61 @@ nan_ndl_match_sched_vs_common(struct nan_data *nan,
 }
 
 
+bool nan_ndl_meets_qos(struct nan_data *nan, struct nan_peer *peer,
+		       struct bitfield *common_bf)
+{
+	size_t size, max_latency, i;
+	u16 crbs;
+
+	/* No QoS requirements */
+	if (peer->ndl->peer_qos.min_slots == NAN_QOS_MIN_SLOTS_NO_PREF &&
+	    peer->ndl->peer_qos.max_latency == NAN_QOS_MAX_LATENCY_NO_PREF) {
+		wpa_printf(MSG_DEBUG, "NAN: No QoS requirements from Peer");
+		return true;
+	}
+
+	size = bitfield_size(common_bf);
+
+	/*
+	 * The common map covers an entire 8192 period with 16 TU slots. For
+	 * minimal time slots need to only consider the first 32 slots
+	 */
+	for (i = 0, crbs = 0, max_latency = 0; i < size; i++) {
+		if (bitfield_is_set(common_bf, i)) {
+			if (i < 32)
+				crbs++;
+
+			max_latency = 0;
+		} else if (peer->ndl->peer_qos.max_latency !=
+			   NAN_QOS_MAX_LATENCY_NO_PREF) {
+			max_latency++;
+			if (max_latency > peer->ndl->peer_qos.max_latency) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: Failed to meet max latency");
+				return false;
+			}
+		}
+	}
+
+	if (peer->ndl->peer_qos.min_slots != NAN_QOS_MIN_SLOTS_NO_PREF &&
+	    peer->ndl->peer_qos.min_slots >= crbs) {
+		wpa_printf(MSG_DEBUG, "NAN: Failed to meet min slots");
+		return false;
+	}
+
+	return true;
+}
+
+
 static enum nan_ndl_status nan_ndl_determine_status(struct nan_data *nan,
 						    struct nan_peer *peer,
 						    bool can_counter,
 						    enum nan_reason *reason)
 {
-	struct nan_schedule *sched = &peer->ndl->sched;
+	struct nan_schedule *sched = &nan->sched;
 	struct bitfield *common_bf = NULL, *ndc_bf = NULL, *track_ndc_bf = NULL;
 	enum nan_ndl_ver verdict;
-	size_t size, max_latency, i;
-	u16 crbs;
+	size_t i;
 	int ret;
 
 	*reason = NAN_REASON_RESERVED;
@@ -547,55 +583,15 @@ static enum nan_ndl_status nan_ndl_determine_status(struct nan_data *nan,
 		goto out;
 	}
 
-	/* No QoS requirements. Accept */
-	if (peer->ndl->peer_qos.min_slots == NAN_QOS_MIN_SLOTS_NO_PREF &&
-	    peer->ndl->peer_qos.max_latency == NAN_QOS_MAX_LATENCY_NO_PREF) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: No QoS requirements from Peer. Accept");
-
+	if (nan_ndl_meets_qos(nan, peer, common_bf)) {
+		wpa_printf(MSG_DEBUG, "NAN: NDL QoS requirements met. Accept");
 		ret = NAN_NDL_STATUS_ACCEPTED;
-		goto out;
-	}
-
-	size = bitfield_size(common_bf);
-	wpa_printf(MSG_DEBUG,
-		   "NAN: size of avail intersection map=%zu", size);
-
-	/*
-	 * The common map covers an entire 8192 period with 16 TU slots. For
-	 * minimal time slots need to only consider the first 32 slots
-	 */
-	for (i = 0, crbs = 0, max_latency = 0; i < size; i++) {
-		if (bitfield_is_set(common_bf, i)) {
-			if (i < 32)
-				crbs++;
-
-			max_latency = 0;
-		} else if (peer->ndl->peer_qos.max_latency !=
-			   NAN_QOS_MAX_LATENCY_NO_PREF) {
-			max_latency++;
-			if (max_latency > peer->ndl->peer_qos.max_latency) {
-				wpa_printf(MSG_DEBUG,
-					   "NAN: failed to meet max latency");
-
-				*reason = NAN_REASON_QOS_UNACCEPTABLE;
-				ret = NAN_NDL_STATUS_CONTINUED;
-				goto out;
-			}
-		}
-	}
-
-	if (peer->ndl->peer_qos.min_slots != NAN_QOS_MIN_SLOTS_NO_PREF &&
-	    peer->ndl->peer_qos.min_slots >= crbs) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: failed to meet min slots");
-
+	} else {
+		wpa_printf(MSG_DEBUG, "NAN: NDL QoS requirements not met");
 		*reason = NAN_REASON_QOS_UNACCEPTABLE;
 		ret = NAN_NDL_STATUS_CONTINUED;
-		goto out;
 	}
 
-	ret = NAN_NDL_STATUS_ACCEPTED;
 out:
 	bitfield_free(common_bf);
 	bitfield_free(ndc_bf);
@@ -624,13 +620,16 @@ out:
  * @nan: NAN module context from nan_init()
  * @peer: The peer for which the NDL is being setup
  * @params: NDP setup request parameters
+ * @dialog_token: Dialog token to be used for the NDL setup messages. Should be
+ *      used for a new NDL only.
  * Returns: 0 on success, negative on failure.
 
  * It is possible that an NDL with the peer already exists in which case it
  * would be reused. Otherwise, new NDL establishment will be started.
  */
 int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
-		  struct nan_ndp_params *params)
+		  struct nan_ndp_params *params,
+		  u8 dialog_token)
 {
 	struct nan_ndl *ndl;
 	enum nan_reason reason;
@@ -686,20 +685,22 @@ int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
 		goto out_fail;
 	}
 
-	wpabuf_free(ndl->sched.elems);
-	os_memcpy(&ndl->sched, &params->sched, sizeof(ndl->sched));
-	nan_ndl_sched_print(nan, &peer->ndl->sched);
+	wpabuf_free(nan->sched.elems);
+	os_memcpy(&nan->sched, &params->sched, sizeof(nan->sched));
+	nan_ndl_sched_print(nan, &nan->sched);
 
 	/* Copy elems buffer */
 	if (params->sched.elems) {
-		ndl->sched.elems =
+		nan->sched.elems =
 			wpabuf_alloc_copy(wpabuf_head(params->sched.elems),
 					  wpabuf_len(params->sched.elems));
-		if (!ndl->sched.elems) {
+		if (!nan->sched.elems) {
 			reason = NAN_REASON_UNSPECIFIED_REASON;
 			goto out_fail;
 		}
 	}
+
+	nan_ndl_sched_print(nan, &nan->sched);
 
 	if (is_zero_ether_addr(ndl->ndc_id)) {
 		os_get_random(ndl->ndc_id, ETH_ALEN);
@@ -712,7 +713,7 @@ int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
 	ndl->local_qos.max_latency = params->qos.max_latency;
 
 	if (ndl->state == NAN_NDL_STATE_NONE) {
-		ndl->dialog_token = ++nan->next_dialog_token;
+		ndl->dialog_token = dialog_token;
 		nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_START);
 		ndl->status = NAN_NDL_STATUS_CONTINUED;
 	} else {
@@ -1164,6 +1165,19 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 	if (!msg || !peer)
 		return -1;
 
+	/*
+	 * It is possible that we receive a confirm NAF before the TX status
+	 * of the previous NAF was processed. If NDL was accepted,
+	 * the confirm would not include the NDL attribute, thus fast forward to
+	 * state "done" here.
+	 */
+	if (msg->oui_subtype == NAN_SUBTYPE_DATA_PATH_CONFIRM &&
+	    peer->ndl->state == NAN_NDL_STATE_REQ_RECV &&
+	    peer->ndl->status == NAN_NDL_STATUS_ACCEPTED) {
+		wpa_printf(MSG_DEBUG, "NAN: NDL is accepted - fast forward to state done");
+		nan_ndl_set_state(nan, peer->ndl, NAN_NDL_STATE_DONE);
+	}
+
 	if (peer->ndl && peer->ndl->state == NAN_NDL_STATE_DONE) {
 		wpa_printf(MSG_DEBUG, "NAN: NDL: NDL already done");
 		return 0;
@@ -1216,7 +1230,7 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 	}
 
 	if (control & NAN_NDL_CTRL_MAX_IDLE_PERIOD_PRESENT) {
-		if (ndl_attr_ext_len <= 2) {
+		if (ndl_attr_ext_len < 2) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: NDL: Request with invalid len=%u, control=0x%x",
 				   ndl_attr_len, control);
@@ -1226,6 +1240,9 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 		params.max_idle_period = WPA_GET_LE16(ndl_attr_ext);
 		ndl_attr_ext += 2;
 		ndl_attr_ext_len -= 2;
+
+		wpa_printf(MSG_DEBUG, "NAN: NDL: max_idle_period=%u",
+			   params.max_idle_period);
 	}
 
 	ndc_ok = 1;
@@ -1333,7 +1350,7 @@ int nan_ndl_add_avail_attrs(struct nan_data *nan,
 	if (!peer || !peer->ndl)
 		return -1;
 
-	sched = &peer->ndl->sched;
+	sched = &nan->sched;
 
 	wpa_printf(MSG_DEBUG,
 		   "NAN: NDL: Add Avail attribute. state=%s, status=%u",
@@ -1365,8 +1382,7 @@ int nan_ndl_add_avail_attrs(struct nan_data *nan,
 				   sched->map_ids_bitmap,
 				   type_for_conditional,
 				   sched->n_chans,
-				   sched->chans, buf);
-
+				   sched->chans, buf, true);
 }
 
 
@@ -1384,7 +1400,9 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
 			 struct wpabuf *buf)
 {
 	struct nan_ndl *ndl;
+	struct nan_schedule *sched = &nan->sched;
 	u16 ndl_ctrl;
+	u8 *len_ptr;
 	u8 type;
 
 	if (!peer || !peer->ndl)
@@ -1396,6 +1414,14 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
 	wpa_printf(MSG_DEBUG, "NAN: add NDL attribute. state=%s, status=%u",
 		   nan_ndl_state_str(ndl->state), ndl->status);
 
+	if (nan->cfg->max_ndl_idle_period) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDL: max idle period=%u",
+			   nan->cfg->max_ndl_idle_period);
+
+		ndl_ctrl |= NAN_NDL_CTRL_MAX_IDLE_PERIOD_PRESENT;
+	}
+
 	switch (ndl->state) {
 	case NAN_NDL_STATE_NONE:
 	case NAN_NDL_STATE_REQ_SENT:
@@ -1405,18 +1431,18 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
 		return -1;
 	case NAN_NDL_STATE_START:
 		type = NAN_NDL_TYPE_REQUEST;
-		if (ndl->sched.ndc.len)
+		if (sched->ndc.len)
 			ndl_ctrl |= NAN_NDL_CTRL_NDC_ATTR_PRESENT;
 		break;
 	case NAN_NDL_STATE_REQ_RECV:
 		type = NAN_NDL_TYPE_RESPONSE;
-		if (ndl->sched.ndc.len &&
+		if (sched->ndc.len &&
 		    ndl->status != NAN_NDL_STATUS_REJECTED)
 			ndl_ctrl |= NAN_NDL_CTRL_NDC_ATTR_PRESENT;
 		break;
 	case NAN_NDL_STATE_RES_RECV:
 		type = NAN_NDL_TYPE_CONFIRM;
-		if (ndl->sched.ndc.len &&
+		if (sched->ndc.len &&
 		    ndl->status != NAN_NDL_STATUS_REJECTED)
 			ndl_ctrl |= NAN_NDL_CTRL_NDC_ATTR_PRESENT;
 		break;
@@ -1432,13 +1458,18 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
 		ndl_ctrl |= NAN_NDL_CTRL_NDL_QOS_ATTR_PRESENT;
 
 	wpabuf_put_u8(buf, NAN_ATTR_NDL);
-	wpabuf_put_le16(buf, sizeof(struct ieee80211_ndl));
+	len_ptr = wpabuf_put(buf, 2);
 
 	wpabuf_put_u8(buf, ndl->dialog_token);
 	wpabuf_put_u8(buf, type |
 		      (ndl->status << NAN_NDL_STATUS_POS));
 	wpabuf_put_u8(buf, ndl->reason);
 	wpabuf_put_u8(buf, ndl_ctrl);
+
+	if (nan->cfg->max_ndl_idle_period)
+		wpabuf_put_le16(buf, nan->cfg->max_ndl_idle_period);
+
+	WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
 
 	return 0;
 }
@@ -1457,6 +1488,7 @@ int nan_ndl_add_ndc_attr(struct nan_data *nan,
 			 struct wpabuf *buf)
 {
 	struct nan_ndl *ndl;
+	struct nan_schedule *sched = &nan->sched;
 	u8 ndc_ctrl = NAN_NDC_CTRL_SELECTED;
 	u16 sched_entry_ctrl = 0;
 
@@ -1481,7 +1513,7 @@ int nan_ndl_add_ndc_attr(struct nan_data *nan,
 	 * NDC attribute for NDP Request is optional. In all other cases it is
 	 * mandatory
 	 */
-	if (!ndl->sched.ndc.len) {
+	if (!sched->ndc.len) {
 		if (ndl->state != NAN_NDL_STATE_START) {
 			wpa_printf(MSG_DEBUG, "NAN: NDL: no NDC to add");
 			return -1;
@@ -1493,26 +1525,26 @@ int nan_ndl_add_ndc_attr(struct nan_data *nan,
 	wpabuf_put_u8(buf, NAN_ATTR_NDC);
 	wpabuf_put_le16(buf, (sizeof(struct ieee80211_ndc) +
 			      sizeof(struct nan_sched_entry) +
-			      ndl->sched.ndc.len));
+			      sched->ndc.len));
 
 	wpabuf_put_data(buf, ndl->ndc_id, sizeof(ndl->ndc_id));
 	wpabuf_put_u8(buf, ndc_ctrl);
 
 	/* add the schedule entry */
-	wpabuf_put_u8(buf, ndl->sched.ndc_map_id);
+	wpabuf_put_u8(buf, sched->ndc_map_id);
 
-	sched_entry_ctrl |= ndl->sched.ndc.duration <<
+	sched_entry_ctrl |= sched->ndc.duration <<
 		NAN_TIME_BM_CTRL_BIT_DURATION_POS;
-	sched_entry_ctrl |= ndl->sched.ndc.period <<
+	sched_entry_ctrl |= sched->ndc.period <<
 		NAN_TIME_BM_CTRL_PERIOD_POS;
-	sched_entry_ctrl |= ndl->sched.ndc.offset <<
+	sched_entry_ctrl |= sched->ndc.offset <<
 		NAN_TIME_BM_CTRL_START_OFFSET_POS;
 
 	wpabuf_put_le16(buf, sched_entry_ctrl);
-	wpabuf_put_u8(buf, ndl->sched.ndc.len);
+	wpabuf_put_u8(buf, sched->ndc.len);
 
 	/* add the bitmap */
-	wpabuf_put_data(buf, ndl->sched.ndc.bitmap, ndl->sched.ndc.len);
+	wpabuf_put_data(buf, sched->ndc.bitmap, sched->ndc.len);
 
 	return 0;
 }
@@ -1671,7 +1703,7 @@ void nan_ndl_add_elem_container_attr(struct nan_data *nan,
 {
 	struct nan_ndl *ndl;
 
-	if (!peer || !peer->ndl || !peer->ndl->sched.elems)
+	if (!peer || !peer->ndl || !nan->sched.elems)
 		return;
 
 	ndl = peer->ndl;
@@ -1700,10 +1732,7 @@ void nan_ndl_add_elem_container_attr(struct nan_data *nan,
 	}
 
 	wpabuf_put_u8(buf, NAN_ATTR_ELEM_CONTAINER);
-	wpabuf_put_le16(buf, 1 + wpabuf_len(peer->ndl->sched.elems));
+	wpabuf_put_le16(buf, 1 + wpabuf_len(nan->sched.elems));
 	wpabuf_put_u8(buf, 0);
-	wpabuf_put_buf(buf, peer->ndl->sched.elems);
+	wpabuf_put_buf(buf, nan->sched.elems);
 }
-
-
-

@@ -29,8 +29,10 @@ static u32 nan_crypto_cipher_kck_len(enum nan_cipher_suite_id cipher)
 {
 	switch (cipher) {
 	case NAN_CS_SK_CCM_128:
+	case NAN_CS_PK_PASN_128:
 		return 16;
 	case NAN_CS_SK_GCM_256:
+	case NAN_CS_PK_PASN_256:
 		return 24;
 	default:
 		return 0;
@@ -57,8 +59,10 @@ static u32 nan_cipher_key_len(enum nan_cipher_suite_id cipher)
 {
 	switch (cipher) {
 	case NAN_CS_SK_CCM_128:
+	case NAN_CS_PK_PASN_128:
 		return 16;
 	case NAN_CS_SK_GCM_256:
+	case NAN_CS_PK_PASN_256:
 		return 32;
 	default:
 		return 0;
@@ -205,7 +209,7 @@ int nan_crypto_pmk_to_ptk(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	size_t ptk_len;
 	int ret;
 
-	if (cipher != NAN_CS_SK_CCM_128 && cipher != NAN_CS_SK_GCM_256)
+	if (!NAN_CS_IS_VALID_NDP(cipher))
 		return -1;
 
 	if (!ptk)
@@ -222,7 +226,7 @@ int nan_crypto_pmk_to_ptk(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	ptk->tk_len = nan_cipher_key_len(cipher);
 	ptk_len = ptk->kck_len + ptk->kek_len + ptk->tk_len;
 
-	if (cipher == NAN_CS_SK_CCM_128)
+	if (NAN_CS_IS_128(cipher))
 		ret = nan_crypto_kdf(pmk, PMK_LEN, NAN_PTK_LABEL, data,
 				     sizeof(data), tmp, ptk_len,
 				     nan_crypto_hmac_sha256,
@@ -253,7 +257,7 @@ int nan_crypto_pmk_to_ptk(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	wpa_hexdump_key(MSG_DEBUG, "NAN: TK", ptk->tk, ptk->tk_len);
 
 out:
-	forced_memzero(tmp, sizeof(data));
+	forced_memzero(data, sizeof(data));
 	forced_memzero(tmp, sizeof(tmp));
 	return ret;
 }
@@ -281,14 +285,13 @@ int nan_crypto_calc_pmkid(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 	os_memset(data, 0, sizeof(data));
 	os_memset(digest, 0, sizeof(digest));
 
-	if (cipher != NAN_CS_SK_CCM_128 && cipher != NAN_CS_SK_GCM_256)
+	if (!NAN_CS_IS_VALID_NDP(cipher))
 		return -1;
 
 	if (!serv_id)
 		return -1;
 
-	if ((*(u16 *)(serv_id + 0) | *(u16 *)(serv_id + 2) |
-	     *(u16 *)(serv_id + 4)) == 0)
+	if (is_zero_ether_addr(serv_id))
 		return -1;
 
 	os_memcpy(data, NAN_PMKID_LABEL, sizeof(NAN_PMKID_LABEL) - 1);
@@ -300,7 +303,7 @@ int nan_crypto_calc_pmkid(const u8 *pmk, const u8 *iaddr, const u8 *raddr,
 
 	wpa_hexdump_key(MSG_DEBUG, "NAN: PMKID DATA", data, sizeof(data));
 
-	if (cipher == NAN_CS_SK_CCM_128)
+	if (NAN_CS_IS_128(cipher))
 		ret = nan_crypto_hmac_sha256(pmk, PMK_LEN, data,
 					     sizeof(data), digest);
 	else
@@ -334,10 +337,10 @@ int nan_crypto_calc_auth_token(enum nan_cipher_suite_id cipher,
 	u8 hash[MAX_MAC_LEN];
 	int ret;
 
-	if (cipher != NAN_CS_SK_CCM_128 && cipher != NAN_CS_SK_GCM_256)
+	if (!NAN_CS_IS_VALID_NDP(cipher))
 		return -1;
 
-	if (cipher == NAN_CS_SK_CCM_128)
+	if (NAN_CS_IS_128(cipher))
 		ret = nan_crypto_sha256(buf, len, hash);
 	else
 		ret = nan_crypto_sha384(buf, len, hash);
@@ -376,13 +379,13 @@ int nan_crypto_key_mic(const u8 *buf, size_t len, const u8 *kck,
 
 	os_memset(digest, 0, sizeof(digest));
 
-	if (cipher != NAN_CS_SK_CCM_128 && cipher != NAN_CS_SK_GCM_256)
+	if (!NAN_CS_IS_VALID_NDP(cipher))
 		return -1;
 
 	wpa_hexdump_key(MSG_DEBUG, "MIC DATA", buf, len);
 	wpa_hexdump_key(MSG_DEBUG, "MIC KEY", kck, kck_len);
 
-	if (cipher == NAN_CS_SK_CCM_128) {
+	if (NAN_CS_IS_128(cipher)) {
 		mic_len = NAN_KEY_MIC_LEN;
 		ret = nan_crypto_hmac_sha256(kck, kck_len, buf, len, digest);
 	} else {
@@ -414,8 +417,10 @@ int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
 
 	switch (csid) {
 	case NAN_CS_SK_CCM_128:
+	case NAN_CS_PK_PASN_128:
 		return pbkdf2_sha256(pwd, salt, sizeof(salt), 4096, nd_pmk, 32);
 	case NAN_CS_SK_GCM_256:
+	case NAN_CS_PK_PASN_256:
 		return pbkdf2_sha384(pwd, salt, sizeof(salt), 4096, nd_pmk, 32);
 	default:
 		return -1;

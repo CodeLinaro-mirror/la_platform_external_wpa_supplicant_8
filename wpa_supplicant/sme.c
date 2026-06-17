@@ -1430,7 +1430,8 @@ static int sme_external_auth_send_sae_commit(struct wpa_supplicant *wpa_s,
 				    wpa_s->sme.seq_num, status,
 				    wpa_s->sme.ext_ml_auth ?
 				    wpa_s->own_addr : NULL);
-	wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1, 0, 0);
+	wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1,
+			  wpa_s->sme.ext_auth_freq, 0);
 	wpabuf_free(resp);
 	wpabuf_free(buf);
 
@@ -1511,7 +1512,8 @@ static void sme_external_auth_send_sae_confirm(struct wpa_supplicant *wpa_s,
 				    wpa_s->sme.ext_ml_auth ?
 				    wpa_s->own_addr : NULL);
 
-	wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1, 0, 0);
+	wpa_drv_send_mlme(wpa_s, wpabuf_head(buf), wpabuf_len(buf), 1,
+			  wpa_s->sme.ext_auth_freq, 0);
 	wpabuf_free(resp);
 	wpabuf_free(buf);
 }
@@ -1552,6 +1554,20 @@ static bool is_sae_key_mgmt_suite(struct wpa_supplicant *wpa_s, u32 suite)
 	return true;
 }
 
+static void sme_ext_auth_get_freq(struct wpa_supplicant *wpa_s,
+				  const u8 *bssid)
+{
+	struct wpa_bss *bss;
+
+	bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
+	if (!bss) {
+		wpa_printf(MSG_DEBUG,
+			   "SAE: BSS not available, update scan result to get BSS");
+		wpa_supplicant_update_scan_results(wpa_s, bssid);
+		bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
+	}
+	wpa_s->sme.ext_auth_freq = bss ? bss->freq : 0;
+}
 
 void sme_external_auth_trigger(struct wpa_supplicant *wpa_s,
 			       union wpa_event_data *data)
@@ -1564,6 +1580,7 @@ void sme_external_auth_trigger(struct wpa_supplicant *wpa_s,
 			return;
 		os_memcpy(wpa_s->sme.ext_auth_bssid, data->external_auth.bssid,
 			  ETH_ALEN);
+		sme_ext_auth_get_freq(wpa_s, data->external_auth.bssid);
 		os_memcpy(wpa_s->sme.ext_auth_ssid, data->external_auth.ssid,
 			  data->external_auth.ssid_len);
 		wpa_s->sme.ext_auth_ssid_len = data->external_auth.ssid_len;

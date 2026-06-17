@@ -4113,6 +4113,11 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 			if (nla_put_u32(key_msg, NL80211_KEY_TYPE,
 					NL80211_KEYTYPE_GROUP))
 				goto fail;
+		} else if (alg == WPA_ALG_NONE &&
+			   (key_flag & KEY_FLAG_GROUP_MASK) == KEY_FLAG_GROUP) {
+			if (nla_put_u32(key_msg, NL80211_KEY_TYPE,
+					NL80211_KEYTYPE_GROUP))
+				goto fail;
 		} else if (!(key_flag & KEY_FLAG_PAIRWISE)) {
 			wpa_printf(MSG_DEBUG,
 				   "   key_flag missing PAIRWISE when setting a pairwise key");
@@ -7041,8 +7046,8 @@ static int wpa_driver_nl80211_sta_set_flags(void *priv, const u8 *addr,
 		   bss->ifname, MAC2STR(addr), total_flags, flags_or, flags_and,
 		   !!(total_flags & WPA_STA_AUTHORIZED));
 
-	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_SET_STATION)) ||
-	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr))
+	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_SET_STATION);
+	if (!msg || nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr))
 		goto fail;
 
 	/*
@@ -8446,8 +8451,12 @@ static int i802_get_seqnum(const char *iface, void *priv, const u8 *addr,
 	struct nl_msg *msg;
 	int res;
 
-	msg = nl80211_ifindex_msg(drv, if_nametoindex(iface), 0,
-				  NL80211_CMD_GET_KEY);
+	if (!nl80211_is_netdev_iftype(drv->nlmode))
+		msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_GET_KEY);
+	else
+		msg = nl80211_ifindex_msg(drv, if_nametoindex(iface), 0,
+					  NL80211_CMD_GET_KEY);
+
 	if (!msg ||
 	    (addr && nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr)) ||
 	    (link_id != NL80211_DRV_LINK_ID_NA &&
@@ -15953,8 +15962,22 @@ wpa_driver_nl80211_nan_config_schedule(void *priv, u8 map_id,
 		return -ENOMEM;
 	}
 
+	if (sched->deferred &&
+	    nla_put_flag(msg, NL80211_ATTR_NAN_SCHED_DEFERRED)) {
+		wpa_printf(MSG_ERROR,
+			   "nl80211: NAN: Failed to put deferred attribute");
+		goto fail;
+	}
+
 	ret = wpa_driver_nl80211_nan_set_schedule(drv, sched, msg);
 	if (ret)
+		goto fail;
+
+	if (sched->avail_attr &&
+	    nl80211_attr_supported(drv, NL80211_ATTR_NAN_AVAIL_BLOB) &&
+	    nla_put(msg, NL80211_ATTR_NAN_AVAIL_BLOB,
+		    wpabuf_len(sched->avail_attr),
+		    wpabuf_head(sched->avail_attr)))
 		goto fail;
 
 	ret = send_and_recv_cmd(bss->drv, msg);
@@ -16044,7 +16067,7 @@ wpa_driver_nl80211_nan_config_peer_schedule(void *priv, const u8 *peer,
 	}
 
 	if (ulw && wpabuf_len(ulw)) {
-		if (nla_put(msg, NL80211_ATTR_NAN_INIT_ULW,
+		if (nla_put(msg, NL80211_ATTR_NAN_ULW,
 			    wpabuf_len(ulw), wpabuf_head(ulw))) {
 			wpa_printf(MSG_ERROR,
 				   "nl80211: NAN: Failed to put ULW attribute");

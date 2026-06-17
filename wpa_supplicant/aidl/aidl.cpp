@@ -1213,6 +1213,20 @@ void wpas_aidl_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
 	aidl_manager->notifyNanSubscribeTerminated(wpa_s, subscribe_id, reason);
 }
 
+void wpas_aidl_notify_nan_transmit_status(struct wpa_supplicant *wpa_s,
+		u32 cookie, bool ack)
+{
+	if (!wpa_s)
+		return;
+
+	AidlManager *aidl_manager = AidlManager::getInstance();
+	if (!aidl_manager)
+		return;
+
+	wpa_printf(MSG_DEBUG, "Notifying NAN transmit status");
+	aidl_manager->notifyNanTransmitFollowup(wpa_s, cookie, !ack);
+}
+
 void wpas_aidl_notify_nan_cluster_event(struct wpa_supplicant *wpa_s, u8 event_type,
 		const u8 *peer_addr)
 {

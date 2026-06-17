@@ -863,6 +863,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 
 	enqueue([=, ifname = ifname_, wpa_global = wpa_global_] {
 		NanStatus nan_status;
+		u32 cookie = cmdId;
 		nan_status.status = NanStatusCode::INTERNAL_FAILURE;
 
 		struct wpa_supplicant* wpa_s =
@@ -878,7 +879,7 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		int ret = wpas_nan_transmit(
 			wpa_supplicant_get_iface(wpa_global, ifname.c_str()),
 			msg.discoverySessionId, ssi_buf.get(), elems.get(),
-			msg.addr.data(), msg.peerId);
+			msg.addr.data(), msg.peerId, &cookie);
 		if (ret < 0) {
 			aidl_manager->notifyNanTransmitFollowupResponse(
 				ifname, cmdId, nan_status);
@@ -886,10 +887,6 @@ static std::string vectorToHexString(const std::vector<uint8_t>& input) {
 		}
 		nan_status.status = NanStatusCode::SUCCESS;
 		aidl_manager->notifyNanTransmitFollowupResponse(ifname, cmdId, nan_status);
-
-		/* Transmit Followup Event when it is transmitted
-		   remove it when b/488629386 is implemented */
-		aidl_manager->notifyNanTransmitFollowup(wpa_s, cmdId, 0);
 	});
 
 	return ndk::ScopedAStatus::ok();

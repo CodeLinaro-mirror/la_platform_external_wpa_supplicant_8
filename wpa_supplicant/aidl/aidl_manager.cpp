@@ -3920,9 +3920,8 @@ void AidlManager::notifyNanTransmitFollowup(
 {
 	if (!wpa_s)
 		return;
-	// TODO: Need to parse the actual status_code type to NanStatus
 	NanStatus ret;
-	ret.status = NanStatusCode::SUCCESS;
+	ret.status = (status_code == 0 ? NanStatusCode::SUCCESS : NanStatusCode::NO_OTA_ACK);
 	auto it = nan_iface_object_map_.find(wpa_s->ifname);
 	if (it != nan_iface_object_map_.end() &&
 		it->second->isFollowupReceivedIndicationEnabled()) {
