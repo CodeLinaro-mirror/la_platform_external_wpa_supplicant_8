@@ -709,6 +709,7 @@ struct hostapd_bss_config {
 	bool eapol_key_reserved_random;
 	int test_assoc_comeback_type;
 	struct wpabuf *presp_elements;
+	int association_response_status_code;
 
 #ifdef CONFIG_IEEE80211BE
 	u16 eht_oper_puncturing_override;
@@ -935,6 +936,11 @@ struct hostapd_bss_config {
 	/* Whether to allow PASN-UNAUTH */
 	int pasn_noauth;
 
+#ifdef CONFIG_ENC_ASSOC
+	/* Whether to allow unauthenticated EPPKE (EPPKE without base AKM) */
+	bool eppke_unauth;
+#endif /* CONFIG_ENC_ASSOC */
+
 #ifdef CONFIG_TESTING_OPTIONS
 	/*
 	 * Normally, KDK should be derived if and only if both sides support
@@ -944,6 +950,12 @@ struct hostapd_bss_config {
 
 	/* If set, corrupt the MIC in the 2nd Authentication frame of PASN */
 	int pasn_corrupt_mic;
+
+	/*
+	 * If set, override Supported Groups element in the 2nd Authentication
+	 * frame of PASN for group negotiation testing.
+	 */
+	int *pasn_test_groups;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	int *pasn_groups;
@@ -990,6 +1002,11 @@ struct hostapd_bss_config {
 	int mbssid_index;
 
 	bool spp_amsdu;
+#ifdef CONFIG_ENC_ASSOC
+	unsigned int assoc_frame_encryption:1;
+	unsigned int pmksa_caching_privacy:1;
+	unsigned int eap_using_authentication_frames:1;
+#endif /* CONFIG_ENC_ASSOC  */
 };
 
 /**
@@ -1250,6 +1267,9 @@ struct hostapd_config {
 
 	/* Set I2R LMR policy to allow LMR response from ISTA */
 	bool i2r_lmr_policy;
+
+	/* Disable MCS15 Subfield in EHT operation element */
+	bool disable_mcs15_rx;
 };
 
 

@@ -1,5 +1,6 @@
 /*
  * wpa_supplicant - NAN
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2025 Intel Corporation
  *
  * This software may be distributed under the terms of the BSD license.
@@ -9,6 +10,11 @@
 #include "includes.h"
 
 #include "common.h"
+#include "utils/eloop.h"
+#include "utils/bitfield.h"
+#include "common/nan_de.h"
+#include "common/ieee802_11_common.h"
+#include "ap/hostapd.h"
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "nan/nan.h"
@@ -37,6 +43,8 @@
 #define NAN_MIN_RSSI_CLOSE  -60
 #define NAN_MIN_RSSI_MIDDLE -75
 
+#define NAN_AVAIL_ATTR_MAX_LEN 100
+
 #define DEFAULT_NAN_SUPP_PBM (NAN_PBA_METHOD_OPPORTUNISTIC |      \
 			      NAN_PBA_METHOD_PIN_DISPLAY |        \
 			      NAN_PBA_METHOD_PASSPHRASE_DISPLAY | \
@@ -57,15 +65,13 @@
 /* Default NAN idle period in seconds */
 #define DEFAULT_NAN_MAX_NDL_IDLE_PERIOD 25
 
-#define NAN_AVAIL_ATTR_MAX_LEN 100
-
 #ifdef CONFIG_NAN
 
-static int get_center(u8 channel, const u8 *center_channels, size_t num_chan,
-		      int width)
+static int get_center(u8 channel, const u8 *center_channels,
+		      unsigned int num_chan, int width)
 {
 	int span = (width - 20) / 10;
-	size_t i;
+	unsigned int i;
 
 	for (i = 0; i < num_chan; i++) {
 		if (channel >= center_channels[i] - span &&
@@ -79,13 +85,11 @@ static int get_center(u8 channel, const u8 *center_channels, size_t num_chan,
 
 static bool wpas_nan_valid_chan(struct wpa_supplicant *wpa_s,
 				enum hostapd_hw_mode mode,
-			        u8 channel, int bw, u8 op_class,
-				u8 *cf1)
+				u8 channel, int bw, u8 op_class, u8 *cf1)
 {
 	static const u8 nan_160mhz_5ghz_chans[] = { 50, 114, 163 };
 	static const u8 nan_80mhz_5ghz_chans[] =
 		{ 42, 58, 106, 122, 138, 155, 171 };
-
 	struct hostapd_hw_modes *hw_mode;
 	int width, span;
 	u8 c, center = 0;
@@ -95,29 +99,27 @@ static bool wpas_nan_valid_chan(struct wpa_supplicant *wpa_s,
 		return false;
 
 	switch (bw) {
-		case BW20:
-			width = 20;
-			center = channel;
-			break;
-		case BW40PLUS:
-		case BW40MINUS:
-			width = 40;
-			center = bw == BW40PLUS ? channel + 2 : channel - 2;
-			break;
-		case BW80:
-			width = 80;
-			center = get_center(channel, nan_80mhz_5ghz_chans,
-					    ARRAY_SIZE(nan_80mhz_5ghz_chans),
-					    width);
-			break;
-		case BW160:
-			width = 160;
-			center = get_center(channel, nan_160mhz_5ghz_chans,
-					    ARRAY_SIZE(nan_160mhz_5ghz_chans),
-					    width);
-			break;
-		default:
-			return false;
+	case BW20:
+		width = 20;
+		center = channel;
+		break;
+	case BW40PLUS:
+	case BW40MINUS:
+		width = 40;
+		center = bw == BW40PLUS ? channel + 2 : channel - 2;
+		break;
+	case BW80:
+		width = 80;
+		center = get_center(channel, nan_80mhz_5ghz_chans,
+				    ARRAY_SIZE(nan_80mhz_5ghz_chans), width);
+		break;
+	case BW160:
+		width = 160;
+		center = get_center(channel, nan_160mhz_5ghz_chans,
+				    ARRAY_SIZE(nan_160mhz_5ghz_chans), width);
+		break;
+	default:
+		return false;
 	}
 
 	if (!center)
@@ -151,7 +153,7 @@ static bool wpas_nan_valid_chan(struct wpa_supplicant *wpa_s,
 }
 
 
-static int wpas_nan_start_cb(void *ctx, struct nan_cluster_config *config)
+static int wpas_nan_start_cb(void *ctx, const struct nan_cluster_config *config)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -160,7 +162,7 @@ static int wpas_nan_start_cb(void *ctx, struct nan_cluster_config *config)
 
 
 static int wpas_nan_update_config_cb(void *ctx,
-				     struct nan_cluster_config *config)
+				     const struct nan_cluster_config *config)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
@@ -359,7 +361,6 @@ static void wpas_nan_ndp_action_notif_cb(void *ctx,
 	}
 }
 
-
 static int wpas_nan_set_ndi_keys(struct wpa_supplicant *wpa_s,
 				  const u8 *ndi_addr,
 				  enum nan_cipher_suite_id csid,
@@ -394,8 +395,7 @@ static int wpas_nan_remove_ndi_keys(struct wpa_supplicant *wpa_s,
 				    const u8 *ndi_addr)
 {
 	return wpa_drv_set_key(wpa_s, -1, WPA_ALG_NONE, ndi_addr, 0, 0,
-			       NULL, 0, NULL, 0,
-			       KEY_FLAG_PAIRWISE);
+			       NULL, 0, NULL, 0, KEY_FLAG_PAIRWISE);
 }
 
 
@@ -658,7 +658,7 @@ static int wpas_nan_add_ndi_sta(struct wpa_supplicant *wpa_s,
 
 	if (wpa_drv_sta_set_flags(ndi_wpa_s, peer_ndi, WPA_STA_AUTHORIZED,
 				  WPA_STA_AUTHORIZED, ~0)) {
-		wpa_printf(MSG_ERROR,
+		wpa_printf(MSG_INFO,
 			   "NAN: Failed to set authorize for NDI station");
 		wpas_nan_remove_ndi_keys(ndi_wpa_s, peer_ndi);
 		wpas_nan_remove_ndi_gtk(ndi_wpa_s, params->peer_gtk->id,
@@ -674,7 +674,8 @@ out_success:
 		   ndi_wpa_s->nan_ndi_ndp_refcount,
 		   MAC2STR(peer_ndi), MAC2STR(peer_nmi));
 
-	/* Set operstate UP only when first NDP is established on this NDI */
+	/* Set operstate UP only when the first NDP is established on this NDI
+	 */
 	if (ndi_wpa_s->nan_ndi_ndp_refcount == 1)
 		wpa_drv_set_operstate(ndi_wpa_s, 1);
 
@@ -775,9 +776,11 @@ static void wpas_nan_ndp_disconnected_cb(void *ctx, struct nan_ndp_id *ndp_id,
 	struct wpa_supplicant *wpa_s = ctx;
 
 	wpas_nan_remove_ndi_sta(wpa_s, local_ndi, peer_ndi, remove_sta, gtk_id);
-	wpas_notify_nan_ndp_disconnected(wpa_s, ndp_id->peer_nmi,
-					 ndp_id->id, local_ndi, peer_ndi,
-					 reason, locally_generated, failure);
+	wpa_msg_global(wpa_s, MSG_INFO, NAN_NDP_DISCONNECTED
+		       "peer=" MACSTR " ndp_id=%u local_ndi=" MACSTR
+		       " peer_ndi=" MACSTR " reason=%u",
+		       MAC2STR(ndp_id->peer_nmi), ndp_id->id,
+		       MAC2STR(local_ndi), MAC2STR(peer_ndi), reason);
 }
 
 
@@ -802,6 +805,18 @@ static int wpas_nan_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 		}
 	}
 
+	if (src && !ether_addr_equal(src, wpa_s->own_addr)) {
+		wpa_printf(MSG_DEBUG, "NAN: Use NDI interface for sending NAF");
+
+		wpa_s = wpas_nan_get_ndi_iface(wpa_s, src);
+		if (!wpa_s) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: No NDI interface found for address "
+				   MACSTR, MAC2STR(src));
+			wpa_s = ctx;
+		}
+	}
+
 	wpa_printf(MSG_DEBUG, "NAN: Send NAF - dst=" MACSTR " src=" MACSTR
 		   " cluster_id=" MACSTR, MAC2STR(dst), MAC2STR(a2),
 		   MAC2STR(cluster_id));
@@ -810,8 +825,7 @@ static int wpas_nan_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 				  wpabuf_head(buf), wpabuf_len(buf), 1);
 	if (ret)
 		wpa_printf(MSG_DEBUG,
-			  "NAN: Failed to send sync action frame (%d)",
-			   ret);
+			  "NAN: Failed to send sync Action frame (%d)", ret);
 	return ret;
 }
 
@@ -831,8 +845,8 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 	struct wpa_supplicant *wpa_s = ctx;
 	int *shared_freqs = NULL;
 	struct nan_channel_info *chan_list = NULL;
-	size_t chan_count = 0;
-	size_t chan_capacity = 0;
+	unsigned int chan_count = 0;
+	unsigned int chan_capacity = 0;
 	int op;
 
 	wpa_printf(MSG_DEBUG, "NAN: Get channels - map_id=%u", map_id);
@@ -841,7 +855,7 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 	shared_freqs = os_calloc(wpa_s->num_multichan_concurrent + 1,
 				 sizeof(int));
 	if (!shared_freqs) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Failed to allocate memory for shared freqs");
 		goto fail;
 	}
@@ -858,7 +872,7 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 		const struct oper_class_map *o = &global_op_class[op];
 		int c;
 
-		 /* Don't support 80+, 6ghz etc yet */
+		 /* Don't support 80+, 6 GHz, etc. yet */
 		if (o->op_class > 129)
 			continue;
 
@@ -869,8 +883,7 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 			u8 pref;
 
 			/* Don't support 40 MHz channels on 2.4 GHz band */
-			if (o->mode == HOSTAPD_MODE_IEEE80211G &&
-			    o->bw != BW20)
+			if (o->mode == HOSTAPD_MODE_IEEE80211G && o->bw != BW20)
 				continue;
 
 			if (!wpas_nan_valid_chan(wpa_s, o->mode, c, o->bw,
@@ -882,15 +895,14 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 				continue;
 
 			/* Determine preference based on shared frequencies */
-			if (int_array_includes(shared_freqs, freq)) {
+			if (int_array_includes(shared_freqs, freq))
 				pref = 3;
-			} else {
+			else
 				pref = 1;
-			}
 
 			/* Expand channel list if needed */
 			if (chan_count >= chan_capacity) {
-				size_t new_capacity = chan_capacity ?
+				unsigned int new_capacity = chan_capacity ?
 					chan_capacity * 2 : 16;
 				struct nan_channel_info *new_list;
 
@@ -898,7 +910,7 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 					chan_list, new_capacity,
 					sizeof(struct nan_channel_info));
 				if (!new_list) {
-					wpa_printf(MSG_DEBUG,
+					wpa_printf(MSG_INFO,
 						   "NAN: Failed to expand channel list");
 					goto fail;
 				}
@@ -908,27 +920,24 @@ static int wpas_nan_get_chans_cb(void *ctx, u8 map_id,
 
 			/* Add channel to list */
 			chan_list[chan_count].op_class = o->op_class;
-			chan_list[chan_count].channel = o->bw == BW80 ||
-							o->bw == BW160 ?
-							center : c;
+			chan_list[chan_count].channel =
+				o->bw == BW80 || o->bw == BW160 ? center : c;
 			chan_list[chan_count].pref = pref;
 			chan_count++;
 		}
 	}
 
 	/* Sort channels by preference (higher preference first) */
-	if (chan_count > 1) {
+	if (chan_count > 1)
 		qsort(chan_list, chan_count, sizeof(struct nan_channel_info),
 		      nan_chan_info_cmp);
-	}
 
 	chans->n_chans = chan_count;
 	chans->chans = chan_list;
 
 	os_free(shared_freqs);
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: Get channels completed - found %zu channels",
+	wpa_printf(MSG_DEBUG, "NAN: Get channels completed - found %u channels",
 		   chan_count);
 	return 0;
 
@@ -1016,6 +1025,7 @@ static u16 wpas_nan_get_service_bootstrap_methods(void *ctx, int handle)
 
 
 #ifdef CONFIG_PASN
+
 static int wpas_nan_pasn_send_cb(void *ctx, const u8 *data, size_t data_len)
 {
 	struct wpa_supplicant *wpa_s = ctx;
@@ -1024,7 +1034,7 @@ static int wpas_nan_pasn_send_cb(void *ctx, const u8 *data, size_t data_len)
 }
 
 static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
-					int akmp, int cipher, u8 status,
+					int akmp, int cipher, u16 status,
 					struct wpa_ptk *ptk, const u8 *nd_pmk)
 {
 	struct wpa_supplicant *wpa_s = ctx;
@@ -1048,7 +1058,7 @@ static int wpas_nan_pasn_auth_status_cb(void *ctx, const u8 *peer_addr,
 	os_memset(seq, 0, sizeof(seq));
 	if (wpa_drv_set_key(wpa_s, -1, alg, peer_addr, 0, 1, seq, sizeof(seq),
 			    ptk->tk, ptk->tk_len, KEY_FLAG_PAIRWISE_RX_TX)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Failed to install NM-TK for peer " MACSTR,
 			   MAC2STR(peer_addr));
 		return -1;
@@ -1129,7 +1139,7 @@ static int wpas_nan_update_pairing_credentials_cb(void *ctx, const u8 *nik,
 		   "NAN: Create a new device identity entry for NIK");
 	ik = wpa_config_add_identity(wpa_s->conf);
 	if (!ik) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to allocate identity");
+		wpa_printf(MSG_INFO, "NAN: Failed to allocate identity");
 		return -1;
 	}
 
@@ -1158,7 +1168,7 @@ static int wpas_nan_update_pairing_credentials_cb(void *ctx, const u8 *nik,
 	return ik->id;
 
 fail:
-	wpa_printf(MSG_DEBUG, "NAN: Failed to store NIK as device identity");
+	wpa_printf(MSG_INFO, "NAN: Failed to store NIK as device identity");
 	wpa_config_remove_identity(wpa_s->conf, ik->id);
 	return -1;
 }
@@ -1236,9 +1246,9 @@ wpas_nan_find_ik_by_nonce_tag(struct wpa_supplicant *wpa_s, const u8 *peer_nmi,
 		return NULL;
 	}
 
-	wpa_printf(MSG_DEBUG, "NAN: Looking up device identity:");
-	wpa_hexdump(MSG_DEBUG, "NONCE", nonce, NAN_NIRA_NONCE_LEN);
-	wpa_hexdump(MSG_DEBUG, "TAG", tag, NAN_NIRA_TAG_LEN);
+	wpa_printf(MSG_DEBUG, "NAN: Looking up device identity");
+	wpa_hexdump(MSG_DEBUG, "NAN: NIRA nonce", nonce, NAN_NIRA_NONCE_LEN);
+	wpa_hexdump(MSG_DEBUG, "NAN: NIRA tag", tag, NAN_NIRA_TAG_LEN);
 
 	/* Iterate over all saved NIKs (stored as device identities) */
 	for (ik = wpa_s->conf->identity; ik; ik = ik->next) {
@@ -1246,7 +1256,7 @@ wpas_nan_find_ik_by_nonce_tag(struct wpa_supplicant *wpa_s, const u8 *peer_nmi,
 		 * are not checked to match NIK length and to have a PMK.
 		 * Although other identities are not expected since this is the
 		 * NAN management interface, verify that the DIK matches NIK
-		 * length, that a PMK is stored and the stored AKMP is valid
+		 * length, that a PMK is stored, and the stored AKMP is valid
 		 * for NAN pairing.
 		 */
 		if (!ik->dik || wpabuf_len(ik->dik) != NAN_NIK_LEN ||
@@ -1281,10 +1291,10 @@ wpas_nan_find_ik_by_nonce_tag(struct wpa_supplicant *wpa_s, const u8 *peer_nmi,
 }
 
 
-static const struct wpabuf *wpas_nan_get_npk_akmp_cb(void *ctx,
-						     const u8 *peer_nmi,
-						     const u8 *nonce,
-						     const u8 *tag, int *akmp)
+static const struct wpabuf * wpas_nan_get_npk_akmp_cb(void *ctx,
+						      const u8 *peer_nmi,
+						      const u8 *nonce,
+						      const u8 *tag, int *akmp)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	const struct wpa_dev_ik *ik;
@@ -1356,7 +1366,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	if (!(wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SUPPORT_NAN) ||
 	    !(wpa_s->nan_capa.drv_flags &
 	      WPA_DRIVER_FLAGS_NAN_SUPPORT_SYNC_CONFIG)) {
-		wpa_printf(MSG_DEBUG, "NAN: NAN is not supported");
+		wpa_printf(MSG_INFO, "NAN: Driver does not support NAN");
 		return -1;
 	}
 
@@ -1438,7 +1448,7 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 	nan.bootstrap_comeback_timeout = DEFAULT_NAN_BOOTSTRAP_COMEBACK_TIMEOUT;
 
 	if (os_get_random(nan.nik, NAN_NIK_LEN) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to get random data for NIK");
+		wpa_printf(MSG_INFO, "NAN: Failed to get random data for NIK");
 		return -1;
 	}
 
@@ -1488,11 +1498,12 @@ int wpas_nan_init(struct wpa_supplicant *wpa_s)
 		   WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE);
 
 	wpa_s->nan_supported_csids = BIT(NAN_CS_SK_CCM_128) |
-				     BIT(NAN_CS_SK_GCM_256);
+		BIT(NAN_CS_SK_GCM_256);
 #ifdef CONFIG_PASN
 	wpa_s->nan_supported_csids |= BIT(NAN_CS_PK_PASN_128) |
-				      BIT(NAN_CS_PK_PASN_256);
+		BIT(NAN_CS_PK_PASN_256);
 #endif /* CONFIG_PASN */
+
 	return 0;
 }
 
@@ -1528,11 +1539,8 @@ static bool wpas_nan_ready(struct wpa_supplicant *wpa_s)
 
 static bool wpas_nan_ndp_allowed(struct wpa_supplicant *wpa_s)
 {
-	if (!wpas_nan_ready(wpa_s))
-		return false;
-
-	return !!(wpa_s->nan_capa.drv_flags &
-		  WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP);
+	return wpas_nan_ready(wpa_s) &&
+		(wpa_s->nan_capa.drv_flags & WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP);
 }
 
 
@@ -1576,12 +1584,12 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 
 	*param++ = '\0';
 
-#define NAN_PARSE_INT(_str, _min, _max)                              \
-	if (os_strcmp(#_str, cmd) == 0) {                            \
+#define NAN_PARSE_INT(_str, _min, _max)				     \
+	if (os_strcmp(#_str, cmd) == 0) {			     \
 		int val = atoi(param);                               \
 								     \
 		if (val < (_min) || val > (_max)) {                  \
-			wpa_printf(MSG_DEBUG,                        \
+			wpa_printf(MSG_INFO,                         \
 				   "NAN: Invalid value for " #_str); \
 			return -1;                                   \
 		}                                                    \
@@ -1589,25 +1597,29 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 		return 0;                                            \
 	}
 
-#define NAN_PARSE_BAND(_str)                                                    \
-	if (os_strcmp(#_str, cmd) == 0) {                                       \
-		int a, b, c, d;                                                 \
-										 \
-		if (sscanf(param, "%d,%d,%d,%d", &a, &b, &c, &d) != 4) {        \
-			wpa_printf(MSG_DEBUG, "NAN: Invalid value for " #_str); \
-			return -1;                                              \
-		}                                                               \
-										\
-		if (a < NAN_MIN_RSSI_CLOSE || b < NAN_MIN_RSSI_MIDDLE ||        \
-		    a <= b) {							\
-			wpa_printf(MSG_DEBUG, "NAN: Invalid value for " #_str); \
-			return -1;						\
-		}								\
-		config->_str.rssi_close = a;					\
-		config->_str.rssi_middle = b;					\
-		config->_str.awake_dw_interval = c;                             \
-		config->_str.disable_scan = !!d;                                \
-		return 0;                                                       \
+#define NAN_PARSE_BAND(_str)						\
+	if (os_strcmp(#_str, cmd) == 0) {				\
+		int a, b, c, d;						\
+									\
+		if (sscanf(param, "%d,%d,%d,%d", &a, &b, &c, &d) !=	\
+		    4) {						\
+			wpa_printf(MSG_DEBUG,				\
+				   "NAN: Invalid value for " #_str);	\
+			return -1;					\
+		}							\
+									\
+		if (a < NAN_MIN_RSSI_CLOSE ||				\
+		    b < NAN_MIN_RSSI_MIDDLE ||				\
+		    a <= b) {						\
+			wpa_printf(MSG_DEBUG,				\
+				   "NAN: Invalid value for " #_str);	\
+			return -1;					\
+		}							\
+		config->_str.rssi_close = a;				\
+		config->_str.rssi_middle = b;				\
+		config->_str.awake_dw_interval = c;			\
+		config->_str.disable_scan = !!d;			\
+		return 0;						\
 	}
 
 	/* 0 and 255 are reserved */
@@ -1624,7 +1636,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 		u8 cluster_id[ETH_ALEN];
 
 		if (hwaddr_aton(param, cluster_id) < 0) {
-			wpa_printf(MSG_DEBUG, "NAN: Invalid cluster ID");
+			wpa_printf(MSG_INFO, "NAN: Invalid cluster ID");
 			return -1;
 		}
 
@@ -1646,7 +1658,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 	if (os_strcmp("disallowed_freqs", cmd) == 0) {
 		if (freq_range_list_parse(&wpa_s->nan_disallowed_freqs,
 					  param)) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Invalid disallowed_freqs value");
 			return -1;
 		}
@@ -1659,7 +1671,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 
 		if (sscanf(param, "%hx,%hx,%hu", &supported_methods,
 			   &auto_accept_methods, &comeback_timeout) != 3) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Invalid value for boostrap_config");
 			return -1;
 		}
@@ -1673,12 +1685,13 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 #undef NAN_PARSE_INT
 #undef NAN_PARSE_BAND
 
+#ifdef CONFIG_PASN
 #define NAN_PARSE_PAIRING_BOOL(_str)                                 \
 	if (os_strcmp(#_str, cmd) == 0) {                            \
 		int val = atoi(param);                               \
 								     \
 		if (val != 0 && val != 1) {                          \
-			wpa_printf(MSG_DEBUG,                        \
+			wpa_printf(MSG_INFO,                         \
 				   "NAN: Invalid value for " #_str); \
 			return -1;                                   \
 		}                                                    \
@@ -1690,7 +1703,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 		unsigned int val = atoi(param);                      \
 								     \
 		if ((val & (_mask)) != val) {                        \
-			wpa_printf(MSG_DEBUG,                        \
+			wpa_printf(MSG_INFO,                         \
 				   "NAN: Invalid value for " #_str); \
 			return -1;                                   \
 		}                                                    \
@@ -1707,26 +1720,30 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 
 	if (os_strcmp("nik", cmd) == 0) {
 		u8 nik[NAN_NIK_LEN];
+		int res;
 
 		/* Parse NIK value (hex string) */
 		if (hexstr2bin(param, nik, NAN_NIK_LEN) < 0) {
-			wpa_printf(MSG_DEBUG, "NAN: Invalid NIK format");
+			wpa_printf(MSG_INFO, "NAN: Invalid NIK format");
 			return -1;
 		}
 
-		return nan_pairing_set_nik(wpa_s->nan, nik, NAN_NIK_LEN);
+		res = nan_pairing_set_nik(wpa_s->nan, nik, NAN_NIK_LEN);
+		forced_memzero(nik, NAN_NIK_LEN);
+		return res;
 	}
 
 	if (os_strcmp("nik_lifetime", cmd) == 0) {
 		u32 lifetime = atoi(param);
 
 		if (lifetime == 0) {
-			wpa_printf(MSG_DEBUG, "NAN: Invalid NIK lifetime");
+			wpa_printf(MSG_INFO, "NAN: Invalid NIK lifetime");
 			return -1;
 		}
 
 		return nan_pairing_set_nik_lifetime(wpa_s->nan, lifetime);
 	}
+#endif /* CONFIG_PASN */
 
 	if (os_strcmp("mgmt_group_cipher", cmd) == 0) {
 		int cipher;
@@ -1763,7 +1780,7 @@ int wpas_nan_set(struct wpa_supplicant *wpa_s, char *cmd)
 		return nan_set_max_ndl_idle_period(wpa_s->nan, max_ndl_idle_period);
 	}
 
-	wpa_printf(MSG_DEBUG, "NAN: Unknown NAN_SET cmd='%s'", cmd);
+	wpa_printf(MSG_INFO, "NAN: Unknown NAN_SET cmd='%s'", cmd);
 	return -1;
 }
 
@@ -1786,11 +1803,11 @@ static u8 nan_select_40mhz_channel(u8 chan, u8 *op_class, int *bw)
 		const struct oper_class_map *o = &global_op_class[op];
 		int c;
 
-		/* No support for 40 Mhz on 2.4 GHz */
+		/* No support for 40 MHz on 2.4 GHz */
 		if (o->mode != HOSTAPD_MODE_IEEE80211A)
 			continue;
 
-		/* Currenlty don't support NAN for 80+, 6 GHz etc. */
+		/* Currently don't support NAN for 80+, 6 GHz, etc. */
 		if (o->op_class > 129)
 			continue;
 
@@ -1822,12 +1839,10 @@ static int wpas_nan_select_channel_params(struct wpa_supplicant *wpa_s,
 	enum hostapd_hw_mode mode;
 	int bw;
 
-	mode = ieee80211_freq_to_channel_ext(freq, 0,
-					     CONF_OPER_CHWIDTH_USE_HT,
+	mode = ieee80211_freq_to_channel_ext(freq, 0, CONF_OPER_CHWIDTH_USE_HT,
 					     &op_class, &chan);
 	if (mode == NUM_HOSTAPD_MODES) {
-		wpa_printf(MSG_DEBUG,
-			  "NAN: Invalid frequency %d", freq);
+		wpa_printf(MSG_DEBUG, "NAN: Invalid frequency %d", freq);
 		return -1;
 	}
 
@@ -1844,8 +1859,7 @@ static int wpas_nan_select_channel_params(struct wpa_supplicant *wpa_s,
 
 	/* TODO: Add support for NAN on other bands */
 	if (freq < 5180 || freq > 5885) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Unsupported frequency %d", freq);
+		wpa_printf(MSG_DEBUG, "NAN: Unsupported frequency %d", freq);
 		return -1;
 	}
 
@@ -1864,7 +1878,8 @@ static int wpas_nan_select_channel_params(struct wpa_supplicant *wpa_s,
 	}
 
 	if (nan_select_40mhz_channel(chan, &op_class, &bw) &&
-		wpas_nan_valid_chan(wpa_s, mode, center, bw, op_class, &center)) {
+		wpas_nan_valid_chan(wpa_s, mode, center, bw, op_class,
+				    &center)) {
 		*center_freq1 = ieee80211_chan_to_freq(NULL, op_class,
 						       center);
 		*center_freq2 = 0;
@@ -1902,124 +1917,41 @@ static void nan_dump_sched_config(const char *title,
 
 
 static void wpas_nan_fill_ndp_schedule(struct wpa_supplicant *wpa_s,
-				       struct nan_schedule *sched)
-{
-	int map_id;
-
-	os_memset(sched, 0, sizeof(*sched));
-
-	/* Fill the NAN schedule structure from the schedule config */
-	for (map_id = 0; map_id < MAX_NAN_RADIOS; map_id++) {
-		int i;
-		struct nan_schedule_config *sched_cfg =
-					&wpa_s->nan_sched[map_id];
-
-		for (i = 0; i < wpa_s->nan_sched[map_id].num_channels; i++) {
-			struct nan_chan_schedule *chan_sched;
-			const u8 *bitmap_data;
-			size_t bitmap_len;
-
-			/* None of these should happen */
-			if (!sched_cfg->channels[i].time_bitmap) {
-				wpa_printf(MSG_DEBUG,
-						"NAN: Missing time bitmap for map_id %d freq %d",
-						map_id + 1,
-						sched_cfg->channels[i].freq);
-				return;
-			}
-
-			bitmap_len =
-				wpabuf_len(sched_cfg->channels[i].time_bitmap);
-			bitmap_data =
-			wpabuf_head(sched_cfg->channels[i].time_bitmap);
-			if (bitmap_len > NAN_TIME_BITMAP_MAX_LEN) {
-				wpa_printf(MSG_DEBUG,
-					   "NAN: Time bitmap length %zu exceeds maximum %d",
-					   bitmap_len,
-					   NAN_TIME_BITMAP_MAX_LEN);
-				return;
-			}
-
-			chan_sched = &sched->chans[sched->n_chans++];
-			chan_sched->map_id = map_id + 1;
-			chan_sched->chan.freq = sched_cfg->channels[i].freq;
-			chan_sched->chan.center_freq1 =
-				sched_cfg->channels[i].center_freq1;
-			chan_sched->chan.center_freq2 =
-				sched_cfg->channels[i].center_freq2;
-			chan_sched->chan.bandwidth =
-				sched_cfg->channels[i].bandwidth;
-
-			chan_sched->committed.duration =
-				wpa_s->nan_capa.slot_duration >> 5;
-			chan_sched->committed.period =
-				ffs(wpa_s->nan_capa.schedule_period) - 7;
-			chan_sched->committed.offset = 0;
-			chan_sched->committed.len = bitmap_len;
-			os_memcpy(chan_sched->committed.bitmap, bitmap_data,
-				bitmap_len);
-			wpa_printf(MSG_DEBUG,
-				   "NAN: NDP schedule channel added: map_id=%d freq=%d center_freq1=%d center_freq2=%d bandwidth=%d",
-				   chan_sched->map_id,
-				   chan_sched->chan.freq,
-				   chan_sched->chan.center_freq1,
-				   chan_sched->chan.center_freq2,
-				   chan_sched->chan.bandwidth);
-		}
-	}
-	/* Mark all supported radios - for potential availability */
-	sched->map_ids_bitmap = (BIT(wpa_s->nan_capa.num_radios) - 1) << 1;
-}
-
-
-static void wpas_nan_update_local_schedule(struct wpa_supplicant *wpa_s)
-{
-	struct nan_schedule sched;
-
-	wpas_nan_fill_ndp_schedule(wpa_s, &sched);
-	nan_local_sched_update(wpa_s->nan, &sched);
-}
+				       struct nan_schedule *sched);
 
 
 /* Parse format NAN_SCHED_CONFIG_MAP map_id=<id> [freq:bitmap_hex]..
-   If no bitmaps provided - clear the map */
+ * If no bitmaps provided - clear the map */
 int wpas_nan_sched_config_map(struct wpa_supplicant *wpa_s, const char *cmd)
 {
-	struct nan_schedule_config *sched_cfg;
+	struct nan_schedule_config sched_cfg;
 	struct nan_schedule_config old_sched_cfg;
+	struct nan_schedule sched;
 	char *token, *context = NULL;
 	u8 map_id;
 	char *pos;
-	int *shared_freqs = NULL;
+	int *shared_freqs;
 	int shared_freqs_count, unused_freqs_count, ret = -1;
-	struct bitfield *bf_total = NULL;
-	int expected_bitmap_len;
-	struct nan_schedule sched;
-	u32 map_ids = (BIT(wpa_s->nan_capa.num_radios) - 1) << 1;
+	struct bitfield *bf_total;
+	unsigned int expected_bitmap_len;
 
 	if (!wpas_nan_ndp_allowed(wpa_s))
 		return -1;
 
-	if (wpa_s->nan_sched_update.sched.deferred) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Previous schedule update is still pending");
-		return -1;
-	}
-
 	if (os_strncmp(cmd, "map_id=", 7) != 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Invalid schedule map format");
+		wpa_printf(MSG_INFO, "NAN: Invalid schedule map format");
 		return -1;
 	}
 
 	map_id = atoi(cmd + 7);
 
 	if (!map_id || map_id >= MAX_NAN_RADIOS) {
-		wpa_printf(MSG_DEBUG, "NAN: Invalid map_id %d", map_id);
+		wpa_printf(MSG_INFO, "NAN: Invalid map_id %d", map_id);
 		return -1;
 	}
 
 	if (map_id > wpa_s->nan_capa.num_radios) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: map_id %d exceeds number of supported NAN radios %d",
 			   map_id, wpa_s->nan_capa.num_radios);
 		return -1;
@@ -2027,39 +1959,29 @@ int wpas_nan_sched_config_map(struct wpa_supplicant *wpa_s, const char *cmd)
 
 	if (!wpa_s->nan_capa.schedule_period ||
 	    !wpa_s->nan_capa.slot_duration) {
-		    wpa_printf(MSG_DEBUG,
+		    wpa_printf(MSG_INFO,
 			       "NAN: Driver doesn't advertise support for NAN scheduling");
 		    return -1;
 	}
 
-	expected_bitmap_len =(wpa_s->nan_capa.schedule_period /
-			      wpa_s->nan_capa.slot_duration + 7) / 8;
+	expected_bitmap_len = (wpa_s->nan_capa.schedule_period /
+			       wpa_s->nan_capa.slot_duration + 7) / 8;
 
-	/* Store the old schedule config in case it will be restored */
-	os_memcpy(&old_sched_cfg, &wpa_s->nan_sched[map_id - 1],
-		  sizeof(old_sched_cfg));
-
-	sched_cfg = &wpa_s->nan_sched[map_id - 1];
-	os_memset(sched_cfg, 0, sizeof(*sched_cfg));
+	os_memset(&sched_cfg, 0, sizeof(sched_cfg));
 
 	pos = os_strchr(cmd + 7, ' ');
 	if (!pos) {
-		wpa_printf(MSG_DEBUG,
+		clear_sched_config(&wpa_s->nan_sched[map_id - 1]);
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing freq:timebitmap pairs - cleanup schedule");
-		ret = wpa_drv_nan_config_schedule(wpa_s, map_id, sched_cfg);
-		if (!ret) {
-			clear_sched_config(&old_sched_cfg);
-			wpas_nan_update_local_schedule(wpa_s);
-		}
-
-		goto out;
+		return wpa_drv_nan_config_schedule(wpa_s, map_id, &sched_cfg);
 	}
 
 	shared_freqs = os_calloc(wpa_s->num_multichan_concurrent,
 				 sizeof(int));
 	if (!shared_freqs) {
-		wpa_printf(MSG_DEBUG,
-			  "NAN: Failed to allocate memory for shared freqs");
+		wpa_printf(MSG_INFO,
+			   "NAN: Failed to allocate memory for shared freqs");
 		return -1;
 	}
 
@@ -2073,7 +1995,7 @@ int wpas_nan_sched_config_map(struct wpa_supplicant *wpa_s, const char *cmd)
 	bf_total = bitfield_alloc(wpa_s->nan_capa.schedule_period /
 				  wpa_s->nan_capa.slot_duration);
 	if (!bf_total) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			  "NAN: Failed to allocate bitfield for total schedule");
 		goto out;
 	}
@@ -2081,176 +2003,176 @@ int wpas_nan_sched_config_map(struct wpa_supplicant *wpa_s, const char *cmd)
 	/* Parse freq:timebitmap pairs */
 	pos++;
 	while ((token = str_token(pos, " ", &context))) {
-		int j, i = sched_cfg->num_channels;
+		int j, i = sched_cfg.num_channels;;
 		struct bitfield *bf_chan = NULL;
 		char *colon = os_strchr(token, ':');
 		struct nan_sched_chan chan;
 		struct nan_chan_entry *chan_entry;
 
 		if (i >= wpa_s->nan_capa.sched_chans) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Exceeded max channels per radio %u",
 				   wpa_s->nan_capa.sched_chans);
 			goto out;
 		}
 
 		if (!colon) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Invalid freq:timebitmap format");
 			goto out;
 		}
 
-		sched_cfg->channels[i].freq = atoi(token);
-		if (sched_cfg->channels[i].freq <= 0) {
-			wpa_printf(MSG_DEBUG, "NAN: Invalid frequency %d",
-				   sched_cfg->channels[i].freq);
+		sched_cfg.channels[i].freq = atoi(token);
+		if (sched_cfg.channels[i].freq <= 0) {
+			wpa_printf(MSG_INFO, "NAN: Invalid frequency %d",
+				   sched_cfg.channels[i].freq);
 			goto out;
 		}
 
 		for (j = 0; j < i; j++) {
-			if (sched_cfg->channels[j].freq ==
-			    sched_cfg->channels[i].freq) {
-				wpa_printf(MSG_DEBUG,
+			if (sched_cfg.channels[j].freq ==
+			    sched_cfg.channels[i].freq) {
+				wpa_printf(MSG_INFO,
 					   "NAN: Duplicate frequency %d",
-					   sched_cfg->channels[i].freq);
+					   sched_cfg.channels[i].freq);
 				goto out;
 			}
 		}
 
-		if (wpas_nan_select_channel_params(wpa_s, sched_cfg->channels[i].freq,
-						   &sched_cfg->channels[i].center_freq1,
-						   &sched_cfg->channels[i].center_freq2,
-						   &sched_cfg->channels[i].bandwidth)) {
-			wpa_printf(MSG_DEBUG,
+		if (wpas_nan_select_channel_params(
+			    wpa_s, sched_cfg.channels[i].freq,
+			    &sched_cfg.channels[i].center_freq1,
+			    &sched_cfg.channels[i].center_freq2,
+			    &sched_cfg.channels[i].bandwidth)) {
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to select channel params for freq %d",
-				   sched_cfg->channels[i].freq);
+				   sched_cfg.channels[i].freq);
 			goto out;
 		}
 
 		if (!int_array_includes(shared_freqs,
-					sched_cfg->channels[i].freq)) {
+					sched_cfg.channels[i].freq)) {
 			if (!unused_freqs_count) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: No unused radio frequency available for freq %d",
-					   sched_cfg->channels[i].freq);
+					   sched_cfg.channels[i].freq);
 				goto out;
 			}
 
 			unused_freqs_count--;
 		}
 
-		sched_cfg->channels[i].time_bitmap =
-			wpabuf_parse_bin(colon + 1);
-		if (!sched_cfg->channels[i].time_bitmap) {
-			wpa_printf(MSG_DEBUG, "NAN: Invalid time bitmap");
+		sched_cfg.channels[i].time_bitmap = wpabuf_parse_bin(colon + 1);
+		if (!sched_cfg.channels[i].time_bitmap) {
+			wpa_printf(MSG_INFO, "NAN: Invalid time bitmap");
 			goto out;
 		}
 
-		sched_cfg->num_channels++;
+		sched_cfg.num_channels++;
 
-		if ((int)wpabuf_len(sched_cfg->channels[i].time_bitmap) !=
+		if (wpabuf_len(sched_cfg.channels[i].time_bitmap) !=
 		    expected_bitmap_len) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Invalid bitmap length (%zu) for period=%d, slot length=%d",
-				   wpabuf_len(sched_cfg->channels[i].time_bitmap),
+				   wpabuf_len(sched_cfg.channels[i].time_bitmap),
 				   wpa_s->nan_capa.schedule_period,
 				   wpa_s->nan_capa.slot_duration);
 			goto out;
 		}
 
 		bf_chan = bitfield_alloc_data(
-			wpabuf_head(sched_cfg->channels[i].time_bitmap),
-			wpabuf_len(sched_cfg->channels[i].time_bitmap));
+			wpabuf_head(sched_cfg.channels[i].time_bitmap),
+			wpabuf_len(sched_cfg.channels[i].time_bitmap));
 		if (!bf_chan) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to allocate bitfield for channel schedule");
 			goto out;
 		}
 
 		if (bitfield_intersects(bf_total, bf_chan)) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Overlapping time bitmap detected for freq %d",
-				   sched_cfg->channels[i].freq);
+				   sched_cfg.channels[i].freq);
 			bitfield_free(bf_chan);
 			goto out;
 		}
 
 		/* Extract RX NSS from upper nibble of num_antennas */
-		sched_cfg->channels[i].rx_nss =
+		sched_cfg.channels[i].rx_nss =
 			(wpa_s->nan_capa.num_antennas >> 4) & 0x0f;
 
 		bitfield_union_in_place(bf_total, bf_chan);
 		bitfield_free(bf_chan);
 
-		chan.freq = sched_cfg->channels[i].freq;
-		chan.center_freq1 = sched_cfg->channels[i].center_freq1;
-		chan.center_freq2 = sched_cfg->channels[i].center_freq2;
-		chan.bandwidth = sched_cfg->channels[i].bandwidth;
-		chan_entry = (void *)&sched_cfg->channels[i].chan_entry;
+		chan.freq = sched_cfg.channels[i].freq;
+		chan.center_freq1 = sched_cfg.channels[i].center_freq1;
+		chan.center_freq2 = sched_cfg.channels[i].center_freq2;
+		chan.bandwidth = sched_cfg.channels[i].bandwidth;
+		chan_entry = (struct nan_chan_entry *)
+			&sched_cfg.channels[i].chan_entry;
 		if (nan_get_chan_entry(wpa_s->nan, &chan, chan_entry)) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to get channel entry for freq %d",
-				   sched_cfg->channels[i].freq);
+				   sched_cfg.channels[i].freq);
 			goto out;
 		}
 	}
 
 	if (nan_has_active_ndp(wpa_s->nan)) {
 		wpa_printf(MSG_DEBUG, "NAN: Set schedule config as deferred");
-		sched_cfg->deferred = true;
+		sched_cfg.deferred = true;
 		wpa_s->nan_sched_update.map_id = map_id;
 	}
 
-	sched_cfg->avail_attr = wpabuf_alloc(NAN_AVAIL_ATTR_MAX_LEN);
-	if (!sched_cfg->avail_attr) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Failed to allocate memory for Availability Attribute");
+	sched_cfg.avail_attr = wpabuf_alloc(NAN_AVAIL_ATTR_MAX_LEN);
+	if (!sched_cfg.avail_attr) {
+		wpa_printf(MSG_INFO,
+			   "NAN: Failed to allocate memory for Availability attribute");
 		ret = -1;
 		goto out;
 	}
 
-	wpas_nan_fill_ndp_schedule(wpa_s, &sched);
-	nan_convert_sched_to_avail_attrs(wpa_s->nan,
-					 wpa_s->schedule_sequence_id + 1,
-					 map_ids, sched.n_chans,
-					 sched.chans, sched_cfg->avail_attr,
-					 false);
+	/* Keep previous schedule configuration as we may need to restore it */
+	os_memcpy(&old_sched_cfg, &wpa_s->nan_sched[map_id - 1],
+		  sizeof(old_sched_cfg));
 
-	nan_dump_sched_config("NAN: Set schedule config", sched_cfg);
-	ret = wpa_drv_nan_config_schedule(wpa_s, map_id, sched_cfg);
+	os_memcpy(&wpa_s->nan_sched[map_id - 1], &sched_cfg, sizeof(sched_cfg));
+	wpas_nan_fill_ndp_schedule(wpa_s, &sched);
+
+	ret = nan_convert_sched_to_avail_attrs(wpa_s->nan,
+					       wpa_s->schedule_sequence_id + 1,
+					       BIT(map_id),
+					       sched.n_chans, sched.chans,
+					       sched_cfg.avail_attr,
+					       false);
 	if (ret < 0) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Failed to configure NAN schedule map_id %d",
+		wpa_printf(MSG_INFO,
+			   "NAN: Failed to convert schedule to Availability Attributes for map_id %d",
 			   map_id);
+		os_memcpy(&wpa_s->nan_sched[map_id - 1], &old_sched_cfg,
+			  sizeof(old_sched_cfg));
 		goto out;
 	}
 
-	wpabuf_free(sched_cfg->avail_attr);
-	sched_cfg->avail_attr = NULL;
-
-	if (!sched_cfg->deferred) {
-		wpa_s->schedule_sequence_id++;
-		clear_sched_config(&old_sched_cfg);
-		wpas_nan_update_local_schedule(wpa_s);
-	} else {
-		os_memcpy(&wpa_s->nan_sched_update.sched, sched_cfg,
-			  sizeof(*sched_cfg));
-
-		/* Restore old config, the final update will be done when
-		 * the driver notifies that the deferred schedule update is
-		 * applied.
-		 */
-		os_memcpy(sched_cfg, &old_sched_cfg, sizeof(*sched_cfg));
+	nan_dump_sched_config("NAN: Set schedule config", &sched_cfg);
+	ret = wpa_drv_nan_config_schedule(wpa_s, map_id, &sched_cfg);
+	if (ret < 0) {
+		wpa_printf(MSG_INFO,
+			   "NAN: Failed to configure NAN schedule map_id %d",
+			   map_id);
+		os_memcpy(&wpa_s->nan_sched[map_id - 1], &old_sched_cfg,
+			  sizeof(old_sched_cfg));
+		goto out;
 	}
 
+	/* Free the old schedule and keep the new one (already stored) */
+	wpa_s->schedule_sequence_id++;
+	clear_sched_config(&old_sched_cfg);
 out:
 	os_free(bf_total);
 	os_free(shared_freqs);
-	if (ret) {
-		clear_sched_config(sched_cfg);
-		/* Restore old config */
-		os_memcpy(sched_cfg, &old_sched_cfg, sizeof(*sched_cfg));
-	}
+	if (ret)
+		clear_sched_config(&sched_cfg);
 
 	return ret;
 }
@@ -2263,7 +2185,7 @@ static struct wpabuf * wpas_nan_build_ndp_elems(struct wpa_supplicant *wpa_s)
 	size_t len;
 	struct wpabuf *buf;
 
-	/* Include HT and VHT capability elements */
+	/* Include HT and VHT Capability elements */
 	len = 2 + sizeof(struct ieee80211_ht_capabilities);
 	if (wpa_s->nan_capa.vht_valid)
 		len += 2 + sizeof(struct ieee80211_vht_capabilities);
@@ -2286,7 +2208,8 @@ static struct wpabuf * wpas_nan_build_ndp_elems(struct wpa_supplicant *wpa_s)
 	wpabuf_put_u8(buf, WLAN_EID_VHT_CAP);
 	wpabuf_put_u8(buf, sizeof(*vht_cap));
 	vht_cap = wpabuf_put(buf, sizeof(*vht_cap));
-	vht_cap->vht_capabilities_info = host_to_le32(wpa_s->nan_capa.vht_capab);
+	vht_cap->vht_capabilities_info =
+		host_to_le32(wpa_s->nan_capa.vht_capab);
 	os_memcpy(&vht_cap->vht_supported_mcs_set,
 		  wpa_s->nan_capa.vht_mcs_set,
 		  sizeof(vht_cap->vht_supported_mcs_set));
@@ -2296,8 +2219,96 @@ static struct wpabuf * wpas_nan_build_ndp_elems(struct wpa_supplicant *wpa_s)
 }
 
 
+static int
+wpas_nan_fill_ndp_schedule_chan(struct wpa_supplicant *wpa_s,
+				struct nan_schedule *sched, int map_id,
+				const struct nan_schedule_channel *chan)
+{
+	struct nan_chan_schedule *chan_sched;
+	const u8 *bitmap_data;
+	size_t bitmap_len;
+
+	/* None of these should happen */
+	if (!chan->time_bitmap) {
+		wpa_printf(MSG_INFO,
+			   "NAN: Missing time bitmap for map_id %d freq %d",
+			   map_id + 1, chan->freq);
+		return -1;
+	}
+
+	bitmap_len = wpabuf_len(chan->time_bitmap);
+	bitmap_data = wpabuf_head(chan->time_bitmap);
+	if (bitmap_len > NAN_TIME_BITMAP_MAX_LEN) {
+		wpa_printf(MSG_INFO,
+			   "NAN: Time bitmap length %zu exceeds maximum %d",
+			   bitmap_len, NAN_TIME_BITMAP_MAX_LEN);
+		return -1;
+	}
+
+	chan_sched = &sched->chans[sched->n_chans++];
+	chan_sched->map_id = map_id + 1;
+	chan_sched->chan.freq = chan->freq;
+	chan_sched->chan.center_freq1 = chan->center_freq1;
+	chan_sched->chan.center_freq2 = chan->center_freq2;
+	chan_sched->chan.bandwidth = chan->bandwidth;
+
+	chan_sched->committed.duration = wpa_s->nan_capa.slot_duration >> 5;
+	chan_sched->committed.period = ffs(wpa_s->nan_capa.schedule_period) - 7;
+	chan_sched->committed.offset = 0;
+	chan_sched->committed.len = bitmap_len;
+	os_memcpy(chan_sched->committed.bitmap, bitmap_data, bitmap_len);
+	wpa_printf(MSG_DEBUG,
+		   "NAN: NDP schedule channel added: map_id=%d freq=%d center_freq1=%d center_freq2=%d bandwidth=%d",
+		   chan_sched->map_id,
+		   chan_sched->chan.freq,
+		   chan_sched->chan.center_freq1,
+		   chan_sched->chan.center_freq2,
+		   chan_sched->chan.bandwidth);
+
+	return 0;
+}
+
+
+static void wpas_nan_fill_ndp_schedule(struct wpa_supplicant *wpa_s,
+				       struct nan_schedule *sched)
+{
+	int map_id;
+
+	os_memset(sched, 0, sizeof(*sched));
+
+	/* Fill the NAN schedule structure from the schedule config */
+	for (map_id = 0; map_id < MAX_NAN_RADIOS; map_id++) {
+		int i;
+		struct nan_schedule_config *sched_cfg =
+			&wpa_s->nan_sched[map_id];
+
+		for (i = 0; i < wpa_s->nan_sched[map_id].num_channels; i++) {
+			struct nan_schedule_channel *chan;
+
+			chan = &sched_cfg->channels[i];
+			if (wpas_nan_fill_ndp_schedule_chan(wpa_s, sched,
+							    map_id, chan)
+			    < 0)
+				return;
+		}
+	}
+
+	/* Mark all supported radios - for potential availability */
+	sched->map_ids_bitmap = (BIT(wpa_s->nan_capa.num_radios) - 1) << 1;
+}
+
+
+static void wpas_nan_update_local_schedule(struct wpa_supplicant *wpa_s)
+{
+	struct nan_schedule sched;
+
+	wpas_nan_fill_ndp_schedule(wpa_s, &sched);
+	nan_local_sched_update(wpa_s->nan, &sched);
+}
+
+
 static int wpas_nan_get_ndc_map_id(struct wpa_supplicant *wpa_s,
-				   struct nan_peer_schedule *peer_sched,
+				   const struct nan_peer_schedule *peer_sched,
 				   u8 peer_map_id)
 {
 	int i;
@@ -2309,12 +2320,10 @@ static int wpas_nan_get_ndc_map_id(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: Peer NDC frequency is %d MHz", freq);
+	wpa_printf(MSG_DEBUG, "NAN: Peer NDC frequency is %d MHz", freq);
 
 	for (i = 0; i < MAX_NAN_RADIOS; i++) {
-		struct nan_schedule_config *sched_cfg =
-					&wpa_s->nan_sched[i];
+		struct nan_schedule_config *sched_cfg = &wpa_s->nan_sched[i];
 		int j;
 
 		for (j = 0; j < sched_cfg->num_channels; j++) {
@@ -2327,6 +2336,44 @@ static int wpas_nan_get_ndc_map_id(struct wpa_supplicant *wpa_s,
 		}
 	}
 
+	return -1;
+}
+
+
+
+static int wpas_nan_select_ndc_copy_peers(struct wpa_supplicant *wpa_s,
+					  struct nan_ndp_params *ndp)
+{
+	struct nan_peer_schedule peer_sched;
+	int ret;
+	u8 map_id;
+
+	wpa_printf(MSG_DEBUG, "NAN: NDP CONF - use the NDC from peer");
+	ret = nan_peer_get_schedule_info(wpa_s->nan, ndp->ndp_id.peer_nmi,
+					 &peer_sched);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "NAN: Failed to get peer schedule info");
+		return -1;
+	}
+
+	for (map_id = 0; map_id < peer_sched.n_maps; map_id++) {
+		if (peer_sched.maps[map_id].ndc.len) {
+			ret = wpas_nan_get_ndc_map_id(wpa_s, &peer_sched,
+						      map_id);
+			if (ret < 0) {
+				wpa_printf(MSG_DEBUG,
+					   "NAN: No local NDC map_id found for peer NDC");
+				return -1;
+			}
+
+			ndp->sched.ndc_map_id = ret;
+			os_memcpy(&ndp->sched.ndc, &peer_sched.maps[map_id].ndc,
+				  sizeof(ndp->sched.ndc));
+			return 0;
+		}
+	}
+
+	wpa_printf(MSG_DEBUG, "NAN: No NDC found in peer schedule");
 	return -1;
 }
 
@@ -2409,14 +2456,14 @@ static int wpas_nan_select_ndc(struct wpa_supplicant *wpa_s,
 			return 0;
 		}
 	} else if (ndp->sched.chans[0].chan.freq == 2437 &&
-		   (wpa_s->nan_capa.slot_duration == 16)) {
+		   wpa_s->nan_capa.slot_duration == 16) {
 		if (ndp->sched.chans[0].committed.bitmap[0] & 0x02) {
 			ndp->sched.ndc.bitmap[0] = 0x02;
 			return 0;
 		}
 	}
 
-	/* For other cases, select first available slot */
+	/* For other cases, select the first available slot */
 	for (i = 0; i < NAN_TIME_BITMAP_MAX_LEN; i++) {
 		if (ndp->sched.chans[0].committed.bitmap[i]) {
 			ndp->sched.ndc.bitmap[i] =
@@ -2463,14 +2510,12 @@ static int wpas_nan_fill_nd_pmk(struct wpa_supplicant *wpa_s,
 				struct nan_ndp_params *ndp,
 				int handle,
 				const u8 *publisher_nmi,
-				const char *pwd_pmk,
-				bool pmk)
+				const char *pwd, const char *pmk)
 {
 	u8 service_id[NAN_SERVICE_ID_LEN];
 
 	if (ndp->sec.csid < NAN_CS_NONE || ndp->sec.csid >= NAN_CS_MAX) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Invalid CSID value: %d",
+		wpa_printf(MSG_INFO, "NAN: Invalid CSID value: %d",
 			   ndp->sec.csid);
 		return -1;
 	}
@@ -2483,14 +2528,14 @@ static int wpas_nan_fill_nd_pmk(struct wpa_supplicant *wpa_s,
 		return 0;
 
 	if (!(wpa_s->nan_supported_csids & BIT(ndp->sec.csid))) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Requested CSID %d not supported",
 				   ndp->sec.csid);
 			return -1;
 	}
 
-	if (!pwd_pmk || os_strlen(pwd_pmk) == 0) {
-		wpa_printf(MSG_DEBUG,
+	if ((!pwd || os_strlen(pwd) == 0) && (!pmk || os_strlen(pmk) == 0)) {
+		wpa_printf(MSG_INFO,
 			   "NAN: Password/PMK required for CSID %d",
 			   ndp->sec.csid);
 		return -1;
@@ -2500,19 +2545,18 @@ static int wpas_nan_fill_nd_pmk(struct wpa_supplicant *wpa_s,
 	 * Get service ID from the local handle (subscribe on
 	 * requester and publish on responder)
 	 */
-	if (!nan_de_is_valid_instance_id(wpa_s->nan_de,
-					handle,
-					ndp->type == NAN_NDP_ACTION_RESP,
-					service_id)) {
-		wpa_printf(MSG_DEBUG,
+	if (!nan_de_is_valid_instance_id(wpa_s->nan_de, handle,
+					 ndp->type == NAN_NDP_ACTION_RESP,
+					 service_id)) {
+		wpa_printf(MSG_INFO,
 			   "NAN: Invalid service instance handle: %d",
 			   handle);
 		return -1;
 	}
 
 	/*
-	 * For NDP response (publisher side), check if the requested CSID
-	 * is in the service's advertised cipher suite list.
+	 * For NDP response (publisher side), check if the requested CSID is in
+	 * the service's advertised cipher suite list.
 	 */
 	if (ndp->type == NAN_NDP_ACTION_RESP &&
 	    !nan_de_service_supports_csid(wpa_s->nan_de, handle,
@@ -2524,17 +2568,14 @@ static int wpas_nan_fill_nd_pmk(struct wpa_supplicant *wpa_s,
 	}
 
 	if (pmk) {
-		if (os_strlen(pwd_pmk) != PMK_LEN * 2) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Invalid PMK length: %zu",
-				   os_strlen(pwd_pmk));
+		if (os_strlen(pmk) != PMK_LEN * 2) {
+			wpa_printf(MSG_INFO, "NAN: Invalid PMK length: %zu",
+				   os_strlen(pmk));
 			return -1;
 		}
 
-		if (hexstr2bin(pwd_pmk, ndp->sec.pmk, PMK_LEN) < 0) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Invalid PMK hex data: %s",
-				   pwd_pmk);
+		if (hexstr2bin(pmk, ndp->sec.pmk, PMK_LEN) < 0) {
+			wpa_printf(MSG_INFO, "NAN: Invalid PMK hex data");
 			return -1;
 		}
 
@@ -2542,7 +2583,7 @@ static int wpas_nan_fill_nd_pmk(struct wpa_supplicant *wpa_s,
 	}
 
 	/* Derive PMK from password */
-	return nan_crypto_derive_nd_pmk(pwd_pmk, service_id, ndp->sec.csid,
+	return nan_crypto_derive_nd_pmk(pwd, service_id, ndp->sec.csid,
 					publisher_nmi, ndp->sec.pmk);
 }
 
@@ -2598,7 +2639,8 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 	struct nan_ndp_params ndp;
 	struct wpabuf *ssi_buf = NULL;
 	char *token, *context = NULL;
-	char *pos, *pwd = NULL, *pmk = NULL;
+	char *pos;
+	const char *pwd = NULL, *pmk = NULL;
 	int handle = -1;
 	int ret = -1;
 	struct wpa_supplicant *ndi_wpa_s = NULL;
@@ -2617,7 +2659,7 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 	while ((token = str_token(cmd, " ", &context))) {
 		pos = os_strchr(token, '=');
 		if (!pos) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Invalid parameter format: %s",
 				   token);
 			goto fail;
@@ -2629,10 +2671,10 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 
 			/* Get service ID from the local handle */
 			if (!nan_de_is_valid_instance_id(wpa_s->nan_de,
-							 handle,
-							 false,
-							 ndp.u.req.service_id)) {
-				wpa_printf(MSG_DEBUG,
+							 handle, false,
+							 ndp.u.req.service_id))
+			{
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid subscribe handle: %d",
 					   handle);
 				goto fail;
@@ -2640,14 +2682,14 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 		} else if (os_strcmp(token, "ndi") == 0) {
 			ndi_wpa_s = wpa_supplicant_get_iface(wpa_s->global, pos);
 			if (!ndi_wpa_s) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: NDI interface not found: %s",
 					   pos);
 				goto fail;
 			}
 
 			if (!ndi_wpa_s->nan_data) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Interface %s is not a NAN data interface",
 					   pos);
 				goto fail;
@@ -2655,10 +2697,9 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 
 			os_memcpy(ndp.ndp_id.init_ndi, ndi_wpa_s->own_addr,
 				  ETH_ALEN);
-
 		} else if (os_strcmp(token, "peer_nmi") == 0) {
 			if (hwaddr_aton(pos, ndp.ndp_id.peer_nmi) < 0) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid peer NMI address: %s",
 					   pos);
 				goto fail;
@@ -2669,19 +2710,18 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 		} else if (os_strcmp(token, "ssi") == 0) {
 			ssi_buf = wpabuf_parse_bin(pos);
 			if (!ssi_buf) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid SSI data: %s", pos);
 				goto fail;
 			}
 
 			ndp.ssi_len = wpabuf_len(ssi_buf);
 			ndp.ssi = wpabuf_head(ssi_buf);
-
 		} else if (os_strcmp(token, "qos") == 0) {
 			if (sscanf(pos, "%hhu:%hu",
 				   &ndp.qos.min_slots,
 				   &ndp.qos.max_latency) != 2) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid QoS parameter: %s",
 					   pos);
 				goto fail;
@@ -2722,39 +2762,36 @@ int wpas_nan_ndp_request(struct wpa_supplicant *wpa_s, char *cmd)
 
 	/* Validate required parameters */
 	if (handle < 0) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Missing required parameter: handle");
+		wpa_printf(MSG_INFO, "NAN: Missing required parameter: handle");
 		goto fail;
 	}
 
 	if (!ndp.u.req.publish_inst_id) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: peer_id");
 		goto fail;
 	}
 
 	if (is_zero_ether_addr(ndp.ndp_id.init_ndi)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Missing required parameter: ndi");
+		wpa_printf(MSG_INFO, "NAN: Missing required parameter: ndi");
 		goto fail;
 	}
 
 	if (is_zero_ether_addr(ndp.ndp_id.peer_nmi)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: peer_nmi");
 		goto fail;
 	}
 
 	if (pmk && pwd) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Specify only one of password or pmk");
 		goto fail;
 	}
 
 	if (wpas_nan_fill_nd_pmk(wpa_s, &ndp, handle,
-				 ndp.ndp_id.peer_nmi, pmk ? pmk : pwd,
-				 !!pmk) < 0) {
-		wpa_printf(MSG_DEBUG,
+				 ndp.ndp_id.peer_nmi, pwd, pmk) < 0) {
+		wpa_printf(MSG_INFO,
 			   "NAN: Failed to derive NDP PMK");
 		goto fail;
 	}
@@ -2824,7 +2861,8 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 	struct nan_ndp_params ndp;
 	struct wpabuf *ssi_buf = NULL;
 	char *token, *context = NULL;
-	char *pos, *pwd = NULL, *pmk = NULL;
+	char *pos;
+	const char *pwd = NULL, *pmk = NULL;
 	int handle = -1;
 	int ret = -1;
 	struct wpa_supplicant *ndi_wpa_s = NULL;
@@ -2838,10 +2876,10 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 	ndp.qos.min_slots = NAN_QOS_MIN_SLOTS_NO_PREF;
 	ndp.qos.max_latency = NAN_QOS_MAX_LATENCY_NO_PREF;
 
-	/* Parse accept/reject status - first parameter is mandatory */
+	/* Parse accept/reject status - the first parameter is mandatory */
 	token = str_token(cmd, " ", &context);
 	if (!token) {
-		wpa_printf(MSG_DEBUG, "NAN: Missing accept/reject parameter");
+		wpa_printf(MSG_INFO, "NAN: Missing accept/reject parameter");
 		return -1;
 	}
 
@@ -2850,7 +2888,8 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 	} else if (os_strcmp(token, "reject") == 0) {
 		ndp.u.resp.status = NAN_NDP_STATUS_REJECTED;
 	} else {
-		wpa_printf(MSG_DEBUG, "NAN: Invalid accept/reject parameter: %s", token);
+		wpa_printf(MSG_INFO, "NAN: Invalid accept/reject parameter: %s",
+			   token);
 		return -1;
 	}
 
@@ -2858,9 +2897,8 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 	while ((token = str_token(cmd, " ", &context))) {
 		pos = os_strchr(token, '=');
 		if (!pos) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Invalid parameter format: %s",
-				   token);
+			wpa_printf(MSG_INFO,
+				   "NAN: Invalid parameter format: %s", token);
 			goto fail;
 		}
 		*pos++ = '\0';
@@ -2868,16 +2906,17 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 		if (os_strcmp(token, "reason_code") == 0) {
 			ndp.u.resp.reason_code = atoi(pos);
 		} else if (os_strcmp(token, "ndi") == 0) {
-			ndi_wpa_s = wpa_supplicant_get_iface(wpa_s->global, pos);
+			ndi_wpa_s = wpa_supplicant_get_iface(wpa_s->global,
+							     pos);
 			if (!ndi_wpa_s) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: NDI interface not found: %s",
 					   pos);
 				goto fail;
 			}
 
 			if (!ndi_wpa_s->nan_data) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Interface %s is not a NAN data interface",
 					   pos);
 				goto fail;
@@ -2885,29 +2924,26 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 
 			os_memcpy(ndp.u.resp.resp_ndi, ndi_wpa_s->own_addr,
 				  ETH_ALEN);
-
 		} else if (os_strcmp(token, "peer_nmi") == 0) {
 			if (hwaddr_aton(pos, ndp.ndp_id.peer_nmi) < 0) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid peer NMI address: %s",
 					   pos);
 				goto fail;
 			}
 		} else if (os_strcmp(token, "ndp_id") == 0) {
 			ndp.ndp_id.id = atoi(pos);
-
 		} else if (os_strcmp(token, "init_ndi") == 0) {
 			if (hwaddr_aton(pos, ndp.ndp_id.init_ndi) < 0) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid initiator NDI address: %s",
 					   pos);
 				goto fail;
 			}
-
 		} else if (os_strcmp(token, "ssi") == 0) {
 			ssi_buf = wpabuf_parse_bin(pos);
 			if (!ssi_buf) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid SSI data: %s", pos);
 				goto fail;
 			}
@@ -2918,7 +2954,7 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 			if (sscanf(pos, "%hhu:%hu",
 				   &ndp.qos.min_slots,
 				   &ndp.qos.max_latency) != 2) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid QoS parameter: %s",
 					   pos);
 				goto fail;
@@ -2950,13 +2986,12 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 	}
 
 	/* If we initiated the NDP setup, we are the subscriber */
-	if (ether_addr_equal(ndp.u.resp.resp_ndi,
-			     ndp.ndp_id.init_ndi))
+	if (ether_addr_equal(ndp.u.resp.resp_ndi, ndp.ndp_id.init_ndi))
 		ndp.type = NAN_NDP_ACTION_CONF;
 
 	/* Validate required parameters for accept case */
 	if (ndp.u.resp.status == NAN_NDP_STATUS_ACCEPTED) {
-		u8 *publisher_nmi;
+		const u8 *publisher_nmi;
 
 		if (is_zero_ether_addr(ndp.u.resp.resp_ndi)) {
 			wpa_printf(MSG_DEBUG,
@@ -2970,40 +3005,39 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 			publisher_nmi = wpa_s->own_addr;
 
 		if (handle < 1) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Missing required parameter for accept: handle");
 			goto fail;
 		}
 
 		if (pmk && pwd) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Specify only one of password or pmk");
 			goto fail;
 		}
 
 		if (wpas_nan_fill_nd_pmk(wpa_s, &ndp, handle,
-					 publisher_nmi, pmk ? pmk : pwd,
-					 !!pmk) < 0) {
-			wpa_printf(MSG_DEBUG, "NAN: Failed to derive NDP PMK");
+					 publisher_nmi, pwd, pmk) < 0) {
+			wpa_printf(MSG_INFO, "NAN: Failed to derive NDP PMK");
 			goto fail;
 		}
 	}
 
 	/* Validate common required parameters */
 	if (is_zero_ether_addr(ndp.ndp_id.peer_nmi)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: peer_nmi");
 		goto fail;
 	}
 
 	if (is_zero_ether_addr(ndp.ndp_id.init_ndi)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: init_ndi");
 		goto fail;
 	}
 
 	if (!ndp.ndp_id.id) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: ndp_id");
 		goto fail;
 	}
@@ -3028,7 +3062,7 @@ int wpas_nan_ndp_response(struct wpa_supplicant *wpa_s, char *cmd)
 
 	ret = nan_handle_ndp_setup(wpa_s->nan, &ndp);
 	if (ret < 0)
-		wpa_printf(MSG_DEBUG, "NAN: Failed to handle NDP response");
+		wpa_printf(MSG_INFO, "NAN: Failed to handle NDP response");
 
 fail:
 	wpabuf_free(ndp.sched.elems);
@@ -3057,7 +3091,7 @@ int wpas_nan_ndp_terminate(struct wpa_supplicant *wpa_s, char *cmd)
 	while ((token = str_token(cmd, " ", &context))) {
 		pos = os_strchr(token, '=');
 		if (!pos) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Invalid parameter format: %s",
 				   token);
 			return -1;
@@ -3066,14 +3100,14 @@ int wpas_nan_ndp_terminate(struct wpa_supplicant *wpa_s, char *cmd)
 
 		if (os_strcmp(token, "peer_nmi") == 0) {
 			if (hwaddr_aton(pos, ndp.ndp_id.peer_nmi) < 0) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid peer NMI address: %s",
 					   pos);
 				return -1;
 			}
 		} else if (os_strcmp(token, "init_ndi") == 0) {
 			if (hwaddr_aton(pos, ndp.ndp_id.init_ndi) < 0) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid initiator NDI address: %s",
 					   pos);
 				return -1;
@@ -3088,19 +3122,19 @@ int wpas_nan_ndp_terminate(struct wpa_supplicant *wpa_s, char *cmd)
 
 	/* Validate required parameters */
 	if (is_zero_ether_addr(ndp.ndp_id.peer_nmi)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: peer_nmi");
 		return -1;
 	}
 
 	if (is_zero_ether_addr(ndp.ndp_id.init_ndi)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: init_ndi");
 		return -1;
 	}
 
 	if (!ndp.ndp_id.id) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Missing required parameter: ndp_id");
 		return -1;
 	}
@@ -3141,8 +3175,7 @@ static int wpas_nan_append_ik_info(char *reply, size_t reply_size,
 	char *pos = reply;
 	char *end = reply + reply_size;
 
-	pos += wpa_scnprintf(pos, end - pos, "nik_cipher=%d\n",
-			     ik->dik_cipher);
+	pos += wpa_scnprintf(pos, end - pos, "nik_cipher=%d\n", ik->dik_cipher);
 	pos += wpa_scnprintf(pos, end - pos, "nik=");
 	pos += wpa_snprintf_hex(pos, end - pos, wpabuf_head(ik->dik),
 				wpabuf_len(ik->dik));
@@ -3150,8 +3183,7 @@ static int wpas_nan_append_ik_info(char *reply, size_t reply_size,
 
 	if (ik->pmk) {
 		pos += wpa_scnprintf(pos, end - pos, "akmp=%s\n",
-				     wpa_key_mgmt_txt(ik->akmp,
-						      WPA_PROTO_RSN));
+				     wpa_key_mgmt_txt(ik->akmp, WPA_PROTO_RSN));
 		pos += wpa_scnprintf(pos, end - pos, "npk=");
 		pos += wpa_snprintf_hex(pos, end - pos, wpabuf_head(ik->pmk),
 					wpabuf_len(ik->pmk));
@@ -3160,9 +3192,11 @@ static int wpas_nan_append_ik_info(char *reply, size_t reply_size,
 
 	return pos - reply;
 }
+#endif /* CONFIG_PASN */
 
 
-/* Format: NAN_PEER_INFO <addr> <schedule|potential|capa> [map_id] */
+/* Format: NAN_PEER_INFO <addr>
+ * <schedule|potential|capa|bootstrap|pairing> [map_id] */
 int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		       char *reply, size_t reply_size)
 {
@@ -3174,13 +3208,13 @@ int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		return -1;
 
 	if (hwaddr_aton(cmd, addr) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Invalid peer address: %s", cmd);
+		wpa_printf(MSG_INFO, "NAN: Invalid peer address: %s", cmd);
 		return -1;
 	}
 
 	pos = os_strchr(cmd, ' ');
 	if (!pos) {
-		wpa_printf(MSG_DEBUG, "NAN: Missing info type parameter");
+		wpa_printf(MSG_INFO, "NAN: Missing info type parameter");
 		return -1;
 	}
 
@@ -3188,7 +3222,7 @@ int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		struct nan_peer_schedule sched;
 
 		if (nan_peer_get_schedule_info(wpa_s->nan, addr, &sched) < 0) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to get schedule info for peer "
 				   MACSTR, MAC2STR(addr));
 			return -1;
@@ -3199,24 +3233,28 @@ int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		struct nan_peer_potential_avail pot_avail;
 
 		if (nan_peer_get_pot_avail(wpa_s->nan, addr, &pot_avail) < 0) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to get potential availability for peer "
 				   MACSTR, MAC2STR(addr));
 			return -1;
 		}
 
-		ret = nan_peer_dump_pot_avail_to_buf(&pot_avail, reply, reply_size);
+		ret = nan_peer_dump_pot_avail_to_buf(&pot_avail, reply,
+						     reply_size);
 	} else if (os_strncmp(pos + 1, "capa", 4) == 0) {
 		int map_id = 0;
-		struct nan_device_capabilities capa;
+		const struct nan_device_capabilities *capa;
 		int written = 0;
+		char *m;
 
-		if (os_strchr(pos + 1, ' '))
-			map_id = atoi(os_strchr(pos + 1, ' ') + 1);
+		m = os_strchr(pos + 1, ' ');
+		if (m)
+			map_id = atoi(m + 1);
 
-		if (nan_peer_get_device_capabilities(wpa_s->nan, addr, map_id,
-						     &capa) < 0) {
-			wpa_printf(MSG_DEBUG,
+		capa = nan_peer_get_device_capabilities(wpa_s->nan, addr,
+												map_id);
+		if (!capa) {
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to get capabilities for peer "
 				   MACSTR, MAC2STR(addr));
 			return -1;
@@ -3224,26 +3262,27 @@ int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 
 		written += wpa_scnprintf(reply + written, reply_size - written,
 					"supported_bands=0x%02x\n",
-					capa.supported_bands);
+					capa->supported_bands);
 		written += wpa_scnprintf(reply + written, reply_size - written,
-					"op_modes=0x%04x\n", capa.op_mode);
+					"op_modes=0x%04x\n", capa->op_mode);
 		written += wpa_scnprintf(reply + written, reply_size - written,
-					"cdw_info=0x%04x\n", capa.cdw_info);
+					"cdw_info=0x%04x\n", capa->cdw_info);
 		written += wpa_scnprintf(reply + written, reply_size - written,
-					"n_antennas=%d\n", capa.n_antennas);
+					"n_antennas=%d\n", capa->n_antennas);
 		written += wpa_scnprintf(reply + written, reply_size - written,
 					"channel_switch_time=%d\n",
-					capa.channel_switch_time);
+					capa->channel_switch_time);
 		written += wpa_scnprintf(reply + written, reply_size - written,
-					"capabilities=0x%02x\n", capa.capa);
+					"capabilities=0x%02x\n", capa->capa);
 
 		ret = written;
 	} else if (os_strncmp(pos + 1, "bootstrap", 9) == 0) {
 		u16 supported_methods;
 
 		if (nan_bootstrap_get_supported_methods(wpa_s->nan, addr,
-							&supported_methods) < 0) {
-			wpa_printf(MSG_DEBUG,
+							&supported_methods) <
+		    0) {
+			wpa_printf(MSG_INFO,
 				   "NAN: Failed to get bootstrap methods for peer "
 				   MACSTR, MAC2STR(addr));
 			return -1;
@@ -3252,6 +3291,7 @@ int wpas_nan_peer_info(struct wpa_supplicant *wpa_s, const char *cmd,
 		ret = wpa_scnprintf(reply, reply_size,
 				    "supported_methods=0x%04x\n",
 				    supported_methods);
+#ifdef CONFIG_PASN
 	} else if (os_strncmp(pos + 1, "pairing", 7) == 0) {
 		const struct nan_pairing_cfg *pairing_cfg;
 		const struct wpa_dev_ik *ik = NULL;
@@ -3354,8 +3394,7 @@ int wpas_nan_bootstrap_request(struct wpa_supplicant *wpa_s, char *cmd)
 	}
 
 	if (!bootstrap_method) {
-		wpa_printf(MSG_INFO,
-			   "CTRL: Missing NAN_BOOTSTRAP method");
+		wpa_printf(MSG_INFO, "CTRL: Missing NAN_BOOTSTRAP method");
 		return -1;
 	}
 
@@ -3526,7 +3565,7 @@ static int wpas_nan_pasn_update_station(struct wpa_supplicant *wpa_s,
 	params.flags_mask = 0;
 	params.set = 1;
 	if (wpa_drv_sta_add(wpa_s, &params) < 0) {
-		wpa_printf(MSG_ERROR,"NAN PASN: Failed to update PASN station "
+		wpa_printf(MSG_INFO,"NAN PASN: Failed to update PASN station "
 				MACSTR, MAC2STR(nmi_addr));
 		return -1;
 	}
@@ -3534,7 +3573,7 @@ static int wpas_nan_pasn_update_station(struct wpa_supplicant *wpa_s,
 }
 
 
-/*
+/**
  * wpas_nan_pair - Initiate NAN pairing with a peer device
  *
  * @wpa_s: Pointer to wpa_supplicant data structure
@@ -3564,7 +3603,7 @@ int wpas_nan_pair(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	if (!ret)
 		ret = wpas_nan_pasn_update_station(wpa_s, peer_addr);
 	else
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN PASN: Failed to start PASN authentication");
 
 	return ret;
@@ -3602,7 +3641,7 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 		if (os_strncmp(token, "auth=", 5) == 0) {
 			auth_mode = atoi(token + 5);
 			if (auth_mode > 2) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN_PAIR: Invalid auth mode: %u",
 					   auth_mode);
 				return -1;
@@ -3617,7 +3656,7 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 			} else if (os_strcmp(token + 7, "GCMP-256") == 0) {
 				cipher = WPA_CIPHER_GCMP_256;
 			} else {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN_PAIR: Invalid cipher: '%s'",
 					   token + 7);
 				return -1;
@@ -3627,7 +3666,7 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 		} else if (os_strncmp(token, "password=", 9) == 0) {
 			password = token + 9;
 		} else {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN_PAIR: Invalid parameter: '%s'",
 				   token);
 			return -1;
@@ -3635,25 +3674,24 @@ int wpas_nan_pairing_start(struct wpa_supplicant *wpa_s, char *cmd)
 	}
 
 	if (handle <= 0) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN_PAIR: missing or invalid handle");
+		wpa_printf(MSG_INFO, "NAN_PAIR: missing or invalid handle");
 		return -1;
 	}
 
 	if (!peer_instance_id) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN_PAIR: missing or invalid peer_instance_id");
 		return -1;
 	}
 
 	if (cipher == WPA_CIPHER_NONE) {
-		wpa_printf(MSG_DEBUG, "NAN_PAIR: missing cipher");
+		wpa_printf(MSG_INFO, "NAN_PAIR: missing cipher");
 		return -1;
 	}
 
 	if (wpas_nan_pair(wpa_s, addr, auth_mode, cipher, handle,
 			  peer_instance_id, responder, password) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN_PAIR: Pairing initiation failed");
+		wpa_printf(MSG_INFO, "NAN_PAIR: Pairing initiation failed");
 		return -1;
 	}
 
@@ -3676,18 +3714,18 @@ int wpas_nan_pairing_abort(struct wpa_supplicant *wpa_s, const char *cmd)
 	struct nan_data *nan = wpa_s->nan;
 
 	if (!nan) {
-		wpa_printf(MSG_DEBUG, "NAN_PAIR_ABORT: NAN not initialized");
+		wpa_printf(MSG_INFO, "NAN_PAIR_ABORT: NAN not initialized");
 		return -1;
 	}
 
 	if (hwaddr_aton(cmd, addr)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN_PAIR_ABORT: Invalid peer address: '%s'", cmd);
 		return -1;
 	}
 
 	if (nan_pairing_abort(nan, addr) < 0) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN_PAIR_ABORT: Abort failed for peer " MACSTR,
 			   MAC2STR(addr));
 		return -1;
@@ -3933,7 +3971,6 @@ static void wpas_nan_usd_start_listen_cb(struct wpa_radio_work *work,
 		eloop_register_timeout(0, 500,
 				       wpas_nan_usd_remain_on_channel_timeout,
 				       wpa_s, lwork);
-
 		wpas_nan_usd_listen_work_done(wpa_s);
 		return;
 	}
@@ -3952,8 +3989,8 @@ static int wpas_nan_usd_listen(void *ctx, unsigned int freq,
 	lwork->freq = freq;
 	lwork->duration = duration;
 
-	if (radio_add_work(wpa_s, freq, "nan-usd-listen", 0,
-			   wpas_nan_usd_start_listen_cb, lwork) < 0) {
+	if (!radio_add_work(wpa_s, freq, "nan-usd-listen", 0,
+			    wpas_nan_usd_start_listen_cb, lwork)) {
 		os_free(lwork);
 		return -1;
 	}
@@ -4051,9 +4088,11 @@ static void wpas_nan_de_receive(void *ctx, int id, int peer_instance_id,
 {
 	struct wpa_supplicant *wpa_s = ctx;
 
+#ifdef CONFIG_NAN
 	if (nan_process_followup(wpa_s->nan, peer_addr, buf, len,
 				 peer_instance_id, id))
 		return;
+#endif /* CONFIG_NAN */
 
 	wpas_notify_nan_receive(wpa_s, id, peer_instance_id, peer_addr,
 				ssi, ssi_len);
@@ -4193,10 +4232,15 @@ void wpas_nan_de_rx_sdf(struct wpa_supplicant *wpa_s, const u8 *src,
 	store_peer = nan_de_rx_sdf(wpa_s->nan_de, src, a3, freq, buf,
 				   len, rssi);
 
-	if (!wpas_nan_ready(wpa_s) || !store_peer)
+	if (!store_peer)
+		return;
+
+#ifdef CONFIG_NAN
+	if (!wpas_nan_ready(wpa_s))
 		return;
 
 	nan_add_peer(wpa_s->nan, src, buf, len);
+#endif /* CONFIG_NAN */
 }
 
 
@@ -4234,25 +4278,25 @@ int wpas_nan_publish(struct wpa_supplicant *wpa_s, const char *service_name,
 	if (params->sync) {
 		if (!(wpa_s->nan_capa.drv_flags &
 		      WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE)) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Can't advertise sync service, driver does not support user space DE");
 			return -1;
 		}
 
 		if (!wpas_nan_ready(wpa_s)) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Synchronized support is not enabled");
 			return -1;
 		}
 
 		if (p2p) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Sync discovery is not supported for P2P");
 			return -1;
 		}
 
 		if (params->proximity_ranging) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Sync discovery is not supported for PR");
 			return -1;
 		}
@@ -4266,8 +4310,16 @@ int wpas_nan_publish(struct wpa_supplicant *wpa_s, const char *service_name,
 		elems = wpas_pr_usd_elems(wpa_s);
 	}
 
+	if (params->forced_addr) {
+		if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_MGMT_TX_RANDOM_TA)) {
+			wpa_printf(MSG_INFO, "NAN: Random TA not allowed");
+			return -1;
+		}
+		addr = params->forced_addr;
+	}
+
 	publish_id = nan_de_publish(wpa_s->nan_de, service_name, srv_proto_type,
-				    ssi, elems, params, p2p);
+				    ssi, elems, params, p2p, addr);
 	if (publish_id >= 1 && !params->sync &&
 	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_USD_OFFLOAD) &&
 	    wpas_drv_nan_publish(wpa_s, addr, publish_id, service_name,
@@ -4277,6 +4329,12 @@ int wpas_nan_publish(struct wpa_supplicant *wpa_s, const char *service_name,
 		nan_de_cancel_publish(wpa_s->nan_de, publish_id);
 		publish_id = -1;
 	}
+#ifdef CONFIG_AP
+	if (publish_id >= 1 && wpa_s->ap_iface && wpa_s->ap_iface->bss[0]) {
+		wpa_printf(MSG_DEBUG, "NAN: Linking nan_de for AP interface");
+		wpa_s->ap_iface->bss[0]->nan_de = wpa_s->nan_de;
+	}
+#endif /* CONFIG_AP */
 
 	wpabuf_free(elems);
 	return publish_id;
@@ -4380,24 +4438,24 @@ int wpas_nan_subscribe(struct wpa_supplicant *wpa_s,
 	if (params->sync) {
 		if (!(wpa_s->nan_capa.drv_flags &
 		      WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE)) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Can't subscribe sync, user space DE is not supported");
 			return -1;
 		}
 
 		if (!wpas_nan_ready(wpa_s)) {
-			wpa_printf(MSG_DEBUG, "NAN: Not ready (subscribe)");
+			wpa_printf(MSG_INFO, "NAN: Not ready (subscribe)");
 			return -1;
 		}
 
 		if (p2p) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Sync discovery is not supported for P2P (subscribe)");
 			return -1;
 		}
 
 		if (params->proximity_ranging) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Sync discovery is not supported for PR (subscribe)");
 			return -1;
 		}
@@ -4411,9 +4469,17 @@ int wpas_nan_subscribe(struct wpa_supplicant *wpa_s,
 		elems = wpas_pr_usd_elems(wpa_s);
 	}
 
+	if (params->forced_addr) {
+		if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_MGMT_TX_RANDOM_TA)) {
+			wpa_printf(MSG_INFO, "NAN: Random TA not allowed");
+			return -1;
+		}
+		addr = params->forced_addr;
+	}
+
 	subscribe_id = nan_de_subscribe(wpa_s->nan_de, service_name,
 					srv_proto_type, ssi, elems, params,
-					p2p);
+					p2p, addr);
 	if (subscribe_id >= 1 && !params->sync &&
 	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_USD_OFFLOAD) &&
 	    wpas_drv_nan_subscribe(wpa_s, addr, subscribe_id, service_name,
@@ -4423,6 +4489,12 @@ int wpas_nan_subscribe(struct wpa_supplicant *wpa_s,
 		nan_de_cancel_subscribe(wpa_s->nan_de, subscribe_id);
 		subscribe_id = -1;
 	}
+#ifdef CONFIG_AP
+	if (subscribe_id >= 1 && wpa_s->ap_iface && wpa_s->ap_iface->bss[0]) {
+		wpa_printf(MSG_DEBUG, "NAN: Linking nan_de for AP interface");
+		wpa_s->ap_iface->bss[0]->nan_de = wpa_s->nan_de;
+	}
+#endif /* CONFIG_AP */
 
 	wpabuf_free(elems);
 	return subscribe_id;
@@ -4522,9 +4594,59 @@ int * wpas_nan_usd_all_freqs(struct wpa_supplicant *wpa_s)
 	return freqs;
 }
 
-void wpas_nan_tx_status(struct wpa_supplicant *wpa_s,
-			const u8 *data, size_t data_len, u8 acked)
+void wpas_nan_usd_state_change_notif(struct wpa_supplicant *wpa_s)
 {
+	struct wpa_supplicant *ifs;
+	unsigned int n_active = 0;
+	struct nan_de_cfg cfg;
+
+	if (!wpa_s->radio)
+		return;
+
+	os_memset(&cfg, 0, sizeof(cfg));
+
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (ifs->wpa_state >= WPA_AUTHENTICATING)
+			n_active++;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: state change notif: n_active=%u, p2p_in_progress=%u",
+		   n_active, wpas_p2p_in_progress(wpa_s));
+
+	if (n_active) {
+		cfg.n_max = 3;
+
+		if (!wpas_p2p_in_progress(wpa_s)) {
+			/* Limit the USD operation on channel to 100 - 300 TUs
+			 * to allow more time for other interfaces.
+			 */
+			cfg.n_min = 1;
+		} else {
+			/* Limit the USD operation on channel to 200 - 300 TUs
+			 * to allow P2P operation to complete.
+			 */
+			cfg.n_min = 2;
+		}
+
+		/* Each 500 ms suspend USD operation for 300 ms */
+		cfg.cycle = 500;
+		cfg.suspend = 300;
+	}
+
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (ifs->nan_de)
+			nan_de_config(ifs->nan_de, &cfg);
+	}
+}
+
+
+int wpas_nan_tx_status(struct wpa_supplicant *wpa_s,
+			const u8 *data, size_t data_len, int acked)
+{
+#ifdef CONFIG_NAN
 	const struct ieee80211_mgmt *mgmt = (void *)data;
 
 	wpa_s = wpas_nan_get_mgmt_iface(wpa_s);
@@ -4534,13 +4656,17 @@ void wpas_nan_tx_status(struct wpa_supplicant *wpa_s,
 				 acked);
 
 	if (!wpas_nan_ndp_allowed(wpa_s))
-		return;
+		return -1;
 
 	wpa_printf(MSG_DEBUG, "NAN: TX status for frame len=%zu acked=%u",
 		   data_len, acked);
 
-	if (!nan_tx_status(wpa_s->nan, mgmt->da, data, data_len, acked))
+	if (!nan_tx_status(wpa_s->nan, mgmt->da, data, data_len, acked)) {
 		wpa_printf(MSG_DEBUG, "NAN: Processed NAF tx status");
+		return 0;
+	}
+#endif /* CONFIG_NAN */
+	return -1;
 }
 
 
@@ -4548,12 +4674,12 @@ void wpas_nan_rx_naf(struct wpa_supplicant *wpa_s,
 		     const struct ieee80211_mgmt *mgmt, size_t len)
 {
 	if (mgmt->u.action.category == WLAN_ACTION_PROTECTED_DUAL) {
-		wpa_printf(MSG_DEBUG, "NAN: RX NAF: ifname=%s: DUAL protected",
+		wpa_printf(MSG_DEBUG, "NAN: RX NAF: ifname=%s: protected",
 			   wpa_s->ifname);
 
 		wpa_s = wpas_nan_get_mgmt_iface(wpa_s);
 
-		wpa_printf(MSG_DEBUG, "NAN: Rx NAF: continue processing on %s",
+		wpa_printf(MSG_DEBUG, "NAN: RX NAF: Continue processing on %s",
 			   wpa_s->ifname);
 	}
 

@@ -1217,6 +1217,16 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 		hapd->ext_mgmt_frame_handling = atoi(value);
 	} else if (os_strcasecmp(cmd, "ext_eapol_frame_io") == 0) {
 		hapd->ext_eapol_frame_io = atoi(value);
+	} else if (os_strcasecmp(cmd, "association_response_status_code") == 0)
+	{
+		if (os_strcasecmp(value, "disable") == 0)
+			hapd->conf->association_response_status_code = -1;
+		else
+			hapd->conf->association_response_status_code =
+				atoi(value);
+		wpa_printf(MSG_DEBUG,
+			   "TESTING: association_response_status_code=%d",
+			   hapd->conf->association_response_status_code);
 	} else if (os_strcasecmp(cmd, "force_backlog_bytes") == 0) {
 		hapd->force_backlog_bytes = atoi(value);
 #ifdef CONFIG_DPP
@@ -1290,7 +1300,6 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
 			hostapd_neighbor_sync_own_report(hapd);
 		} else if (os_strncmp(cmd, "wme_ac_", 7) == 0 ||
 			   os_strncmp(cmd, "wmm_ac_", 7) == 0) {
-			hapd->parameter_set_count++;
 			if (ieee802_11_update_beacons(hapd->iface))
 				wpa_printf(MSG_DEBUG,
 					   "Failed to update beacons with WMM parameters");
@@ -2453,6 +2462,19 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 
 	settings.link_id = -1;
 #ifdef CONFIG_IEEE80211BE
+	/* Reject if EHT is disabled in channel switch settings but the
+	 * interface has a BSS affiliated with an AP MLD where EHT is mandatory
+	 * to be enabled. */
+	if (!settings.freq_params.eht_enabled) {
+		for (i = 0; i < iface->num_bss; i++) {
+			if (iface->bss[i]->conf->mld_ap) {
+				wpa_printf(MSG_INFO,
+					   "Do not allow EHT to be disabled when the interface has an ML BSS");
+				return -1;
+			}
+		}
+	}
+
 	if (iface->num_bss && iface->bss[0]->conf->mld_ap)
 		settings.link_id = iface->bss[0]->mld_link_id;
 #endif /* CONFIG_IEEE80211BE */
@@ -2548,7 +2570,6 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
 {
 #ifdef NEED_AP_MLME
 	struct cca_settings settings;
-	struct hostapd_data *hapd = iface->bss[0];
 	int ret, color;
 	unsigned int i;
 	char *end;
@@ -2594,7 +2615,7 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
 		return 0;
 	}
 
-	if (hapd->cca_in_progress) {
+	if (hostapd_is_cca_in_progress(iface)) {
 		wpa_printf(MSG_ERROR,
 			   "color_change: CCA is already in progress");
 		return -1;
@@ -2617,6 +2638,8 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
 			hostapd_cleanup_cca_params(bss);
 			continue;
 		}
+		eloop_cancel_timeout(hostapd_switch_color_timeout_handler,
+				     bss, NULL);
 
 		wpa_printf(MSG_DEBUG, "Setting user selected color: %d", color);
 		ret = hostapd_drv_switch_color(bss, &settings);
@@ -4589,7 +4612,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
 	struct sockaddr_storage from;
 	socklen_t fromlen = sizeof(from);
 	char *reply, *pos = buf;
-	const int reply_size = 4096;
+	const int reply_size = 8192;
 	int reply_len;
 	int level = MSG_DEBUG;
 #ifdef CONFIG_CTRL_IFACE_UDP
@@ -4768,7 +4791,7 @@ static void hostapd_mld_ctrl_iface_receive(int sock, void *eloop_ctx,
 	struct sockaddr_storage from;
 	socklen_t fromlen = sizeof(from);
 	char *reply, *pos = buf;
-	const size_t reply_size = 4096;
+	const size_t reply_size = 8192;
 	int reply_len;
 	int level = MSG_DEBUG;
 
@@ -5696,7 +5719,7 @@ static void hostapd_global_ctrl_iface_receive(int sock, void *eloop_ctx,
 	socklen_t fromlen = sizeof(from);
 	char *reply;
 	int reply_len;
-	const int reply_size = 4096;
+	const int reply_size = 8192;
 #ifdef CONFIG_CTRL_IFACE_UDP
 	unsigned char lcookie[CTRL_IFACE_COOKIE_LEN];
 #endif /* CONFIG_CTRL_IFACE_UDP */

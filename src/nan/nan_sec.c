@@ -11,9 +11,9 @@
 #include "common/ieee802_11_common.h"
 #include "nan_i.h"
 
+
 /*
  * nan_sec_reset - Reset security state
- *
  * @nan: NAN module context from nan_init()
  * @ndp_sec: NDP security context to reset
  */
@@ -23,18 +23,16 @@ void nan_sec_reset(struct nan_data *nan, struct nan_ndp_sec *ndp_sec)
 }
 
 
-static void nan_sec_dump(struct nan_data *nan, struct nan_peer *peer)
+static void nan_sec_dump(const struct nan_data *nan,
+			 const struct nan_peer *peer)
 {
-	struct nan_ndp_sec *s = &peer->ndp_setup.sec;
+	const struct nan_ndp_sec *s = &peer->ndp_setup.sec;
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: SEC: present=%u, valid=%u",
+	wpa_printf(MSG_DEBUG, "NAN: SEC: present=%u, valid=%u",
 		   s->present, s->valid);
-	wpa_printf(MSG_DEBUG,
-		   "NAN: SEC: i_csid=%u, i_instance_id=%u",
+	wpa_printf(MSG_DEBUG, "NAN: SEC: i_csid=%u, i_instance_id=%u",
 		   s->i_csid, s->i_instance_id);
-	wpa_printf(MSG_DEBUG,
-		   "NAN: SEC: r_csid=%u, r_instance_id=%u",
+	wpa_printf(MSG_DEBUG, "NAN: SEC: r_csid=%u, r_instance_id=%u",
 		   s->r_csid, s->r_instance_id);
 }
 
@@ -42,13 +40,13 @@ static void nan_sec_dump(struct nan_data *nan, struct nan_peer *peer)
 static int nan_sec_rx_m1_verify(struct nan_data *nan,
 				const struct nan_attrs *attrs)
 {
-	struct nan_sec_ctxt *sc;
-	u16 expected_len;
+	const struct nan_sec_ctxt *sc;
+	size_t expected_len;
 
 	expected_len = sizeof(struct nan_cipher_suite_info) +
 		sizeof(struct nan_cipher_suite);
 
-	if (!attrs->cipher_suite_info  ||
+	if (!attrs->cipher_suite_info ||
 	    attrs->cipher_suite_info_len < expected_len) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: SEC: Missing valid cipher suite attribute");
@@ -64,8 +62,8 @@ static int nan_sec_rx_m1_verify(struct nan_data *nan,
 		return -1;
 	}
 
-	sc = (struct nan_sec_ctxt *)attrs->sec_ctxt_info;
-	if (sc->scid != NAN_SEC_CTX_TYPE_PMKID ||
+	sc = (const struct nan_sec_ctxt *) attrs->sec_ctxt_info;
+	if (sc->scid != NAN_SEC_CTX_TYPE_ND_PMKID ||
 	    le_to_host16(sc->len) != PMKID_LEN) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: SEC: Got unknown security context");
@@ -80,13 +78,12 @@ static int nan_sec_parse_csia(const u8 *csia, size_t csia_len, u8 *instance_id,
 			      u8 *capab, u8 *csid, u8 *gtk_csid)
 {
 	const struct nan_cipher_suite_info *cs_info =
-		(const struct nan_cipher_suite_info *)csia;
+		(const struct nan_cipher_suite_info *) csia;
 	const u8 *cs_buf = cs_info->cs;
 	const struct nan_cipher_suite *cs;
 
 	if (!csia || csia_len < sizeof(*cs_info)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: Invalid CSIA attribute");
+		wpa_printf(MSG_DEBUG, "NAN: SEC: Invalid CSIA attribute");
 		return -1;
 	}
 
@@ -98,7 +95,7 @@ static int nan_sec_parse_csia(const u8 *csia, size_t csia_len, u8 *instance_id,
 	*gtk_csid = NAN_CS_NONE;
 
 	while (csia_len >= sizeof(*cs)) {
-		cs = (const struct nan_cipher_suite *)(cs_buf);
+		cs = (const struct nan_cipher_suite *) cs_buf;
 		if (*instance_id && cs->instance_id != *instance_id) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: SEC: Multiple instance IDs in CSIA");
@@ -138,8 +135,7 @@ static int nan_sec_parse_csia(const u8 *csia, size_t csia_len, u8 *instance_id,
 	}
 
 	if (*csid == NAN_CS_NONE) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: No valid CSID in CSIA");
+		wpa_printf(MSG_DEBUG, "NAN: SEC: No valid CSID in CSIA");
 		return -1;
 	}
 
@@ -152,7 +148,7 @@ static int nan_sec_rx_m1(struct nan_data *nan, struct nan_peer *peer,
 			 const struct wpa_eapol_key *key)
 {
 	struct nan_ndp_sec *ndp_sec = &peer->ndp_setup.sec;
-	struct nan_sec_ctxt *sc;
+	const struct nan_sec_ctxt *sc;
 	u8 instance_id;
 	int ret;
 
@@ -165,10 +161,9 @@ static int nan_sec_rx_m1(struct nan_data *nan, struct nan_peer *peer,
 	if (ret)
 		return ret;
 
-	sc = (struct nan_sec_ctxt *)msg->attrs.sec_ctxt_info;
+	sc = (const struct nan_sec_ctxt *) msg->attrs.sec_ctxt_info;
 
 	instance_id = sc->instance_id;
-
 	if (ndp_sec->i_instance_id && instance_id &&
 	    ndp_sec->i_instance_id != instance_id) {
 		wpa_printf(MSG_DEBUG, "NAN: SEC: Mismatched instance ID");
@@ -185,23 +180,26 @@ static int nan_sec_rx_m1(struct nan_data *nan, struct nan_peer *peer,
 		  sizeof(key->replay_counter));
 
 	/* Store the authentication token, that is required for m3 MIC */
-	ret = nan_crypto_calc_auth_token(ndp_sec->i_csid, (u8 *)&msg->mgmt->u,
+	if (msg->len < 24)
+		return -1;
+	ret = nan_crypto_calc_auth_token(ndp_sec->i_csid,
+					 (const u8 *) &msg->mgmt->u,
 					 msg->len - 24, ndp_sec->auth_token);
 	if (ret)
 		return ret;
 
 	/* The flow will continue, once higher layer ACK the NDP setup */
-	ndp_sec->valid = 1;
+	ndp_sec->valid = true;
 	return 0;
 }
 
 
-static int nan_sec_key_mic_ver(struct nan_data *nan, u8 *buf, size_t len,
+static int nan_sec_key_mic_ver(struct nan_data *nan, const u8 *buf, size_t len,
 			       const struct wpa_eapol_key *key,
-			       u8 *kck, size_t kck_len, u8 csid)
+			       const u8 *kck, size_t kck_len, u8 csid)
 {
 	u8 mic[NAN_KEY_MIC_24_LEN];
-	u8 *pos = (u8 *)(key + 1);
+	u8 *pos = (u8 *) (key + 1);
 	u8 mic_len;
 	int ret;
 
@@ -237,7 +235,7 @@ static int nan_sec_rx_m2(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_ndp_sec *ndp_sec = &peer->ndp_setup.sec;
 	struct nan_ndp *ndp = peer->ndp_setup.ndp;
 	struct nan_ptk tptk;
-	u8 *pos;
+	const u8 *pos;
 	int ret;
 
 	if (peer->ndp_setup.state != NAN_NDP_STATE_RES_RECV) {
@@ -254,7 +252,7 @@ static int nan_sec_rx_m2(struct nan_data *nan, struct nan_peer *peer,
 	/* Save responder's nonce */
 	os_memcpy(ndp_sec->r_nonce, key->key_nonce, WPA_NONCE_LEN);
 
-	/* Note: replay counter should have been verified by caller */
+	/* Note: Replay counter should have been verified by the caller */
 
 	/* PTK should be derived using NDI addresses */
 	ret = nan_crypto_pmk_to_ptk(ndp_sec->pmk,
@@ -270,7 +268,7 @@ static int nan_sec_rx_m2(struct nan_data *nan, struct nan_peer *peer,
 	 * Due to the different MIC size, need to handle the fields starting
 	 * with the mic differently
 	 */
-	pos = (u8 *)(key + 1);
+	pos = (const u8 *) (key + 1);
 	if (NAN_CS_IS_128(ndp_sec->i_csid))
 		pos += NAN_KEY_MIC_LEN;
 	else
@@ -280,7 +278,9 @@ static int nan_sec_rx_m2(struct nan_data *nan, struct nan_peer *peer,
 		wpa_printf(MSG_DEBUG, "NAN: SEC: TODO: m2 key data");
 
 	/* Verify MIC */
-	ret = nan_sec_key_mic_ver(nan, (u8 *)&msg->mgmt->u,
+	if (msg->len < 24)
+		return -1;
+	ret = nan_sec_key_mic_ver(nan, (const u8 *) &msg->mgmt->u,
 				  msg->len - 24, key,
 				  tptk.kck, tptk.kck_len,
 				  ndp_sec->i_csid);
@@ -293,7 +293,7 @@ static int nan_sec_rx_m2(struct nan_data *nan, struct nan_peer *peer,
 
 	/* Increment the replay counter here to prevent replays */
 	WPA_PUT_BE64(ndp_sec->replaycnt,
-		     (WPA_GET_BE64(ndp_sec->replaycnt) + 1));
+		     WPA_GET_BE64(ndp_sec->replaycnt) + 1);
 	return 0;
 }
 
@@ -314,7 +314,7 @@ static int nan_sec_rx_m3(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 	}
 
-	/* Note: replay counter should have been verified by caller */
+	/* Note: Replay counter should have been verified by caller */
 
 	/* Verify the i_nonce did not change */
 	if (os_memcmp(key->key_nonce, ndp_sec->i_nonce, WPA_NONCE_LEN) != 0) {
@@ -324,8 +324,10 @@ static int nan_sec_rx_m3(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * In case of m3, the MIC is calculated over the frame body
-	 * concatenated with the authentication token
+	 * concatenated with the authentication token.
 	 */
+	if (msg->len < 24)
+		return -1;
 	buf = os_malloc(msg->len - 24 + NAN_AUTH_TOKEN_LEN);
 	if (!buf)
 		return -ENOBUFS;
@@ -334,7 +336,7 @@ static int nan_sec_rx_m3(struct nan_data *nan, struct nan_peer *peer,
 	 * Due to the different MIC size, need to handle the fields starting
 	 * with the mic differently
 	 */
-	pos = (u8 *)(key + 1);
+	pos = (u8 *) (key + 1);
 	if (NAN_CS_IS_128(ndp_sec->i_csid))
 		mic_len = NAN_KEY_MIC_LEN;
 	else
@@ -380,7 +382,7 @@ static int nan_sec_rx_m4(struct nan_data *nan, struct nan_peer *peer,
 			 const struct wpa_eapol_key *key)
 {
 	struct nan_ndp_sec *ndp_sec = &peer->ndp_setup.sec;
-	u8 *pos = (u8 *)(key + 1);
+	u8 *pos = (u8 *) (key + 1);
 	int ret;
 
 	if (peer->ndp_setup.state != NAN_NDP_STATE_DONE) {
@@ -403,17 +405,18 @@ static int nan_sec_rx_m4(struct nan_data *nan, struct nan_peer *peer,
 		wpa_printf(MSG_DEBUG, "NAN: SEC: TODO: m4 key data");
 
 	/* Verify MIC */
-	ret = nan_sec_key_mic_ver(nan, (u8 *)&msg->mgmt->u,
+	if (msg->len < 24)
+		return -1;
+	ret = nan_sec_key_mic_ver(nan, (const u8 *) &msg->mgmt->u,
 				  msg->len - 24, key,
-				  ndp_sec->ptk.kck,
-				  ndp_sec->ptk.kck_len,
+				  ndp_sec->ptk.kck, ndp_sec->ptk.kck_len,
 				  ndp_sec->i_csid);
 	if (ret)
 		return ret;
 
 	/* Increment the replay counter here to prevent replays */
 	WPA_PUT_BE64(ndp_sec->replaycnt,
-		     (WPA_GET_BE64(ndp_sec->replaycnt) + 1));
+		     WPA_GET_BE64(ndp_sec->replaycnt) + 1);
 
 	/* Security negotiation done */
 	return 0;
@@ -591,7 +594,8 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_ndp_sec *ndp_sec = &ndp_setup->sec;
 	struct wpa_eapol_key *key;
 	struct nan_shared_key *shared_key_desc;
-	u16 info, desc, shared_key_desc_len, key_data_len;
+	size_t shared_key_desc_len;
+	u16 info, desc, key_data_len;
 	size_t total_len;
 	u8 instance_id, cipher, capab, gtk_csid;
 	u8 *pos;
@@ -609,7 +613,7 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 		return -1;
 	}
 
-	shared_key_desc = (struct nan_shared_key *)msg->attrs.shared_key_desc;
+	shared_key_desc = (struct nan_shared_key *) msg->attrs.shared_key_desc;
 	shared_key_desc_len = msg->attrs.shared_key_desc_len;
 
 	/* Shared key descriptor mandatory in all messages */
@@ -638,8 +642,8 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 		cipher = ndp_sec->i_csid;
 	}
 
-	key = (struct wpa_eapol_key *)shared_key_desc->key;
-	pos = (u8 *)(key + 1);
+	key = (struct wpa_eapol_key *) shared_key_desc->key;
+	pos = (u8 *) (key + 1);
 
 	total_len = sizeof(*key) + 2;
 
@@ -684,14 +688,15 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	}
 
 	/*
-	 * Note: only the fields before the mic are accessed in the function, so
+	 * Note: Only the fields before the MIC are accessed in the function, so
 	 * it is safe to continue with the key pointer.
 	 */
 
-	/* Note: according to the NAN specification the following fields should
+	/* Note: According to the NAN specification the following fields should
 	 * be ignored:
 	 * key->len: as the key length is derived from the cipher suite.
 	 * key->iv: not needed for AES Key WRAP
+	 * key->rsc: to avoid implicit assumption of a single GTK.
 	 */
 	if (key->type != NAN_KEY_DESC) {
 		wpa_printf(MSG_DEBUG,
@@ -723,7 +728,9 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 		wpa_printf(MSG_DEBUG,
 			   "NAN: SEC: Invalid shared key: key request not supported");
 		return -1;
-	} else if (!(info & WPA_KEY_INFO_KEY_TYPE)) {
+	}
+
+	if (!(info & WPA_KEY_INFO_KEY_TYPE)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: SEC: Invalid shared key: group handshake not supported");
 		return -1;
@@ -803,7 +810,6 @@ int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 
 /*
  * nan_sec_add_m1_attrs - Add security attributes to NAN message 1
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer which is the recipient of the message
  * @buf: Buffer to which the attribute should be added
@@ -869,7 +875,7 @@ static int nan_sec_add_m1_attrs(struct nan_data *nan, struct nan_peer *peer,
 	wpabuf_put_le16(buf, sizeof(struct nan_sec_ctxt) + PMKID_LEN);
 
 	wpabuf_put_le16(buf, PMKID_LEN);
-	wpabuf_put_u8(buf, NAN_SEC_CTX_TYPE_PMKID);
+	wpabuf_put_u8(buf, NAN_SEC_CTX_TYPE_ND_PMKID);
 	wpabuf_put_u8(buf, ndp_sec->i_instance_id);
 	wpabuf_put_data(buf, ndp_sec->i_pmkid, PMKID_LEN);
 
@@ -878,7 +884,7 @@ static int nan_sec_add_m1_attrs(struct nan_data *nan, struct nan_peer *peer,
 	wpabuf_put_le16(buf, sizeof(struct nan_shared_key) + key_len);
 	wpabuf_put_u8(buf, ndp_sec->i_instance_id);
 
-	key = (struct wpa_eapol_key *)wpabuf_put(buf, key_len);
+	key = (struct wpa_eapol_key *) wpabuf_put(buf, key_len);
 	os_memset(key, 0, key_len);
 
 	key->type = NAN_KEY_DESC;
@@ -895,16 +901,15 @@ static int nan_sec_add_m1_attrs(struct nan_data *nan, struct nan_peer *peer,
 	WPA_PUT_BE64(ndp_sec->replaycnt, 1ULL);
 	os_memcpy(key->replay_counter, ndp_sec->replaycnt,
 		  sizeof(key->replay_counter));
-	ndp_sec->replaycnt_ok = 1;
+	ndp_sec->replaycnt_ok = true;
 
-	ndp_sec->valid = 1;
+	ndp_sec->valid = true;
 	return 0;
 }
 
 
 /*
  * nan_sec_add_m2_attrs - Add security attributes to NAN message 2
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer which is the recipient of the message
  * @buf: Buffer to which the attribute should be added
@@ -945,7 +950,7 @@ static int nan_sec_add_m2_attrs(struct nan_data *nan, struct nan_peer *peer,
 	wpabuf_put_le16(buf, sizeof(struct nan_sec_ctxt) + PMKID_LEN);
 
 	wpabuf_put_le16(buf, PMKID_LEN);
-	wpabuf_put_u8(buf, NAN_SEC_CTX_TYPE_PMKID);
+	wpabuf_put_u8(buf, NAN_SEC_CTX_TYPE_ND_PMKID);
 	wpabuf_put_u8(buf, ndp_sec->r_instance_id);
 	wpabuf_put_data(buf, ndp_sec->r_pmkid, PMKID_LEN);
 
@@ -957,7 +962,7 @@ static int nan_sec_add_m2_attrs(struct nan_data *nan, struct nan_peer *peer,
 	wpabuf_put_le16(buf, sizeof(struct nan_shared_key) + key_len);
 	wpabuf_put_u8(buf, ndp_sec->r_instance_id);
 
-	key = (struct wpa_eapol_key *)wpabuf_put(buf, key_len);
+	key = (struct wpa_eapol_key *) wpabuf_put(buf, key_len);
 	os_memset(key, 0, key_len);
 
 	key->type = NAN_KEY_DESC;
@@ -965,7 +970,7 @@ static int nan_sec_add_m2_attrs(struct nan_data *nan, struct nan_peer *peer,
 		WPA_KEY_INFO_MIC;
 	WPA_PUT_BE16(key->key_info, info);
 
-	/* copy the responders's nonce */
+	/* Copy the responders's nonce */
 	os_memcpy(key->key_nonce, ndp_sec->r_nonce, WPA_NONCE_LEN);
 
 	/*
@@ -976,7 +981,7 @@ static int nan_sec_add_m2_attrs(struct nan_data *nan, struct nan_peer *peer,
 	/* Copy replay counter */
 	os_memcpy(key->replay_counter, ndp_sec->replaycnt,
 		  sizeof(key->replay_counter));
-	ndp_sec->replaycnt_ok = 1;
+	ndp_sec->replaycnt_ok = true;
 
 	return 0;
 }
@@ -1163,7 +1168,7 @@ static int nan_sec_add_key_attrs(struct nan_data *nan, struct nan_peer *peer,
 	key_len_pos = wpabuf_put(buf, 2);
 	wpabuf_put_u8(buf, instance_id);
 
-	key = (struct wpa_eapol_key *)wpabuf_put(buf, key_len);
+	key = (struct wpa_eapol_key *) wpabuf_put(buf, key_len);
 	os_memset(key, 0, key_len);
 
 	key->type = NAN_KEY_DESC;
@@ -1224,7 +1229,6 @@ static int nan_sec_add_key_attrs(struct nan_data *nan, struct nan_peer *peer,
 
 /*
  * nan_sec_add_m3_attrs - Add security attributes to NAN message 3
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer which is the recipient of the message
  * @buf: Buffer to which the attribute should be added
@@ -1242,7 +1246,6 @@ static int nan_sec_add_m3_attrs(struct nan_data *nan, struct nan_peer *peer,
 
 /*
  * nan_sec_add_m4_attrs - Add security attributes to NAN message 4
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer which is the recipient of the message
  * @buf: Buffer to which the attribute should be added
@@ -1258,9 +1261,8 @@ static int nan_sec_add_m4_attrs(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
-/*
+/**
  * nan_sec_add_attrs - Add security attributes to NAN message
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer which is the recipient of the message
  * @subtype: Frame subtype
@@ -1302,7 +1304,6 @@ int nan_sec_add_attrs(struct nan_data *nan, struct nan_peer *peer,
 
 /**
  * nan_sec_init_resp - Initialize security context for responder
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer with whom the NDP is being established
  * Returns: 0 on success, negative on failure
@@ -1349,7 +1350,7 @@ int nan_sec_init_resp(struct nan_data *nan, struct nan_peer *peer)
 	/* Sanity check */
 	if (os_memcmp(ndp_sec->i_pmkid, ndp_sec->r_pmkid, PMKID_LEN) != 0) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: m2: local PMKID differs from remote");
+			   "NAN: SEC: m2: Local PMKID differs from remote");
 		return -1;
 	}
 
@@ -1359,7 +1360,8 @@ int nan_sec_init_resp(struct nan_data *nan, struct nan_peer *peer)
 				    ndp_sec->i_nonce, ndp_sec->r_nonce,
 				    &ndp_sec->ptk, ndp_sec->i_csid);
 
-	wpa_printf(MSG_DEBUG, "NAN: SEC: derived PTK for responder (m2). ret=%d",
+	wpa_printf(MSG_DEBUG,
+		   "NAN: SEC: Derived PTK for responder (m2). ret=%d",
 		   ret);
 
 	return ret;
@@ -1368,11 +1370,10 @@ int nan_sec_init_resp(struct nan_data *nan, struct nan_peer *peer)
 
 /*
  * nan_sec_pre_tx - Handle security aspects before sending a NDP NAF
- *
  * @nan: NAN module context from nan_init()
  * @peer: Peer with whom the NDP is being established
- * @buf: Buffer holding the NAF body (not including the ieee80211 header)
- * return 0 on success, and a negative error value on failure.
+ * @buf: Buffer holding the NAF body (not including the IEEE 802.11 header)
+ * Returns: 0 on success, and a negative error value on failure.
  *
  * Note: The NAF content should not be altered after the function returns,
  * as the function might have signed the frame body, i.e., updated the MIC
@@ -1391,8 +1392,8 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 	int ret;
 
 	/* NDP establishment is not in progress */
-	if (!peer->ndp_setup.ndp || peer->ndp_setup.status ==
-	    NAN_NDP_STATUS_REJECTED)
+	if (!peer->ndp_setup.ndp ||
+	    peer->ndp_setup.status == NAN_NDP_STATUS_REJECTED)
 		return 0;
 
 	/* No security configuration */
@@ -1407,11 +1408,11 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 
 	if (len < 7) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: SEC: buffer is too short=%zu (pre Tx)", len);
+			   "NAN: SEC: Buffer is too short=%zu (pre Tx)", len);
 		return -1;
 	}
 
-	/* The subtype is in position 5. See nan_action_build_header() */
+	/* The subtype is the 7th octet. See nan_action_build_header() */
 	subtype = data[6];
 
 	wpa_printf(MSG_DEBUG, "NAN: SEC: subtype=0x%x (pre Tx)", subtype);
@@ -1428,7 +1429,7 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * First get a pointer to the shared key descriptor attribute and
-	 * validate it
+	 * validate it.
 	 */
 	ret = nan_parse_attrs(nan, data + 7, len - 7, &attrs);
 	if (ret)
@@ -1436,39 +1437,37 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 
 	if (!attrs.shared_key_desc ||
 	    attrs.shared_key_desc_len <
-	    (sizeof(*shared_key_desc) + (sizeof(*key) + 2 + NAN_KEY_MIC_LEN))) {
+	    sizeof(*shared_key_desc) + (sizeof(*key) + 2 + NAN_KEY_MIC_LEN)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: SEC: Invalid shared key descriptor attribute");
 		return -1;
 	}
 
-	shared_key_desc = (struct nan_shared_key *)attrs.shared_key_desc;
-	key = (struct wpa_eapol_key *)shared_key_desc->key;
-	mic_ptr = (u8 *)(key + 1);
+	shared_key_desc = (struct nan_shared_key *) attrs.shared_key_desc;
+	key = (struct wpa_eapol_key *) shared_key_desc->key;
+	mic_ptr = (u8 *) (key + 1);
 	nan_attrs_clear(nan, &attrs);
 
 	switch (subtype) {
 	case NAN_SUBTYPE_DATA_PATH_REQUEST:
 		if (peer->ndp_setup.state != NAN_NDP_STATE_START)
 			wpa_printf(MSG_DEBUG,
-				   "NAN: SEC: request invalid state (pre Tx)");
+				   "NAN: SEC: Request invalid state (pre Tx)");
 
-		/* Save the authentication token for m3 */
-		ret = nan_crypto_calc_auth_token(ndp_sec->i_csid,
-						 data, len,
+		/* Save the authentication token for m3. */
+		ret = nan_crypto_calc_auth_token(ndp_sec->i_csid, data, len,
 						 ndp_sec->auth_token);
 		break;
 	case NAN_SUBTYPE_DATA_PATH_RESPONSE:
 		if (peer->ndp_setup.state != NAN_NDP_STATE_REQ_RECV)
 			wpa_printf(MSG_DEBUG,
-				   "NAN: SEC: pre Tx response invalid state");
+				   "NAN: SEC: Pre Tx response invalid state");
 
-		/* Calculate MIC over the frame body */
+		/* Calculate MIC over the frame body. */
 		ret = nan_crypto_key_mic(data, len,
 					 ndp_sec->ptk.kck,
 					 ndp_sec->ptk.kck_len,
-					 ndp_sec->i_csid,
-					 mic_ptr);
+					 ndp_sec->i_csid, mic_ptr);
 		break;
 	case NAN_SUBTYPE_DATA_PATH_CONFIRM:
 		if (peer->ndp_setup.state != NAN_NDP_STATE_RES_RECV)
@@ -1477,7 +1476,7 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 
 		/*
 		 * Calculate MIC over the frame body concatenated with
-		 * authentication token
+		 * authentication token.
 		 */
 		tmp = os_malloc(len + NAN_AUTH_TOKEN_LEN);
 		if (!tmp)
@@ -1486,12 +1485,10 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 		os_memcpy(tmp, ndp_sec->auth_token, NAN_AUTH_TOKEN_LEN);
 		os_memcpy(tmp + NAN_AUTH_TOKEN_LEN, data, len);
 
-		ret = nan_crypto_key_mic(tmp,
-					 len + NAN_AUTH_TOKEN_LEN,
+		ret = nan_crypto_key_mic(tmp, len + NAN_AUTH_TOKEN_LEN,
 					 ndp_sec->ptk.kck,
 					 ndp_sec->ptk.kck_len,
-					 ndp_sec->i_csid,
-					 mic_ptr);
+					 ndp_sec->i_csid, mic_ptr);
 		os_free(tmp);
 		break;
 	case NAN_SUBTYPE_DATA_PATH_KEY_INSTALL:
@@ -1561,7 +1558,7 @@ static int nan_sec_get_strength(enum nan_cipher_suite_id csid, int pairing_akmp)
  * @peer_ndi: NDI address of the peer for the NDP that was just established
  * @local_ndi: Local NDI address for the NDP that was just established
  *
- * Returns true if keys were stored, false otherwise
+ * Returns: true if keys were stored, false otherwise
  */
 bool nan_sec_ndp_store_keys(struct nan_data *nan, struct nan_peer *peer,
 			    const u8 *peer_ndi, const u8 *local_ndi)
@@ -1615,7 +1612,7 @@ bool nan_sec_ndp_store_keys(struct nan_data *nan, struct nan_peer *peer,
 
 	cur = os_zalloc(sizeof(*cur));
 	if (!cur) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: SEC: Failed memory allocation for security info");
 		return false;
 	}
@@ -1640,16 +1637,14 @@ store:
 
 int nan_sec_get_tk(struct nan_data *nan, struct nan_peer *peer,
 		     const u8 *peer_ndi, const u8 *local_ndi,
-		     u8 *tk, size_t *tk_len,
-		     enum nan_cipher_suite_id *csid)
+		     u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid)
 {
 	struct nan_peer_sec_info_entry *cur;
 
 	dl_list_for_each(cur, &peer->info.sec,
 			 struct nan_peer_sec_info_entry, list) {
-
-		if (os_memcmp(peer_ndi, cur->peer_ndi, ETH_ALEN) != 0 ||
-		    os_memcmp(local_ndi, cur->local_ndi, ETH_ALEN) != 0)
+		if (!ether_addr_equal(peer_ndi, cur->peer_ndi) ||
+		    !ether_addr_equal(local_ndi, cur->local_ndi))
 			continue;
 
 		os_memcpy(tk, &cur->ptk.tk, cur->ptk.tk_len);

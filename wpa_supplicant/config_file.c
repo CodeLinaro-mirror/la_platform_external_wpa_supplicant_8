@@ -1037,6 +1037,14 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid,
 		}
 	}
 #endif /* CONFIG_SAE */
+#ifdef CONFIG_PMKSA_PRIVACY
+	INT(pmksa_privacy);
+#endif /* CONFIG_PMKSA_PRIVACY */
+#ifdef CONFIG_IEEE8021X_AUTH
+	INT(eap_over_auth_frame);
+#endif /* CONFIG_IEEE8021X_AUTH */
+	INT_DEF(drop_unicast_ip_in_l2_multicast, 1);
+	INT_DEF(always_use_proxy_arp, 0);
 #undef STR
 #undef INT
 #undef INT_DEF
@@ -1455,6 +1463,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 			config->p2p_chan_switch_req_enable);
 	if (config->p2p_reg_info)
 		fprintf(f, "p2p_reg_info=%d\n", config->p2p_reg_info);
+	if (config->p2p_assisted_dfs_chan_enable)
+		fprintf(f, "p2p_assisted_dfs_chan_enable=%d\n",
+			config->p2p_assisted_dfs_chan_enable);
 
 	if (WPA_GET_BE32(config->ip_addr_go))
 		fprintf(f, "ip_addr_go=%u.%u.%u.%u\n",
@@ -1807,6 +1818,19 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "pr_pasn_type=%d\n", config->pr_pasn_type);
 	if (config->pr_preferred_role)
 		fprintf(f, "pr_preferred_role=%d\n", config->pr_preferred_role);
+
+#ifdef CONFIG_PASN
+	if (config->pasn_groups) {
+		int i;
+
+		fprintf(f, "pasn_groups=");
+		for (i = 0; config->pasn_groups[i] > 0; i++) {
+			fprintf(f, "%s%d", i > 0 ? " " : "",
+				config->pasn_groups[i]);
+		}
+		fprintf(f, "\n");
+	}
+#endif /* CONFIG_PASN */
 }
 
 static void wpa_config_write_identity(FILE *f, struct wpa_dev_ik *dev_ik)

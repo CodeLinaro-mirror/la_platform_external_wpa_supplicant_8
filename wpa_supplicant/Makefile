@@ -332,6 +332,21 @@ NEED_NAN=y
 CFLAGS += -DCONFIG_NAN_USD
 endif
 
+ifdef NEED_NAN
+OBJS += nan_supplicant.o
+OBJS += ../src/nan/nan.o
+OBJS += ../src/common/nan_de.o
+OBJS += ../src/nan/nan_util.o
+OBJS += ../src/nan/nan_ndp.o
+OBJS += ../src/nan/nan_ndl.o
+OBJS += ../src/nan/nan_crypto.o
+OBJS += ../src/nan/nan_sec.o
+OBJS += ../src/nan/nan_bootstrap.o
+ifdef CONFIG_PASN
+OBJS += ../src/nan/nan_pairing.o
+endif
+endif
+
 ifdef CONFIG_PR
 OBJS += ../src/common/proximity_ranging.o
 OBJS += pr_supplicant.o
@@ -455,6 +470,21 @@ OBJS += wifi_display.o
 endif
 endif
 
+ifdef CONFIG_PMKSA_PRIVACY
+CONFIG_ENC_ASSOC=y
+CFLAGS += -DCONFIG_PMKSA_PRIVACY
+endif
+
+ifdef CONFIG_IEEE8021X_AUTH
+CONFIG_ENC_ASSOC=y
+CFLAGS += -DCONFIG_IEEE8021X_AUTH
+endif
+
+ifdef CONFIG_ENC_ASSOC
+CONFIG_PASN=y
+CFLAGS += -DCONFIG_ENC_ASSOC
+endif
+
 ifdef CONFIG_PASN
 CFLAGS += -DCONFIG_PASN
 CFLAGS += -DCONFIG_PTKSA_CACHE
@@ -462,6 +492,7 @@ NEED_HMAC_SHA256_KDF=y
 NEED_HMAC_SHA384_KDF=y
 NEED_SHA256=y
 NEED_SHA384=y
+NEED_DRAGONFLY=y
 OBJS += ../src/pasn/pasn_initiator.o
 OBJS += ../src/pasn/pasn_common.o
 OBJS += pasn_supplicant.o
@@ -1089,6 +1120,7 @@ OBJS += ../src/pasn/pasn_responder.o
 OBJS += ../src/ap/ieee802_11.o
 OBJS += ../src/ap/hw_features.o
 OBJS += ../src/ap/dfs.o
+OBJS += ../src/ap/interference.o
 CFLAGS += -DNEED_AP_MLME
 endif
 ifdef CONFIG_WPS
@@ -2218,6 +2250,10 @@ LIBPASNSO += ../src/utils/os_$(CONFIG_OS).c
 LIBPASNSO += ../src/utils/config.c
 LIBPASNSO += ../src/utils/common.c
 
+ifndef CONFIG_NO_RANDOM_POOL
+LIBPASNSO += ../src/crypto/random.c
+endif
+
 ifdef NEED_BASE64
 LIBPASNSO += ../src/utils/base64.c
 endif
@@ -2285,7 +2321,7 @@ LIBPASNSO += ../src/crypto/crypto_wolfssl.c
 ifdef TLS_FUNCS
 LIBPASNSO += ../src/crypto/tls_wolfssl.c
 NEED_TLS_PRF_SHA256=y
-LIBPASNSO += -lwolfssl -lm
+LIBPASNSO_DEP += -lwolfssl -lm
 endif
 endif
 
@@ -2293,7 +2329,7 @@ ifeq ($(CONFIG_TLS), openssl)
 LIBPASNSO += ../src/crypto/crypto_openssl.c
 ifdef TLS_FUNCS
 LIBPASNSO += ../src/crypto/tls_openssl.c
-LIBPASNSO += -lssl -lcrypto
+LIBPASNSO_DEP += -lssl -lcrypto
 NEED_TLS_PRF_SHA256=y
 endif
 endif
@@ -2302,8 +2338,8 @@ ifeq ($(CONFIG_TLS), gnutls)
 LIBPASNSO += ../src/crypto/crypto_$(CONFIG_CRYPTO).c
 ifdef TLS_FUNCS
 LIBPASNSO += ../src/crypto/tls_gnutls.c
-LIBPASNSO += -lgnutls -lgpg-error
-LIBPASNSO += -lgcrypt
+LIBPASNSO_DEP += -lgnutls -lgpg-error
+LIBPASNSO_DEP += -lgcrypt
 endif
 endif
 
@@ -2358,7 +2394,7 @@ LIBPASNSO += ../src/pasn/pasn_common.c
 
 libpasn.so: $(LIBPASNSO)
 	@$(E) "  CC  $@ ($^)"
-	$(Q)$(CC) $(LDFLAGS) -o $@ $(PASN_CFLAGS) -shared -fPIC -lcrypto $^
+	$(Q)$(CC) $(LDFLAGS) -o $@ $(PASN_CFLAGS) -shared -fPIC $^ -lcrypto $(LIBPASNSO_DEP)
 
 clean: common-clean
 	$(MAKE) -C ../src clean

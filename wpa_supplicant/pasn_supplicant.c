@@ -37,7 +37,36 @@ struct wpa_pasn_auth_work {
 	u16 group;
 	int network_id;
 	struct wpabuf *comeback;
+#ifdef CONFIG_ENC_ASSOC
+	unsigned int auth_alg;
+	int group_cipher;
+	int group_mgmt_cipher;
+	u16 rsn_capab;
+	u8 *rsnxe_data;
+	bool is_ml_peer;
+#endif /* CONFIG_ENC_ASSOC */
 };
+
+
+static void wpas_pasn_free_peer_password(struct pasn_peer *peer)
+{
+	str_clear_free(peer->password);
+	peer->password = NULL;
+}
+
+
+static void wpas_pasn_free_peer_comeback(struct pasn_peer *peer)
+{
+	os_free(peer->comeback);
+	peer->comeback = NULL;
+}
+
+
+static void wpas_pasn_free_peer(struct pasn_peer *peer)
+{
+	wpas_pasn_free_peer_password(peer);
+	wpas_pasn_free_peer_comeback(peer);
+}
 
 
 static int wpas_pasn_send_mlme(void *ctx, const u8 *data, size_t data_len,
@@ -53,6 +82,10 @@ static void wpas_pasn_free_auth_work(struct wpa_pasn_auth_work *awork)
 {
 	wpabuf_free(awork->comeback);
 	awork->comeback = NULL;
+#ifdef CONFIG_ENC_ASSOC
+	os_free(awork->rsnxe_data);
+	awork->rsnxe_data = NULL;
+#endif /* CONFIG_ENC_ASSOC */
 	os_free(awork);
 }
 
@@ -153,6 +186,59 @@ static int wpas_pasn_sae_setup_pt(struct wpa_ssid *ssid, int group)
 #endif /* CONFIG_SAE */
 
 
+int wpas_pasn_get_group(struct wpa_supplicant *wpa_s,
+			struct wpa_ssid *ssid, struct pasn_data *pasn)
+{
+	static const int default_groups[] = { 19, 20, 21, 0 };
+	const int *groups;
+	unsigned int i, j;
+
+	if (ssid && ssid->pasn_groups)
+		groups = ssid->pasn_groups;
+	else if (wpa_s->conf->pasn_groups)
+		groups = wpa_s->conf->pasn_groups;
+	else
+		groups = default_groups;
+
+	for (i = 0; groups[i]; i++) {
+		bool rejected = false;
+		bool ap_supported = true;
+
+		if (!dragonfly_suitable_group(groups[i], 1))
+			continue;
+
+		if (!pasn)
+			return groups[i];
+
+		/* Skip groups already rejected in this session */
+		for (j = 0; j < pasn->rejected_group_idx; j++) {
+			if (groups[i] == pasn->rejected_groups[j]) {
+				rejected = true;
+				break;
+			}
+		}
+		if (rejected)
+			continue;
+
+		/* Take intersection with AP's supported groups */
+		if (pasn->ap_supported_group_idx > 0) {
+			ap_supported = false;
+			for (j = 0; j < pasn->ap_supported_group_idx; j++) {
+				if (groups[i] == pasn->ap_supported_groups[j]) {
+					ap_supported = true;
+					break;
+				}
+			}
+		}
+		if (ap_supported)
+			return groups[i];
+	}
+
+	/* pasn_groups configured but no suitable group found - failure */
+	return 0;
+}
+
+
 static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
 					 struct pasn_peer *peer,
 					 struct wpa_bss *bss,
@@ -162,7 +248,17 @@ static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
 	const u8 *rsne, *rsnxe;
 	struct wpa_ie_data rsne_data;
 	int sel, key_mgmt, pairwise_cipher;
-	int group = 19;
+	int group;
+
+	group = wpas_pasn_get_group(wpa_s, ssid, NULL);
+
+	if (!group) {
+		wpa_printf(MSG_INFO,
+			   "PASN: No suitable group found; cannot start authentication");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "PASN: Selected group %d", group);
 
 	rsne = wpa_bss_get_rsne(wpa_s, bss, NULL, false);
 	if (!rsne) {
@@ -457,7 +553,9 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 					 peer->peer_addr, peer->akmp,
 					 peer->cipher, peer->group,
 					 peer->network_id,
-					 peer->comeback, peer->comeback_len)) {
+					 peer->comeback, peer->comeback_len,
+					 WLAN_AUTH_PASN, 0, 0, 0, NULL,
+					 false)) {
 			peer->status = PASN_STATUS_FAILURE;
 			wpa_msg(wpa_s, MSG_INFO, PASN_AUTH_STATUS MACSTR
 				" akmp=%s, status=%u",
@@ -465,10 +563,7 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 				wpa_key_mgmt_txt(peer->akmp, WPA_PROTO_RSN),
 				peer->status);
 			wpa_s->pasn_count++;
-			str_clear_free(peer->password);
-			os_free(peer->comeback);
-			peer->password = NULL;
-			peer->comeback = NULL;
+			wpas_pasn_free_peer(peer);
 			continue;
 		}
 		wpa_printf(MSG_DEBUG, "PASN: Sent PASN auth start for " MACSTR,
@@ -483,8 +578,7 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_DEBUG, "PASN: Response sent");
 		for (i = 0; i < pasn_params->num_peers; i++) {
 			peer = &pasn_params->peer[i];
-			str_clear_free(peer->password);
-			os_free(peer->comeback);
+			wpas_pasn_free_peer(peer);
 
 			if (peer->temporary_network) {
 				ssid = wpa_config_get_network(wpa_s->conf,
@@ -529,8 +623,7 @@ static void wpas_pasn_delete_peers(struct wpa_supplicant *wpa_s,
 		peer = &pasn_params->peer[i];
 		ptksa_cache_flush(wpa_s->ptksa, peer->peer_addr,
 				  WPA_CIPHER_NONE);
-		str_clear_free(peer->password);
-		peer->password = NULL;
+		wpas_pasn_free_peer_password(peer);
 	}
 }
 
@@ -624,7 +717,7 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 	const u8 *indic;
 	u16 fils_info;
 #endif /* CONFIG_FILS */
-	u16 capab = 0;
+	u32 capab = 0;
 	bool derive_kdk;
 	int ret;
 
@@ -714,9 +807,32 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
 	    ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_SPP_A_MSDU))
 		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
+#ifdef CONFIG_ENC_ASSOC
+	if (awork->auth_alg == WLAN_AUTH_EPPKE) {
+		if (!ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_KEK_IN_PASN))
+		{
+			wpa_printf(MSG_INFO,
+				   "EPPKE: KEK_IN_PASN not set in AP RSNXE");
+			goto fail;
+		}
+		if (!ieee802_11_rsnx_capab(rsnxe,
+					   WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION)) {
+			wpa_printf(MSG_INFO,
+				   "EPPKE: ASSOC_FRAME_ENCRYPTION not set in AP RSNXE");
+			goto fail;
+		}
+		if (wpa_s->drv_flags2 &
+		    WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION) {
+			capab |= BIT(WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION);
+			capab |= BIT(WLAN_RSNX_CAPAB_KEK_IN_PASN);
+			pasn->derive_kek = true;
+		}
+	}
+#endif /* CONFIG_ENC_ASSOC */
 
 	pasn_set_rsnxe_caps(pasn, capab);
-	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL);
+	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL, NULL,
+				NULL);
 	ssid = wpa_config_get_network(wpa_s->conf, awork->network_id);
 
 #ifdef CONFIG_SAE
@@ -781,6 +897,14 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
 #endif /* CONFIG_IEEE80211R */
 	}
 
+#ifdef CONFIG_ENC_ASSOC
+	pasn->auth_alg = awork->auth_alg;
+	pasn->group_cipher = awork->group_cipher;
+	pasn->group_mgmt_cipher = awork->group_mgmt_cipher;
+	pasn->rsn_capab = awork->rsn_capab;
+	pasn_set_rsnxe_ie(pasn, awork->rsnxe_data);
+	pasn->is_ml_peer = awork->is_ml_peer;
+#endif /* CONFIG_ENC_ASSOC */
 
 	ret = wpas_pasn_start(pasn, awork->own_addr, awork->peer_addr,
 			      awork->peer_addr, awork->akmp, awork->cipher,
@@ -810,7 +934,10 @@ fail:
 int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 			 const u8 *own_addr, const u8 *peer_addr,
 			 int akmp, int cipher, u16 group, int network_id,
-			 const u8 *comeback, size_t comeback_len)
+			 const u8 *comeback, size_t comeback_len,
+			 unsigned int auth_alg, int group_cipher,
+			 int group_mgmt_cipher, u16 rsn_capab,
+			 const u8 *rsnxe_data, bool is_ml_peer)
 {
 	struct wpa_pasn_auth_work *awork;
 	struct wpa_bss *bss;
@@ -856,6 +983,21 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 	awork->cipher = cipher;
 	awork->group = group;
 	awork->network_id = network_id;
+#ifdef CONFIG_ENC_ASSOC
+	awork->auth_alg = auth_alg;
+	awork->group_cipher = group_cipher;
+	awork->group_mgmt_cipher = group_mgmt_cipher;
+	awork->rsn_capab = rsn_capab;
+	awork->is_ml_peer = is_ml_peer;
+
+	if (rsnxe_data) {
+		awork->rsnxe_data = os_memdup(rsnxe_data, 2 + rsnxe_data[1]);
+		if (!awork->rsnxe_data) {
+			wpas_pasn_free_auth_work(awork);
+			return -1;
+		}
+	}
+#endif /* CONFIG_ENC_ASSOC */
 
 	if (comeback && comeback_len) {
 		awork->comeback = wpabuf_alloc_copy(comeback, comeback_len);
@@ -865,8 +1007,8 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s,
 		}
 	}
 
-	if (radio_add_work(wpa_s, bss->freq, "pasn-start-auth", 1,
-			   wpas_pasn_auth_start_cb, awork) < 0) {
+	if (!radio_add_work(wpa_s, bss->freq, "pasn-start-auth", 1,
+			    wpas_pasn_auth_start_cb, awork)) {
 		wpas_pasn_free_auth_work(awork);
 		return -1;
 	}
@@ -891,6 +1033,25 @@ void wpas_pasn_auth_stop(struct wpa_supplicant *wpa_s)
 			      pasn->comeback_after);
 
 	wpas_pasn_reset(wpa_s);
+
+	/* Reset rejected group state when authentication ends */
+	pasn->rejected_group_idx = 0;
+	os_memset(pasn->rejected_groups, 0, sizeof(pasn->rejected_groups));
+}
+
+
+void wpas_pasn_free_params(struct wpa_supplicant *wpa_s)
+{
+	unsigned int i;
+
+	if (!wpa_s->pasn_params)
+		return;
+
+	for (i = 0; i < wpa_s->pasn_params->num_peers; i++)
+		wpas_pasn_free_peer(&wpa_s->pasn_params->peer[i]);
+
+	os_free(wpa_s->pasn_params);
+	wpa_s->pasn_params = NULL;
 }
 
 
@@ -916,7 +1077,39 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
 
 	return wpas_pasn_auth_start(wpa_s, own_addr, peer_addr, akmp, cipher,
 				    group, network_id, params->comeback,
-				    params->comeback_len);
+				    params->comeback_len, pasn->auth_alg,
+				    pasn->group_cipher,
+				    pasn->group_mgmt_cipher, pasn->rsn_capab,
+				    pasn->rsnxe_ie, pasn->is_ml_peer);
+}
+
+
+static int wpas_pasn_retry_with_next_group(struct wpa_supplicant *wpa_s,
+					   struct pasn_data *pasn)
+{
+	struct wpa_pasn_params_data params;
+	u16 next_group;
+	struct wpa_ssid *ssid = NULL;
+
+#ifdef CONFIG_ENC_ASSOC
+	if (pasn->auth_alg == WLAN_AUTH_EPPKE)
+		ssid = wpa_s->current_ssid;
+#endif /* CONFIG_ENC_ASSOC */
+
+	next_group = (u16) wpas_pasn_get_group(wpa_s, ssid, pasn);
+	if (!next_group) {
+		wpa_printf(MSG_DEBUG,
+			   "PASN: No more groups to try after rejection");
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "PASN: Retrying with group %u after rejection",
+		   next_group);
+
+	pasn->group = next_group;
+
+	os_memset(&params, 0, sizeof(params));
+	return wpas_pasn_immediate_retry(wpa_s, pasn, &params);
 }
 
 
@@ -947,8 +1140,8 @@ static void wpas_pasn_store_comeback_data(struct wpa_supplicant *wpa_s,
 	if (!peer)
 		return;
 
-	os_free(peer->comeback);
-	peer->comeback = os_zalloc(wpabuf_len(comeback));
+	wpas_pasn_free_peer_comeback(peer);
+	peer->comeback = os_memdup(wpabuf_head(comeback), wpabuf_len(comeback));
 	if (!peer->comeback) {
 		wpa_printf(MSG_ERROR,
 			   "PASN: Mem alloc failed for comeback data");
@@ -956,7 +1149,6 @@ static void wpas_pasn_store_comeback_data(struct wpa_supplicant *wpa_s,
 	}
 
 	peer->comeback_len = wpabuf_len(comeback);
-	os_memcpy(peer->comeback, wpabuf_head_u8(comeback), peer->comeback_len);
 	peer->comeback_after = comeback_after;
 }
 
@@ -974,7 +1166,8 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 	wpabuf_free(pasn->frame);
 	pasn->frame = NULL;
 
-	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL);
+	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL, NULL,
+				NULL);
 	ret = wpa_pasn_auth_rx(pasn, (const u8 *) mgmt, len, &pasn_data);
 	if (ret == 0) {
 		ptksa_cache_add(wpa_s->ptksa, pasn->own_addr, pasn->peer_addr,
@@ -983,10 +1176,19 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 				pasn_get_ptk(pasn),
 				wpa_s->pasn_params ? wpas_pasn_deauth_cb : NULL,
 				wpa_s->pasn_params ? wpa_s : NULL,
-				pasn_get_akmp(pasn));
+				pasn_get_akmp(pasn), pasn->auth_alg);
 
 		if (pasn->pmksa_entry)
 			wpa_sm_set_cur_pmksa(wpa_s->wpa, pasn->pmksa_entry);
+
+		if (pasn->auth_alg == WLAN_AUTH_EPPKE) {
+#ifdef CONFIG_SME
+			os_memcpy(wpa_s->sme.sae.pmkid, pasn->sae.pmkid,
+				  PMKID_LEN);
+#endif /* CONFIG_SME */
+			wpa_sm_set_pmk(wpa_s->wpa, pasn->pmk, pasn->pmk_len,
+				       pasn->sae.pmkid, pasn->own_addr);
+		}
 	}
 
 	forced_memzero(pasn_get_ptk(pasn), sizeof(pasn->ptk));
@@ -1002,6 +1204,16 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 
 	if (ret == 1)
 		ret = wpas_pasn_immediate_retry(wpa_s, pasn, &pasn_data);
+
+	if (ret == 2) {
+		ret = wpas_pasn_retry_with_next_group(wpa_s, pasn);
+		if (ret) {
+			wpa_printf(MSG_INFO,
+				   "PASN: Group rejection retry failed");
+			wpas_pasn_auth_stop(wpa_s);
+			wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_FAILURE);
+		}
+	}
 
 	return ret;
 }
@@ -1049,7 +1261,7 @@ void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			if (!dst->password) {
 				wpa_printf(MSG_DEBUG,
 					   "PASN: Mem alloc failed for password");
-				return;
+				goto fail;
 			}
 		}
 		if (src->comeback_len && src->comeback) {
@@ -1058,7 +1270,7 @@ void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 			if (!dst->comeback) {
 				wpa_printf(MSG_DEBUG,
 					   "PASN: Mem alloc failed for comeback cookie");
-				return;
+				goto fail;
 			}
 			dst->comeback_len = src->comeback_len;
 		}
@@ -1077,6 +1289,11 @@ void wpas_pasn_auth_trigger(struct wpa_supplicant *wpa_s,
 	} else if (pasn_auth->action == PASN_ACTION_AUTH) {
 		wpas_pasn_configure_next_peer(wpa_s, wpa_s->pasn_params);
 	}
+
+	return;
+
+fail:
+	wpas_pasn_free_params(wpa_s);
 }
 
 

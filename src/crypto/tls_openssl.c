@@ -2058,8 +2058,9 @@ static int tls_match_altsubject_component(X509 *cert, int type,
 		gen = sk_GENERAL_NAME_value(ext, i);
 		if (gen->type != type)
 			continue;
-		if (os_strlen((char *) gen->d.ia5->data) == len &&
-		    os_memcmp(value, gen->d.ia5->data, len) == 0)
+		if ((size_t) ASN1_STRING_length(gen->d.ia5) == len &&
+		    os_memcmp(value, ASN1_STRING_get0_data(gen->d.ia5), len) ==
+		    0)
 			found++;
 	}
 
@@ -2200,7 +2201,7 @@ static int match_dn_field(const X509 *cert, int nid, const char *field,
 			  const struct tls_dn_field_order_cnt *dn_cnt)
 {
 	int i, ret = 0, len, config_dn_field_index, match_index = 0;
-	X509_NAME *name;
+	const X509_NAME *name;
 
 	len = os_strlen(value);
 	name = X509_get_subject_name((X509 *) cert);
@@ -2212,9 +2213,10 @@ static int match_dn_field(const X509 *cert, int nid, const char *field,
 		return 0;
 
 	/* Fetch value based on NID */
-	for (i = -1; (i = X509_NAME_get_index_by_NID(name, nid, i)) > -1;) {
-		X509_NAME_ENTRY *e;
-		ASN1_STRING *cn;
+	for (i = -1; (i = X509_NAME_get_index_by_NID((X509_NAME *) name, nid,
+						     i)) > -1;) {
+		const X509_NAME_ENTRY *e;
+		const ASN1_STRING *cn;
 
 		e = X509_NAME_get_entry(name, i);
 		if (!e)
@@ -2369,7 +2371,7 @@ static int tls_match_suffix_helper(X509 *cert, const char *match,
 	int i;
 	stack_index_t j;
 	int dns_name = 0;
-	X509_NAME *name;
+	const X509_NAME *name;
 
 	wpa_printf(MSG_DEBUG, "TLS: Match domain against %s%s",
 		   full ? "": "suffix ", match);
@@ -2382,10 +2384,10 @@ static int tls_match_suffix_helper(X509 *cert, const char *match,
 			continue;
 		dns_name++;
 		wpa_hexdump_ascii(MSG_DEBUG, "TLS: Certificate dNSName",
-				  gen->d.dNSName->data,
-				  gen->d.dNSName->length);
-		if (domain_suffix_match(gen->d.dNSName->data,
-					gen->d.dNSName->length,
+				  ASN1_STRING_get0_data(gen->d.dNSName),
+				  ASN1_STRING_length(gen->d.dNSName));
+		if (domain_suffix_match(ASN1_STRING_get0_data(gen->d.dNSName),
+					ASN1_STRING_length(gen->d.dNSName),
 					match, match_len, full) == 1) {
 			wpa_printf(MSG_DEBUG, "TLS: %s in dNSName found",
 				   full ? "Match" : "Suffix match");
@@ -2403,10 +2405,11 @@ static int tls_match_suffix_helper(X509 *cert, const char *match,
 	name = X509_get_subject_name(cert);
 	i = -1;
 	for (;;) {
-		X509_NAME_ENTRY *e;
-		ASN1_STRING *cn;
+		const X509_NAME_ENTRY *e;
+		const ASN1_STRING *cn;
 
-		i = X509_NAME_get_index_by_NID(name, NID_commonName, i);
+		i = X509_NAME_get_index_by_NID((X509_NAME *) name,
+					       NID_commonName, i);
 		if (i == -1)
 			break;
 		e = X509_NAME_get_entry(name, i);
@@ -2416,8 +2419,10 @@ static int tls_match_suffix_helper(X509 *cert, const char *match,
 		if (cn == NULL)
 			continue;
 		wpa_hexdump_ascii(MSG_DEBUG, "TLS: Certificate commonName",
-				  cn->data, cn->length);
-		if (domain_suffix_match(cn->data, cn->length,
+				  ASN1_STRING_get0_data(cn),
+				  ASN1_STRING_length(cn));
+		if (domain_suffix_match(ASN1_STRING_get0_data(cn),
+					ASN1_STRING_length(cn),
 					match, match_len, full) == 1) {
 			wpa_printf(MSG_DEBUG, "TLS: %s in commonName found",
 				   full ? "Match" : "Suffix match");
@@ -2630,7 +2635,7 @@ static void openssl_tls_cert_event(struct tls_connection *conn,
 		    gen->type != GEN_URI)
 			continue;
 
-		pos = os_malloc(10 + gen->d.ia5->length + 1);
+		pos = os_malloc(10 + ASN1_STRING_length(gen->d.ia5) + 1);
 		if (pos == NULL)
 			break;
 		altsubject[num_altsubject++] = pos;
@@ -2650,8 +2655,9 @@ static void openssl_tls_cert_event(struct tls_connection *conn,
 			break;
 		}
 
-		os_memcpy(pos, gen->d.ia5->data, gen->d.ia5->length);
-		pos += gen->d.ia5->length;
+		os_memcpy(pos, ASN1_STRING_get0_data(gen->d.ia5),
+			  ASN1_STRING_length(gen->d.ia5));
+		pos += ASN1_STRING_length(gen->d.ia5);
 		*pos = '\0';
 	}
 	sk_GENERAL_NAME_pop_free(ext, GENERAL_NAME_free);
@@ -3024,6 +3030,31 @@ static int tls_load_ca_der(struct tls_data *data, const char *ca_cert)
 #endif /* OPENSSL_NO_STDIO */
 
 
+static int tls_add_ca_cert(SSL_CTX *ssl_ctx, X509 *cert)
+{
+	unsigned long err;
+
+	if (X509_STORE_add_cert(SSL_CTX_get_cert_store(ssl_ctx), cert) == 1)
+		return 0;
+
+	err = ERR_peek_error();
+
+	if (ERR_GET_LIB(err) == ERR_LIB_X509 &&
+	    ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+		ERR_get_error();
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: %s - ignoring cert already in hash table error",
+			   __func__);
+		return 0;
+	}
+
+	tls_show_errors(MSG_WARNING, __func__,
+			"Failed to add ca_cert_blob to certificate store");
+
+	return -1;
+}
+
+
 static int tls_connection_ca_cert(struct tls_data *data,
 				  struct tls_connection *conn,
 				  const char *ca_cert, const u8 *ca_cert_blob,
@@ -3086,49 +3117,69 @@ static int tls_connection_ca_cert(struct tls_data *data,
 	}
 
 	if (ca_cert_blob) {
-		X509 *cert = d2i_X509(NULL,
-				      (const unsigned char **) &ca_cert_blob,
-				      ca_cert_blob_len);
-		if (cert == NULL) {
-			BIO *bio = BIO_new_mem_buf(ca_cert_blob,
-						   ca_cert_blob_len);
+		unsigned long err;
+		X509 *cert;
+		int count;
+		BIO *bio;
 
-			if (bio) {
-				cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
-				BIO_free(bio);
-			}
-
-			if (!cert) {
-				tls_show_errors(MSG_WARNING, __func__,
-						"Failed to parse ca_cert_blob");
-				return -1;
-			}
-
-			while (ERR_get_error()) {
-				/* Ignore errors from DER conversion. */
-			}
-		}
-
-		if (!X509_STORE_add_cert(SSL_CTX_get_cert_store(ssl_ctx),
-					 cert)) {
-			unsigned long err = ERR_peek_error();
-			tls_show_errors(MSG_WARNING, __func__,
-					"Failed to add ca_cert_blob to "
-					"certificate store");
-			if (ERR_GET_LIB(err) == ERR_LIB_X509 &&
-			    ERR_GET_REASON(err) ==
-			    X509_R_CERT_ALREADY_IN_HASH_TABLE) {
-				wpa_printf(MSG_DEBUG, "OpenSSL: %s - ignoring "
-					   "cert already in hash table error",
-					   __func__);
-			} else {
+		cert = d2i_X509(NULL,
+				(const unsigned char **) &ca_cert_blob,
+				ca_cert_blob_len);
+		if (cert) {
+			if (tls_add_ca_cert(ssl_ctx, cert) < 0) {
 				X509_free(cert);
 				return -1;
 			}
+
+			wpa_printf(MSG_DEBUG,
+				   "OpenSSL: %s - added ca_cert_blob to certificate store",
+				   __func__);
+			X509_free(cert);
+			return 0;
 		}
-		X509_free(cert);
-		wpa_printf(MSG_DEBUG, "OpenSSL: %s - added ca_cert_blob "
-			   "to certificate store", __func__);
+
+		count = 0;
+		bio = BIO_new_mem_buf(ca_cert_blob, ca_cert_blob_len);
+		if (bio) {
+			while ((cert = PEM_read_bio_X509(bio, NULL, NULL,
+							 NULL))) {
+				if (count == 0) {
+					/* Ignore errors from DER conversion
+					 * if we detect a certificate in PEM
+					 * format. */
+					ERR_clear_error();
+				}
+				count++;
+				if (tls_add_ca_cert(ssl_ctx, cert) < 0) {
+					X509_free(cert);
+					BIO_free(bio);
+					return -1;
+				}
+				X509_free(cert);
+			}
+			BIO_free(bio);
+		}
+
+		if (count == 0) {
+			tls_show_errors(MSG_WARNING, __func__,
+					"Failed to parse ca_cert_blob");
+			return -1;
+		}
+
+		/* When the loop ends successfully, it's because of EOF */
+		err = ERR_peek_last_error();
+		if (ERR_GET_LIB(err) != ERR_LIB_PEM ||
+		    ERR_GET_REASON(err) != PEM_R_NO_START_LINE) {
+			tls_show_errors(MSG_WARNING, __func__,
+					"Failed to parse ca_cert_blob bundle");
+			return -1;
+		}
+
+		ERR_clear_error();
+
+		wpa_printf(MSG_DEBUG,
+			   "OpenSSL: %s - added %d ca_cert_blob certificates to certificate store",
+			   __func__, count);
 		return 0;
 	}
 
@@ -6047,7 +6098,9 @@ int tls_global_set_params(void *tls_ctx,
  * commented out unless explicitly needed for EAP-FAST in order to be able to
  * build this file with unmodified openssl. */
 
-#if (defined(OPENSSL_IS_BORINGSSL) || OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
+#if (defined(OPENSSL_IS_BORINGSSL) || \
+     (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)) || \
+     LIBRESSL_VERSION_NUMBER >= 0x4020000fL)
 static int tls_sess_sec_cb(SSL *s, void *secret, int *secret_len,
 			   STACK_OF(SSL_CIPHER) *peer_ciphers,
 			   const SSL_CIPHER **cipher, void *arg)

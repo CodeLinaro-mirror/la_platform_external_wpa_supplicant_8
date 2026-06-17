@@ -15,6 +15,9 @@
 #include "drivers/driver.h"
 #include "nan_i.h"
 
+#ifndef NAN_MODULE_TESTS_H
+#define NAN_MODULE_TESTS_H
+
 #define NAN_TEST_NAME_MAX     32
 
 /*
@@ -37,9 +40,8 @@ enum nan_test_ndp_notify_type {
 #define NAN_TEST_MAX_POT_AVAIL 256
 #define NAN_MAX_NUM_NDPS       8
 
-/*
+/**
  * nan_test_dev_conf - NAN test device configuration
- *
  * @schedule_cb: Callback to configure different schedule handling policies
  *     for a device for initial request and response.
  * @schedule_conf_cb: Callback to configure different schedule handling
@@ -119,7 +121,7 @@ struct nan_device {
 	size_t pot_avail_len;
 
 	struct nan_data *nan;
-	struct nan_test_dev_conf *conf;
+	const struct nan_test_dev_conf *conf;
 
 	size_t n_ndps;
 
@@ -144,4 +146,6 @@ struct nan_test_case {
 	struct nan_test_dev_conf sub_conf;
 };
 
-struct nan_test_case *nan_test_case_get_next(void);
+const struct nan_test_case * nan_test_case_get_next(void);
+
+#endif /* NAN_MODULE_TESTS_H */

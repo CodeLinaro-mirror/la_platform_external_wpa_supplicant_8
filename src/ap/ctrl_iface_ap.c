@@ -890,15 +890,12 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  iface->conf->channel,
 			  iface->conf->enable_edmg,
 			  iface->conf->edmg_channel,
-			  iface->conf->ieee80211n && !hapd->conf->disable_11n ?
+			  hostapd_is_ht_enabled(hapd) ?
 			  iface->conf->secondary_channel : 0,
-			  iface->conf->ieee80211n && !hapd->conf->disable_11n,
-			  iface->conf->ieee80211ac &&
-			  !hapd->conf->disable_11ac,
-			  iface->conf->ieee80211ax &&
-			  !hapd->conf->disable_11ax,
-			  iface->conf->ieee80211be &&
-			  !hapd->conf->disable_11be,
+			  hostapd_is_ht_enabled(hapd),
+			  hostapd_is_vht_enabled(hapd),
+			  hostapd_is_he_enabled(hapd),
+			  hostapd_is_eht_enabled(hapd),
 			  iface->conf->beacon_int,
 			  hapd->conf->dtim_period);
 	if (os_snprintf_error(buflen - len, ret))
@@ -906,7 +903,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 	len += ret;
 
 #ifdef CONFIG_IEEE80211BE
-	if (iface->conf->ieee80211be && !hapd->conf->disable_11be) {
+	if (hostapd_is_eht_enabled(hapd)) {
 		ret = os_snprintf(buf + len, buflen - len,
 				  "eht_oper_chwidth=%d\n"
 				  "eht_oper_centr_freq_seg0_idx=%d\n",
@@ -984,7 +981,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_IEEE80211AX
-	if (iface->conf->ieee80211ax && !hapd->conf->disable_11ax) {
+	if (hostapd_is_he_enabled(hapd)) {
 		ret = os_snprintf(buf + len, buflen - len,
 				  "he_oper_chwidth=%d\n"
 				  "he_oper_centr_freq_seg0_idx=%d\n"
@@ -1008,7 +1005,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 	}
 #endif /* CONFIG_IEEE80211AX */
 
-	if (iface->conf->ieee80211ac && !hapd->conf->disable_11ac) {
+	if (hostapd_is_vht_enabled(hapd)) {
 		ret = os_snprintf(buf + len, buflen - len,
 				  "vht_oper_chwidth=%d\n"
 				  "vht_oper_centr_freq_seg0_idx=%d\n"
@@ -1023,7 +1020,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		len += ret;
 	}
 
-	if (iface->conf->ieee80211ac && !hapd->conf->disable_11ac && mode) {
+	if (hostapd_is_vht_enabled(hapd) && mode) {
 		u16 rxmap = WPA_GET_LE16(&mode->vht_mcs_set[0]);
 		u16 txmap = WPA_GET_LE16(&mode->vht_mcs_set[4]);
 
@@ -1036,7 +1033,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		len += ret;
 	}
 
-	if (iface->conf->ieee80211n && !hapd->conf->disable_11n) {
+	if (hostapd_is_ht_enabled(hapd)) {
 		ret = os_snprintf(buf + len, buflen - len,
 				  "ht_caps_info=%04x\n",
 				  hapd->iconf->ht_capab);
@@ -1045,7 +1042,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		len += ret;
 	}
 
-	if (iface->conf->ieee80211n && !hapd->conf->disable_11n && mode) {
+	if (hostapd_is_ht_enabled(hapd) && mode) {
 		len = hostapd_write_ht_mcs_bitmask(buf, buflen, len,
 						   mode->mcs_set);
 	}
@@ -1223,8 +1220,9 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 					  u16 punct_bitmap)
 {
 	u32 start_freq;
+	bool is_6g = is_6ghz_freq(params->freq);
 
-	if (is_6ghz_freq(params->freq)) {
+	if (is_6g) {
 		const int bw_idx[] = { 20, 40, 80, 160, 320 };
 		int idx, bw;
 
@@ -1276,7 +1274,8 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 			return -1;
 		break;
 	case 40:
-		if (params->center_freq2 || !params->sec_channel_offset)
+		if (params->center_freq2 ||
+		    (!is_6g && !params->sec_channel_offset))
 			return -1;
 
 		if (punct_bitmap)
@@ -1293,12 +1292,17 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 			if (params->freq - 10 != params->center_freq1)
 				return -1;
 			break;
+		case 0:
+			if (!is_6g)
+				return -1;
+			break;
 		default:
 			return -1;
 		}
 		break;
 	case 80:
-		if (!params->center_freq1 || !params->sec_channel_offset)
+		if (!params->center_freq1 ||
+		    (!is_6g && !params->sec_channel_offset))
 			return 1;
 
 		switch (params->sec_channel_offset) {
@@ -1310,6 +1314,10 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 		case -1:
 			if (params->freq + 10 != params->center_freq1 &&
 			    params->freq - 30 != params->center_freq1)
+				return -1;
+			break;
+		case 0:
+			if (!is_6g)
 				return -1;
 			break;
 		default:
@@ -1327,7 +1335,7 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 		break;
 	case 160:
 		if (!params->center_freq1 || params->center_freq2 ||
-		    !params->sec_channel_offset)
+		    (!is_6g && !params->sec_channel_offset))
 			return -1;
 
 		switch (params->sec_channel_offset) {
@@ -1345,13 +1353,16 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 			    params->freq - 70 != params->center_freq1)
 				return -1;
 			break;
+		case 0:
+			if (!is_6g)
+				return -1;
+			break;
 		default:
 			return -1;
 		}
 		break;
 	case 320:
-		if (!params->center_freq1 || params->center_freq2 ||
-		    !params->sec_channel_offset)
+		if (!params->center_freq1 || params->center_freq2)
 			return -1;
 
 		switch (params->sec_channel_offset) {
@@ -1377,6 +1388,10 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
 			    params->freq - 150 != params->center_freq1)
 				return -1;
 			break;
+		case 0:
+			break;
+		default:
+			return -1;
 		}
 		break;
 	default:

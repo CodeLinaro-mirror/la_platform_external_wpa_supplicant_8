@@ -223,6 +223,9 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
 	oper->basic_eht_mcs_nss_set[2] = 0x00;
 	oper->basic_eht_mcs_nss_set[3] = 0x00;
 
+	if (hapd->iconf->disable_mcs15_rx)
+		oper->oper_params |= EHT_OPER_MCS15_DISABLE;
+
 	if (!eht_oper_info_present)
 		return pos + elen;
 
@@ -376,7 +379,7 @@ u16 copy_sta_eht_capab(struct hostapd_data *hapd, struct sta_info *sta,
 	struct hostapd_hw_modes *c_mode = hapd->iface->current_mode;
 	enum hostapd_hw_mode mode = c_mode ? c_mode->mode : NUM_HOSTAPD_MODES;
 
-	if (!hapd->iconf->ieee80211be || hapd->conf->disable_11be ||
+	if (!hostapd_is_eht_enabled(hapd) ||
 	    !he_capab || he_capab_len < IEEE80211_HE_CAPAB_MIN_LEN ||
 	    !eht_capab ||
 	    ieee80211_invalid_eht_cap_size(mode, hapd->iconf->op_class,
@@ -840,17 +843,17 @@ static size_t hostapd_eid_eht_ml_len(struct mld_info *info,
 
 		/* Element data and (fragmentation) headers */
 		eht_ml_len += sta_len;
-		eht_ml_len += 2 + sta_len / 255 * 2;
+		eht_ml_len += 2 + (sta_len - 1) / 255 * 2;
 	}
 
-	/* Element data */
-	len += eht_ml_len;
+	/* EID_EXT_MULTI_LINK (1) + Element data */
+	len += 1 + eht_ml_len;
 
-	/* First header (254 bytes of data) */
-	len += 3;
+	/* Fragmentation headers */
+	len += (len - 1) / 255 * 2;
 
-	/* Fragmentation headers; +1 for shorter first chunk */
-	len += (eht_ml_len + 1) / 255 * 2;
+	/* Outer header EID_EXT (1) + length (1) */
+	len += 2;
 
 	return len;
 }
@@ -1054,17 +1057,40 @@ static const u8 * auth_skip_fixed_fields(struct hostapd_data *hapd,
 					 size_t len)
 {
 	u16 auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
-#ifdef CONFIG_SAE
+#if defined(CONFIG_SAE) || defined(CONFIG_IEEE8021X_AUTH)
 	u16 auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
 	u16 status_code = le_to_host16(mgmt->u.auth.status_code);
-#endif /* CONFIG_SAE */
+#endif /* CONFIG_SAE or CONFIG_IEEE8021X_AUTH */
 	const u8 *pos = mgmt->u.auth.variable;
 
 	/* Skip fixed fields as based on IEEE Std 802.11-2024, Table 9-71
 	 * (Presence of fields and elements in Authentications frames) */
 	switch (auth_alg) {
 	case WLAN_AUTH_OPEN:
+	case WLAN_AUTH_EPPKE:
 		return pos;
+#ifdef CONFIG_IEEE8021X_AUTH
+	case WLAN_AUTH_802_1X: {
+		u16 encap_len;
+
+		/* Extract 2-octet Encapsulation Length from variable field */
+		if (len < 2)
+			return NULL;
+
+		encap_len = WPA_GET_LE16(pos);
+		pos += 2;
+		len -= 2;
+
+		/* Skip Encapsulation field if present */
+		if (encap_len > 0) {
+			if (len < encap_len)
+				return NULL;
+			pos += encap_len;
+		}
+
+		return pos;
+	}
+#endif /* CONFIG_IEEE8021X_AUTH */
 #ifdef CONFIG_SAE
 	case WLAN_AUTH_SAE:
 		if (auth_transaction == WLAN_AUTH_TR_SEQ_SAE_COMMIT) {
@@ -1762,7 +1788,7 @@ hostapd_ml_process_reconf_link(struct hostapd_data *hapd,
 
 	/* Parse STA profile, check the IEs, and send ADD_LINK_STA */
 	ieee80211_ml_process_link(lhapd, assoc_sta, &link, ies, ies_len,
-				  LINK_PARSE_RECONF, false);
+				  LINK_PARSE_RECONF, false, NULL);
 	if (link.status != WLAN_STATUS_SUCCESS)
 		return link.status;
 
@@ -2752,4 +2778,63 @@ void ieee802_11_rx_protected_eht_action(struct hostapd_data *hapd,
 	wpa_printf(MSG_DEBUG,
 		   "MLD: Unsupported Protected EHT Action %u from " MACSTR
 		   " discarded", action, MAC2STR(mgmt->sa));
+}
+
+
+size_t hostapd_eid_eht_ml_tid_to_link_map_len(struct hostapd_data *hapd)
+{
+	if (!hapd->conf->mld_ap)
+		return 0;
+
+#ifdef CONFIG_TESTING_OPTIONS
+	/*
+	 * Allocate enough space for mld_indicate_disabled. i.e.:
+	 *  Element ID, Length, and Element ID Extension (3) +
+	 *  Control including presence bitmap (2) + 8 * 2 byte link mappings
+	 */
+	return 3 + 2 + 8 * 2;
+#else /* CONFIG_TESTING_OPTIONS */
+	return 0;
+#endif /* CONFIG_TESTING_OPTIONS */
+}
+
+
+u8 * hostapd_eid_eht_ml_tid_to_link_map(struct hostapd_data *hapd, u8 *eid)
+{
+#ifdef CONFIG_TESTING_OPTIONS
+	struct hostapd_data *other_hapd;
+	bool need_ttlm = false;
+	u16 ttlm = 0;
+#endif /* CONFIG_TESTING_OPTIONS */
+	u8 *pos = eid;
+
+	if (!hapd->conf->mld_ap)
+		return eid;
+
+#ifdef CONFIG_TESTING_OPTIONS
+	for_each_mld_link(other_hapd, hapd) {
+		if (other_hapd->conf->mld_indicate_disabled)
+			need_ttlm = true;
+		else
+			ttlm |= BIT(other_hapd->mld_link_id);
+	}
+
+	if (need_ttlm) {
+		int i;
+
+		*pos++ = WLAN_EID_EXTENSION;
+		/* ext EID + 2 bytes control + 8 * link mappings */
+		*pos++ = 1 + 2 + 8 * 2;
+		*pos++ = WLAN_EID_EXT_TID_TO_LINK_MAPPING;
+		*pos++ = EHT_TID_TO_LINK_MAP_DIRECTION_BOTH;
+		*pos++ = 0xff; /* link mapping presence bitmap */
+
+		for (i = 0; i < 8; i++) {
+			WPA_PUT_LE16(pos, ttlm);
+			pos += 2;
+		}
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+	return pos;
 }

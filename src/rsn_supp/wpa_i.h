@@ -26,6 +26,7 @@ struct wpa_sm {
 	u8 pmk[PMK_LEN_MAX];
 	size_t pmk_len;
 	struct wpa_ptk ptk, tptk;
+	enum rsn_hash_alg hash_alg;
 	int ptk_set, tptk_set;
 	bool tk_set; /* Whether any TK is configured to the driver */
 	unsigned int msg_3_of_4_ok:1;
@@ -117,6 +118,9 @@ struct wpa_sm {
 	unsigned int ssid_protection:1;
 	unsigned int spp_amsdu:1;
 	unsigned int sae_pw_id_change:1;
+	unsigned int assoc_encryption:1;
+	unsigned int pmksa_privacy:1;
+	unsigned int eap_over_auth_frame:1;
 
 	u8 *assoc_wpa_ie; /* Own WPA/RSN IE from (Re)AssocReq */
 	size_t assoc_wpa_ie_len;
@@ -206,9 +210,9 @@ struct wpa_sm {
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_FILS
-	u8 fils_nonce[FILS_NONCE_LEN];
+	u8 fils_nonce[NONCE_LEN];
 	u8 fils_session[FILS_SESSION_LEN];
-	u8 fils_anonce[FILS_NONCE_LEN];
+	u8 fils_anonce[NONCE_LEN];
 	u8 fils_key_auth_ap[FILS_MAX_KEY_AUTH_LEN];
 	u8 fils_key_auth_sta[FILS_MAX_KEY_AUTH_LEN];
 	size_t fils_key_auth_len;
@@ -224,6 +228,10 @@ struct wpa_sm {
 	u8 fils_ft[FILS_FT_MAX_LEN];
 	size_t fils_ft_len;
 #endif /* CONFIG_FILS */
+#ifdef CONFIG_ENC_ASSOC
+	unsigned int eppke_completed:1;
+	unsigned int eap_over_auth_frame_completed:1;
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_OWE
 	struct crypto_ecdh *owe_ecdh;
