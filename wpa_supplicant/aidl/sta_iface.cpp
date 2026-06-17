@@ -2034,29 +2034,9 @@ StaIface::getConnectionCapabilitiesInternal()
 				capa.legacyMode = LegacyMode::A_MODE;
 			}
 		}
-		switch (wpa_s->connection_channel_bandwidth) {
-		case CHAN_WIDTH_20:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_20);
-			break;
-		case CHAN_WIDTH_40:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_40);
-			break;
-		case CHAN_WIDTH_80:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_80);
-			break;
-		case CHAN_WIDTH_160:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_160);
-			break;
-		case CHAN_WIDTH_80P80:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_80P80);
-			break;
-		case CHAN_WIDTH_320:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_320);
-			break;
-		default:
-			capa.channelBandwidth = static_cast<int32_t>(WifiChannelWidthInMhz::WIDTH_20);
-			break;
-		}
+		capa.channelBandwidth = static_cast<int32_t>(
+			convertSupplicantChannelWidthToAidl(
+				wpa_s->connection_channel_bandwidth));
 		capa.maxNumberRxSpatialStreams = wpa_s->connection_max_nss_rx;
 		capa.maxNumberTxSpatialStreams = wpa_s->connection_max_nss_tx;
 		capa.apTidToLinkMapNegotiationSupported = wpa_s->ap_t2lm_negotiation_support;
@@ -2252,6 +2232,10 @@ std::pair<MloLinksInfo, ndk::ScopedAStatus> StaIface::getConnectionMloLinksInfoI
 		    wpa_s->links[i].addr, wpa_s->links[i].addr + ETH_ALEN);
 		link.apLinkMacAddress = macAddrToArray(wpa_s->links[i].bssid);
 		link.frequencyMHz = wpa_s->links[i].freq;
+		link.channelBandwidth =
+			convertSupplicantChannelWidthToAidl(wpa_s->links[i].channel_bandwidth);
+		link.maxNumberRxSpatialStreams = wpa_s->links[i].max_nss_rx;
+		link.maxNumberTxSpatialStreams = wpa_s->links[i].max_nss_tx;
 		// TODO (b/259710591): Once supplicant implements TID-to-link
 		// mapping, copy it here. Mapping can be changed in two
 		// scenarios
