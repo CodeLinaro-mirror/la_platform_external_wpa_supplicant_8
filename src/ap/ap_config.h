@@ -389,6 +389,7 @@ struct hostapd_bss_config {
 	int wpa_gmk_rekey;
 	int wpa_ptk_rekey;
 	enum ptk0_rekey_handling wpa_deny_ptk0_rekey;
+	int ignore_sta_gtk_rekey;
 	u32 wpa_group_update_count;
 	u32 wpa_pairwise_update_count;
 	int wpa_disable_eapol_key_retries;
