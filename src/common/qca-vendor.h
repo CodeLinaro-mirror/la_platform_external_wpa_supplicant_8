@@ -1523,6 +1523,17 @@ enum qca_radiotap_vendor_ids {
  *
  *	The attributes used with this command are defined in
  *	enum qca_wlan_vendor_attr_external_auth.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_GVP_OPERATION: This vendor subcommand is used to
+ *	configure the device with Geofenced Variable Power (GVP) operation
+ *	parameters.
+ *	Uses the attributes defined in enum qca_wlan_vendor_attr_gvp_info.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_N79_COEX: Vendor subcommand to control
+ *	WLAN host behavior based on N79 band activity.
+ *	The WLAN host manages NSS/chain reduction, AP coordination, and
+ *	hysteresis timers internally. Mode-agnostic: works regardless of
+ *	connection state or device mode.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1780,6 +1791,8 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_WLAN_HOST_TXRX_STATS = 271,
 	QCA_NL80211_VENDOR_SUBCMD_IPA_RING_STATS = 272,
 	QCA_NL80211_VENDOR_SUBCMD_EXTERNAL_AUTH = 273,
+	QCA_NL80211_VENDOR_SUBCMD_GVP_OPERATION = 274,
+	QCA_NL80211_VENDOR_SUBCMD_N79_COEX = 275,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -2182,6 +2195,11 @@ enum qca_wlan_vendor_attr_roam_auth {
 	 * nested attribute are defined in enum qca_wlan_vendor_attr_mlo_links.
 	 */
 	QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_MLO_LINKS = 15,
+	/* Flag attribute, The driver sets this flag to indicate that both the
+	 * (Re)Association Request frame and the corresponding (Re)Association
+	 * Response frame were transmitted encrypted over the air.
+	 */
+	QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_ASSOC_ENCRYPTED = 16,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_ROAM_AUTH_AFTER_LAST,
@@ -2613,6 +2631,25 @@ enum qca_wlan_vendor_acs_hw_mode {
  *	frame. PMKR0Name randomization during FT reassociation will be handled
  *	by the driver.
  *
+ * @QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC: Indicates that the driver
+ *	supports generating an Opportunistic Key Caching (OKC) PMKSA entry for
+ *	the target AP and including the corresponding OKC-derived PMKID in
+ *	(Re)Association Request frames.
+ *
+ *	When enabled, the driver derives an OKC PMKSA entry for the target AP
+ *	by cloning the PMKSA of the previously connected AP (reusing the same
+ *	PMK with the new AP BSSID) if no PMKSA entry already exists for the
+ *	target AP. The derived PMKID is then added to the (Re)Association
+ *	Request.
+ *
+ *	The supplicant can infer this behavior by validating that the PMKID in
+ *	the (Re)Association Request corresponds to an OKC-derived PMKID in the
+ *	absence of an existing PMKSA cache entry for the target AP.
+ *
+ *	This feature is used together with
+ *	%QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC to indicate mutual support
+ *	between driver and supplicant.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits
  */
 enum qca_wlan_vendor_features {
@@ -2654,6 +2691,7 @@ enum qca_wlan_vendor_features {
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GO_CANCEL_ONE_SHOT_NOA = 35,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA = 36,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_PMKSA_CACHING_PRIVACY = 37,
+	QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC = 38,
 	NUM_QCA_WLAN_VENDOR_FEATURES /* keep last */
 };
 
@@ -4317,6 +4355,21 @@ enum qca_wlan_vendor_attr_config {
 	 * enum qca_wlan_vendor_attr_config_esp_param.
 	 */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_ESP_PARAMS = 143,
+
+	/* 8-bit unsigned value, used in AP mode only, to indicate whether
+	 * AP_VLAN multicast hardware encryption offload handling is enabled for
+	 * dynamic VLAN operation.
+	 * This is intended for per-station AP_VLAN cases where different
+	 * VLAN instances may need separate GTK handling.
+	 * 1 - Enable, 0 - Disable.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_DYNAMIC_VLAN = 144,
+
+	/* 8-bit unsigned value to enable/disable the driver to allow forwarding
+	 * 3-address multicast frames in WDS mode
+	 * 1-Enable, 0-Disable.
+	 */
+	QCA_WLAN_VENDOR_ATTR_CONFIG_ALLOW_3ADDR_MC = 145,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
@@ -13277,6 +13330,21 @@ enum qca_wlan_vendor_cfr_stop_reason {
  * i.e., one report per interval per MAC address. When this flag is not
  * included, all captured frames in the reporting interval are reported.
  * Applicable only for CFR version 3.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA_TOTAL_LEN: Optional (u32)
+ * Total length (in bytes) of the full CFR data being delivered across
+ * multiple fragmented vendor events. Present in every fragment when
+ * QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA is bifurcated.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA_OFFSET: Optional (u32)
+ * Byte offset of the QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA payload
+ * within the full CFR data buffer. Present in every fragment when
+ * QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA is bifurcated.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA_IS_LAST_FRAG: Optional (flag)
+ * When present, indicates that this vendor event carries the final fragment
+ * of a bifurcated QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA payload.
+ *
  */
 enum qca_wlan_vendor_peer_cfr_capture_attr {
 	QCA_WLAN_VENDOR_ATTR_PEER_CFR_CAPTURE_INVALID = 0,
@@ -13330,6 +13398,9 @@ enum qca_wlan_vendor_peer_cfr_capture_attr {
 	QCA_WLAN_VENDOR_ATTR_PEER_CFR_STOP_REASON = 48,
 	QCA_WLAN_VENDOR_ATTR_PEER_CFR_FIXED_AGC = 49,
 	QCA_WLAN_VENDOR_ATTR_PEER_CFR_REPORT_ONLY_LAST_FRAME = 50,
+	QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA_TOTAL_LEN = 51,
+	QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA_OFFSET = 52,
+	QCA_WLAN_VENDOR_ATTR_PEER_CFR_RESP_DATA_IS_LAST_FRAG = 53,
 
 	/* Keep last */
 	QCA_WLAN_VENDOR_ATTR_PEER_CFR_AFTER_LAST,
@@ -19236,6 +19307,50 @@ enum qca_wlan_vendor_attr_emlsr_info {
 };
 
 /**
+ * enum qca_wlan_vendor_attr_gvp_info - Represent attributes to configure the
+ * device (all modes) with Geofenced Variable Power (GVP) power limits.
+ * These attributes are used inside vendor subcommand
+ * %QCA_NL80211_VENDOR_SUBCMD_GVP_OPERATION.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_GVP_EZ_ENTER: u8 attribute. This indicates whether the
+ * device entered Exclusion Zone or exited. This is an optional attribute and
+ * used in command path.
+ * 0 - Exit, 1 - Enter
+ *
+ * @QCA_WLAN_VENDOR_ATTR_GVP_AVOID_FREQ_START: u32 attribute. This indicates the
+ * start frequency of channel range in MHz that needs to be avoided within a
+ * particular area (Exclusion Zone). This attribute is required if EZ enter is
+ * set to 1 and is used in command path.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_GVP_AVOID_FREQ_END: u32 attribute. This indicates the
+ * end frequency of channel range in MHz that needs to be avoided within a
+ * particular area (Exclusion Zone). This attribute is required if EZ enter is
+ * set to 1 and is used in command path.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_GVP_POWER_LIMIT: u8 attribute. This indicates the
+ * absolute EIRP TX power limit that the device should operate on in a given
+ * area. This is an optional attribute and used in command path.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_GVP_OPER_START: u8 attribute. This indicates whether to
+ * start or stop GVP operation based on device state such as device up or down.
+ * This is an optional attribute and used in event path.
+ * 0 - GVP operation stop, 1 - GVP operation start
+ */
+enum qca_wlan_vendor_attr_gvp_info {
+	QCA_WLAN_VENDOR_ATTR_GVP_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_GVP_EZ_ENTER = 1,
+	QCA_WLAN_VENDOR_ATTR_GVP_AVOID_FREQ_START = 2,
+	QCA_WLAN_VENDOR_ATTR_GVP_AVOID_FREQ_END = 3,
+	QCA_WLAN_VENDOR_ATTR_GVP_POWER_LIMIT = 4,
+	QCA_WLAN_VENDOR_ATTR_GVP_OPER_START = 5,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_GVP_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_GVP_MAX =
+	QCA_WLAN_VENDOR_ATTR_GVP_AFTER_LAST - 1,
+};
+
+/**
  * enum qca_wlan_vendor_attr_fw_page_fault_report - Used by the vendor
  * command %QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT.
  *
@@ -20199,6 +20314,11 @@ enum qca_wlan_vendor_attr_usd_status {
  *	%QCA_WLAN_VENDOR_ATTR_USD_OP_TYPE and
  *	%QCA_WLAN_VENDOR_ATTR_USD_INSTANCE_ID.
  *	enum qca_wlan_vendor_attr_usd_status indicates status values.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_USD_NETWORK_ID: 6-byte MAC address that has to be
+ *	used in publish/subscribe multicast frames. It is an optional attribute
+ *	used with the types %QCA_WLAN_VENDOR_USD_OP_TYPE_PUBLISH and
+ *	%QCA_WLAN_VENDOR_USD_OP_TYPE_SUBSCRIBE.
  */
 enum qca_wlan_vendor_attr_usd {
 	QCA_WLAN_VENDOR_ATTR_USD_INVALID = 0,
@@ -20212,6 +20332,7 @@ enum qca_wlan_vendor_attr_usd {
 	QCA_WLAN_VENDOR_ATTR_USD_ELEMENT_CONTAINER = 8,
 	QCA_WLAN_VENDOR_ATTR_USD_TTL = 9,
 	QCA_WLAN_VENDOR_ATTR_USD_STATUS = 10,
+	QCA_WLAN_VENDOR_ATTR_USD_NETWORK_ID = 11,
 
 	QCA_WLAN_VENDOR_ATTR_USD_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_USD_MAX =
@@ -20320,11 +20441,28 @@ enum qca_wlan_vendor_attr_audio_transport_switch {
  * algorithm. The driver can offload EPPKE authentication to supplicant via
  * QCA_NL80211_VENDOR_SUBCMD_EXTERNAL_AUTH only if this flag is enabled.
  *
+ * @QCA_CONNECT_EXT_FEATURE_EXT_AUTH_8021X: Flag attribute. This indicates
+ * supplicant support for external authentication with IEEE 802.1X
+ * Authentication algorithm (EAP over Authentication frames) as specified
+ * in IEEE P802.11bi/D4.0, 12.16.5. The driver can offload authentication to
+ * supplicant via QCA_NL80211_VENDOR_SUBCMD_EXTERNAL_AUTH only if this flag is
+ * enabled.
+ *
+ * @QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC: Indicates that the supplicant
+ * supports handling driver-generated OKC-derived PMKIDs in (Re)Association
+ * Request frames. When set, the supplicant can detect an OKC-derived PMKID
+ * inserted by the driver and update the current PMKSA to the corresponding OKC
+ * PMKSA. This flag shall be set only if the driver advertises
+ * %QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC and OKC is enabled in the
+ * supplicant configuration.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits.
  */
 enum qca_wlan_connect_ext_features {
 	QCA_CONNECT_EXT_FEATURE_RSNO	= 0,
 	QCA_CONNECT_EXT_FEATURE_EXT_AUTH_EPPKE = 1,
+	QCA_CONNECT_EXT_FEATURE_EXT_AUTH_8021X = 2,
+	QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC = 3,
 	NUM_QCA_CONNECT_EXT_FEATURES /* keep last */
 };
 
@@ -23100,6 +23238,45 @@ enum qca_wlan_vendor_attr_feature_config_data {
  * - If neither %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_ALLOW_NSS_GT_2 nor
  *   %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_DISALLOW_NSS_GT_2 is configured, the
  *   driver follows its default NSS negotiation logic.
+ *
+ * @QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_ENABLE:
+ * Enable UL TX Beamformer capability only if the AP's Beacon and Probe
+ * Response frames include information that matches at least one entry from
+ * the configuration data list specified in
+ * %QCA_WLAN_VENDOR_ATTR_FEATURE_CONFIG_DATA_LIST irrespective of AP's
+ * beamforming capabilities.
+ * If no match is found, the driver must disable the UL TX Beamformer
+ * capability.
+ *
+ * Interaction with other actions:
+ * - If a new configuration with
+ *   %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_ENABLE
+ *   is specified, any existing configuration with
+ *   %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_DISABLE will be
+ *   cleared.
+ * - If neither %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_ENABLE
+ *   nor %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_DISABLE is
+ *   configured, the driver uses UL TX Beamformer capability based on default
+ *   configuration and device support.
+ *
+ * @QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_DISABLE:
+ * Disable UL TX Beamformer capability if the AP's Beacon and Probe Response
+ * frames include information that matches at least one entry from the
+ * configuration data list specified in
+ * %QCA_WLAN_VENDOR_ATTR_FEATURE_CONFIG_DATA_LIST irrespective of AP's
+ * beamforming capabilities.
+ * If no match is found, the driver may enable UL TX Beamformer capability.
+ *
+ * Interaction with other actions:
+ * - If a new configuration with
+ *   %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_DISABLE
+ *   is specified, any existing configuration with
+ *   %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_ENABLE will be
+ *   cleared.
+ * - If neither %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_ENABLE
+ *   nor %QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_DISABLE is
+ *   configured, the driver uses UL TX Beamformer capability based on default
+ *   configuration and device support.
  */
 
 enum qca_wlan_vendor_feature_config_action {
@@ -23108,6 +23285,8 @@ enum qca_wlan_vendor_feature_config_action {
 	QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_ADAPTIVE_DSMPS_BY_RSSI = 2,
 	QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_ALLOW_NSS_GT_2 = 3,
 	QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_DISALLOW_NSS_GT_2 = 4,
+	QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_ENABLE = 5,
+	QCA_WLAN_VENDOR_FEATURE_CONFIG_ACTION_UL_TX_BEAMFORMER_DISABLE = 6,
 };
 
 /**
@@ -23867,6 +24046,18 @@ enum qca_wlan_vendor_external_auth_action {
  *	for the authentication request event interface. This specifies the
  *	entire element data to be included in the RSNXE of the Authentication
  *	frames.
+ * @QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_PTK_KCK: Optional binary attribute for
+ *	the authentication response command interface. This attribute is
+ *	present	only when the NL80211_AUTHTYPE_IEEE8021X authentication
+ *	algorithm is used with (re)association frame encryption.
+ *
+ *	In SME-in-driver mode, the (re)association exchange is entirely handled
+ *	by the driver. The standard requires that the (Re)Association Request
+ *	frame includes a Message Integrity Code (MIC) calculated using the Key
+ *	Confirmation Key (KCK). This attribute is used to pass the KCK from the
+ *	supplicant to the driver. With the KCK provided, the driver can
+ *	calculate the MIC and append it to the (Re)Association Request frame as
+ *	mandated by IEEE P802.11bi/D4.0, 12.16.6.2/12.16.6.3.
  */
 enum qca_wlan_vendor_attr_external_auth {
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_INVALID = 0,
@@ -23883,11 +24074,48 @@ enum qca_wlan_vendor_attr_external_auth {
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_PMKID = 11,
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSN_CAPAB = 12,
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSNXE_DATA = 13,
+	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_PTK_KCK = 14,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_MAX =
 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_AFTER_LAST - 1,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_n79_coex_op - Operation type for
+ * %QCA_NL80211_VENDOR_SUBCMD_N79_COEX vendor command.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_N79_COEX_OP_SET: Set the N79 coexistence state.
+ * @QCA_WLAN_VENDOR_ATTR_N79_COEX_OP_GET: Get the current N79 coexistence state.
+ */
+enum qca_wlan_vendor_attr_n79_coex_op {
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_OP_SET = 0,
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_OP_GET = 1,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_n79_coex - Attributes for
+ * %QCA_NL80211_VENDOR_SUBCMD_N79_COEX vendor command.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_N79_COEX_OP_TYPE: u8 attribute.
+ *	Specifies the operation type. See enum qca_wlan_vendor_attr_n79_coex_op.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_N79_COEX_STATE: u8 attribute.
+ *	Indicates N79 operational state.
+ *	0: N79 inactive.
+ *	1: N79 active.
+ *	Mandatory in SET operation; returned in GET response.
+ */
+enum qca_wlan_vendor_attr_n79_coex {
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_OP_TYPE = 1,
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_STATE = 2,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_CONFIG_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_CONFIG_MAX =
+	QCA_WLAN_VENDOR_ATTR_N79_COEX_CONFIG_AFTER_LAST - 1,
 };
 
 #endif /* QCA_VENDOR_H */

@@ -6,9 +6,13 @@
  * See README for more details.
  */
 
+#include "utils/includes.h"
+#include "utils/common.h"
+#include "utils/list.h"
+#include "nan_i.h"
 #include "nan_module_tests.h"
 
-static u8 default_bitmap[] = {0xfe, 0xff, 0xfe, 0xff};
+static u8 default_bitmap[] = { 0xfe, 0xff, 0xfe, 0xff };
 
 static void nan_test_schedule_cb(struct nan_schedule *sched, bool ndc,
 				 int freq, int center_freq1, int center_freq2,
@@ -54,6 +58,7 @@ static int nan_test_schedule_cb_all_ndc(struct nan_schedule *sched)
 	sched->sequence_id = ++seq_id;
 	return 0;
 }
+
 
 static int nan_test_schedule_cb_all_no_ndc(struct nan_schedule *sched)
 {
@@ -111,6 +116,7 @@ static int nan_test_get_chans_default(struct nan_channels *chans)
 	chans->chans[1].channel = 149;
 	chans->chans[1].op_class = 126;
 	chans->chans[1].pref = 254;
+
 	return 0;
 }
 
@@ -146,6 +152,7 @@ static int nan_test_get_chans_default_24g(struct nan_channels *chans)
 	chans->chans[0].channel = 6;
 	chans->chans[0].op_class = 81;
 	chans->chans[0].pref = 255;
+
 	return 0;
 }
 
@@ -161,6 +168,7 @@ static int nan_test_get_chans_default_52g(struct nan_channels *chans)
 	chans->chans[0].channel = 149;
 	chans->chans[0].op_class = 126;
 	chans->chans[0].pref = 255;
+
 	return 0;
 }
 
@@ -793,14 +801,14 @@ static const struct nan_test_case *g_nan_test_cases[] = {
 	&three_ndps_no_security_middle_one_rejected,
 	&three_ndps_increasing_security,
 	&three_ndps_deacreasing_security,
-	NULL,
+	NULL
 };
 
 
-struct nan_test_case *nan_test_case_get_next(void)
+const struct nan_test_case * nan_test_case_get_next(void)
 {
 	static u32 nan_test_case_idx = 0;
-	struct nan_test_case *curr = g_nan_test_cases[nan_test_case_idx];
+	const struct nan_test_case *curr = g_nan_test_cases[nan_test_case_idx];
 
 	if (curr)
 		nan_test_case_idx++;

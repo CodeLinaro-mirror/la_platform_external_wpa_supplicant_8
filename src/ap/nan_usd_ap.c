@@ -37,7 +37,7 @@ static int hostapd_nan_de_tx(void *ctx, unsigned int freq,
 
 
 static int hostapd_nan_de_listen(void *ctx, unsigned int freq,
-			      unsigned int duration)
+			      unsigned int duration, const u8 *forced_addr)
 {
 	return 0;
 }
@@ -69,10 +69,8 @@ hostapd_nan_de_discovery_result(void *ctx, struct nan_discovery_result *res,
 	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_DISCOVERY_RESULT
 		"subscribe_id=%d publish_id=%d address=" MACSTR
 		" fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s",
-		res->subscribe_id,
-		res->peer_publish_id,
-		MAC2STR(res->peer_addr),
-		res->fsd, res->fsd_gas,
+		res->subscribe_id, res->peer_publish_id,
+		MAC2STR(res->peer_addr), res->fsd, res->fsd_gas,
 		res->srv_proto_type, ssi_hex);
 	os_free(ssi_hex);
 	os_free(match_filter_hex);

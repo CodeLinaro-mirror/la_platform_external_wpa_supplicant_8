@@ -14,10 +14,12 @@
 #include "utils/common.h"
 #include "common/ieee802_11_common.h"
 #include "common/wpa_common.h"
+#include "common/proximity_ranging.h"
 #include "common/qca-vendor.h"
 #include "common/qca-vendor-attr.h"
 #include "common/brcm_vendor.h"
 #include "driver_nl80211.h"
+
 
 static int protocol_feature_handler(struct nl_msg *msg, void *arg)
 {
@@ -602,6 +604,9 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
 			      NL80211_EXT_FEATURE_MGMT_TX_RANDOM_TA_CONNECTED))
 		capa->flags |= WPA_DRIVER_FLAGS_MGMT_TX_RANDOM_TA_CONNECTED;
 	if (ext_feature_isset(ext_features, len,
+			      NL80211_EXT_FEATURE_ROC_ADDR_FILTER))
+		capa->flags2 |= WPA_DRIVER_FLAGS2_ROC_ADDR_FILTER;
+	if (ext_feature_isset(ext_features, len,
 			      NL80211_EXT_FEATURE_SCHED_SCAN_RELATIVE_RSSI))
 		capa->flags |= WPA_DRIVER_FLAGS_SCHED_SCAN_RELATIVE_RSSI;
 	if (ext_feature_isset(ext_features, len,
@@ -1132,6 +1137,196 @@ out:
 #endif /* CONFIG_NAN */
 
 
+#ifdef CONFIG_PR
+
+static u32 nl80211_to_pd_bw_bitmap(u32 nl_bitmap)
+{
+	u32 bandwidths = 0;
+
+	if (nl_bitmap & BIT(NL80211_CHAN_WIDTH_20))
+		bandwidths |= BIT(WPA_PR_CHAN_WIDTH_20);
+	if (nl_bitmap & BIT(NL80211_CHAN_WIDTH_40))
+		bandwidths |= BIT(WPA_PR_CHAN_WIDTH_40);
+	if (nl_bitmap & BIT(NL80211_CHAN_WIDTH_80))
+		bandwidths |= BIT(WPA_PR_CHAN_WIDTH_80);
+	if (nl_bitmap & BIT(NL80211_CHAN_WIDTH_80P80))
+		bandwidths |= BIT(WPA_PR_CHAN_WIDTH_80P80);
+	if (nl_bitmap & BIT(NL80211_CHAN_WIDTH_160))
+		bandwidths |= BIT(WPA_PR_CHAN_WIDTH_160);
+	return bandwidths;
+}
+
+
+static u32 nl80211_to_pd_preamble_bitmap(u32 nl_bitmap)
+{
+	u32 preambles = 0;
+
+	if (nl_bitmap & BIT(NL80211_PREAMBLE_HT))
+		preambles |= BIT(WPA_PR_PREAMBLE_HT);
+	if (nl_bitmap & BIT(NL80211_PREAMBLE_VHT))
+		preambles |= BIT(WPA_PR_PREAMBLE_VHT);
+	if (nl_bitmap & BIT(NL80211_PREAMBLE_HE))
+		preambles |= BIT(WPA_PR_PREAMBLE_HE);
+	return preambles;
+}
+
+
+static void pmsr_type_ftm_handler(struct wpa_driver_nl80211_data *drv,
+				  struct nlattr *capa)
+{
+	u32 max_rx_sts, max_tx_sts;
+	struct nlattr *tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX + 1];
+	struct nlattr *ista_caps[NL80211_PMSR_FTM_CAPA_ATTR_MAX + 1];
+	struct nlattr *type_caps[NL80211_PMSR_FTM_TYPE_CAPA_ATTR_MAX + 1];
+	struct nlattr *rsta_caps[NL80211_PMSR_FTM_CAPA_ATTR_MAX + 1];
+
+	if (nla_parse_nested(tb, NL80211_PMSR_FTM_CAPA_ATTR_MAX, capa, NULL))
+		return;
+
+	/* Parse ISTA capabilities */
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_ISTA_CAPS] &&
+	    nla_parse_nested(ista_caps, NL80211_PMSR_FTM_CAPA_ATTR_MAX,
+			     tb[NL80211_PMSR_FTM_CAPA_ATTR_ISTA_CAPS],
+			     NULL) == 0) {
+		drv->capa.ista.support_ntb =
+			!!ista_caps[NL80211_PMSR_FTM_CAPA_ATTR_SUPPORT_NTB];
+		drv->capa.ista.support_tb =
+			!!ista_caps[NL80211_PMSR_FTM_CAPA_ATTR_SUPPORT_TB];
+		drv->capa.ista.support_edca =
+			!!ista_caps[NL80211_PMSR_FTM_CAPA_ATTR_SUPPORT_EDCA];
+		if (ista_caps[NL80211_PMSR_ATTR_MAX_PEER_ISTA_ROLE])
+			drv->capa.ista.max_peers =
+				nla_get_u32(ista_caps[NL80211_PMSR_ATTR_MAX_PEER_ISTA_ROLE]);
+	}
+
+	/* Parse ranging type capabilities */
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_TYPE_CAPS] &&
+	    !nla_parse_nested(type_caps, NL80211_PMSR_FTM_TYPE_CAPA_ATTR_MAX,
+			      tb[NL80211_PMSR_FTM_CAPA_ATTR_TYPE_CAPS],
+			      NULL) == 0) {
+		drv->capa.ranging_type.infra_support =
+			!!type_caps[NL80211_PMSR_FTM_TYPE_CAPA_ATTR_INFRA_SUPPORT];
+		drv->capa.ranging_type.pd_support =
+			!!type_caps[NL80211_PMSR_FTM_TYPE_CAPA_ATTR_PD_SUPPORT];
+	}
+
+	drv->capa.concurrent_ista_rsta =
+		!!tb[NL80211_PMSR_FTM_CAPA_ATTR_CONCURRENT_ISTA_RSTA_SUPPORT];
+
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TX_LTF_REP])
+		drv->capa.max_tx_ltf_repetations =
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TX_LTF_REP]);
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_RX_LTF_REP])
+		drv->capa.max_rx_ltf_repetations =
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_RX_LTF_REP]);
+
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_RX_STS]) {
+		max_rx_sts = nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_RX_STS]);
+		drv->capa.max_rx_sts_le_80 = max_rx_sts;
+		drv->capa.max_rx_sts_gt_80 = max_rx_sts;
+	}
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TX_STS]) {
+		max_tx_sts = nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TX_STS]);
+		drv->capa.max_tx_sts_le_80 = max_tx_sts;
+		drv->capa.max_tx_sts_gt_80 = max_tx_sts;
+	}
+
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TOTAL_LTF_TX])
+		drv->capa.max_tx_ltf_total =
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TOTAL_LTF_TX]);
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TOTAL_LTF_RX])
+		drv->capa.max_rx_ltf_total =
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_TOTAL_LTF_RX]);
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_FTMS_PER_BURST])
+		drv->capa.max_ftms_per_burst =
+			nla_get_u8(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_FTMS_PER_BURST]);
+
+	/* Parse RSTA capabilities */
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_RSTA_SUPPORT] &&
+	    tb[NL80211_PMSR_FTM_CAPA_ATTR_RSTA_CAPS] &&
+	    !nla_parse_nested(rsta_caps, NL80211_PMSR_FTM_CAPA_ATTR_MAX,
+			      tb[NL80211_PMSR_FTM_CAPA_ATTR_RSTA_CAPS],
+			      NULL) == 0) {
+		drv->capa.rsta.support_ntb =
+			!!rsta_caps[NL80211_PMSR_FTM_CAPA_ATTR_SUPPORT_NTB];
+		drv->capa.rsta.support_tb =
+			!!rsta_caps[NL80211_PMSR_FTM_CAPA_ATTR_SUPPORT_TB];
+		drv->capa.rsta.support_edca =
+			!!rsta_caps[NL80211_PMSR_FTM_CAPA_ATTR_SUPPORT_EDCA];
+		if (rsta_caps[NL80211_PMSR_ATTR_MAX_PEER_RSTA_ROLE])
+			drv->capa.rsta.max_peers =
+				nla_get_u32(rsta_caps[NL80211_PMSR_ATTR_MAX_PEER_RSTA_ROLE]);
+	}
+
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_NUM_TX_ANTENNAS])
+		drv->capa.max_tx_antenna =
+			nla_get_u8(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_NUM_TX_ANTENNAS]);
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_NUM_RX_ANTENNAS])
+		drv->capa.max_rx_antenna =
+			nla_get_u8(tb[NL80211_PMSR_FTM_CAPA_ATTR_MAX_NUM_RX_ANTENNAS]);
+
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MIN_INTERVAL_EDCA])
+		drv->capa.edca_min_ranging_interval =
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MIN_INTERVAL_EDCA]);
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_MIN_INTERVAL_NTB])
+		drv->capa.ntb_min_ranging_interval =
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_MIN_INTERVAL_NTB]);
+
+	/* Parse additional ranging capabilities */
+	drv->capa.support_6ghz = !!tb[NL80211_PMSR_FTM_CAPA_ATTR_6GHZ_SUPPORT];
+
+	drv->capa.asap_support = !!tb[NL80211_PMSR_FTM_CAPA_ATTR_ASAP];
+
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_PD_PREAMBLES])
+		drv->capa.pd_preambles = nl80211_to_pd_preamble_bitmap(
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_PD_PREAMBLES]));
+	if (tb[NL80211_PMSR_FTM_CAPA_ATTR_PD_BANDWIDTHS])
+		drv->capa.pd_bandwidths = nl80211_to_pd_bw_bitmap(
+			nla_get_u32(tb[NL80211_PMSR_FTM_CAPA_ATTR_PD_BANDWIDTHS]));
+}
+
+
+static void wiphy_info_pmsr_type_capa(struct wpa_driver_nl80211_data *drv,
+				      struct nlattr *attr)
+{
+	struct nlattr *pos;
+	int rem;
+
+	nla_for_each_nested(pos, attr, rem) {
+		if (nla_type(pos) == NL80211_PMSR_TYPE_FTM)
+			pmsr_type_ftm_handler(drv, pos);
+	}
+}
+
+
+static void wiphy_info_pmsr_capa(struct wpa_driver_nl80211_data *drv,
+				 struct nlattr *tb[])
+{
+	struct nlattr *pmsr_capa[NL80211_PMSR_ATTR_MAX + 1];
+	static struct nla_policy
+	pmsr_policy[NL80211_PMSR_ATTR_MAX + 1] = {
+		[NL80211_PMSR_ATTR_MAX_PEERS] = { .type = NLA_U32 },
+		[NL80211_PMSR_ATTR_TYPE_CAPA] = { .type = NLA_NESTED },
+	};
+
+	if (nla_parse_nested(pmsr_capa, NL80211_PMSR_ATTR_MAX,
+			     tb[NL80211_ATTR_PEER_MEASUREMENTS],
+			     pmsr_policy)) {
+		wpa_printf(MSG_DEBUG, "nl80211: Failed to parse PMSR capabilities");
+		return;
+	}
+
+	if (pmsr_capa[NL80211_PMSR_ATTR_MAX_PEERS])
+		drv->capa.pmsr_max_peers =
+			nla_get_u32(pmsr_capa[NL80211_PMSR_ATTR_MAX_PEERS]);
+	if (pmsr_capa[NL80211_PMSR_ATTR_TYPE_CAPA])
+		wiphy_info_pmsr_type_capa(drv,
+					  pmsr_capa[NL80211_PMSR_ATTR_TYPE_CAPA]);
+}
+
+#endif /* CONFIG_PR */
+
+
 static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 {
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
@@ -1257,6 +1452,11 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
 	}
 
 	wiphy_info_extended_capab(drv, tb[NL80211_ATTR_IFTYPE_EXT_CAPA]);
+
+#ifdef CONFIG_PR
+	if (tb[NL80211_ATTR_PEER_MEASUREMENTS])
+		wiphy_info_pmsr_capa(drv, tb);
+#endif /* CONFIG_PR */
 
 	if (tb[NL80211_ATTR_VENDOR_DATA]) {
 		struct nlattr *nl;
@@ -1542,6 +1742,22 @@ static int wpa_driver_nl80211_get_info(struct wpa_driver_nl80211_data *drv,
 		 */
 		drv->capa.nan_capa.slot_duration = 16;
 		drv->capa.nan_capa.schedule_period = 512;
+
+		/*
+		 * Support NAN beacon protection only if at least one of the NAN
+		 * management group ciphers is supported and the driver supports
+		 * beacon protection.
+		 */
+		if ((info->capa->enc & (WPA_DRIVER_CAPA_ENC_BIP |
+					WPA_DRIVER_CAPA_ENC_BIP_GMAC_256)) &&
+		    (drv->capa.flags & WPA_DRIVER_FLAGS_BEACON_PROTECTION))
+			drv->capa.nan_capa.drv_flags |=
+				WPA_DRIVER_FLAGS_NAN_SUPPORT_BEACON_PROT;
+
+		if (drv->capa.nan_capa.drv_flags &
+		    WPA_DRIVER_FLAGS_NAN_SUPPORT_BEACON_PROT)
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: NAN: beacon protection supported");
 	}
 #endif /* CONFIG_NAN */
 
@@ -2231,6 +2447,7 @@ static void phy_info_iftype_copy(struct hostapd_hw_modes *mode,
 	size_t len;
 	struct he_capabilities *he_capab = &mode->he_capab[opmode];
 	struct eht_capabilities *eht_capab = &mode->eht_capab[opmode];
+	struct uhr_capabilities *uhr_capab = &mode->uhr_capab[opmode];
 
 	switch (opmode) {
 	case IEEE80211_MODE_INFRA:
@@ -2338,6 +2555,26 @@ static void phy_info_iftype_copy(struct hostapd_hw_modes *mode,
 			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PPE]),
 			  len);
 	}
+
+	if (!tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_MAC] ||
+	    !tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY])
+		return;
+
+	uhr_capab->uhr_supported = true;
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_MAC] &&
+	    (size_t) nla_len(tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_MAC]) >=
+	    sizeof(uhr_capab->mac))
+		os_memcpy(uhr_capab->mac,
+			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_MAC]),
+			  sizeof(uhr_capab->mac));
+
+	if (tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY] &&
+	    (size_t) nla_len(tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY]) >=
+	    sizeof(uhr_capab->phy))
+		os_memcpy(uhr_capab->phy,
+			  nla_data(tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY]),
+			  sizeof(uhr_capab->phy));
 }
 
 

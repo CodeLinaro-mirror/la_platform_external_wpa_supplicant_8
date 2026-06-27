@@ -33,10 +33,12 @@ struct nan_discovery_result {
 	const u8 *peer_addr;
 	bool fsd;
 	bool fsd_gas;
+	bool data_path;
+	bool security_required;
 	const u8 *pmkid_list;
-	size_t pmkid_count;
+	unsigned int pmkid_count;
 	const u8 *cipher_suites;
-	size_t n_cipher_suites;
+	unsigned int n_cipher_suites;
 	bool pairing_setup_supp;
 	bool npk_nik_caching_supp;
 	u16 pbm;
@@ -48,7 +50,8 @@ struct nan_callbacks {
 	int (*tx)(void *ctx, unsigned int freq, unsigned int wait_time,
 		  const u8 *dst, const u8 *src, const u8 *bssid,
 		  const struct wpabuf *buf);
-	int (*listen)(void *ctx, unsigned int freq, unsigned int duration);
+	int (*listen)(void *ctx, unsigned int freq, unsigned int duration,
+		      const u8 *forced_addr);
 
 	/* NAN DE Events */
 	void (*discovery_result)(void *ctx, struct nan_discovery_result *res,
@@ -83,6 +86,9 @@ struct nan_callbacks {
 	bool (*is_peer_paired)(void *ctx, const u8 *addr);
 	void (*transmit_req_status)(void *ctx, u32 cookie, bool ack);
 };
+
+extern const u8 nan_network_id[ETH_ALEN];
+extern const u8 p2p_network_id[ETH_ALEN];
 
 bool nan_de_is_nan_network_id(const u8 *addr);
 bool nan_de_is_p2p_network_id(const u8 *addr);
@@ -170,10 +176,15 @@ struct nan_publish_params {
 	const u8 *nd_pmk;
 
 	/*
-	 * GTK protection required for group-addressed data frames transmitted
+	 * GTK protection required for group-addressed Data frames transmitted
 	 * and received for the service
 	 */
 	bool gtk_required;
+
+	/* Request NAN Data Path */
+	bool data_path;
+
+	bool security_required;
 };
 
 /* Returns -1 on failure or >0 publish_id */
@@ -247,7 +258,7 @@ struct nan_subscribe_params {
 	u16 pbm;
 
 	/*
-	 * GTK protection required for group-addressed data frames transmitted
+	 * GTK protection required for group-addressed Data frames transmitted
 	 * and received for the service
 	 */
 	bool gtk_required;
@@ -275,6 +286,7 @@ bool nan_de_is_valid_instance_id(struct nan_de *de, int handle,
 				 bool publish, u8 *service_id);
 u16 nan_de_get_service_bootstrap_methods(struct nan_de *de, int handle);
 bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid);
+void nan_de_set_tx_mcast_follow_up_prot(struct nan_de *de, bool prot);
 int nan_de_get_status(struct nan_de *de, char *buf, size_t buflen);
 
 int nan_de_stop_listen(struct nan_de *de, int handle);

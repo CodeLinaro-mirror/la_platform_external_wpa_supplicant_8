@@ -10,10 +10,7 @@
 #ifndef NAN_DEFS_H
 #define NAN_DEFS_H
 
-#define NAN_TYPE_SDF 0x13
-#define NAN_TYPE_NAF 0x18
-
-/* See Section 9.4.1 */
+/* Wi-Fi Aware spec v4.0, Table 35 (NAI Action frame subtypes) */
 enum nan_subtype {
 	NAN_SUBTYPE_INVALID			= 0,
 	NAN_SUBTYPE_RANGING_REQUEST		= 1,
@@ -130,10 +127,13 @@ enum nan_service_protocol_type {
 	NAN_SRV_PROTO_CSA_MATTER = 3,
 };
 
-/* SRF control field */
-#define NAN_SRF_CTRL_BF      BIT(0)
-#define NAN_SRF_CTRL_INCLUDE BIT(1)
+/* SRF Control field */
+/* bit 0 = 0: Address Set is a sequence of MAC Addresses
+ * bit 0 = 1: Address Set is a Bloom filter */
+#define NAN_SRF_CTRL_BF 	BIT(0)
+#define NAN_SRF_CTRL_INCLUDE 	BIT(1)
 
+/* bit 2-3: Bloom Filter Index */
 #define NAN_SRF_CTRL_BF_IDX_MSK (BIT(0) | BIT(1))
 #define NAN_SRF_CTRL_BF_IDX_POS 2
 
@@ -254,16 +254,21 @@ enum nan_ndp_status {
 	NAN_NDP_STATUS_REJECTED  = 2,
 };
 
-/* Wi-Fi Aware spec v4.0, Table 84 (NDP Control field) */
+/* Wi-Fi Aware spec v4.0, Table 84 (NDP Control field) and Table 87 (Subfields
+ * of NDPE Control field format).
+ * Bits 0-4 are identical for NDP and NDPE. The only differences are in
+ * Bit 5.
+ */
 #define NAN_NDP_CTRL_CONFIRM_REQUIRED       BIT(0)
-/* Bit position 1 is reserved in the spec */
 #define NAN_NDP_CTRL_SECURITY_PRESENT       BIT(2)
 #define NAN_NDP_CTRL_PUBLISH_ID_PRESENT     BIT(3)
 #define NAN_NDP_CTRL_RESPONDER_NDI_PRESENT  BIT(4)
+
 #define NAN_NDP_CTRL_SPEC_INFO_PRESENT      BIT(5)
 #define NAN_NDPE_CTRL_GTK_REQUIRED          BIT(5)
 
-/* Wi-Fi Aware spec v4.0, Table 82 (NDP attribute format)
+/* Wi-Fi Aware spec v4.0, Table 82 (NDP attribute format) and
+ * Table 86 (NAN Data Path Extension attribute format)
  * Note: The structure does not include the Attribute ID and Length fields. */
 struct ieee80211_ndp {
 	u8 dialog_token; /* Dialog Token */
@@ -277,7 +282,7 @@ struct ieee80211_ndp {
 	u8 optional[0];
 } STRUCT_PACKED;
 
-/* TLV types for NDPE attribute: See Table 89 */
+/* Wi-Fi Aware spec v4.0, Table 89 (List of TLV types for the NDPE attribute) */
 enum nan_ndpe_tlv_type {
 	NAN_NDPE_TLV_IPV6_LINK_LOCAL = 0,
 	NAN_NDPE_TLV_SRV_INFO        = 1,
@@ -355,10 +360,6 @@ struct nan_chan_entry {
 #define NAN_BAND_CHAN_CTRL_NUM_ENTRIES_POS  4
 #define NAN_BAND_CHAN_CTRL_NUM_ENTRIES_MASK (BIT(4) | BIT(5) | BIT(6) | BIT(7))
 
-/*
- * See Table 98 (Band/Channel Entries List field format for the NAN Availability
- * attribute).
- */
 struct nan_band_chan_list {
 	u8 ctrl;
 	u8 entries[0];
@@ -403,6 +404,44 @@ struct nan_avail {
 	le16 ctrl; /* Attribute Control */
 
 	/* followed by Availability Entry List */
+	u8 optional[0];
+} STRUCT_PACKED;
+
+/* Wi-Fi Aware spec v4.0, Table 110 (Attribute Control field format for the
+ * Unaligned Schedule attribute)
+ */
+#define NAN_UNALIGNED_SCHED_CTRL_SCHED_ID_MASK (BIT(0) | BIT(1) | BIT(2) | \
+						BIT(3))
+
+/* Wi-Fi Aware spec v4.0, Table 111 (ULW Overwrite field format) */
+#define NAN_ULW_OVERWRITE_ALL        BIT(0)
+#define NAN_ULW_OVERWRITE_MAP_ID_POS 1
+#define NAN_ULW_OVERWRITE_MAP_ID_MASK (BIT(1) | BIT(2) | BIT(3) | BIT(4))
+
+/* Wi-Fi Aware spec v4.0, Table 112 (ULW Control field format) */
+#define NAN_ULW_CTRL_TYPE_POS                0
+#define NAN_ULW_CTRL_TYPE_MASK               (BIT(0) | BIT(1))
+#define NAN_ULW_CTRL_TYPE_BAND_ID            0
+#define NAN_ULW_CTRL_TYPE_CHAN_ENTRY         1
+#define NAN_ULW_CTRL_TYPE_CHAN_ENTRY_WITH_AUX 2
+#define NAN_ULW_CTRL_CHAN_AVAIL              BIT(2)
+#define NAN_ULW_CTRL_RX_NSS_POS              3
+#define NAN_ULW_CTRL_RX_NSS_MASK             (BIT(3) | BIT(4) | BIT(5) | BIT(6))
+
+/* Wi-Fi Aware spec v4.0, Table 109 (Unaligned Schedule attribute format).
+ * ID and length are not included.
+ */
+struct nan_unaligned_sched {
+	u8 sched_id;
+	u8 seq_id;
+	le32 start_time;
+	le32 duration;
+	le32 period;
+	u8 count_down;
+	u8 ulw_overwrite;
+
+	/* followed by optional fields (ULW Control and Band ID or Channel
+	 * Entry) */
 	u8 optional[0];
 } STRUCT_PACKED;
 
@@ -521,7 +560,6 @@ enum nan_cipher_suite_id {
 #define NAN_CS_IS_PASN(csid) \
 	((csid) == NAN_CS_PK_PASN_128 || (csid) == NAN_CS_PK_PASN_256)
 
-/* See Table 121 (Cipher Suite attribute field format) */
 struct nan_cipher_suite {
 	u8 csid; /* Cipher Suite ID */
 	u8 instance_id; /* Publish ID */
@@ -536,11 +574,8 @@ struct nan_cipher_suite {
 #define NAN_CS_INFO_CAPA_GTK_SUPP_NO_BIGTK          1
 #define NAN_CS_INFO_CAPA_GTK_SUPP_ALL               2
 #define NAN_CS_INFO_CAPA_16_REPLAY_COUNTERS         BIT(3)
-#define NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_256       BIT(4)
+#define NAN_CS_INFO_CAPA_IGTK_USE_NCS_BIP_GMAC_256  BIT(4)
 
-/* See Table 122 (Cipher Suite Information attribute field format). Id and
- * length not included
- */
 struct nan_cipher_suite_info {
 	u8 capab; /* Capabilities */
 	u8 cs[0]; /* Cipher Suite List */
@@ -549,11 +584,9 @@ struct nan_cipher_suite_info {
 /* Wi-Fi Aware spec v4.0, Table 123 (Security Context Identifier (SCID) field
  * format) */
 enum nan_sec_ctx_type {
-	NAN_SEC_CTX_TYPE_INVALID = 0,
 	NAN_SEC_CTX_TYPE_ND_PMKID = 1,
 };
 
-/* See Table 123 (Security Context Identifier field format) */
 struct nan_sec_ctxt {
 	le16 len; /* Security Context Identifier Type Length */
 	u8 scid; /* Security Context Identifier Type */
@@ -576,13 +609,15 @@ struct nan_shared_key {
 	u8 key[0]; /* IEEE 802.11 RSNA Key Descriptor */
 } STRUCT_PACKED;
 
-/* See Table 141 (Capability Info Field) */
+/* Wi-Fi Aware spec v4.0, Table 141 (Capability Info field) */
 #define NAN_DEV_CAPA_EXT_INFO_0_REG_VALID         BIT(0)
-#define NAN_DEV_CAPA_EXT_INFO_0_INDOOR_AP         BIT(1)
-#define NAN_DEV_CAPA_EXT_INFO_0_SP_AP             BIT(2)
-#define NAN_DEV_CAPA_EXT_INFO_0_VLP               BIT(3)
-#define NAN_DEV_CAPA_EXT_INFO_0_INDOOR_ENABLED_AP BIT(4)
-#define NAN_DEV_CAPA_EXT_INFO_0_INDOOR_SP_AP      BIT(5)
+#define NAN_DEV_CAPA_EXT_INFO_0_AP_TYPE_POS       1
+#define NAN_DEV_CAPA_EXT_INFO_0_AP_TYPE_MASK      (BIT(1) | BIT(2) | BIT(3))
+#define NAN_DEV_CAPA_EXT_INFO_INDOOR_AP           0
+#define NAN_DEV_CAPA_EXT_INFO_SP_AP               1
+#define NAN_DEV_CAPA_EXT_INFO_VLP_AP              2
+#define NAN_DEV_CAPA_EXT_INFO_INDOOR_ENABLED_AP   3
+#define NAN_DEV_CAPA_EXT_INFO_INDOOR_SP_AP        4
 
 #define NAN_DEV_CAPA_EXT_INFO_1_PAIRING_SETUP     BIT(0)
 #define NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING   BIT(1)

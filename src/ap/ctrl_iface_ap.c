@@ -405,6 +405,20 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
 	}
 #endif /* CONFIG_IEEE80211BE */
 
+#ifdef CONFIG_IEEE80211BN
+	if ((sta->flags & WLAN_STA_UHR) && sta->uhr_capab) {
+		res = os_snprintf(buf + len, buflen - len, "uhr_capab=");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+		len += wpa_snprintf_hex(buf + len, buflen - len,
+					(const u8 *) sta->uhr_capab,
+					sta->uhr_capab_len);
+		res = os_snprintf(buf + len, buflen - len, "\n");
+		if (!os_snprintf_error(buflen - len, res))
+			len += res;
+	}
+#endif /* CONFIG_IEEE80211BN */
+
 #ifdef CONFIG_IEEE80211AC
 	if ((sta->flags & WLAN_STA_VHT) && sta->vht_capabilities) {
 		res = os_snprintf(buf + len, buflen - len,
@@ -885,6 +899,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  "ieee80211ac=%d\n"
 			  "ieee80211ax=%d\n"
 			  "ieee80211be=%d\n"
+			  "ieee80211bn=%d\n"
 			  "beacon_int=%u\n"
 			  "dtim_period=%d\n",
 			  iface->conf->channel,
@@ -896,6 +911,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  hostapd_is_vht_enabled(hapd),
 			  hostapd_is_he_enabled(hapd),
 			  hostapd_is_eht_enabled(hapd),
+			  hostapd_is_uhr_enabled(hapd),
 			  iface->conf->beacon_int,
 			  hapd->conf->dtim_period);
 	if (os_snprintf_error(buflen - len, ret))

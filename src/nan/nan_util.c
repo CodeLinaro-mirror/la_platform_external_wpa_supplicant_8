@@ -37,6 +37,7 @@ void nan_attrs_clear(struct nan_data *nan, struct nan_attrs *attrs)
 	nan_attrs_clear_list(nan, &attrs->serv_desc_ext);
 	nan_attrs_clear_list(nan, &attrs->avail);
 	nan_attrs_clear_list(nan, &attrs->ndc);
+	nan_attrs_clear_list(nan, &attrs->ulw);
 	nan_attrs_clear_list(nan, &attrs->dev_capa);
 	nan_attrs_clear_list(nan, &attrs->element_container);
 
@@ -67,6 +68,7 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 	dl_list_init(&attrs->serv_desc_ext);
 	dl_list_init(&attrs->avail);
 	dl_list_init(&attrs->ndc);
+	dl_list_init(&attrs->ulw);
 	dl_list_init(&attrs->dev_capa);
 	dl_list_init(&attrs->element_container);
 
@@ -135,6 +137,18 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			entry->len = attr_len;
 			dl_list_add_tail(&attrs->ndc, &entry->list);
 			break;
+		case NAN_ATTR_UNALIGNED_SCHEDULE:
+			if (attr_len < sizeof(struct nan_unaligned_sched))
+				break;
+
+			entry = os_malloc(sizeof(*entry));
+			if (!entry)
+				goto fail;
+
+			entry->ptr = pos;
+			entry->len = attr_len;
+			dl_list_add_tail(&attrs->ulw, &entry->list);
+			break;
 		case NAN_ATTR_NDL:
 			/* Validate minimal NDL attribute length */
 			if (attr_len < sizeof(struct ieee80211_ndl))
@@ -195,8 +209,9 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 			break;
 		case NAN_ATTR_NPBA:
 			/*
-			 * Validate minimal NPBA element length: dialog token
-			 * (1) + type and stats (1) + reason code (1) + pbm (2)
+			 * Validate minimal NPBA length: Dialog Token (1) +
+			 * Type and Statuss (1) + Reason Code (1) +
+			 * Pairing Bootstrapping Method (2)
 			 */
 			if (attr_len < 5)
 				break;
@@ -242,7 +257,6 @@ int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 		case NAN_ATTR_COUNTRY_CODE:
 		case NAN_ATTR_RANGING:
 		case NAN_ATTR_CLUSTER_DISCOVERY:
-		case NAN_ATTR_UNALIGNED_SCHEDULE:
 		case NAN_ATTR_RANGING_INFO:
 		case NAN_ATTR_RANGING_SETUP:
 		case NAN_ATTR_FTM_RANGING_REPORT:
@@ -370,11 +384,10 @@ void nan_add_dev_capa_attr(struct nan_data *nan, struct wpabuf *buf)
 
 /*
  * nan_add_csia - Add Cipher Suite Information Attribute (CSIA) to a buffer
- *
  * @buf: Buffer to add the attribute to
  * @capab: Capabilities field (1 octet)
  * @cs_list_len: Number of cipher suites in the list
- * @cs_list: Array of cipher suite structures (see &struct nan_cipher_suite)
+ * @cs_list: Array of cipher suite structures
  *
  * This function constructs and appends a NAN Cipher Suite Information Attribute
  * to the provided buffer.
@@ -385,12 +398,11 @@ int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
 		 const struct nan_cipher_suite *cs_list)
 {
 	size_t i;
-
 	/* Capabilities (1 octet) + Cipher Suite List */
 	size_t attr_len = sizeof(capab) + cs_list_len * sizeof(*cs_list);
 
 	if (wpabuf_tailroom(buf) <
-	    (size_t)(NAN_ATTR_HDR_LEN + attr_len)) {
+	    (size_t) (NAN_ATTR_HDR_LEN + attr_len)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Not enough space to add CSIA attribute");
 		return -1;
@@ -691,7 +703,7 @@ nan_build_pot_avail_entry_with_chans(struct nan_data *nan,
 	os_memset(chan_entries, 0, sizeof(chan_entries));
 	n_entries = 0;
 
-	wpa_printf(MSG_DEBUG, "NAN: Adding potential entries: n_chans=%zu",
+	wpa_printf(MSG_DEBUG, "NAN: Adding potential entries: n_chans=%u",
 		   pot_chans->n_chans);
 
 	for (i = 0; i < pot_chans->n_chans; i++) {
@@ -787,8 +799,7 @@ static void nan_build_pot_avail_entry(struct nan_data *nan, struct wpabuf *buf,
  * committed slots and an availability entry for conditional slots.
  */
 int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
-			u32 map_ids_bitmap,
-			u8 type_for_conditional,
+			u32 map_ids_bitmap, u8 type_for_conditional,
 			size_t n_chans, struct nan_chan_schedule *chans,
 			struct wpabuf *buf, bool include_potential)
 {
@@ -848,7 +859,8 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 					nan_build_pot_avail_entry(nan, buf,
 								  last_map_id);
 				WPA_PUT_LE16(len_ptr,
-					     (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
+					     (u8 *) wpabuf_put(buf, 0) -
+					     len_ptr - 2);
 			}
 
 			last_map_id = chan->map_id;
@@ -885,7 +897,8 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 		if (chan->conditional.len)
 			nan_add_avail_entry(nan, &chan->conditional,
 					    type_for_conditional,
-					    op_class, chan_bm, 0, buf);
+					    op_class, chan_bm, pri_chan_bm,
+					    buf);
 	}
 
 	if (last_map_id != NAN_INVALID_MAP_ID) {
@@ -905,7 +918,7 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 
 	/*
 	 * Add NAN availability attributes with a single potential availability
-	 * entry for map IDs that are not included in the schedule
+	 * entry for map IDs that are not included in the schedule.
 	 */
 	map_ids_bitmap &= ~handled_map_ids;
 	wpa_printf(MSG_DEBUG,
@@ -914,10 +927,9 @@ int nan_add_avail_attrs(struct nan_data *nan, u8 sequence_id,
 
 	while (map_ids_bitmap) {
 		struct nan_channels pot_chans;
-
 		u8 map_id = ffs(map_ids_bitmap) - 1;
 		u16 ctrl = map_id << NAN_AVAIL_CTRL_MAP_ID_POS |
-			  NAN_AVAIL_CTRL_POTENTIAL_CHANGED;
+			NAN_AVAIL_CTRL_POTENTIAL_CHANGED;
 
 		map_ids_bitmap &= ~BIT(map_id);
 
@@ -1015,12 +1027,8 @@ int nan_sched_entries_to_avail_entries(struct nan_data *nan,
 		u16 ctrl;
 		size_t elen;
 
-		if (sched_entries_len < sizeof(struct nan_sched_entry)) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Schedule entry buffer too small=%u",
-				   sched_entries_len);
+		if (sched_entries_len < sizeof(struct nan_sched_entry))
 			goto fail;
-		}
 		elen = sizeof(struct nan_sched_entry) + sched_entry->len;
 		if (sched_entries_len < elen) {
 			wpa_printf(MSG_DEBUG,
@@ -1059,13 +1067,12 @@ int nan_sched_entries_to_avail_entries(struct nan_data *nan,
 		dl_list_init(&avail_entry->list);
 		dl_list_add(avail_entries, &avail_entry->list);
 
-		sched_entries_len -= sizeof(struct nan_sched_entry) +
-			sched_entry->len;
-		sched_entries += sizeof(struct nan_sched_entry) +
-			sched_entry->len;
+		sched_entries_len -= elen;
+		sched_entries += elen;
 	}
 
 	return 0;
+
 fail:
 	nan_flush_avail_entries(avail_entries);
 	return -1;
@@ -1166,7 +1173,6 @@ done:
 
 /**
  * nan_sched_to_bf - Convert schedule to bitfield
- *
  * @nan: NAN module context from nan_init()
  * @sched: List of availability entries representing the schedule entries
  * @map_id: On return holds the map_id covered by the schedule entries
@@ -1174,7 +1180,7 @@ done:
  * Returns: A bitfield representing the schedule on success; otherwise NULL
  *
  * Note: The function only supports converting a schedule where all map IDs are
- * identical. There is no support for a schedule that uses different maps
+ * identical. There is no support for a schedule that uses different maps.
  */
 struct bitfield * nan_sched_to_bf(struct nan_data *nan, struct dl_list *sched,
 				  u8 *map_id, enum nan_reason *reason)
@@ -1232,6 +1238,7 @@ struct bitfield * nan_sched_to_bf(struct nan_data *nan, struct dl_list *sched,
 	}
 
 	return sched_bf;
+
 fail:
 	bitfield_free(sched_bf);
 	*map_id = NAN_INVALID_MAP_ID;
@@ -1338,6 +1345,7 @@ nan_sched_bf_from_avail_and_chan(struct nan_data *nan,
 	}
 
 	return res_bf;
+
 fail:
 	bitfield_free(res_bf);
 	return NULL;
@@ -1386,8 +1394,8 @@ bool nan_sched_covered_by_avail_entries(struct nan_data *nan,
 	if (avail_bf)
 		ret = bitfield_is_subset(avail_bf, sched_bf) ? true : false;
 
-	wpa_printf(MSG_DEBUG, "NAN: Schedule is %s a subset of entries",
-		   ret ? "" : "NOT");
+	wpa_printf(MSG_DEBUG, "NAN: Schedule is %sa subset of entries",
+		   ret ? "" : "NOT ");
 
 	bitfield_free(avail_bf);
 	bitfield_free(sched_bf);
@@ -1582,6 +1590,7 @@ struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
 	}
 
 	return res_bf;
+
 fail:
 	bitfield_free(res_bf);
 	return NULL;
@@ -1671,8 +1680,8 @@ int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
 
 		ret = wpa_scnprintf(pos, end - pos,
 				    "\n\timmutable: period=%u duration=%u offset=%u bitmap=",
-				    BIT(6 + map->immutable.period),
-				    BIT(4 + map->immutable.duration),
+				    1 << (6 + map->immutable.period),
+				    1 << (4 + map->immutable.duration),
 				    16 * map->immutable.offset);
 		if (os_snprintf_error(end - pos, ret))
 			goto err;
@@ -1697,7 +1706,9 @@ int nan_peer_dump_sched_to_buf(struct nan_peer_schedule *sched,
 		goto err;
 
 	pos += ret;
+
 	return pos - buf;
+
 err:
 	wpa_printf(MSG_DEBUG, "NAN: Buffer too small to dump peer schedule");
 	return -1;
@@ -1753,6 +1764,7 @@ int nan_peer_dump_pot_avail_to_buf(struct nan_peer_potential_avail *pot_avail,
 	}
 
 	return pos - buf;
+
 err:
 	wpa_printf(MSG_DEBUG,
 		   "NAN: Buffer too small to dump peer potential availability");
@@ -1765,7 +1777,7 @@ err:
  * @nan: Pointer to NAN data struct
  * @peer_sched: Pointer to peer schedule struct
  * @map_idx: Index of the availability map to check
- * Returns: Frequency of the committed channel that intersects with NDC,
+ * Returns: Frequency of the peer channel that intersects with NDC,
  *          or -1 on failure or if no intersection found
  *
  * In case NDC bitmap spans across multiple channels, only one channel is
@@ -1790,28 +1802,29 @@ int nan_get_peer_ndc_freq(struct nan_data *nan,
 		return -1;
 
 	for (i = 0; i < peer_sched->maps[map_idx].n_chans; i++) {
-		struct bitfield *committed_bf;
+		struct bitfield *peer_chan_map;
 
-		if (!peer_sched->maps[map_idx].chans[i].committed)
-			continue;
-
-		committed_bf =
+		/*
+		 * Check all peer channel entries (committed or conditional).
+		 * Potential entries are not part of the peer schedule.
+		 */
+		peer_chan_map =
 			nan_tbm_to_bf(nan,
 				      &peer_sched->maps[map_idx].chans[i].tbm);
-		if (!committed_bf) {
+		if (!peer_chan_map) {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to convert peer committed TBM to bitfield");
+				   "NAN: Failed to convert peer channel TBM to bitfield");
 			bitfield_free(ndc_bf);
 			return -1;
 		}
 
-		if (bitfield_intersects(ndc_bf, committed_bf)) {
+		if (bitfield_intersects(ndc_bf, peer_chan_map)) {
 			bitfield_free(ndc_bf);
-			bitfield_free(committed_bf);
+			bitfield_free(peer_chan_map);
 			return peer_sched->maps[map_idx].chans[i].chan.freq;
 		}
 
-		bitfield_free(committed_bf);
+		bitfield_free(peer_chan_map);
 	}
 
 	bitfield_free(ndc_bf);
@@ -1916,22 +1929,21 @@ int nan_convert_chan_sched_to_bf(struct nan_data *nan,
 }
 
 
-/*
- * nan_peer_schedule_intersects - Check if local and peer schedules intersect
- *
+/**
+ * nan_peer_schedule_intersection - Get local and peer schedules intersection
  * @nan: NAN module context from nan_init()
  * @peer: The peer with whom to intersect the schedule
  * @sched: Local device schedule
- * Returns: Bitfield representing the intersection of schedules, or NULL if
+ * Returns: A bitfield representing the intersection of schedules, or NULL if
  *	no intersection
  *
  * The function checks if the local device schedule intersects with the peer
- * device schedule and return a bitfield representing the intersection, or NULL
- *	if no intersection.
+ * device schedule and returns a bitfield representing the intersection, or
+ * NULL if no intersection.
  */
-struct bitfield *nan_peer_schedule_intersection(struct nan_data *nan,
-						struct nan_peer *peer,
-						struct nan_schedule *sched)
+struct bitfield * nan_peer_schedule_intersection(
+	struct nan_data *nan, const struct nan_peer *peer,
+	const struct nan_schedule *sched)
 {
 	size_t i;
 	struct bitfield *common_bf = NULL;

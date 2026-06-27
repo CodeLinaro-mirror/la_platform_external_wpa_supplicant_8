@@ -1082,6 +1082,9 @@ endif
 ifdef CONFIG_IEEE80211BE
 OBJS += ../src/ap/ieee802_11_eht.o
 endif
+ifdef CONFIG_IEEE80211BN
+OBJS += ../src/ap/ieee802_11_uhr.o
+endif
 ifdef CONFIG_WNM_AP
 CFLAGS += -DCONFIG_WNM_AP
 OBJS += ../src/ap/wnm_ap.o
@@ -1103,6 +1106,10 @@ OBJS += ../src/eap_server/eap_server_methods.o
 
 ifdef CONFIG_IEEE80211AC
 CFLAGS += -DCONFIG_IEEE80211AC
+endif
+ifdef CONFIG_IEEE80211BN
+CONFIG_IEEE80211BE=y
+CFLAGS += -DCONFIG_IEEE80211BN
 endif
 ifdef CONFIG_IEEE80211BE
 CONFIG_IEEE80211AX=y

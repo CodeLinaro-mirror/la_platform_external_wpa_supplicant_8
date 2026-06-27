@@ -131,6 +131,8 @@ struct ieee802_11_elems {
 	const u8 *akm_suite_selector;
 	const u8 *supported_groups;
 	const u8 *nan_ie;
+	const u8 *uhr_capabilities;
+	const u8 *uhr_operation;
 
 	u8 ssid_len;
 	u8 supp_rates_len;
@@ -202,9 +204,11 @@ struct ieee802_11_elems {
 	size_t rsn_selection_len;
 	u8 wfa_capab_len;
 	size_t proximity_ranging_len;
-	size_t nan_len;
 	u8 akm_suite_selector_len;
 	u8 supported_groups_len;
+	size_t nan_len;
+	u8 uhr_capabilities_len;
+	u8 uhr_operation_len;
 
 	struct mb_ies_info mb_ies;
 

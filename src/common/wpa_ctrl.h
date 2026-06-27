@@ -266,6 +266,12 @@ extern "C" {
  */
 #define NAN_PAIRING_STATUS "NAN-PAIRING-STATUS "
 
+/* NAN local schedule channel evacuation.
+ * parameters: map_id=<map_id> freq=<freq>
+ */
+#define NAN_CHAN_EVACUATION "NAN-CHAN-EVACUATION "
+#define NAN_STOPPED "NAN-STOPPED "
+
 /* MESH events */
 #define MESH_GROUP_STARTED "MESH-GROUP-STARTED "
 #define MESH_GROUP_REMOVED "MESH-GROUP-REMOVED "
@@ -490,6 +496,11 @@ extern "C" {
 /* PASN authentication status */
 #define PASN_AUTH_STATUS "PASN-AUTH-STATUS "
 
+/* Proximity Ranging PASN negotiation started
+ * peer_addr=<MAC> role=<role> protocol=<protocol type>
+ */
+#define PR_PASN_NEGOTIATION_STARTED "PR-PASN-NEGOTIATION-STARTED "
+
 /* Result of PASN performed for Proximity Ranging
  * <result> role=<role> protocol=<protocol type> opclass=<op class> channel=<op channel> cc=<country>
  */
@@ -497,6 +508,12 @@ extern "C" {
 
 /* Proximity Ranging parameters to use in ranging */
 #define PR_RANGING_PARAMS "PR-RANGING-PARAMS "
+
+/* Proximity Ranging measurement result */
+#define PR_EVENT_PEER_MEASUREMENT "PR-PEER-MEASUREMENT "
+
+/* Proximity Ranging measurement session complete */
+#define PR_EVENT_RANGING_COMPLETE "PR-RANGING-COMPLETE "
 
 /* BSS command information masks */
 
