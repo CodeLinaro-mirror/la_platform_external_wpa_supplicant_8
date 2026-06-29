@@ -497,10 +497,6 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 
 	wpabuf_put_u8(buf, hapd->eht_mld_bss_param_change);
 
-	/* Currently hard-code Enhanced Critical Updates Information to zero */
-	if (hostapd_is_uhr_enabled(hapd))
-		wpabuf_put_u8(buf, 0);
-
 	wpa_printf(MSG_DEBUG, "MLD: EML Capabilities=0x%x",
 		   hapd->iface->mld_eml_capa);
 	wpabuf_put_le16(buf, hapd->iface->mld_eml_capa);
@@ -533,6 +529,10 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 			   hostapd_get_mld_id(hapd));
 		wpabuf_put_u8(buf, hostapd_get_mld_id(hapd));
 	}
+
+	/* Currently hard-code Enhanced Critical Updates Information to zero */
+	if (hostapd_is_uhr_enabled(hapd))
+		wpabuf_put_u8(buf, 0);
 
 	if (!mld_info)
 		goto out;
@@ -1414,6 +1414,8 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 			goto out;
 		}
 
+		if ((size_t) num_frag_subelems * 2 > ml_len)
+			goto out;
 		ml_len -= num_frag_subelems * 2;
 		ml_end = ((const u8 *) ml) + ml_len;
 
@@ -2474,6 +2476,8 @@ hostapd_parse_link_reconf_req_reconf_mle(
 			goto fail;
 		}
 
+		if ((size_t) num_frag_subelems * 2 > len)
+			goto fail;
 		len -= num_frag_subelems * 2;
 		end = ((const u8 *) ml) + len;
 
