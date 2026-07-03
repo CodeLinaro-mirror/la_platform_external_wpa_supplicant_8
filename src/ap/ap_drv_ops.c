@@ -480,7 +480,7 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
 		    int set, const u8 *link_addr, bool mld_link_sta,
-		    u16 eml_cap)
+		    u16 eml_cap, bool epp_sta)
 {
 	struct hostapd_sta_add_params params;
 
@@ -510,6 +510,9 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 	params.support_p2p_ps = supp_p2p_ps;
 	params.set = set;
 	params.mld_link_id = -1;
+#ifdef CONFIG_ENC_ASSOC
+	params.epp_sta = epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_IEEE80211BE
 	/*
@@ -527,16 +530,6 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211BE */
 
 	return hapd->driver->sta_add(hapd->drv_priv, &params);
-}
-
-
-int hostapd_add_tspec(struct hostapd_data *hapd, const u8 *addr,
-		      u8 *tspec_ie, size_t tspec_ielen)
-{
-	if (hapd->driver == NULL || hapd->driver->add_tspec == NULL)
-		return 0;
-	return hapd->driver->add_tspec(hapd->drv_priv, addr, tspec_ie,
-				       tspec_ielen);
 }
 
 
@@ -766,14 +759,6 @@ hostapd_get_hw_feature_data(struct hostapd_data *hapd, u16 *num_modes,
 		return NULL;
 	return hapd->driver->get_hw_feature_data(hapd->drv_priv, num_modes,
 						 flags, dfs_domain);
-}
-
-
-int hostapd_driver_commit(struct hostapd_data *hapd)
-{
-	if (hapd->driver == NULL || hapd->driver->commit == NULL)
-		return 0;
-	return hapd->driver->commit(hapd->drv_priv);
 }
 
 
@@ -1248,8 +1233,7 @@ int hostapd_drv_do_acs(struct hostapd_data *hapd)
 	params.hw_mode = hapd->iface->conf->hw_mode;
 	params.link_id = -1;
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && hapd->iconf->ieee80211be &&
-	    !hapd->conf->disable_11be)
+	if (hapd->conf->mld_ap)
 		params.link_id = hapd->mld_link_id;
 #endif /* CONFIG_IEEE80211BE */
 

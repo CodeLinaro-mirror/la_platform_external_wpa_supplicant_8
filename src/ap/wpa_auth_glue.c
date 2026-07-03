@@ -81,6 +81,12 @@ static void hostapd_wpa_auth_config_update(struct hostapd_data *hapd,
 		!!(hapd->iface->drv_flags2 &
 		   WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_AP);
 
+#ifdef CONFIG_ENC_ASSOC
+	if (!(hapd->iface->drv_flags2 &
+	      WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION))
+		_conf->assoc_frame_encryption = 0;
+#endif /* CONFIG_ENC_ASSOC  */
+
 #ifdef CONFIG_IEEE80211BE
 	_conf->mld_addr = NULL;
 	_conf->link_id = -1;
@@ -112,6 +118,12 @@ static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
 
 	os_memset(wconf, 0, sizeof(*wconf));
 	wconf->wpa = conf->wpa;
+#ifdef CONFIG_ENC_ASSOC
+	wconf->assoc_frame_encryption = conf->assoc_frame_encryption;
+	wconf->pmksa_caching_privacy = conf->pmksa_caching_privacy;
+	wconf->eap_using_authentication_frames =
+		conf->eap_using_authentication_frames;
+#endif /* CONFIG_ENC_ASSOC */
 	wconf->extended_key_id = conf->extended_key_id;
 	wconf->wpa_key_mgmt = conf->wpa_key_mgmt;
 	wconf->rsn_override_key_mgmt = conf->rsn_override_key_mgmt;
@@ -327,6 +339,9 @@ static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
 	wconf->dpp_pfs = conf->dpp_pfs;
 #endif /* CONFIG_DPP2 */
 #ifdef CONFIG_PASN
+#ifdef CONFIG_ENC_ASSOC
+	wconf->eppke_unauth = conf->eppke_unauth;
+#endif /* CONFIG_ENC_ASSOC */
 #ifdef CONFIG_TESTING_OPTIONS
 	wconf->force_kdk_derivation = conf->force_kdk_derivation;
 #endif /* CONFIG_TESTING_OPTIONS */
@@ -770,6 +785,29 @@ static int hostapd_wpa_auth_for_each_auth(
 }
 
 
+#ifdef CONFIG_IEEE80211BE
+static int hostapd_wpa_auth_for_each_partner_auth(
+	void *ctx, int (*cb)(struct wpa_authenticator *sm, void *ctx),
+	void *cb_ctx)
+{
+	struct hostapd_data *hapd = ctx;
+	struct hostapd_data *bss;
+
+	if (cb(hapd->wpa_auth, cb_ctx))
+		return 1;
+
+	if (!hapd->mld)
+		return 0;
+
+	for_each_mld_link(bss, hapd) {
+		if (bss != hapd && bss->wpa_auth && cb(bss->wpa_auth, cb_ctx))
+			return 1;
+	}
+	return 0;
+}
+#endif /* CONFIG_IEEE80211BE */
+
+
 #ifdef CONFIG_IEEE80211R_AP
 
 struct wpa_ft_rrb_rx_later_data {
@@ -1110,7 +1148,7 @@ static void hostapd_store_ptksa(void *ctx, const u8 *addr,int cipher,
 	struct hostapd_data *hapd = ctx;
 
 	ptksa_cache_add(hapd->ptksa, hapd->own_addr, addr, cipher, life_time,
-			ptk, NULL, NULL, 0);
+			ptk, NULL, NULL, 0, 0);
 }
 
 
@@ -1579,15 +1617,6 @@ static void hostapd_rrb_oui_receive(void *ctx, const u8 *src_addr,
 }
 
 
-static int hostapd_wpa_auth_add_tspec(void *ctx, const u8 *sta_addr,
-				      u8 *tspec_ie, size_t tspec_ielen)
-{
-	struct hostapd_data *hapd = ctx;
-	return hostapd_add_tspec(hapd, sta_addr, tspec_ie, tspec_ielen);
-}
-
-
-
 static int hostapd_wpa_register_ft_oui(struct hostapd_data *hapd,
 				       const char *ft_iface)
 {
@@ -1671,6 +1700,26 @@ static int hostapd_set_ltf_keyseed(void *ctx, const u8 *peer_addr,
 						  ltf_keyseed, 0);
 }
 #endif /* CONFIG_PASN */
+
+
+static bool hostapd_first_sta_seen_mbssid(void *ctx, int vlan_id)
+{
+	struct hostapd_data *hapd = ctx;
+
+	if (hapd->iconf->mbssid) {
+		size_t i;
+
+		for (i = 0; i < hapd->iface->num_bss; i++) {
+			struct hostapd_data *tmp_hapd = hapd->iface->bss[i];
+
+			if (wpa_auth_get_first_sta_seen(tmp_hapd->wpa_auth,
+							vlan_id))
+				return true;
+		}
+	}
+
+	return false;
+}
 
 
 #ifdef CONFIG_IEEE80211BE
@@ -1786,6 +1835,9 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.get_sta_count = hostapd_wpa_auth_get_sta_count,
 		.for_each_sta = hostapd_wpa_auth_for_each_sta,
 		.for_each_auth = hostapd_wpa_auth_for_each_auth,
+#ifdef CONFIG_IEEE80211BE
+		.for_each_partner_auth = hostapd_wpa_auth_for_each_partner_auth,
+#endif /* CONFIG_IEEE80211BE */
 		.send_ether = hostapd_wpa_auth_send_ether,
 		.send_oui = hostapd_wpa_auth_send_oui,
 		.channel_info = hostapd_channel_info,
@@ -1802,7 +1854,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.send_ft_action = hostapd_wpa_auth_send_ft_action,
 		.add_sta = hostapd_wpa_auth_add_sta,
 		.add_sta_ft = hostapd_wpa_auth_add_sta_ft,
-		.add_tspec = hostapd_wpa_auth_add_tspec,
 		.set_vlan = hostapd_wpa_auth_set_vlan,
 		.get_vlan = hostapd_wpa_auth_get_vlan,
 		.set_identity = hostapd_wpa_auth_set_identity,
@@ -1824,6 +1875,7 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 #endif /* CONFIG_IEEE80211BE */
 		.get_drv_flags = hostapd_wpa_auth_get_drv_flags,
 		.remove_pmkid = hostapd_wpa_auth_remove_pmkid,
+		.first_sta_seen_mbssid = hostapd_first_sta_seen_mbssid,
 	};
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;

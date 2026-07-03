@@ -1431,7 +1431,17 @@ static int p2p_prepare_channel_pref(struct p2p_data *p2p,
 
 	p2p_dbg(p2p, "Prepare channel pref - force_freq=%u pref_freq=%u go=%d",
 		force_freq, pref_freq, go);
-	if (p2p_freq_to_channel(freq, &op_class, &op_channel) < 0) {
+
+	if (p2p->cfg->is_p2p_dfs_chan &&
+	    p2p->cfg->is_p2p_dfs_chan(p2p->cfg->cb_ctx, freq, 0, 0) &&
+	     p2p->dfs_ap_connected) {
+		if (ieee80211_chaninfo_to_channel(
+			    freq, p2p->sta_connected_chan_width, 0,
+			    &op_class, &op_channel) < 0) {
+			p2p_dbg(p2p, "Unsupported frequency %u MHz", freq);
+			return -1;
+		}
+	} else if (p2p_freq_to_channel(freq, &op_class, &op_channel) < 0) {
 		p2p_dbg(p2p, "Unsupported frequency %u MHz", freq);
 		return -1;
 	}
@@ -1579,6 +1589,20 @@ int p2p_prepare_channel(struct p2p_data *p2p, struct p2p_device *dev,
 	} else {
 		p2p_prepare_channel_best(p2p);
 	}
+
+	if (p2p->cfg->is_p2p_dfs_chan &&
+	    p2p->cfg->is_p2p_dfs_chan(p2p->cfg->cb_ctx, 0,
+				      p2p->op_reg_class, p2p->op_channel)) {
+		struct p2p_channels p2p_chanlist;
+
+		p2p_dfs_channel_filter(p2p, &p2p->channels, &p2p_chanlist, go);
+		p2p_channels_dump(p2p,
+				  "Filtered channel list with allowed DFS channels",
+				  &p2p_chanlist);
+		p2p_copy_channels(&p2p->channels, &p2p_chanlist,
+				  p2p->allow_6ghz);
+	}
+
 	p2p_channels_dump(p2p, "prepared channels", &p2p->channels);
 	if (go)
 		p2p_channels_remove_freqs(&p2p->channels, &p2p->no_go_freq);
@@ -1993,6 +2017,7 @@ void p2p_go_complete(struct p2p_data *p2p, struct p2p_device *peer)
 #endif /* CONFIG_PASN */
 
 	if (p2p->go_role && peer->p2p2) {
+		p2p_set_state(p2p, P2P_IDLE);
 		p2p->cfg->set_go_security_config(p2p->cfg->cb_ctx, &res);
 		p2p->go_role = false;
 	} else {
@@ -3086,6 +3111,22 @@ void p2p_set_dev_addr(struct p2p_data *p2p, const u8 *addr)
 {
 	if (p2p && addr)
 		os_memcpy(p2p->cfg->dev_addr, addr, ETH_ALEN);
+}
+
+
+void p2p_update_dfs_ap_info(struct p2p_data *p2p, int freq,
+			    enum chan_width ap_ch_width, bool disconnect_evt)
+{
+	if (disconnect_evt) {
+		p2p->dfs_ap_connected = false;
+		p2p->sta_connected_freq = 0;
+		p2p->sta_connected_chan_width = CHAN_WIDTH_UNKNOWN;
+		return;
+	}
+
+	p2p->sta_connected_freq = freq;
+	p2p->sta_connected_chan_width = ap_ch_width;
+	p2p->dfs_ap_connected = true;
 }
 
 
@@ -7256,7 +7297,8 @@ int p2p_pasn_auth_rx(struct p2p_data *p2p, const struct ieee80211_mgmt *mgmt,
 
 	pasn_register_callbacks(pasn, p2p->cfg->cb_ctx,
 				p2p->cfg->pasn_send_mgmt,
-				p2p->cfg->pasn_validate_pmkid);
+				p2p->cfg->pasn_validate_pmkid,
+				NULL, NULL);
 	auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
 
 	if (dev->role == P2P_ROLE_PAIRING_INITIATOR &&

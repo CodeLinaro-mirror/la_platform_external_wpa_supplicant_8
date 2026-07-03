@@ -717,6 +717,10 @@ static int hostapd_config_parse_key_mgmt(int line, const char *value)
 		else if (os_strcmp(start, "PASN") == 0)
 			val |= WPA_KEY_MGMT_PASN;
 #endif /* CONFIG_PASN */
+#ifdef CONFIG_ENC_ASSOC
+		else if (os_strcmp(start, "EPPKE") == 0)
+			val |= WPA_KEY_MGMT_EPPKE;
+#endif /* CONFIG_ENC_ASSOC */
 		else {
 			wpa_printf(MSG_ERROR, "Line %d: invalid key_mgmt '%s'",
 				   line, start);
@@ -2865,6 +2869,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			return 1;
 		}
 		bss->extended_key_id = val;
+#ifdef CONFIG_ENC_ASSOC
+	} else if (os_strcmp(buf, "assoc_frame_encryption") == 0) {
+		bss->assoc_frame_encryption = atoi(pos);
+	} else if (os_strcmp(buf, "pmksa_caching_privacy") == 0) {
+		bss->pmksa_caching_privacy = atoi(pos);
+	} else if (os_strcmp(buf, "eap_using_authentication_frames") == 0) {
+		bss->eap_using_authentication_frames = atoi(pos);
+#endif /* CONFIG_ENC_ASSOC  */
 	} else if (os_strcmp(buf, "wpa_group_rekey") == 0) {
 		bss->wpa_group_rekey = atoi(pos);
 		bss->wpa_group_rekey_set = 1;
@@ -4874,6 +4886,17 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->force_kdk_derivation = atoi(pos);
 	} else if (os_strcmp(buf, "pasn_corrupt_mic") == 0) {
 		bss->pasn_corrupt_mic = atoi(pos);
+	} else if (os_strcmp(buf, "pasn_test_groups") == 0) {
+		int *groups = NULL;
+
+		if (hostapd_parse_intlist(&groups, pos) < 0) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: Invalid pasn_test_groups value '%s'",
+				   line, pos);
+			return 1;
+		}
+		os_free(bss->pasn_test_groups);
+		bss->pasn_test_groups = groups;
 #endif /* CONFIG_TESTING_OPTIONS */
 	} else if (os_strcmp(buf, "pasn_groups") == 0) {
 		if (hostapd_parse_intlist(&bss->pasn_groups, pos)) {
@@ -4886,6 +4909,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->pasn_comeback_after = atoi(pos);
 	} else if (os_strcmp(buf, "pasn_noauth") == 0) {
 		bss->pasn_noauth = atoi(pos);
+#ifdef CONFIG_ENC_ASSOC
+	} else if (os_strcmp(buf, "eppke_unauth") == 0) {
+		bss->eppke_unauth = atoi(pos);
+#endif /* CONFIG_ENC_ASSOC */
 	} else if (os_strcmp(buf, "urnm_mfpr") == 0) {
 		bss->urnm_mfpr = !!atoi(pos);
 	} else if (os_strcmp(buf, "urnm_mfpr_x20") == 0) {
@@ -4963,6 +4990,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 			return 1;
 	} else if (os_strcmp(buf, "mld_indicate_disabled") == 0) {
 		bss->mld_indicate_disabled = atoi(pos);
+	} else if (os_strcmp(buf, "disable_mcs15_rx") == 0) {
+		conf->disable_mcs15_rx = atoi(pos);
 #endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_IEEE80211BE */
 	} else if (os_strcmp(buf, "i2r_lmr_policy") == 0) {

@@ -45,6 +45,7 @@
 #include "fils_hlp.h"
 #include "neighbor_db.h"
 #include "nan_usd_ap.h"
+#include "interference.h"
 
 
 #ifdef CONFIG_FILS
@@ -406,6 +407,11 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 		 * will not remove the STA immediately.
 		 */
 		sta->timeout_next = STA_NULLFUNC;
+	} else if (!hostapd_acceptable_sta_addr(hapd, addr, addr, false)) {
+		wpa_printf(MSG_INFO, "STA " MACSTR " not allowed to connect",
+			   MAC2STR(addr));
+		hostapd_drv_sta_disassoc(hapd, addr, WLAN_REASON_UNSPECIFIED);
+			return -1;
 	} else {
 		sta = ap_sta_add(hapd, addr);
 		if (sta == NULL) {
@@ -591,7 +597,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 
 			wpa_printf(MSG_DEBUG, "No WPA/RSN IE from STA");
 			reason = WLAN_REASON_INVALID_IE;
-			status = WLAN_STATUS_INVALID_IE;
+			status = WLAN_STATUS_INVALID_ELEMENT;
 			goto fail;
 		}
 #ifdef CONFIG_WPS
@@ -644,7 +650,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 					  elems.owe_dh, elems.owe_dh_len, NULL,
 					  ap_sta_is_mld(hapd, sta));
 		reason = WLAN_REASON_INVALID_IE;
-		status = WLAN_STATUS_INVALID_IE;
+		status = WLAN_STATUS_INVALID_ELEMENT;
 		switch (res) {
 		case WPA_IE_OK:
 			reason = WLAN_REASON_UNSPECIFIED;
@@ -652,23 +658,23 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			break;
 		case WPA_INVALID_IE:
 			reason = WLAN_REASON_INVALID_IE;
-			status = WLAN_STATUS_INVALID_IE;
+			status = WLAN_STATUS_INVALID_ELEMENT;
 			break;
 		case WPA_INVALID_GROUP:
 			reason = WLAN_REASON_GROUP_CIPHER_NOT_VALID;
-			status = WLAN_STATUS_GROUP_CIPHER_NOT_VALID;
+			status = WLAN_STATUS_INVALID_GROUP_CIPHER;
 			break;
 		case WPA_INVALID_PAIRWISE:
 			reason = WLAN_REASON_PAIRWISE_CIPHER_NOT_VALID;
-			status = WLAN_STATUS_PAIRWISE_CIPHER_NOT_VALID;
+			status = WLAN_STATUS_INVALID_PAIRWISE_CIPHER;
 			break;
 		case WPA_INVALID_AKMP:
 			reason = WLAN_REASON_AKMP_NOT_VALID;
-			status = WLAN_STATUS_AKMP_NOT_VALID;
+			status = WLAN_STATUS_INVALID_AKMP;
 			break;
 		case WPA_NOT_ENABLED:
 			reason = WLAN_REASON_INVALID_IE;
-			status = WLAN_STATUS_INVALID_IE;
+			status = WLAN_STATUS_INVALID_ELEMENT;
 			break;
 		case WPA_ALLOC_FAIL:
 			reason = WLAN_REASON_UNSPECIFIED;
@@ -676,19 +682,19 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			break;
 		case WPA_MGMT_FRAME_PROTECTION_VIOLATION:
 			reason = WLAN_REASON_INVALID_IE;
-			status = WLAN_STATUS_INVALID_IE;
+			status = WLAN_STATUS_INVALID_ELEMENT;
 			break;
 		case WPA_INVALID_MGMT_GROUP_CIPHER:
 			reason = WLAN_REASON_CIPHER_SUITE_REJECTED;
-			status = WLAN_STATUS_CIPHER_REJECTED_PER_POLICY;
+			status = WLAN_STATUS_CIPHER_OUT_OF_POLICY;
 			break;
 		case WPA_INVALID_MDIE:
 			reason = WLAN_REASON_INVALID_MDE;
-			status = WLAN_STATUS_INVALID_MDIE;
+			status = WLAN_STATUS_INVALID_MDE;
 			break;
 		case WPA_INVALID_PROTO:
 			reason = WLAN_REASON_INVALID_IE;
-			status = WLAN_STATUS_INVALID_IE;
+			status = WLAN_STATUS_INVALID_ELEMENT;
 			break;
 		case WPA_INVALID_PMKID:
 			reason = WLAN_REASON_INVALID_PMKID;
@@ -724,9 +730,9 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 			if (status != WLAN_STATUS_SUCCESS) {
 				if (status == WLAN_STATUS_INVALID_PMKID)
 					reason = WLAN_REASON_INVALID_IE;
-				if (status == WLAN_STATUS_INVALID_MDIE)
+				if (status == WLAN_STATUS_INVALID_MDE)
 					reason = WLAN_REASON_INVALID_IE;
-				if (status == WLAN_STATUS_INVALID_FTIE)
+				if (status == WLAN_STATUS_INVALID_FTE)
 					reason = WLAN_REASON_INVALID_IE;
 				goto fail;
 			}
@@ -765,7 +771,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
 #ifdef CONFIG_WPS_STRICT
 		if (wps && wps_validate_assoc_req(wps) < 0) {
 			reason = WLAN_REASON_INVALID_IE;
-			status = WLAN_STATUS_INVALID_IE;
+			status = WLAN_STATUS_INVALID_ELEMENT;
 			wpabuf_free(wps);
 			goto fail;
 		}
@@ -972,7 +978,7 @@ skip_wpa_check:
 #ifdef CONFIG_IEEE80211BE
 	if (hostapd_process_assoc_ml_info(hapd, sta, req_ies, req_ies_len,
 					  !!reassoc, WLAN_STATUS_SUCCESS,
-					  true)) {
+					  true, NULL)) {
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 		reason = WLAN_REASON_UNSPECIFIED;
 		goto fail;
@@ -1869,7 +1875,7 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
 	    WLAN_PA_VENDOR_SPECIFIC &&
 	    WPA_GET_BE24(mgmt->u.action.u.vs_public_action.oui) ==
 	    OUI_WFA &&
-	    mgmt->u.action.u.vs_public_action.variable[0] == NAN_OUI_TYPE) {
+	    mgmt->u.action.u.vs_public_action.variable[0] == NAN_SDF_OUI_TYPE) {
 		const u8 *pos, *end;
 
 		pos = mgmt->u.action.u.vs_public_action.variable;
@@ -2283,6 +2289,8 @@ void hostapd_event_get_survey(struct hostapd_iface *iface,
 			continue;
 		if (chan->flag & HOSTAPD_CHAN_DISABLED)
 			continue;
+		if (!(chan->flag & HOSTAPD_CHAN_SURVEY_LIST_INITIALIZED))
+			continue;
 
 		dl_list_del(&survey->list);
 		dl_list_add_tail(&chan->survey_list, &survey->list);
@@ -2371,9 +2379,24 @@ static void hostapd_event_dfs_cac_started(struct hostapd_data *hapd,
 					  struct dfs_event *radar)
 {
 	wpa_printf(MSG_DEBUG, "DFS offload CAC started on %d MHz", radar->freq);
-	hostapd_dfs_start_cac(hapd->iface, radar->freq, radar->ht_enabled,
+	hostapd_dfs_start_cac(hapd, radar->freq, radar->ht_enabled,
 			      radar->chan_offset, radar->chan_width,
 			      radar->cf1, radar->cf2);
+}
+
+
+static void hostapd_event_incumbt_sig_intf_detected(
+	struct hostapd_data *hapd, struct incumbt_sig_intf_event *intf_info)
+{
+	wpa_printf(MSG_DEBUG, "Interference due to incumbent signal detected on %d MHz with intf bitmap 0x%x on link_id %d",
+		   intf_info->freq, intf_info->chan_bw_interference_bitmap,
+		   intf_info->link_id);
+	if (hostapd_incumbt_sig_intf_detected(
+		    hapd->iface, intf_info->freq, intf_info->chan_width,
+		    intf_info->cf1, intf_info->cf2,
+		    intf_info->chan_bw_interference_bitmap))
+		wpa_printf(MSG_INFO,
+			   "Failed to handle incumbent signal interference");
 }
 
 #endif /* NEED_AP_MLME */
@@ -2420,7 +2443,7 @@ static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
 	}
 	if (!(hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE)) {
 		wpa_printf(MSG_DEBUG, "OWE: No OWE AKM configured");
-		status = WLAN_STATUS_AKMP_NOT_VALID;
+		status = WLAN_STATUS_INVALID_AKMP;
 		goto err;
 	}
 	if (ieee802_11_parse_elems(ie, ie_len, &elems, 1) == ParseFailed) {
@@ -2892,6 +2915,14 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 		hapd = switch_link_hapd(hapd, data->dfs_event.link_id);
 		hostapd_event_dfs_cac_started(hapd, &data->dfs_event);
+		break;
+	case EVENT_INCUMBT_SIG_INTF_DETECTED:
+		if (!data)
+			break;
+		hapd = switch_link_hapd(hapd,
+					data->incumbt_sig_intf_event.link_id);
+		hostapd_event_incumbt_sig_intf_detected(
+			hapd, &data->incumbt_sig_intf_event);
 		break;
 #endif /* NEED_AP_MLME */
 	case EVENT_INTERFACE_ENABLED:

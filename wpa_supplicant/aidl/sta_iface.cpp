@@ -1599,7 +1599,7 @@ std::pair<uint32_t, ndk::ScopedAStatus> StaIface::addExtRadioWorkInternal(
 
 	if (radio_add_work(
 		wpa_s, freq_in_mhz, ework->type, 0, extRadioWorkStartCb,
-		ework)) {
+		ework) == nullptr) {
 		os_free(ework);
 		return {UINT32_MAX, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
 	}

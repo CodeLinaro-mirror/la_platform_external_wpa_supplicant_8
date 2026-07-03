@@ -88,17 +88,6 @@ endif
 
 ##### PURE AP DRIVERS
 
-ifdef CONFIG_DRIVER_ATHEROS
-DRV_AP_CFLAGS += -DCONFIG_DRIVER_ATHEROS
-DRV_AP_OBJS += ../src/drivers/driver_atheros.o
-CONFIG_L2_PACKET=linux
-NEED_NETLINK=y
-NEED_LINUX_IOCTL=y
-ifdef ATH_GCM_SUPPORT
-CFLAGS += -DATH_GCM_SUPPORT
-endif
-endif
-
 ##### PURE CLIENT DRIVERS
 
 ifdef CONFIG_DRIVER_WEXT
@@ -188,6 +177,8 @@ ifdef CONFIG_LIBNL32
 else
   ifdef CONFIG_LIBNL_TINY
     DRV_LIBS += -lnl-tiny
+    DRV_CFLAGS += $(shell $(PKG_CONFIG) --cflags libnl-tiny)
+    DRV_CFLAGS += -D_GNU_SOURCE
   else
     ifndef CONFIG_OSX
       DRV_LIBS += -lnl

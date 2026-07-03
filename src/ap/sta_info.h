@@ -71,6 +71,25 @@ struct pending_eapol_rx {
 	enum frame_encryption encrypted;
 };
 
+struct eap_over_auth_data {
+	int akm;
+	int cipher;
+	u16 group;
+	u16 auth_transaction;
+	u8 snonce[WPA_NONCE_LEN];
+	u8 anonce[WPA_NONCE_LEN];
+	u8 *rsnxe;
+	u8 pmk[PMK_LEN_MAX];
+	size_t pmk_len;
+	struct wpa_ptk ptk;
+	size_t rsnxe_len;
+	struct crypto_ecdh *ecdh;
+	struct wpabuf *dhss;
+	bool add_mic;
+	u8 epp_pmkid_cur[PMKID_LEN];
+	u8 epp_pmkid_next[PMKID_LEN];
+};
+
 #define EHT_ML_MAX_STA_PROF_LEN 1024
 struct mld_info {
 	bool mld_sta;
@@ -99,6 +118,16 @@ struct sta_info {
 	u8 supported_rates[WLAN_SUPP_RATES_MAX];
 	int supported_rates_len;
 	u8 qosinfo; /* Valid when WLAN_STA_WMM is set */
+#ifdef CONFIG_ENC_ASSOC
+	bool epp_sta; /* Indicates if the station is an EPP peer */
+#endif /* CONFIG_ENC_ASSOC */
+#ifdef CONFIG_PMKSA_PRIVACY
+	u8 snonce[NONCE_LEN]; /* SNonce to compute next PMKID if
+			       * PMKID caching privacy is on */
+	u8 anonce[NONCE_LEN]; /* ANonce to compute next PMKID if
+			       * PMKID caching privacy is on */
+	u8 epp_pmkid_next[PMKID_LEN];
+#endif /* CONFIG_PMKSA_PRIVACY */
 
 #ifdef CONFIG_MESH
 	enum mesh_plink_state plink_state;
@@ -262,7 +291,7 @@ struct sta_info {
 #endif /* CONFIG_TAXONOMY */
 
 #ifdef CONFIG_FILS
-	u8 fils_snonce[FILS_NONCE_LEN];
+	u8 fils_snonce[NONCE_LEN];
 	u8 fils_session[FILS_SESSION_LEN];
 	u8 fils_erp_pmkid[PMKID_LEN];
 	u8 *fils_pending_assoc_req;
@@ -326,6 +355,10 @@ struct sta_info {
 
 	struct wpabuf *sae_pw_id;
 	unsigned int sae_pw_id_counter;
+
+#ifdef CONFIG_IEEE8021X_AUTH
+	struct eap_over_auth_data eap_auth_data;
+#endif /* CONFIG_IEEE8021X_AUTH */
 };
 
 
@@ -443,5 +476,28 @@ void set_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
 				      struct sta_info *psta, void *wpa_sm);
 void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
 					struct sta_info *psta);
+void clear_wpa_sm_for_all_sta(struct hostapd_data *hapd,
+			      struct wpa_state_machine *wpa_sm);
 
+static inline bool ap_sta_is_epp(const struct sta_info *sta)
+{
+#ifdef CONFIG_ENC_ASSOC
+	return sta && sta->epp_sta;
+#else /* CONFIG_ENC_ASSOC */
+	return false;
+#endif /* CONFIG_ENC_ASSOC */
+}
+
+static inline bool ap_sta_support_enc_assoc(struct hostapd_data *hapd,
+					    const u8 *rsnxe, size_t rsnxe_len)
+{
+#ifdef CONFIG_ENC_ASSOC
+		return (hapd->conf->assoc_frame_encryption &&
+			ieee802_11_rsnx_capab_len(rsnxe,
+						  rsnxe_len,
+						  WLAN_RSNX_CAPAB_ASSOC_FRAME_ENCRYPTION));
+#else /* CONFIG_ENC_ASSOC */
+	return false;
+#endif /* CONFIG_ENC_ASSOC */
+}
 #endif /* STA_INFO_H */

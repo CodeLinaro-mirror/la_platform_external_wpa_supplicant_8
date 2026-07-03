@@ -20,6 +20,7 @@
 #include "common/ieee802_11_common.h"
 #include "driver_nl80211.h"
 
+
 static void
 nl80211_control_port_frame_tx_status(struct i802_bss *bss,
 				     const u8 *frame, size_t len,
@@ -188,12 +189,12 @@ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 	C2S(NL80211_CMD_SET_TID_TO_LINK_MAPPING)
 	C2S(NL80211_CMD_ASSOC_MLO_RECONF)
 	C2S(NL80211_CMD_EPCS_CFG)
-	C2S(NL80211_CMD_NAN_CLUSTER_JOINED)
 	C2S(NL80211_CMD_NAN_NEXT_DW_NOTIFICATION)
+	C2S(NL80211_CMD_NAN_CLUSTER_JOINED)
 	C2S(NL80211_CMD_INCUMBENT_SIGNAL_DETECT)
 	C2S(NL80211_CMD_NAN_SET_LOCAL_SCHED)
-	C2S(NL80211_CMD_NAN_SET_PEER_SCHED)
 	C2S(NL80211_CMD_NAN_SCHED_UPDATE_DONE)
+	C2S(NL80211_CMD_NAN_SET_PEER_SCHED)
 	C2S(NL80211_CMD_NAN_ULW_UPDATE)
 	C2S(NL80211_CMD_NAN_CHANNEL_EVAC)
 	C2S(__NL80211_CMD_AFTER_LAST)
@@ -233,6 +234,8 @@ static void mlme_event_auth(struct wpa_driver_nl80211_data *drv,
 	os_memset(drv->auth_attempt_bssid, 0, ETH_ALEN);
 	os_memset(&event, 0, sizeof(event));
 	os_memcpy(event.auth.peer, mgmt->sa, ETH_ALEN);
+	event.auth.frame_body = (const u8 *) &mgmt->u.auth;
+	event.auth.frame_body_len = len - 24;
 	event.auth.auth_type = le_to_host16(mgmt->u.auth.auth_alg);
 	event.auth.auth_transaction =
 		le_to_host16(mgmt->u.auth.auth_transaction);
@@ -295,6 +298,10 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
 	}
 
 	status = le_to_host16(mgmt->u.assoc_resp.status_code);
+
+	if (TEST_FAIL_TAG("denied-unspec"))
+		status = WLAN_STATUS_ASSOC_DENIED_UNSPEC;
+
 	if (status != WLAN_STATUS_SUCCESS) {
 		os_memset(&event, 0, sizeof(event));
 		event.assoc_reject.bssid = mgmt->bssid;
@@ -1459,6 +1466,23 @@ static void mlme_event_mgmt(struct i802_bss *bss,
 }
 
 
+static bool find_send_frame_cookie(struct wpa_driver_nl80211_data *drv,
+				   u64 cookie_val, unsigned int *idx)
+{
+	unsigned int i;
+
+	for (i = 0; i < drv->num_send_frame_cookies; i++) {
+		if (cookie_val == drv->send_frame_cookies[i]) {
+			if (idx)
+				*idx = i;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
 static void mlme_event_mgmt_tx_status(struct i802_bss *bss,
 				      struct nlattr *cookie, const u8 *frame,
 				      size_t len, struct nlattr *ack)
@@ -1495,38 +1519,33 @@ static void mlme_event_mgmt_tx_status(struct i802_bss *bss,
 	if (!is_ap_interface(drv->nlmode) &&
 	    WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_ACTION) {
 		bool known = false;
+		unsigned int i;
 
 		if (!cookie)
 			return;
 
 		if (cookie_val == drv->send_frame_cookie) {
 			known = true;
-			drv->send_frame_cookie = (u64)-1;
+			drv->send_frame_cookie = (u64) -1;
 		}
 
 		if ((drv->nlmode == NL80211_IFTYPE_NAN ||
 		     drv->nlmode == NL80211_IFTYPE_NAN_DATA) &&
-		    drv->num_send_frame_cookies > 0) {
-			unsigned int i;
-
+		    drv->num_send_frame_cookies > 0 &&
+		    find_send_frame_cookie(drv, cookie_val, &i)) {
 			/*
 			 * Check the cookie is stored for previously sent
 			 * frames. If it is found, remove it and in case of NAN
-			 * mark it as known
+			 * mark it as known.
 			 */
-			for (i = 0; i < drv->num_send_frame_cookies; i++) {
-				if (cookie_val != drv->send_frame_cookies[i])
-					continue;
+			if (i + 1 < drv->num_send_frame_cookies)
+				os_memmove(&drv->send_frame_cookies[i],
+					   &drv->send_frame_cookies[i + 1],
+					   (drv->num_send_frame_cookies -
+					    (i + 1)) * sizeof(u64));
 
-				if (i < drv->num_send_frame_cookies - 1)
-					os_memmove(&drv->send_frame_cookies[i],
-						   &drv->send_frame_cookies[i + 1],
-						   (drv->num_send_frame_cookies - i - 1) * sizeof(u64));
-
-				drv->num_send_frame_cookies--;
-				known = true;
-				break;
-			}
+			drv->num_send_frame_cookies--;
+			known = true;
 		}
 
 		wpa_printf(MSG_DEBUG,
@@ -3536,6 +3555,113 @@ fail:
 
 #endif /* CONFIG_PASN */
 
+
+/* Converts nl80211_auth_type to WLAN_AUTH_* format */
+static int get_auth_algo(enum nl80211_auth_type auth_alg)
+{
+	switch (auth_alg) {
+	case NL80211_AUTHTYPE_OPEN_SYSTEM:
+		return WLAN_AUTH_OPEN;
+	case NL80211_AUTHTYPE_SHARED_KEY:
+		return WLAN_AUTH_SHARED_KEY;
+	case NL80211_AUTHTYPE_FT:
+		return WLAN_AUTH_FT;
+	case NL80211_AUTHTYPE_SAE:
+		return WLAN_AUTH_SAE;
+	case NL80211_AUTHTYPE_FILS_SK:
+		return WLAN_AUTH_FILS_SK;
+	case NL80211_AUTHTYPE_FILS_SK_PFS:
+		return WLAN_AUTH_FILS_SK_PFS;
+	case NL80211_AUTHTYPE_FILS_PK:
+		return WLAN_AUTH_FILS_PK;
+	case NL80211_AUTHTYPE_EPPKE:
+		return WLAN_AUTH_EPPKE;
+	default:
+		return -1;
+	}
+}
+
+
+static void qca_nl80211_external_auth(struct wpa_driver_nl80211_data *drv,
+				      u8 *data, size_t len)
+{
+	union wpa_event_data event;
+	struct external_auth *ea;
+	enum qca_wlan_vendor_external_auth_action act;
+	char mld_addr[50];
+	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_MAX + 1];
+
+	if (nla_parse(tb, QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_MAX,
+		      (struct nlattr *) data, len, NULL) ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_AKM] ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_ACTION] ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_BSSID] ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_SSID] ||
+	    !tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_ALGO])
+		return;
+
+	os_memset(&event, 0, sizeof(event));
+	ea = &event.external_auth;
+	act = nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_ACTION]);
+	switch (act) {
+	case QCA_WLAN_VENDOR_EXTERNAL_AUTH_START:
+		ea->action = EXT_AUTH_START;
+		break;
+	case QCA_WLAN_VENDOR_EXTERNAL_AUTH_ABORT:
+		ea->action = EXT_AUTH_ABORT;
+		break;
+	default:
+		return;
+	}
+
+	ea->key_mgmt_suite =
+		nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_AKM]);
+	ea->ssid_len = nla_len(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_SSID]);
+	if (ea->ssid_len > SSID_MAX_LEN)
+		return;
+	ea->ssid = nla_data(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_SSID]);
+	ea->bssid = nla_data(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_BSSID]);
+	ea->auth_alg = get_auth_algo(
+		nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_ALGO]));
+	if (tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_PAIRWISE_CIPHER])
+		ea->pairwise_cipher = rsn_cipher_suite_to_wpa_cipher(
+			nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_PAIRWISE_CIPHER]));
+	if (tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_GROUP_CIPHER])
+		ea->group_cipher = rsn_cipher_suite_to_wpa_cipher(
+			nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_GROUP_CIPHER]));
+	if (tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_GROUP_MGMT_CIPHER])
+		ea->group_mgmt_cipher = rsn_cipher_suite_to_wpa_cipher(
+			nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_GROUP_MGMT_CIPHER]));
+	if (tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSN_CAPAB])
+		ea->rsn_capab =
+			nla_get_u16(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSN_CAPAB]);
+	if (tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSNXE_DATA]) {
+		ea->rsnxe_data =
+			nla_data(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSNXE_DATA]);
+		ea->rsnxe_data_len =
+			nla_len(tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_RSNXE_DATA]);
+	}
+
+	mld_addr[0] = '\0';
+	if (tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_AP_MLD_ADDR]) {
+		ea->mld_addr = nla_data(
+			tb[QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_AP_MLD_ADDR]);
+		os_snprintf(mld_addr, sizeof(mld_addr), ", MLD ADDR=" MACSTR,
+			    MAC2STR(ea->mld_addr));
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: %s: %u, AKM=0x%x, SSID=%s, auth algo=%d, pairwise_cipher=%u, group_cipher=%u, group_mgmt_cipher=%u, rsn_capab=0x%x, BSSID="
+		   MACSTR "%s",
+		   __func__, ea->action, ea->key_mgmt_suite,
+		   wpa_ssid_txt(ea->ssid, ea->ssid_len),
+		   ea->auth_alg, ea->pairwise_cipher, ea->group_cipher,
+		   ea->group_mgmt_cipher, ea->rsn_capab,
+		   MAC2STR(ea->bssid), mld_addr);
+	drv->qca_vendor_ext_auth = 1;
+	wpa_supplicant_event(drv->ctx, EVENT_EXTERNAL_AUTH, &event);
+}
+
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 
@@ -3586,6 +3712,9 @@ static void nl80211_vendor_event_qca(struct i802_bss *bss,
 	case QCA_NL80211_VENDOR_SUBCMD_LINK_RECONFIG:
 		qca_nl80211_link_reconfig_event(bss->drv, data, len);
 		break;
+	case QCA_NL80211_VENDOR_SUBCMD_EXTERNAL_AUTH:
+		qca_nl80211_external_auth(bss->drv, data, len);
+		break;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 	default:
 		wpa_printf(MSG_DEBUG,
@@ -3623,7 +3752,7 @@ static void brcm_nl80211_acs_select_ch(struct wpa_driver_nl80211_data *drv,
 	if (tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL])
 		event.acs_selected_channels.vht_seg0_center_ch =
 			nla_get_u8(tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL]);
-	if (tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG0_CENTER_CHANNEL])
+	if (tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL])
 		event.acs_selected_channels.vht_seg1_center_ch =
 			nla_get_u8(tb[BRCM_VENDOR_ATTR_ACS_VHT_SEG1_CENTER_CHANNEL]);
 	if (tb[BRCM_VENDOR_ATTR_ACS_CHWIDTH])
@@ -4302,6 +4431,95 @@ static void nl80211_nan_ulw_update_event(struct wpa_driver_nl80211_data *drv,
 
 #endif /* CONFIG_NAN */
 
+static void nl80211_incumbt_sig_intf_event(struct i802_bss *bss,
+					   struct nlattr **tb)
+{
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	union wpa_event_data data;
+	struct i802_bss *bss_iter;
+
+	if (!tb[NL80211_ATTR_WIPHY_FREQ] || !tb[NL80211_ATTR_CHANNEL_WIDTH] ||
+	    !tb[NL80211_ATTR_CENTER_FREQ1] ||
+	    !tb[NL80211_ATTR_INCUMBENT_SIGNAL_INTERFERENCE_BITMAP])
+		return;
+
+	os_memset(&data, 0, sizeof(data));
+
+	data.incumbt_sig_intf_event.freq =
+		nla_get_u32(tb[NL80211_ATTR_WIPHY_FREQ]);
+
+	data.incumbt_sig_intf_event.chan_width =
+		convert2width(nla_get_u32(tb[NL80211_ATTR_CHANNEL_WIDTH]));
+
+	data.incumbt_sig_intf_event.cf1 =
+		nla_get_u32(tb[NL80211_ATTR_CENTER_FREQ1]);
+
+	if (tb[NL80211_ATTR_CENTER_FREQ2])
+		data.incumbt_sig_intf_event.cf2 =
+			nla_get_u32(tb[NL80211_ATTR_CENTER_FREQ2]);
+
+	data.incumbt_sig_intf_event.chan_bw_interference_bitmap =
+		nla_get_u32(tb[NL80211_ATTR_INCUMBENT_SIGNAL_INTERFERENCE_BITMAP]);
+
+	data.incumbt_sig_intf_event.link_id =
+		nl80211_get_link_id_by_freq(bss,
+					    data.incumbt_sig_intf_event.freq);
+	if (data.incumbt_sig_intf_event.link_id == NL80211_DRV_LINK_ID_NA) {
+		/* For non-MLO operation, freq should still match */
+		if (!bss->valid_links &&
+		    (int) bss->links[0].freq ==
+		    data.incumbt_sig_intf_event.freq)
+			goto process_incumbt_intf_event;
+	} else {
+		/* Valid link ID was found */
+		goto process_incumbt_intf_event;
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: Checking suitable BSS for the incumbent intereference event");
+
+	/* This event comes without ifidx and wdev_id. Hence need to check on
+	 * all BSSs. */
+	for (bss_iter = drv->first_bss; bss_iter; bss_iter = bss_iter->next) {
+		data.incumbt_sig_intf_event.link_id =
+			nl80211_get_link_id_by_freq(
+				bss_iter, data.incumbt_sig_intf_event.freq);
+		if (data.incumbt_sig_intf_event.link_id ==
+		    NL80211_DRV_LINK_ID_NA) {
+			/* For non-MLO operation, freq should still match */
+			if (!bss_iter->valid_links &&
+			    (int) bss_iter->links[0].freq ==
+			    data.incumbt_sig_intf_event.freq) {
+				bss = bss_iter;
+				goto process_incumbt_intf_event;
+			}
+		} else {
+			/* Valid link ID was found */
+			bss = bss_iter;
+			goto process_incumbt_intf_event;
+		}
+	}
+
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: Incumbent signal interference event on unknown freq on %s",
+		   bss->ifname);
+
+	return;
+
+process_incumbt_intf_event:
+	wpa_printf(MSG_DEBUG,
+		   "nl80211: Incumbent signal interference event on freq %d MHz, width: %d, cf1: %d MHz, cf2: %d MHz, bitmap: 0x%x, link_id: %d",
+		   data.incumbt_sig_intf_event.freq,
+		   data.incumbt_sig_intf_event.chan_width,
+		   data.incumbt_sig_intf_event.cf1,
+		   data.incumbt_sig_intf_event.cf2,
+		   data.incumbt_sig_intf_event.chan_bw_interference_bitmap,
+		   data.incumbt_sig_intf_event.link_id);
+
+	wpa_supplicant_event(bss->ctx, EVENT_INCUMBT_SIG_INTF_DETECTED, &data);
+}
+
+
 static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				 struct nlattr **tb)
 {
@@ -4588,6 +4806,9 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		nl80211_nan_ulw_update_event(drv, tb);
 		break;
 #endif /* CONFIG_NAN */
+	case NL80211_CMD_INCUMBENT_SIGNAL_DETECT:
+		nl80211_incumbt_sig_intf_event(bss, tb);
+		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
 			"(cmd=%d)", cmd);

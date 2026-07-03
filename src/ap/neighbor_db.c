@@ -231,10 +231,10 @@ void hostapd_neighbor_set_own_report(struct hostapd_data *hapd)
 {
 #ifdef NEED_AP_MLME
 	u16 capab = hostapd_own_capab_info(hapd);
-	int ht = hapd->iconf->ieee80211n && !hapd->conf->disable_11n;
-	int vht = hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac;
-	int he = hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax;
-	bool eht = he && hapd->iconf->ieee80211be && !hapd->conf->disable_11be;
+	int ht = hostapd_is_ht_enabled(hapd);
+	int vht = hostapd_is_vht_enabled(hapd);
+	int he = hostapd_is_he_enabled(hapd);
+	bool eht = he && hostapd_is_eht_enabled(hapd);
 	struct wpa_ssid_value ssid;
 	u8 channel, op_class;
 	u8 center_freq1_idx = 0, center_freq2_idx = 0;
@@ -310,7 +310,8 @@ void hostapd_neighbor_set_own_report(struct hostapd_data *hapd)
 	wpabuf_put_le32(nr, bssid_info);
 	wpabuf_put_u8(nr, op_class);
 	wpabuf_put_u8(nr, channel);
-	wpabuf_put_u8(nr, ieee80211_get_phy_type(hapd->iface->freq, ht, vht));
+	wpabuf_put_u8(nr, ieee80211_get_phy_type(hapd->iface->freq, ht, vht,
+						 he));
 
 	/*
 	 * Wide Bandwidth Channel subelement may be needed to allow the

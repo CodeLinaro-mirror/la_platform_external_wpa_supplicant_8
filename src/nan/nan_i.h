@@ -9,13 +9,13 @@
 #ifndef NAN_I_H
 #define NAN_I_H
 
+#include "list.h"
 #include "common/ieee802_11_defs.h"
 #include "common/nan_defs.h"
 #include "common/wpa_common.h"
 #include "nan.h"
-#include "list.h"
-#include "bitfield.h"
 
+struct bitfield;
 struct nan_config;
 
 #define NAN_INVALID_MAP_ID 0xff
@@ -25,11 +25,10 @@ struct nan_config;
 #define NAN_TK_MAX_LEN  32
 #define NAN_NPK_LEN  32
 
-#define NAN_IE_MAX_SIZE 1024
+#define NAN_ELEMENT_MAX_SIZE 1024
 
 /**
  * struct nan_ptk - NAN Pairwise Transient Key
- *
  * @kck: Key Confirmation Key
  * @kek: Key encryption Key
  * @tk: Transient Key
@@ -49,7 +48,6 @@ struct nan_ptk {
 
 /*
  * struct nan_ndp_sec - NAN ndp security state
- *
  * @present: True iff NDP setup exchange includes security
  * @valid: True iff the security configuration is valid
  * @replaycnt_ok: True iff replay count ok
@@ -96,7 +94,6 @@ struct nan_ndp_sec {
 	u8 pmk[PMK_LEN];
 
 	struct nan_ptk ptk;
-
 	struct nan_gtk local_gtk;
 	struct nan_gtk peer_gtk;
 	u8 peer_gtk_rsc[WPA_KEY_RSC_LEN];
@@ -162,7 +159,6 @@ struct nan_ndp {
 
 /*
  * struct nan_ndp_setup - Holds the state of the NDP setup
- *
  * @ndp: NDP information
  * @state: Current state
  * @status: Current status
@@ -203,11 +199,11 @@ struct nan_ndp_setup {
 	u8 peer_interface_id[NAN_NDPE_TLV_IPV6_LINK_LOCAL_LEN];
 };
 
-/*
+/**
  * struct nan_band_chan - NAN channel/band entry
  *
- * @band_id: Band ID as specified by enum nan_band_entry.
- * @chan: Channel entry as specified by &struct nan_chan_entry.
+ * @band_id: Band ID as specified by enum nan_band_entry
+ * @chan: Channel entry as specified by &struct nan_chan_entry
  */
 struct nan_band_chan {
 	union {
@@ -232,11 +228,11 @@ enum nan_band_chan_type {
 #define NAN_AVAIL_ENTRY_DEF_NSS  2
 #define NAN_AVAIL_ENTRY_DEF_PREF 3
 
-/*
+/**
  * struct nan_avail_entry - NAN availability entry
  *
- * @list: Used for linking in the availability entries list.
- * @map_id: Map id of the availability attribute that this entry belongs to.
+ * @list: Used for linking in the availability entries list
+ * @map_id: Map ID of the availability attribute that this entry belongs to
  * @type: Availability type. One of NAN_AVAIL_ENTRY_CTRL_TYPE_*.
  * @preference: Preference of being available in the NAN slots specified by
  *	the associated time bitmap. The preference is higher when the value is
@@ -267,12 +263,13 @@ struct nan_avail_entry {
 	struct nan_band_chan *band_chan;
 };
 
-/*
+/**
  * struct nan_dev_capa_entry - NAN Device Capability entry
  *
- * @list: Used for linking in the device capabilities list.
- * @map_id: Map id of the device capabilities.
- * @capa: Device capabilities as specified by &struct nan_device_capabilities.
+ * @list: Used for linking in the device capabilities list
+ *	(in struct nan_peer_info::dev_capa)
+ * @map_id: Map ID of the device capabilities
+ * @capa: Device capabilities as specified by &struct nan_device_capabilities
  */
 struct nan_dev_capa_entry {
 	struct dl_list list;
@@ -280,13 +277,14 @@ struct nan_dev_capa_entry {
 	struct nan_device_capabilities capa;
 };
 
-/*
+/**
  * struct nan_elem_container_entry - NAN element container entry
  *
- * @list: Used for linking in the element container entries list.
- * @map_id: Map id of the element container.
- * @len: Length of data.
- * @data: Pointer to the data.
+ * @list: Used for linking in the element container entries list
+ *	(in struct nan_peer_info::element_container)
+ * @map_id: Map ID of the element container
+ * @len: Length of data
+ * @data: Pointer to the data
  */
 struct nan_elem_container_entry {
 	struct dl_list list;
@@ -295,14 +293,15 @@ struct nan_elem_container_entry {
 	u8 data[];
 };
 
-/*
+/**
  * struct nan_peer_sec_info_entry - NAN peer security information entry
  *
  * Maintains the latest security information for an NDI pair.
  *
- * @list: used for linking in the peer security info list.
- * @peer_ndi: Peer NDI address.
- * @local_ndi: Local NDI address.
+ * @list: Used for linking in the peer security info list
+ *	(struct nan_peer_info::sec)
+ * @peer_ndi: Peer NDI address
+ * @local_ndi: Local NDI address
  * @csid: Cipher Suite ID used for the secure NAN communication
  * @pmk: PMK shared with the peer
  * @pmkid: PMKID shared with the peer
@@ -326,12 +325,15 @@ struct nan_peer_sec_info_entry {
 /*
  * struct nan_peer_info - NAN peer information
  *
- * @last_seen: Timestamp of the last update of the peer info.
- * @seq_id: Sequence id of the last availability update.
- * @avail_entries: List of availability entries of the peer.
- * @dev_capa: List of device capabilities of the peer.
- * @element_container: List of element container entries of the peer.
- * @sec: List of security information entries of the peer.
+ * @last_seen: Timestamp of the last update of the peer info
+ * @seq_id: Sequence id of the last availability update
+ * @avail_entries: List of availability entries of the peer
+ * @dev_capa: List of device capabilities of the peer
+ *	(struct nan_dev_capa_entry::list entries)
+ * @element_container: List of element container entries of the peer
+ *	(struct nan_elem_container_entry::list entries)
+ * @sec: List of security information entries of the peer
+ *	(struct nan_peer_sec_info_entry::list entries)
  */
 struct nan_peer_info {
 	struct os_reltime last_seen;
@@ -380,18 +382,17 @@ enum nan_ndl_setup_reason {
 /**
  * struct nan_ndl - NAN NDL data
  *
- * @state: Current state. See &enum nan_ndl_state
- * @status: Current status. See &enum nan_ndl_status
+ * @state: Current state
+ * @status: Current status
  * @send_naf_on_error: When set, indicates that in case that the NDL processing
  *     returned an error, a NAF still needs to be sent to the peer, i.e., the
  *     error cannot be silently ignored.
  * @reason: In case of status == NAN_NDL_STATUS_REJECTED, indicates the reason.
- *     See &enum nan_ndl_status
  * @dialog_token: The dialog token for the current NDL negotiation.
- * @max_idle_period: Indicate a period of time in units of 1024TU during which
+ * @max_idle_period: Indicate a period of time in units of 1024 TU during which
  *     the peer device can refrain from transmitting over the NDL without
  *     being terminated.
- * @setup_reason: The reason for the NDL setup. See &enum nan_ndl_setup_reason.
+ * @setup_reason: The reason for the NDL setup
  * @ndc_id: NDC identifier
  * @peer_qos: Peer QoS requirements
  * @local_qos: Local QoS requirements (for the current NDP establishment)
@@ -423,7 +424,6 @@ struct nan_ndl {
 
 /*
  * struct nan_bootstrap - NAN bootstrap information
- *
  * @supported_methods: Bitmap of supported bootstrap methods. See
  *     &enum nan_pairing_bootstrapping_method.
  * @initiator: True iff this device is the initiator.
@@ -438,10 +438,10 @@ struct nan_ndl {
  * @cookie_len: Length of the cookie.
  * @authorized: Authorized bootstrap method. See &enum
  *     nan_pairing_bootstrapping_method.
- * @in_progress: True iff a bootstrap exchange is in progress.
- * @handle: Follow up context handle for the ongoing bootstrap request.
- * @req_instance_id: Instance ID of the bootstrap request.
- * @npba: The NPBA attribute from the last successful bootstrap.
+ * @in_progress: Whether a bootstrap exchange is in progress
+ * @handle: Follow-up context handle for the ongoing bootstrap request
+ * @req_instance_id: Instance ID of the bootstrap request
+ * @npba: The NPBA from the last successful bootstrap
  */
 struct nan_bootstrap {
 	u16 supported_methods;
@@ -480,7 +480,6 @@ enum nan_pasn_auth_mode {
 
 /*
  * enum nan_pairing_role - NAN pairing role types
- *
  * @NAN_PAIRING_ROLE_IDLE: No active pairing role
  * @NAN_PAIRING_ROLE_INITIATOR: Device acting as pairing initiator
  * @NAN_PAIRING_ROLE_RESPONDER: Device acting as pairing responder
@@ -499,7 +498,6 @@ enum nan_pairing_role {
 
 /**
  * struct nan_pairing_peer_data - NAN pairing peer information
- *
  * @pairing_cfg: NAN pairing configuration parameters
  * @self_pairing_role: Role of this device in the pairing process
  * @pasn: Pointer to PASN data
@@ -530,12 +528,12 @@ struct nan_pairing_peer_data {
 
 /*
  * struct nan_peer - Represents a known NAN peer
- * @list: List node for linking peers.
- * @nmi_addr: NAN MAC address of the peer.
- * @configured: Indicates if the peer has been configured to the device.
- * @last_seen: Timestamp of the last time this peer was seen.
- * @info: Information about the peer.
- * @ndps: List of NDPs associated with this peer.
+ * @list: List node for linking peers
+ * @nmi_addr: NMI of the peer
+ * @configured: Indicates if the peer has been configured to the device
+ * @last_seen: Timestamp of the last time this peer was seen
+ * @info: Information about the peer
+ * @ndps: List of NDPs associated with this peer
  * @ndp_setup: Used to hold an NDP object while NDP establishment is in
  *     progress.
  * @ndl: NDL data associated with this peer.
@@ -567,10 +565,9 @@ struct nan_peer {
 
 /**
  * struct nan_data - Internal data structure for NAN
- *
- * @cfg: Pointer to the NAN configuration structure.
- * @nan_started: Flag indicating if NAN has been started.
- * @peer_list: List of known peers.
+ * @cfg: Pointer to the NAN configuration structure
+ * @nan_started: Flag indicating if NAN has been started
+ * @peer_list: List of known peers
  * @ndp_id_counter: NDP identifier counter. Incremented for each NDP request,
  *     and is used to set ndp_id in &struct nan_ndp.
  * @next_dialog_token: Dialog token for NDP and NDL negotiations. Incremented
@@ -630,7 +627,7 @@ struct nan_attrs {
 	const u8 *sec_ctxt_info;
 	const u8 *shared_key_desc;
 	const u8 *dev_capa_ext;
-	const u8 *bpba;
+	const u8 *npba;
 	const u8 *nira;
 	const u8 *ndpe;
 
@@ -641,7 +638,7 @@ struct nan_attrs {
 	u16 sec_ctxt_info_len;
 	u16 shared_key_desc_len;
 	u16 dev_capa_ext_len;
-	u16 bpba_len;
+	u16 npba_len;
 	u16 nira_len;
 	u16 ndpe_len;
 };
@@ -656,11 +653,6 @@ struct nan_msg {
 	 */
 	const struct ieee80211_mgmt *mgmt;
 	size_t len;
-};
-
-struct nan_de_pmkid {
-	struct dl_list list;
-	u8 pmkid[PMKID_LEN];
 };
 
 /**
@@ -690,16 +682,13 @@ static inline u8 nan_get_next_ndp_id(struct nan_data *nan)
 }
 
 struct nan_peer * nan_get_peer(struct nan_data *nan, const u8 *addr);
-bool nan_is_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
-		size_t len);
+bool nan_is_naf(const struct ieee80211_mgmt *mgmt, size_t len);
 int nan_parse_attrs(struct nan_data *nan, const u8 *data, size_t len,
 		    struct nan_attrs *attrs);
 int nan_parse_naf(struct nan_data *nan, const struct ieee80211_mgmt *mgmt,
 		  size_t len, struct nan_msg *msg);
 void nan_attrs_clear(struct nan_data *nan, struct nan_attrs *attrs);
-void nan_ndl_add_elem_container_attr(struct nan_data *nan,
-				     struct nan_peer *peer,
-				     struct wpabuf *buf);
+
 int nan_ndp_setup_req(struct nan_data *nan, struct nan_peer *peer,
 		      struct nan_ndp_params *params);
 int nan_ndp_setup_resp(struct nan_data *nan, struct nan_peer *peer,
@@ -718,20 +707,17 @@ int nan_parse_device_attrs(struct nan_data *nan, struct nan_peer *peer,
 int nan_ndp_term_req(struct nan_data *nan, struct nan_peer *peer,
 		     struct nan_ndp_id *ndp_id);
 int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
-		  struct nan_ndp_params *params, u8 dialog_token);
+		  const struct nan_ndp_params *params, u8 dialog_token);
 void nan_ndl_setup_failure(struct nan_data *nan, struct nan_peer *peer,
 			   enum nan_reason reason, bool reset_state);
 void nan_ndl_reset(struct nan_data *nan, struct nan_peer *peer);
 int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 			    struct nan_msg *msg);
-int nan_ndl_add_ndl_attr(struct nan_data *nan,
-			 const struct nan_peer *peer,
+int nan_ndl_add_ndl_attr(struct nan_data *nan, const struct nan_peer *peer,
 			 struct wpabuf *buf);
-int nan_ndl_add_ndc_attr(struct nan_data *nan,
-			 const struct nan_peer *peer,
+int nan_ndl_add_ndc_attr(struct nan_data *nan, const struct nan_peer *peer,
 			 struct wpabuf *buf);
-int nan_ndl_add_qos_attr(struct nan_data *nan,
-			 const struct nan_peer *peer,
+int nan_ndl_add_qos_attr(struct nan_data *nan, const struct nan_peer *peer,
 			 struct wpabuf *buf);
 int nan_chan_to_chan_idx_map(struct nan_data *nan,
 			     u8 op_class, u8 channel, u16 *chan_idx_map);
@@ -746,8 +732,14 @@ bool nan_ndl_validate_peer_avail(struct nan_data *nan, struct nan_peer *peer);
 struct bitfield *nan_peer_schedule_intersection(struct nan_data *nan,
 						struct nan_peer *peer,
 						struct nan_schedule *sched);
+void nan_ndl_add_elem_container_attr(const struct nan_data *nan,
+				     const struct nan_peer *peer,
+				     struct wpabuf *buf);
+bool nan_peer_schedule_intersects(struct nan_data *nan,
+				  const struct nan_peer *peer,
+				  const struct nan_schedule *sched);
 int nan_convert_chan_sched_to_bf(struct nan_data *nan,
-				 struct nan_chan_schedule *chan,
+				 const struct nan_chan_schedule *chan,
 				 struct bitfield **avail_bf, u8 *map_id,
 				 u8 *op_class, u16 *cbm, u16 *pcbm);
 int nan_get_chan_bm(struct nan_data *nan, const struct nan_sched_chan *chan,
@@ -761,26 +753,22 @@ void nan_del_avail_entry(struct nan_avail_entry *entry);
 void nan_flush_avail_entries(struct dl_list *avail_entries);
 int nan_sched_entries_to_avail_entries(struct nan_data *nan,
 				       struct dl_list *avail_entries,
-				       u8 *sched_entries,
+				       const u8 *sched_entries,
 				       u16 sched_entries_len);
-struct bitfield *nan_tbm_to_bf(struct nan_data *nan,
-			       struct nan_time_bitmap *tbm);
-struct bitfield *nan_sched_to_bf(struct nan_data *nan,
-				 struct dl_list *sched,
-				 u8 *map_id, enum nan_reason *reason);
+struct bitfield * nan_tbm_to_bf(struct nan_data *nan,
+				const struct nan_time_bitmap *tbm);
+struct bitfield * nan_sched_to_bf(struct nan_data *nan, struct dl_list *sched,
+				  u8 *map_id, enum nan_reason *reason);
 bool nan_sched_covered_by_avail_entry(struct nan_data *nan,
 				      struct nan_avail_entry *avail,
 				      struct bitfield *sched_bf,
 				      u8 map_id);
 bool nan_sched_covered_by_avail_entries(struct nan_data *nan,
 					struct dl_list *avail_entries,
-					u8 *sched, u8 sched_len);
-bool
-nan_sched_bf_covered_by_avail_entries_and_chan(struct nan_data *nan,
-					       const struct dl_list *avail_entries,
-					       struct bitfield *sched_bf,
-					       u8 map_id,
-					       u8 op_class, u16 cbm);
+					const u8 *sched, size_t sched_len);
+bool nan_sched_bf_covered_by_avail_entries_and_chan(
+	struct nan_data *nan, const struct dl_list *avail_entries,
+	struct bitfield *sched_bf, u8 map_id, u8 op_class, u16 cbm);
 struct bitfield * nan_avail_entries_to_bf(struct nan_data *nan,
 					  const struct dl_list *avail_entries,
 					  u8 op_class, u16 cbm, u16 pri_cbm);
@@ -819,8 +807,6 @@ int nan_crypto_pmkid_list(struct dl_list *pmkid_list, const u8 *raddr,
 			  const u8 *srv_id, const int *cipher_suites_list,
 			  const u8 *pmk);
 void nan_crypto_clear_pmkid_list(struct dl_list *pmkid_list);
-
-
 void nan_sec_reset(struct nan_data *nan, struct nan_ndp_sec *ndp_sec);
 int nan_sec_rx(struct nan_data *nan, struct nan_peer *peer,
 	       struct nan_msg *msg);
@@ -831,36 +817,32 @@ int nan_sec_pre_tx(struct nan_data *nan, struct nan_peer *peer,
 		   struct wpabuf *buf);
 bool nan_sec_ndp_store_keys(struct nan_data *nan, struct nan_peer *peer,
 			    const u8 *peer_ndi, const u8 *local_ndi);
-
 int nan_sec_get_tk(struct nan_data *nan, struct nan_peer *peer,
 		   const u8 *peer_ndi, const u8 *local_ndi,
-		   u8 *tk, size_t *tk_len,
-		   enum nan_cipher_suite_id *csid);
+		   u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid);
 void nan_add_dev_capa_ext_attr(struct nan_data *nan, struct wpabuf *buf);
 void nan_bootstrap_reset(struct nan_data *nan, struct nan_peer *peer);
 bool nan_bootstrap_handle_rx(struct nan_data *nan, const u8 *peer_nmi,
 			     const u8 *npba, u16 npba_len,
 			     const u8 *buf, size_t len,
 			     int handle, u8 req_instance_id);
-int nan_add_nira_attr(struct wpabuf *buf, const u8 *nira_tag,
-		      const u8 *nira_nonce);
+int nan_add_nira(struct wpabuf *buf, const u8 *tag, const u8 *nonce);
 int nan_add_csia(struct wpabuf *buf, u8 capab, size_t cs_list_len,
-		 struct nan_cipher_suite *cs_list);
+		 const struct nan_cipher_suite *cs_list);
 void nan_parse_peer_dev_capa_ext(struct nan_data *nan, struct nan_peer *peer,
 				 struct nan_attrs *attrs);
 int nan_configure_peer_schedule(struct nan_data *nan, struct nan_peer *peer,
-				struct nan_schedule *local_sched);
+				const struct nan_schedule *local_sched);
 int nan_clear_peer_schedule(struct nan_data *nan, struct nan_peer *peer);
 void nan_add_kde_hdr(struct wpabuf *buf, u32 kde, size_t data_len);
 bool nan_is_ndpe_supported(struct nan_data *nan, struct nan_peer *peer);
 #ifdef CONFIG_PASN
-int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nira_nonce,
-			   u8 *nira_tag);
+int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nonce, u8 *tag);
 void nan_pairing_deinit_peer(struct nan_peer *peer);
 bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 			     struct nan_shared_key *shared_key_descr,
 			     size_t attr_len, int handle, u8 req_instance_id);
-#else
+#else /* CONFIG_PASN */
 static inline
 int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nira_nonce,
 			   u8 *nira_tag)
@@ -870,5 +852,5 @@ int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nira_nonce,
 
 static inline void nan_pairing_deinit_peer(struct nan_peer *peer)
 {}
-#endif
+#endif /* CONFIG_PASN */
 #endif

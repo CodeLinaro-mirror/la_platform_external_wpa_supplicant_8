@@ -261,11 +261,10 @@ extern "C" {
 #define NAN_SCHEDULE_UPDATE_DONE "NAN-SCHEDULE-UPDATE-DONE "
 
 /* NAN Pairing status
- * addr=<peer address> akmp=<SAE|PASN> cipher=<CCMP|GCMP-256> status=<success|failure> [nd_pmk=<hex>]
+ * addr=<peer address> akmp=<SAE|PASN> cipher=<CCMP|GCMP-256>
+ * status=<success|failure> [nd_pmk=<hex>]
  */
 #define NAN_PAIRING_STATUS "NAN-PAIRING-STATUS "
-
-
 
 /* MESH events */
 #define MESH_GROUP_STARTED "MESH-GROUP-STARTED "

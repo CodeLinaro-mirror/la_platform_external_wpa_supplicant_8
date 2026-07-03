@@ -51,9 +51,9 @@ struct nl80211_global {
 	/* pending events that happened while waiting for a sync reply */
 	struct dl_list pending_events;
 #ifdef CONFIG_NAN
-	/* dedicated socket for NAN interface creation and events */
+	/* Dedicated socket for NAN interface creation and events */
 	struct nl_sock *nl_nan;
-#endif
+#endif /* CONFIG_NAN */
 };
 
 struct nl80211_wiphy_data {
@@ -299,6 +299,7 @@ struct wpa_driver_nl80211_data {
 	size_t pending_t2lm_data_len;
 	u8 *pending_link_reconfig_data;
 	size_t pending_link_reconfig_data_len;
+	unsigned int qca_vendor_ext_auth:1;
 #endif /* CONFIG_DRIVER_NL80211_QCA */
 
 #ifdef CONFIG_NAN

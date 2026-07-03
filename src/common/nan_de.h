@@ -151,13 +151,16 @@ struct nan_publish_params {
 	/* RSSI range limit */
 	bool close_proximity;
 
+	/* Source MAC address for this service (optional) */
+	const u8 *forced_addr;
+
 	/*
-	 * Pairing Bootstrapping Methods as defined in Table 128 in Wi-Fi
-	 * Aware specification v4.0
+	 * Pairing Bootstrapping Methods as defined in Wi-Fi Aware spec v4.0,
+	 * Table 128
 	 */
 	u16 pbm;
 
-	/* NULL terminated list of cipher suites */
+	/* int_array of cipher suites */
 	const int *cipher_suites_list;
 
 	/* Bitmap of NAN_CS_INFO_CAPA_* */
@@ -177,7 +180,8 @@ struct nan_publish_params {
 int nan_de_publish(struct nan_de *de, const char *service_name,
 		   enum nan_service_protocol_type srv_proto_type,
 		   const struct wpabuf *ssi, const struct wpabuf *elems,
-		   struct nan_publish_params *params, bool p2p);
+		   struct nan_publish_params *params, bool p2p,
+		   const u8 *addr);
 
 void nan_de_cancel_publish(struct nan_de *de, int publish_id);
 
@@ -233,9 +237,12 @@ struct nan_subscribe_params {
 	/* RSSI range limit */
 	bool close_proximity;
 
+	/* Source MAC address for this service (optional) */
+	const u8 *forced_addr;
+
 	/*
-	 * Pairing Bootstrapping Methods as defined in Table 128 in Wi-Fi
-	 * Aware specification v4.0
+	 * Pairing Bootstrapping Methods as defined in Wi-Fi Aware spec v4.0,
+	 * Table 128
 	 */
 	u16 pbm;
 
@@ -250,7 +257,8 @@ struct nan_subscribe_params {
 int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		     enum nan_service_protocol_type srv_proto_type,
 		     const struct wpabuf *ssi, const struct wpabuf *elems,
-		     struct nan_subscribe_params *params, bool p2p);
+		     struct nan_subscribe_params *params, bool p2p,
+		     const u8 *addr);
 
 void nan_de_cancel_subscribe(struct nan_de *de, int subscribe_id);
 
@@ -270,5 +278,17 @@ bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid);
 int nan_de_get_status(struct nan_de *de, char *buf, size_t buflen);
 
 int nan_de_stop_listen(struct nan_de *de, int handle);
+
+struct nan_de_cfg {
+	/* N and M minimal and maximal values */
+	u32 n_min, n_max;
+
+	/* When not in pause state, stop the DE radio usage for 'suspend' ms
+	 * every 'cycle' ms.
+	 */
+	u32 suspend, cycle;
+};
+
+int nan_de_config(struct nan_de *de, struct nan_de_cfg *cfg);
 
 #endif /* NAN_DE_H */

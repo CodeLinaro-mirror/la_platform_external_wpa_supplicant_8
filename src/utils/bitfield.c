@@ -31,6 +31,39 @@ struct bitfield * bitfield_alloc(size_t max_bits)
 }
 
 
+struct bitfield * bitfield_alloc_data(const u8 *data, size_t len)
+{
+	struct bitfield *bf;
+
+	bf = os_zalloc(sizeof(*bf) + len);
+	if (!bf)
+		return NULL;
+
+	bf->bits = (u8 *) (bf + 1);
+	os_memcpy(bf->bits, data, len);
+	bf->max_bits = len * 8;
+
+	return bf;
+}
+
+
+struct bitfield * bitfield_dup(const struct bitfield *orig)
+{
+	struct bitfield *bf;
+
+	if (!orig)
+		return NULL;
+
+	bf = os_memdup(orig, sizeof(*orig) + (orig->max_bits + 7) / 8);
+	if (!bf)
+		return NULL;
+
+	bf->bits = (u8 *) (bf + 1);
+
+	return bf;
+}
+
+
 void bitfield_free(struct bitfield *bf)
 {
 	os_free(bf);
@@ -86,40 +119,6 @@ int bitfield_get_first_zero(struct bitfield *bf)
 	if (i >= bf->max_bits)
 		return -1;
 	return i;
-}
-
-
-struct bitfield * bitfield_alloc_data(const u8 *data, size_t len)
-{
-	struct bitfield *bf;
-
-	bf = os_zalloc(sizeof(*bf) + len);
-	if (!bf)
-		return NULL;
-
-	bf->bits = (u8 *)(bf + 1);
-	os_memcpy(bf->bits, data, len);
-
-	bf->max_bits = len * 8;
-	return bf;
-}
-
-
-struct bitfield * bitfield_dup(const struct bitfield *orig)
-{
-	struct bitfield *bf;
-
-	if (!orig)
-		return NULL;
-
-	bf = os_memdup(orig,
-		       sizeof(*orig) + (orig->max_bits + 7) / 8);
-	if (!bf)
-		return NULL;
-
-	bf->bits = (u8 *)(bf + 1);
-
-	return bf;
 }
 
 
@@ -189,7 +188,7 @@ int bitfield_intersect_in_place(struct bitfield *a,
 }
 
 
-int bitfield_is_subset(const struct bitfield *a, struct bitfield *b)
+int bitfield_is_subset(const struct bitfield *a, const struct bitfield *b)
 {
 	size_t i, upper;
 

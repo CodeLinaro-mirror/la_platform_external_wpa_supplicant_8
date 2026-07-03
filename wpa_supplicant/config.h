@@ -926,6 +926,15 @@ struct wpa_config {
 	bool p2p_chan_switch_req_enable;
 	int p2p_reg_info;
 
+	/**
+	 * p2p_assisted_dfs_chan_enable - Enable DFS channels for assisted DFS
+	 *
+	 * Enables DFS channels for AP assisted P2P DFS operations when the
+	 * underlying driver provides assisted P2P DFS support.
+	 * By default: 0 (disabled)
+	 */
+	bool p2p_assisted_dfs_chan_enable;
+
 	struct wpabuf *wps_vendor_ext_m1;
 
 #define MAX_WPS_VENDOR_EXT 10
@@ -1876,6 +1885,21 @@ struct wpa_config {
 	enum wpas_rsn_overriding rsn_overriding;
 
 #ifdef CONFIG_PASN
+	/**
+	 * pasn_groups - Preference list of enabled groups for PASN
+	 *
+	 * As per IEEE Std 802.11-2024, 12.13.1, both STAs must have at least
+	 * one cyclic group in common from the dot11RSNAConfigDLCGroupTable for
+	 * ephemeral key exchange. For interoperability, a STA shall support
+	 * group 19 (ECC group defined over a 256-bit prime order field), which
+	 * is used as the default if this parameter is not set. Only suitable
+	 * ECC groups (e.g., 19, 20, 21) are accepted.
+	 *
+	 * If a per-network parameter is configured, it is used. If not, this
+	 * global parameter is used. If neither is set, group 19 is used.
+	 */
+	int *pasn_groups;
+
 #ifdef CONFIG_TESTING_OPTIONS
 	/*
 	 * Normally, KDK should be derived if and only if both sides support

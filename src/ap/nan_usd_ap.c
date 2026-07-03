@@ -163,6 +163,10 @@ int hostapd_nan_usd_init(struct hostapd_data *hapd)
 {
 	struct nan_callbacks cb;
 
+	/* If nan_de is already initialized, do not create a new instance. */
+	if (hapd->nan_de)
+		return 0;
+
 	os_memset(&cb, 0, sizeof(cb));
 	cb.ctx = hapd;
 	cb.tx = hostapd_nan_de_tx;
@@ -176,13 +180,19 @@ int hostapd_nan_usd_init(struct hostapd_data *hapd)
 	hapd->nan_de = nan_de_init(hapd->own_addr, false, true, 0, &cb);
 	if (!hapd->nan_de)
 		return -1;
+
+	hapd->nan_de_is_owned = true;
+
 	return 0;
 }
 
 
 void hostapd_nan_usd_deinit(struct hostapd_data *hapd)
 {
-	nan_de_deinit(hapd->nan_de);
+	if (hapd->nan_de_is_owned) {
+		nan_de_deinit(hapd->nan_de);
+		hapd->nan_de_is_owned = false;
+	}
 	hapd->nan_de = NULL;
 }
 
@@ -217,7 +227,7 @@ int hostapd_nan_usd_publish(struct hostapd_data *hapd, const char *service_name,
 		return -1;
 
 	publish_id = nan_de_publish(hapd->nan_de, service_name, srv_proto_type,
-				    ssi, elems, params, p2p);
+				    ssi, elems, params, p2p, NULL);
 	wpabuf_free(elems);
 	return publish_id;
 }
@@ -256,7 +266,8 @@ int hostapd_nan_usd_subscribe(struct hostapd_data *hapd,
 		return -1;
 
 	subscribe_id = nan_de_subscribe(hapd->nan_de, service_name,
-					srv_proto_type, ssi, elems, params, p2p);
+					srv_proto_type, ssi, elems, params, p2p,
+					NULL);
 	wpabuf_free(elems);
 	return subscribe_id;
 }

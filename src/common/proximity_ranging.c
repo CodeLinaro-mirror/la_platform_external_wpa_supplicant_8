@@ -1566,6 +1566,11 @@ static int pr_prepare_pasn_pr_elem(struct pr_data *pr, struct wpabuf *extra_ies,
 		pr_get_ntb_capabilities(pr, &ntb_caps);
 		pr_buf_add_ntb_capa_info(buf, &ntb_caps);
 		pr_copy_channels(&op_channels, &ntb_caps.channels, false);
+	} else {
+		wpa_printf(MSG_INFO, "PR: Unsupported ranging_type 0x%x",
+			   ranging_type);
+		wpabuf_free(buf);
+		return -1;
 	}
 
 	os_memset(&op_mode, 0, sizeof(struct operation_mode));
@@ -2006,23 +2011,24 @@ int pr_pasn_auth_tx_status(struct pr_data *pr, const u8 *data, size_t data_len,
 				     dev->protocol_type, dev->final_op_class,
 				     dev->final_op_channel, pr->cfg->country);
 
-	if (dev->protocol_type & PR_EDCA_BASED_RANGING) {
-		self_format_bw = pr->cfg->edca_format_and_bw;
-		peer_format_bw = dev->edca_caps.edca_hw_caps &
-			EDCA_FORMAT_AND_BW_MASK;
+	if (ret == 1 && acked && pr->cfg->get_ranging_params) {
+		if (dev->protocol_type & PR_EDCA_BASED_RANGING) {
+			self_format_bw = pr->cfg->edca_format_and_bw;
+			peer_format_bw = dev->edca_caps.edca_hw_caps &
+				EDCA_FORMAT_AND_BW_MASK;
+		} else if ((dev->protocol_type &
+			    PR_NTB_SECURE_LTF_BASED_RANGING) ||
+			   (dev->protocol_type & PR_NTB_OPEN_BASED_RANGING)) {
+			self_format_bw = pr->cfg->ntb_format_and_bw;
+			peer_format_bw = dev->ntb_caps.ntb_hw_caps &
+				NTB_FORMAT_AND_BW_MASK;
+		} else {
+			wpa_printf(MSG_INFO,
+				   "PR PASN: Invalid protocol type: %u",
+				   dev->protocol_type);
+			goto out;
+		}
 
-	} else if ((dev->protocol_type & PR_NTB_SECURE_LTF_BASED_RANGING) ||
-		   (dev->protocol_type & PR_NTB_OPEN_BASED_RANGING)) {
-		self_format_bw = pr->cfg->ntb_format_and_bw;
-		peer_format_bw = dev->ntb_caps.ntb_hw_caps &
-			NTB_FORMAT_AND_BW_MASK;
-	} else {
-		wpa_printf(MSG_INFO, "PR PASN: Invalid protocol type: %u",
-			   dev->protocol_type);
-		return -1;
-	}
-
-	if (ret == 1 && acked && pr->cfg->get_ranging_params)
 		pr->cfg->get_ranging_params(pr->cfg->cb_ctx, pr->cfg->dev_addr,
 					    dev->pr_device_addr,
 					    dev->ranging_role,
@@ -2031,6 +2037,9 @@ int pr_pasn_auth_tx_status(struct pr_data *pr, const u8 *data, size_t data_len,
 					    dev->final_op_channel,
 					    self_format_bw,
 					    peer_format_bw);
+	}
+
+out:
 	wpabuf_free(pasn->frame);
 	pasn->frame = NULL;
 
