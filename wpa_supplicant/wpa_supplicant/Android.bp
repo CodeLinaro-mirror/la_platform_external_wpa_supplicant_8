@@ -36,6 +36,7 @@ cc_binary {
     name: "wpa_supplicant",
     defaults: [
         "wpa_supplicant_defaults",
+        "wpa_supplicant_vendor_aidl_defaults",
         "lib_vendor_wpa_supplicant",
     ],
 }
