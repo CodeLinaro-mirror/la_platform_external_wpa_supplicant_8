@@ -733,6 +733,17 @@ wpa_cc_defaults_type {
     },
 }
 
+wpa_cc_defaults_type {
+    name: "wpa_supplicant_vendor_aidl_defaults",
+    soong_config_variables: {
+        enable_vendor_aidl: {
+            shared_libs: [
+                "vendor.qti.hardware.wifi.supplicant-V2-ndk",
+            ],
+        },
+    },
+}
+
 soong_config_module_type {
     name: "hostapd_cc_defaults_type",
     module_type: "cc_defaults",
