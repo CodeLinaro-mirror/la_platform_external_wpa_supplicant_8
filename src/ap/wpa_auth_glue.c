@@ -122,6 +122,7 @@ static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
 	wconf->wpa_strict_rekey = conf->wpa_strict_rekey;
 	wconf->wpa_gmk_rekey = conf->wpa_gmk_rekey;
 	wconf->wpa_ptk_rekey = conf->wpa_ptk_rekey;
+	wconf->ignore_sta_gtk_rekey = conf->ignore_sta_gtk_rekey;
 	wconf->wpa_group_update_count = conf->wpa_group_update_count;
 	wconf->wpa_disable_eapol_key_retries =
 		conf->wpa_disable_eapol_key_retries;
