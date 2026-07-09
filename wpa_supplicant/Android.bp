@@ -957,6 +957,7 @@ wpa_supplicant_cc_defaults_type {
         "-DEAP_WSC",
         "-DIEEE8021X_EAPOL",
         "-DNEED_AP_MLME",
+        "-DALL_DH_GROUPS",
         "-DPKCS12_FUNCS",
         "-DTLS_DEFAULT_CIPHERS=\"DEFAULT:!EXP:!LOW\"",
         "-DWPA_IGNORE_CONFIG_ERRORS",
