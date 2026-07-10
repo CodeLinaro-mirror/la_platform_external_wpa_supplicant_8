@@ -34,6 +34,7 @@ soong_config_module_type {
     ],
     properties: [
         "srcs",
+        "shared_libs",
     ],
 }
 
@@ -64,6 +65,9 @@ hostapd_cc_library_static_aidl_type {
         enable_vendor_aidl: {
             srcs: [
                 "hostapd_vendor.cpp",
+            ],
+            shared_libs: [
+                "vendor.qti.hardware.wifi.hostapd-V1-ndk",
             ],
         },
     },
