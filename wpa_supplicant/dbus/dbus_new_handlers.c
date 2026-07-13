@@ -6594,7 +6594,7 @@ DBusMessage * wpas_dbus_handler_nan_publish(DBusMessage *message,
 			reply = wpas_dbus_error_invalid_args(message,
 							     entry.key);
 			wpa_dbus_dict_entry_clear(&entry);
-			goto fail;
+			goto out;
 		}
 	}
 
@@ -6863,7 +6863,7 @@ DBusMessage * wpas_dbus_handler_nan_subscribe(DBusMessage *message,
 			reply = wpas_dbus_error_invalid_args(message,
 							     entry.key);
 			wpa_dbus_dict_entry_clear(&entry);
-			goto fail;
+			goto out;
 		}
 	}
 
@@ -7028,7 +7028,7 @@ DBusMessage * wpas_dbus_handler_nan_transmit(DBusMessage *message,
 			reply = wpas_dbus_error_invalid_args(message,
 							     entry.key);
 			wpa_dbus_dict_entry_clear(&entry);
-			goto fail;
+			goto out;
 		}
 	}
 
@@ -7036,7 +7036,7 @@ DBusMessage * wpas_dbus_handler_nan_transmit(DBusMessage *message,
 		goto fail;
 
 	if (wpas_nan_transmit(wpa_s, handle, ssi, NULL, peer_addr,
-			      req_instance_id) < 0)
+			      req_instance_id, NULL) < 0)
 		reply = wpas_dbus_error_unknown_error(
 			message, "failed to transmit follow-up");
 out:

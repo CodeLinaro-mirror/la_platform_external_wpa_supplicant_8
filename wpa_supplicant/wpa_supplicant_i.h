@@ -29,6 +29,7 @@
 #include <netinet/in.h>
 #include <netinet/in6.h>
 #include "pasn/pasn_common.h"
+#include "nan/nan.h"
 
 extern const char *const wpa_supplicant_version;
 extern const char *const wpa_supplicant_license;
@@ -412,14 +413,14 @@ struct wpa_radio_work {
 	unsigned int bands;
 };
 
-int radio_add_work(struct wpa_supplicant *wpa_s, unsigned int freq,
-		   const char *type, int next,
-		   void (*cb)(struct wpa_radio_work *work, int deinit),
-		   void *ctx);
+struct wpa_radio_work *
+radio_add_work(struct wpa_supplicant *wpa_s, unsigned int freq,
+	       const char *type, int next,
+	       void (*cb)(struct wpa_radio_work *work, int deinit),
+	       void *ctx);
 void radio_work_done(struct wpa_radio_work *work);
 void radio_remove_works(struct wpa_supplicant *wpa_s,
 			const char *type, int remove_all);
-void radio_remove_pending_work(struct wpa_supplicant *wpa_s, void *ctx);
 void radio_work_check_next(struct wpa_supplicant *wpa_s);
 struct wpa_radio_work *
 radio_work_pending(struct wpa_supplicant *wpa_s, const char *type);
@@ -733,6 +734,44 @@ struct last_scan_ssid {
 	size_t ssid_len;
 };
 
+#ifdef CONFIG_IEEE8021X_AUTH
+/**
+ * struct auth_802_1x_data - Data for IEEE 802.1X Authentication algorithm
+ * @auth_trans: Authentication transaction sequence number
+ * @status: Status code
+ * @derive_ptk: Whether to derive a PTK for association
+ * @pmksa_caching: Whether PMKSA caching is being used
+ * @pmkid_found: Whether PMKID is identified by AP
+ * @pmkid: PMKID for PMKSA caching
+ * @snonce: SNonce
+ * @anonce: ANonce
+ * @dh_group: DH group for key exchange
+ * @ecdh: ECDH context
+ * @dhss: DH shared secret
+ * @rsne: RSNE
+ * @rsne_len: Length of RSNE
+ * @rsnxe: RSNXE
+ * @rsnxe_len: Length of RSNXE
+ */
+struct auth_802_1x_data {
+	u16 auth_trans;
+	u16 status;
+	bool derive_ptk;
+	bool pmksa_caching;
+	bool pmkid_found;
+	u8 pmkid[PMKID_LEN];
+	u8 snonce[WPA_NONCE_LEN];
+	u8 anonce[WPA_NONCE_LEN];
+	u16 dh_group;
+	struct crypto_ecdh *ecdh;
+	struct wpabuf *dhss;
+	u8 rsne[257];
+	size_t rsne_len;
+	u8 rsnxe[257];
+	size_t rsnxe_len;
+};
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 /**
  * struct wpa_supplicant - Internal data for wpa_supplicant interface
  *
@@ -757,6 +796,7 @@ struct wpa_supplicant {
 	unsigned char own_addr[ETH_ALEN];
 	unsigned char perm_addr[ETH_ALEN];
 	char ifname[100];
+	u8 hw_dfs_domain;
 #ifdef CONFIG_MATCH_IFACE
 	int matched;
 #endif /* CONFIG_MATCH_IFACE */
@@ -1107,6 +1147,7 @@ struct wpa_supplicant {
 		unsigned int sae_pmksa_caching:1;
 		u16 seq_num;
 		u8 ext_auth_bssid[ETH_ALEN];
+		unsigned int ext_auth_freq;
 		struct wpa_ssid *ext_auth_wpa_ssid;
 		u8 ext_auth_ssid[SSID_MAX_LEN];
 		size_t ext_auth_ssid_len;
@@ -1281,6 +1322,7 @@ struct wpa_supplicant {
 	unsigned int p2p_go_max_oper_chwidth;
 	unsigned int p2p_go_vht_center_freq2;
 	int p2p_lo_started;
+	bool p2p_neg_go_setup;
 #endif /* CONFIG_P2P */
 
 	struct wpa_ssid *bgscan_ssid;
@@ -1665,6 +1707,10 @@ struct wpa_supplicant {
 	bool wps_overlap;
 	bool scan_in_progress_6ghz; /* Set upon a 6 GHz scan being triggered */
 
+#ifdef CONFIG_IEEE8021X_AUTH
+	struct auth_802_1x_data *auth_1x;
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 #ifdef CONFIG_PASN
 	struct pasn_data pasn;
 	struct wpa_radio_work *pasn_auth_work;
@@ -1683,6 +1729,14 @@ struct wpa_supplicant {
 	bool last_scan_all_chan;
 	bool last_scan_non_coloc_6ghz;
 	bool support_6ghz;
+	bool allow_p2p_assisted_dfs;
+	char device_country[3];
+	bool device_country_set;
+	bool assisted_dfs;
+
+	bool dfs_ap_connected;
+	int sta_connected_freq;
+	enum chan_width sta_connected_chan_width;
 
 	struct wpa_signal_info last_signal_info;
 
@@ -1715,15 +1769,35 @@ struct wpa_supplicant {
 #ifdef CONFIG_NAN
 #define MAX_NAN_RADIOS 2
 	struct nan_capa nan_capa;
+	u32 nan_drv_flags;
 	struct nan_data *nan;
 	struct nan_cluster_config nan_cluster_config;
 	u8 schedule_sequence_id;
 	struct nan_schedule_config nan_sched[MAX_NAN_RADIOS];
+	struct nan_schedule_update {
+		struct nan_schedule_config sched;
+		u8 map_id;
+	} nan_sched_update;
+	struct wpabuf *nan_ulw_attr;
 	struct wpa_freq_range_list nan_disallowed_freqs;
 	u16 nan_max_bw;
 	u16 nan_supported_csids;
 	unsigned int nan_ndi_ndp_refcount; /* Active NDP count on this NDI */
-#endif
+	struct nan_gtk ndi_gtk;
+#endif /* CONFIG_NAN */
+#ifdef CONFIG_ENC_ASSOC
+	bool assoc_resp_encrypted; /* Whether (Re)Association Response frame
+				    * is encrypted. */
+#endif /* CONFIG_ENC_ASSOC */
+#ifdef CONFIG_PMKSA_PRIVACY
+	u8 pmkid_snonce[NONCE_LEN];
+	bool pmkid_snonce_set;
+	u8 pmkid_anonce[NONCE_LEN];
+	bool pmkid_anonce_set;
+#endif /* CONFIG_PMKSA_PRIVACY */
+	bool ext_auth_to_same_bss; /* Whether external authentication has been
+				    * completed successfully with the BSS that
+				    * we are already associated with. */
 };
 
 
@@ -2132,13 +2206,19 @@ int wpas_send_dscp_query(struct wpa_supplicant *wpa_s, const char *domain_name,
 int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 			 const u8 *bssid, int akmp, int cipher,
 			 u16 group, int network_id,
-			 const u8 *comeback, size_t comeback_len);
+			 const u8 *comeback, size_t comeback_len,
+			 unsigned int auth_alg, int group_cipher,
+			 int group_mgmt_cipher, u16 rsn_capab,
+			 const u8 *rsnxe_data, bool is_ml_peer);
 void wpas_pasn_auth_stop(struct wpa_supplicant *wpa_s);
+void wpas_pasn_free_params(struct wpa_supplicant *wpa_s);
 int wpas_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
 			     const u8 *data, size_t data_len, u8 acked);
 int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
 		      const struct ieee80211_mgmt *mgmt, size_t len);
 int disabled_freq(struct wpa_supplicant *wpa_s, int freq);
+int wpas_pasn_get_group(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+			struct pasn_data *pasn);
 
 int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 			     const u8 *bssid);
@@ -2155,14 +2235,18 @@ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
 				       struct wpa_bss *bss);
 int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
 			       const u8 **ssid, size_t *ssid_len);
+void wpas_update_dfs_ap_info(struct wpa_supplicant *wpa_s, int freq,
+			     enum chan_width ap_ch_width,
+			     bool disconnect_evt);
+void wpas_configure_frame_filters(struct wpa_supplicant *wpa_s);
 
 static inline bool wpas_is_nan_iface(struct wpa_supplicant *wpa_s)
 {
-#if defined(CONFIG_NAN)
+#ifdef CONFIG_NAN
 	return wpa_s->nan_mgmt || wpa_s->nan_data;
-#else
+#else /* CONFIG_NAN */
 	return false;
-#endif
+#endif /* CONFIG_NAN */
 }
 
 #endif /* WPA_SUPPLICANT_I_H */

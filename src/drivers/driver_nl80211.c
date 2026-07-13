@@ -2758,11 +2758,10 @@ static int nl80211_register_action_frame(struct i802_bss *bss,
 }
 
 
-#define NAN_SDF_ACTION ((u8 *) "\x04\x09\x50\x6f\x9a\x13")
-#define NAN_PROTECTED_SDF_ACTION ((u8 *) "\x09\x09\x50\x6f\x9a\x13")
-#define NAN_NAF_ACTION ((u8 *) "\x04\x09\x50\x6f\x9a\x18")
-#define NAN_PROTECTED_NAF_ACTION ((u8 *) "\x09\x09\x50\x6f\x9a\x18")
-
+#define NAN_SDF_ACTION ((const u8 *) "\x04\x09\x50\x6f\x9a\x13")
+#define NAN_PROTECTED_SDF_ACTION ((const u8 *) "\x09\x09\x50\x6f\x9a\x13")
+#define NAN_NAF_ACTION ((const u8 *) "\x04\x09\x50\x6f\x9a\x18")
+#define NAN_PROTECTED_NAF_ACTION ((const u8 *) "\x09\x09\x50\x6f\x9a\x18")
 
 static int nl80211_mgmt_subscribe_nan(struct i802_bss *bss,
 				      enum nl80211_iftype nlmode)
@@ -2787,48 +2786,53 @@ static int nl80211_mgmt_subscribe_nan(struct i802_bss *bss,
 
 	/* NAN SDF Public Action */
 	if (nlmode == NL80211_IFTYPE_NAN &&
-	    nl80211_register_action_frame2(bss, NAN_SDF_ACTION, 6, true)) {
-		wpa_printf(MSG_DEBUG,
-			   "nl80211: Failed to subscribe to NAN SDFs");
-		nl_destroy_handles(&bss->nl_mgmt);
-		return -1;
+	    nl80211_register_action_frame2(bss, NAN_SDF_ACTION, 6, true) < 0) {
+		/* fallback to non-multicast */
+		if (nl80211_register_action_frame2(bss, NAN_SDF_ACTION, 6,
+						   false) < 0) {
+			wpa_printf(MSG_INFO,
+				   "nl80211: Failed to subscribe to NAN public action frames");
+			nl_destroy_handles(&bss->nl_mgmt);
+			return -1;
+		}
 	}
 
 	/* NAF Public Action */
 	if (nl80211_register_action_frame2(bss, NAN_NAF_ACTION, 6, true)) {
-		wpa_printf(MSG_DEBUG,
-			   "nl80211: Failed to subscribe to NAFs");
+		wpa_printf(MSG_DEBUG, "nl80211: Failed to subscribe to NAFs");
 		nl_destroy_handles(&bss->nl_mgmt);
 		return -1;
 	}
 
 #ifdef CONFIG_PASN
-	/* NAN SDF Public Action */
+	/* NAN Protected SDF Public Action */
 	if (nlmode == NL80211_IFTYPE_NAN &&
 	    nl80211_register_action_frame2(bss, NAN_PROTECTED_SDF_ACTION, 6,
 					   true)) {
-		wpa_printf(MSG_DEBUG,
-			   "nl80211: Failed to subscribe to NAN PROTECTED SDFs");
+		wpa_printf(MSG_INFO,
+			   "nl80211: Failed to subscribe to NAN protected SDFs");
 		nl_destroy_handles(&bss->nl_mgmt);
 		return -1;
 	}
 
-	/* register for PASN Authentication frames */
+	/* Register for PASN Authentication frames */
 	if (nlmode == NL80211_IFTYPE_NAN &&
-	    nl80211_register_frame(bss, bss->nl_mgmt, type, (u8 *)"\x07\x00", 2,
-				   false)) {
-		wpa_printf(MSG_DEBUG,
-			   "nl80211: Failed to subscribe to NAN public action frames");
+	    nl80211_register_frame(bss, bss->nl_mgmt,
+				   (WLAN_FC_TYPE_MGMT << 2) |
+				   (WLAN_FC_STYPE_AUTH << 4),
+				   (u8 *) "\x07\x00", 2, false)) {
+		wpa_printf(MSG_INFO,
+			   "nl80211: Failed to subscribe to NAN PASN Authentication frames");
 		nl_destroy_handles(&bss->nl_mgmt);
 		return -1;
 	}
 #endif /* CONFIG_PASN */
 
-	/* NAF Public Action: protected dual */
-	if (nl80211_register_action_frame2(bss, NAN_PROTECTED_NAF_ACTION,
-					   6, true)) {
-		wpa_printf(MSG_DEBUG,
-			   "nl80211: Failed to subscribe to Protected NAFs");
+	/* NAF in Protected Dual of Public Action frame */
+	if (nl80211_register_action_frame2(bss, NAN_PROTECTED_NAF_ACTION, 6,
+					   true)) {
+		wpa_printf(MSG_INFO,
+			   "nl80211: Failed to subscribe to protected NAFs");
 		nl_destroy_handles(&bss->nl_mgmt);
 		return -1;
 	}
@@ -2839,6 +2843,7 @@ static int nl80211_mgmt_subscribe_nan(struct i802_bss *bss,
 
 	return 0;
 }
+
 
 static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 {
@@ -2860,6 +2865,15 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 		nl80211_register_frame(bss, bss->nl_mgmt, type,
 				       (u8 *) "\x03\x00", 2, false);
 	}
+
+#ifdef CONFIG_ENC_ASSOC
+	if ((drv->capa.flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
+	    !(drv->capa.flags & WPA_DRIVER_FLAGS_SME)) {
+		/* register for EPPKE Authentication frames */
+		nl80211_register_frame(bss, bss->nl_mgmt, type,
+				       (const u8 *) "\x09\x00", 2, false);
+	}
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_PASN
 	/* register for PASN Authentication frames */
@@ -3256,6 +3270,31 @@ static int nl80211_set_p2pdev(struct i802_bss *bss, int start)
 }
 
 
+#ifdef CONFIG_NAN
+static void nl80211_nan_stop(struct i802_bss *bss)
+{
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+
+	if (drv->nlmode != NL80211_IFTYPE_NAN || !drv->nan_started)
+		return;
+
+	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_STOP_NAN);
+	if (!msg) {
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Failed to alloc NAN stop command");
+		return;
+	}
+
+	if (send_and_recv_resp(drv, msg, NULL, NULL))
+		wpa_printf(MSG_ERROR,
+			   "nl80211: Failed to send NAN stop command");
+
+	drv->nan_started = 0;
+}
+#endif /* CONFIG_NAN */
+
+
 static int nl80211_set_nandev(struct i802_bss *bss, int start)
 {
 #ifdef CONFIG_NAN
@@ -3268,7 +3307,7 @@ static int nl80211_set_nandev(struct i802_bss *bss, int start)
 	if (start)
 		return 0;
 
-	wpa_driver_nl80211_nan_stop(bss);
+	nl80211_nan_stop(bss);
 
 #endif /* CONFIG_NAN */
 	return 0;
@@ -3496,7 +3535,7 @@ wpa_driver_nl80211_finish_drv_init(struct i802_bss *bss, const u8 *set_addr,
 	}
 
 	if (!drv->hostapd && nl80211_is_netdev_iftype(nlmode))
-		netlink_send_oper_ifla(drv->global->netlink, drv->ifindex,
+		netlink_send_oper_ifla(drv->global->netlink, bss->ifindex,
 				       1, IF_OPER_DORMANT);
 
 	if (nl80211_is_netdev_iftype(nlmode)) {
@@ -3513,6 +3552,14 @@ wpa_driver_nl80211_finish_drv_init(struct i802_bss *bss, const u8 *set_addr,
 
 	if (drv->vendor_cmd_test_avail)
 		qca_vendor_test(drv);
+
+	if (bss->added_if_into_bridge &&
+	    linux_br_add_if(drv->global->ioctl_sock, bss->brname,
+			    bss->ifname) < 0) {
+		wpa_printf(MSG_WARNING,
+			   "nl80211: Failed to re-add interface %s into bridge %s: %s",
+			   bss->ifname, bss->brname, strerror(errno));
+	}
 
 	return 0;
 }
@@ -4072,7 +4119,6 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 			goto fail2;
 		}
 		wpa_printf(MSG_DEBUG, "nl80211: NEW_KEY");
-
 		if (!nl80211_is_netdev_iftype(drv->nlmode))
 			msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_NEW_KEY);
 		else
@@ -4110,6 +4156,11 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
 		} else if ((key_flag & KEY_FLAG_GROUP_MASK) ==
 			   KEY_FLAG_GROUP_RX) {
 			wpa_printf(MSG_DEBUG, "   RSN IBSS RX GTK");
+			if (nla_put_u32(key_msg, NL80211_KEY_TYPE,
+					NL80211_KEYTYPE_GROUP))
+				goto fail;
+		} else if (alg == WPA_ALG_NONE &&
+			   (key_flag & KEY_FLAG_GROUP_MASK) == KEY_FLAG_GROUP) {
 			if (nla_put_u32(key_msg, NL80211_KEY_TYPE,
 					NL80211_KEYTYPE_GROUP))
 				goto fail;
@@ -4512,6 +4563,10 @@ static enum nl80211_auth_type get_nl_auth_type(int wpa_auth_alg)
 		return NL80211_AUTHTYPE_FILS_SK;
 	if (wpa_auth_alg & WPA_AUTH_ALG_FILS_SK_PFS)
 		return NL80211_AUTHTYPE_FILS_SK_PFS;
+	if (wpa_auth_alg & WPA_AUTH_ALG_EPPKE)
+		return NL80211_AUTHTYPE_EPPKE;
+	if (wpa_auth_alg & WPA_AUTH_ALG_802_1X)
+		return NL80211_AUTHTYPE_IEEE8021X;
 
 	return NL80211_AUTHTYPE_MAX + 1;
 }
@@ -4857,6 +4912,9 @@ static int wpa_driver_nl80211_send_mlme(struct i802_bss *bss, const u8 *data,
 	int use_cookie = 1;
 	int res;
 	struct i802_link *link = nl80211_get_link(bss, link_id);
+
+	if (data_len < 24)
+		return -1;
 
 	mgmt = (struct ieee80211_mgmt *) data;
 	fc = le_to_host16(mgmt->frame_control);
@@ -5577,10 +5635,8 @@ static int nl80211_put_freq_params(struct nl_msg *msg,
 		int ret;
 
 		wpa_printf(MSG_DEBUG, "  * bandwidth=%d", freq->bandwidth);
-		ret = nl80211_bw_to_nl(freq->bandwidth, &cw,
-				       freq->center_freq2);
-
-		if (ret < 0) {
+		if (nl80211_bw_to_nl(freq->bandwidth, &cw,
+				     freq->center_freq2) < 0) {
 			wpa_printf(MSG_DEBUG,
 				   "  * Unsupported bandwidth %d MHz",
 				   freq->bandwidth);
@@ -6228,16 +6284,12 @@ static int wpa_driver_nl80211_sta_add(void *priv,
 			    params->supp_rates, params->supp_rates_len);
 		wpa_printf(MSG_DEBUG, "  * capability=0x%x",
 			   params->capability);
-
-		if (params->supp_rates_len > 0 ||
-		    (drv->nlmode != NL80211_IFTYPE_NAN &&
-		     drv->nlmode != NL80211_IFTYPE_NAN_DATA)) {
-			if (nla_put(msg, NL80211_ATTR_STA_SUPPORTED_RATES,
-				    params->supp_rates_len, params->supp_rates))
-				goto fail;
-		}
-
-		if (nla_put_u16(msg, NL80211_ATTR_STA_CAPABILITY,
+		if (((params->supp_rates_len > 0 ||
+		      (drv->nlmode != NL80211_IFTYPE_NAN &&
+		       drv->nlmode != NL80211_IFTYPE_NAN_DATA)) &&
+		     nla_put(msg, NL80211_ATTR_STA_SUPPORTED_RATES,
+			     params->supp_rates_len, params->supp_rates)) ||
+		    nla_put_u16(msg, NL80211_ATTR_STA_CAPABILITY,
 				params->capability))
 			goto fail;
 
@@ -6349,11 +6401,12 @@ static int wpa_driver_nl80211_sta_add(void *priv,
 			goto fail;
 	}
 
+#ifdef CONFIG_NAN
 	if (params->set && drv->nlmode == NL80211_IFTYPE_NAN &&
 	    (params->flags & WPA_STA_AUTHORIZED)) {
 		if (params->ht_capabilities) {
 			wpa_hexdump(MSG_DEBUG, "  * ht_capabilities",
-				    (u8 *)params->ht_capabilities,
+				    params->ht_capabilities,
 				    sizeof(*params->ht_capabilities));
 			if (nla_put(msg, NL80211_ATTR_HT_CAPABILITY,
 				    sizeof(*params->ht_capabilities),
@@ -6363,7 +6416,7 @@ static int wpa_driver_nl80211_sta_add(void *priv,
 
 		if (params->vht_capabilities) {
 			wpa_hexdump(MSG_DEBUG, "  * vht_capabilities",
-				    (u8 *)params->vht_capabilities,
+				    params->vht_capabilities,
 				    sizeof(*params->vht_capabilities));
 			if (nla_put(msg, NL80211_ATTR_VHT_CAPABILITY,
 				    sizeof(*params->vht_capabilities),
@@ -6371,6 +6424,7 @@ static int wpa_driver_nl80211_sta_add(void *priv,
 				goto fail;
 		}
 	}
+#endif /* CONFIG_NAN */
 
 	if (params->vht_opmode_enabled) {
 		wpa_printf(MSG_DEBUG, "  * opmode=%u", params->vht_opmode);
@@ -6499,10 +6553,17 @@ static int wpa_driver_nl80211_sta_add(void *priv,
 			goto fail;
 	}
 
+#ifdef CONFIG_ENC_ASSOC
+	if (params->epp_sta) {
+		wpa_printf(MSG_DEBUG, "  * EPP STA");
+		if (nla_put_flag(msg, NL80211_ATTR_EPP_PEER))
+			goto fail;
+	}
+#endif /* CONFIG_ENC_ASSOC */
+
 #ifdef CONFIG_NAN
 	/*
-	 * Set the address of the NMI station to which the NDI station
-	 * belongs
+	 * Set the address of the NMI station to which the NDI station belongs.
 	 */
 	if (drv->nlmode == NL80211_IFTYPE_NAN_DATA) {
 		if (!params->nmi_addr) {
@@ -6754,7 +6815,7 @@ static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 #ifdef CONFIG_NAN
 		if (drv->global->nl_nan) {
 			wpa_printf(MSG_ERROR,
-				   "Failed to create interface %s: socket in use",
+				   "nl80211: Failed to create NAN interface %s: socket in use",
 				   ifname);
 			goto fail;
 		}
@@ -6779,7 +6840,7 @@ static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 		nl80211_register_eloop_read(&drv->global->nl_nan,
 					    wpa_driver_nl80211_event_receive,
 					    drv->global->nl_cb, 0);
-#else
+#else /* CONFIG_NAN */
 		ret = -EOPNOTSUPP;
 #endif /* CONFIG_NAN */
 	} else {
@@ -7041,8 +7102,8 @@ static int wpa_driver_nl80211_sta_set_flags(void *priv, const u8 *addr,
 		   bss->ifname, MAC2STR(addr), total_flags, flags_or, flags_and,
 		   !!(total_flags & WPA_STA_AUTHORIZED));
 
-	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_SET_STATION)) ||
-	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr))
+	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_SET_STATION);
+	if (!msg || nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr))
 		goto fail;
 
 	/*
@@ -7806,6 +7867,15 @@ static int nl80211_connect_ext(struct i802_bss *bss,
 		connect_ext_feature_set(features, QCA_CONNECT_EXT_FEATURE_RSNO);
 	}
 
+#ifdef CONFIG_ENC_ASSOC
+	if (params->eppke_supported) {
+		wpa_printf(MSG_DEBUG,
+			   "- EPPKE external authentication support");
+		connect_ext_feature_set(features,
+					QCA_CONNECT_EXT_FEATURE_EXT_AUTH_EPPKE);
+	}
+#endif /* CONFIG_ENC_ASSOC */
+
 	if (nla_put(msg, QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES,
 		    sizeof(features), features))
 		goto fail;
@@ -7922,6 +7992,8 @@ static int wpa_driver_nl80211_try_connect(
 	if (params->auth_alg & WPA_AUTH_ALG_FT)
 		algs++;
 	if (params->auth_alg & WPA_AUTH_ALG_SAE)
+		algs++;
+	if (params->auth_alg & WPA_AUTH_ALG_EPPKE)
 		algs++;
 	if (algs > 1) {
 		wpa_printf(MSG_DEBUG, "  * Leave out Auth Type for automatic "
@@ -8446,8 +8518,12 @@ static int i802_get_seqnum(const char *iface, void *priv, const u8 *addr,
 	struct nl_msg *msg;
 	int res;
 
-	msg = nl80211_ifindex_msg(drv, if_nametoindex(iface), 0,
-				  NL80211_CMD_GET_KEY);
+	if (!nl80211_is_netdev_iftype(drv->nlmode))
+		msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_GET_KEY);
+	else
+		msg = nl80211_ifindex_msg(drv, if_nametoindex(iface), 0,
+					  NL80211_CMD_GET_KEY);
+
 	if (!msg ||
 	    (addr && nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr)) ||
 	    (link_id != NL80211_DRV_LINK_ID_NA &&
@@ -9762,6 +9838,9 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
 
 	wpa_printf(MSG_DEBUG, "nl80211: %s(type=%d ifname=%s) ifindex=%d added_if=%d",
 		   __func__, type, ifname, ifindex, bss->added_if);
+
+	eloop_cancel_timeout(wpa_driver_nl80211_scan_timeout, drv, bss->ctx);
+
 	if (ifindex > 0 && (bss->added_if || bss->ifindex != ifindex))
 		nl80211_remove_iface(drv, ifindex);
 	else if (ifindex > 0 && !bss->added_if) {
@@ -9893,7 +9972,7 @@ static int nl80211_send_frame_cmd(struct i802_bss *bss,
 			   (long long unsigned int) cookie);
 
 		if (drv->nlmode == NL80211_IFTYPE_NAN_DATA || no_ack)
-			drv->send_frame_cookie = (u64)-1;
+			drv->send_frame_cookie = (u64) -1;
 		else if (save_cookie)
 			drv->send_frame_cookie = cookie;
 
@@ -9904,9 +9983,8 @@ static int nl80211_send_frame_cmd(struct i802_bss *bss,
 		 * cases that the NAN Discovery Engine (NAN DE) is not managed
 		 * by the device.
 		 */
-		if (!wait &&
-		    (drv->nlmode != NL80211_IFTYPE_NAN &&
-		     drv->nlmode != NL80211_IFTYPE_NAN_DATA))
+		if (!wait && drv->nlmode != NL80211_IFTYPE_NAN &&
+		    drv->nlmode != NL80211_IFTYPE_NAN_DATA)
 			goto fail;
 
 		if (drv->num_send_frame_cookies == MAX_SEND_FRAME_COOKIES) {
@@ -10310,6 +10388,7 @@ int nl80211_remove_link(struct i802_bss *bss, int link_id)
 	link = &bss->links[link_id];
 
 	os_memcpy(link_addr, link->addr, ETH_ALEN);
+
 	/* First remove the link locally */
 	os_memset(link->addr, 0, ETH_ALEN);
 
@@ -14932,7 +15011,8 @@ static int nl80211_configure_data_frame_filters(void *priv, u32 filter_flags)
 	char path[128];
 	int ret;
 
-	/* P2P/NAN-Device has no netdev that can (or should) be configured here */
+	/* P2P/NAN-Device has no netdev that can (or should) be configured here
+	 */
 	if (!nl80211_is_netdev_iftype(nl80211_get_ifmode(bss)))
 		return 0;
 
@@ -15150,6 +15230,42 @@ static int nl80211_send_external_auth_status(void *priv,
 	    (drv->capa.flags & WPA_DRIVER_FLAGS_SME))
 		return -1;
 
+#ifdef CONFIG_DRIVER_NL80211_QCA
+	if (drv->qca_vendor_ext_auth) {
+		struct nlattr *attr;
+
+		wpa_dbg(drv->ctx, MSG_DEBUG,
+			"nl80211: QCA vendor: External auth status: %u",
+			params->status);
+
+		msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
+		if (!msg ||
+		    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
+		    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+				QCA_NL80211_VENDOR_SUBCMD_EXTERNAL_AUTH))
+			goto fail;
+
+		attr = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA);
+		if (!attr ||
+		    nla_put_u16(msg,
+				QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_STATUS_CODE,
+				params->status) ||
+		    (params->ssid && params->ssid_len &&
+		     nla_put(msg, QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_SSID,
+			     params->ssid_len, params->ssid)) ||
+		    (params->pmkid &&
+		     nla_put(msg, QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_PMKID,
+			     PMKID_LEN, params->pmkid)) ||
+		    (params->bssid &&
+		     nla_put(msg, QCA_WLAN_VENDOR_ATTR_EXTERNAL_AUTH_BSSID,
+			     ETH_ALEN, params->bssid)))
+			goto fail;
+
+		nla_nest_end(msg, attr);
+		goto send_cmd;
+	}
+#endif /* CONFIG_DRIVER_NL80211_QCA */
+
 	wpa_dbg(drv->ctx, MSG_DEBUG,
 		"nl80211: External auth status: %u", params->status);
 
@@ -15163,6 +15279,11 @@ static int nl80211_send_external_auth_status(void *priv,
 	    (params->bssid &&
 	     nla_put(msg, NL80211_ATTR_BSSID, ETH_ALEN, params->bssid)))
 		goto fail;
+
+#ifdef CONFIG_DRIVER_NL80211_QCA
+send_cmd:
+	drv->qca_vendor_ext_auth = 0;
+#endif /* CONFIG_DRIVER_NL80211_QCA */
 	ret = send_and_recv_cmd(drv, msg);
 	msg = NULL;
 	if (ret) {
@@ -15629,7 +15750,7 @@ wpa_driver_get_multi_hw_info(void *priv, unsigned int *num_multi_hws)
 
 static int nl80211_nan_config(struct i802_bss *bss,
 			      struct wpa_driver_nl80211_data *drv,
-			      struct nan_cluster_config *params,
+			      const struct nan_cluster_config *params,
 			      enum nl80211_commands cmd)
 {
 	struct nl_msg *msg;
@@ -15762,7 +15883,7 @@ fail:
 }
 
 static int wpa_driver_nl80211_nan_start(void *priv,
-					struct nan_cluster_config *params)
+					const struct nan_cluster_config *params)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
@@ -15785,7 +15906,7 @@ static int wpa_driver_nl80211_nan_start(void *priv,
 
 static int
 wpa_driver_nl80211_nan_change_config(void *priv,
-				     struct nan_cluster_config *params)
+				     const struct nan_cluster_config *params)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
@@ -15805,22 +15926,8 @@ wpa_driver_nl80211_nan_change_config(void *priv,
 static void wpa_driver_nl80211_nan_stop(void *priv)
 {
 	struct i802_bss *bss = priv;
-	struct wpa_driver_nl80211_data *drv = bss->drv;
-	struct nl_msg *msg;
 
-	if (drv->nlmode != NL80211_IFTYPE_NAN || !drv->nan_started)
-		return;
-
-	msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_STOP_NAN);
-	if (!msg) {
-		wpa_printf(MSG_ERROR, "Failed to alloc NAN stop command");
-		return;
-	}
-
-	if (send_and_recv_resp(bss->drv, msg, NULL, NULL))
-		wpa_printf(MSG_ERROR, "Failed to send NAN stop command");
-
-	drv->nan_started = 0;
+	nl80211_nan_stop(bss);
 }
 
 
@@ -15953,8 +16060,22 @@ wpa_driver_nl80211_nan_config_schedule(void *priv, u8 map_id,
 		return -ENOMEM;
 	}
 
+	if (sched->deferred &&
+	    nla_put_flag(msg, NL80211_ATTR_NAN_SCHED_DEFERRED)) {
+		wpa_printf(MSG_ERROR,
+			   "nl80211: NAN: Failed to put deferred attribute");
+		goto fail;
+	}
+
 	ret = wpa_driver_nl80211_nan_set_schedule(drv, sched, msg);
 	if (ret)
+		goto fail;
+
+	if (sched->avail_attr &&
+	    nl80211_attr_supported(drv, NL80211_ATTR_NAN_AVAIL_BLOB) &&
+	    nla_put(msg, NL80211_ATTR_NAN_AVAIL_BLOB,
+		    wpabuf_len(sched->avail_attr),
+		    wpabuf_head(sched->avail_attr)))
 		goto fail;
 
 	ret = send_and_recv_cmd(bss->drv, msg);
@@ -16044,7 +16165,7 @@ wpa_driver_nl80211_nan_config_peer_schedule(void *priv, const u8 *peer,
 	}
 
 	if (ulw && wpabuf_len(ulw)) {
-		if (nla_put(msg, NL80211_ATTR_NAN_INIT_ULW,
+		if (nla_put(msg, NL80211_ATTR_NAN_ULW,
 			    wpabuf_len(ulw), wpabuf_head(ulw))) {
 			wpa_printf(MSG_ERROR,
 				   "nl80211: NAN: Failed to put ULW attribute");
@@ -16301,5 +16422,5 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.nan_change_config = wpa_driver_nl80211_nan_change_config,
 	.nan_config_schedule = wpa_driver_nl80211_nan_config_schedule,
 	.nan_config_peer_schedule = wpa_driver_nl80211_nan_config_peer_schedule,
-#endif /*CONFIG_NAN */
+#endif /* CONFIG_NAN */
 };

@@ -29,8 +29,7 @@ static void nan_test_schedule_cb(struct nan_schedule *sched, bool ndc,
 	sched->chans[0].committed.period = 3;
 	sched->chans[0].committed.offset = 0;
 	sched->chans[0].committed.len = sizeof(default_bitmap);
-	os_memcpy(sched->chans[0].committed.bitmap,
-		  default_bitmap,
+	os_memcpy(sched->chans[0].committed.bitmap, default_bitmap,
 		  sizeof(default_bitmap));
 
 	sched->chans[0].map_id = 0;
@@ -74,7 +73,7 @@ static int nan_test_schedule_cb_all_no_ndc_period_4(struct nan_schedule *sched)
 
 	/*
 	 * Modify the map to have a period or 1024 TUs (both halfs are
-	 * identical
+	 * identical).
 	 */
 	sched->chans[0].committed.period = 4;
 	sched->chans[0].committed.len += sizeof(default_bitmap);
@@ -186,7 +185,7 @@ static struct nan_test_case three_way_ndp_two_way_ndl_chan_149 = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 1,
@@ -222,7 +221,7 @@ static struct nan_test_case three_way_ndp_two_way_ndl_diff_period = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc_period_4,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 1,
@@ -257,7 +256,7 @@ static struct nan_test_case three_way_ndp_two_way_ndl_chan_6 = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default_24g,
 		.n_ndps = 1,
@@ -291,7 +290,7 @@ static struct nan_test_case three_way_ndp_two_way_ndl_chan_mis = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_2ghz_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default_24g,
 		.n_ndps = 1,
@@ -324,7 +323,7 @@ static struct nan_test_case three_way_ndp_three_way_ndl = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_2ghz_no_ndc,
 		.schedule_conf_cb = nan_test_schedule_cb_all_ndc,
 		.get_chans_cb = nan_test_get_chans_default_reverse,
@@ -360,7 +359,7 @@ static struct nan_test_case three_way_ndp_two_way_ndl_reject = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 1,
@@ -402,7 +401,7 @@ static struct nan_test_case four_way_ndp_two_way_ndl_chan_149_ccm_128 = {
 			0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
 		},
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 1,
@@ -452,7 +451,7 @@ static struct nan_test_case four_way_ndp_two_way_ndl_chan_149_gcm_256 = {
 			0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
 		},
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_2ghz_no_ndc,
 		.schedule_conf_cb = nan_test_schedule_cb_all_ndc,
 		.get_chans_cb = nan_test_get_chans_default_reverse,
@@ -503,7 +502,7 @@ static struct nan_test_case pmk_mismatch = {
 			0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
 		},
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 1,
@@ -551,7 +550,7 @@ static struct nan_test_case two_ndps_no_security = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 2,
@@ -602,7 +601,7 @@ static struct nan_test_case three_ndps_no_security_middle_one_rejected = {
 		},
 		.pot_avail_len = 13,
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 3,
@@ -667,7 +666,7 @@ static struct nan_test_case three_ndps_increasing_security = {
 			0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
 		},
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 3,
@@ -743,7 +742,7 @@ static struct nan_test_case three_ndps_deacreasing_security = {
 			0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
 		},
 	},
-	.sub_conf  = {
+	.sub_conf = {
 		.schedule_cb = nan_test_schedule_cb_all_no_ndc,
 		.get_chans_cb = nan_test_get_chans_default,
 		.n_ndps = 3,
@@ -780,7 +779,7 @@ static struct nan_test_case three_ndps_deacreasing_security = {
 };
 
 
-static struct nan_test_case *g_nan_test_cases[] = {
+static const struct nan_test_case *g_nan_test_cases[] = {
 	&three_way_ndp_two_way_ndl_chan_149,
 	&three_way_ndp_two_way_ndl_diff_period,
 	&three_way_ndp_two_way_ndl_chan_6,

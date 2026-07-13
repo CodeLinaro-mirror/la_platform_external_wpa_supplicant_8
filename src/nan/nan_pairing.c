@@ -8,52 +8,59 @@
 
 #include "includes.h"
 #include "common.h"
-#include "nan/nan_i.h"
-#include "pasn/pasn_common.h"
+#include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
+#include "pasn/pasn_common.h"
+#include "nan/nan_i.h"
 
-/*
+static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
+					   struct nan_peer *peer,
+					   struct wpabuf *extra_ies,
+					   int publish_id, int auth_mode);
+static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
+				       struct nan_peer *peer, u8 auth_mode,
+				       int cipher, const char *password,
+				       enum nan_pairing_role self_role);
+
+/**
  * nan_nira_get_tag_nonce - Generate NIRA nonce and compute NIRA tag
- *
  * @nan: Pointer to NAN configuration structure
- * @nira_nonce: Buffer to store the generated NIRA nonce (output)
- * @nira_tag: Buffer to store the computed NIRA tag (output)
+ * @nonce: Buffer to store the generated NIRA nonce (output)
+ * @tag: Buffer to store the computed NIRA tag (output)
  * Returns: 0 on success, -1 on failure
  *
  * This function generates a random NIRA (NAN Identity Resolution Attribute)
- * nonce and derives the corresponding NIRA tag using the
- * NIK (NAN Identity Key), NMI address, and the generated nonce.
+ * nonce and derives the corresponding NIRA tag using the NIK (NAN Identity
+ * Key), NMI address, and the generated nonce.
  *
- * The caller must ensure that nira_nonce buffer is at least NAN_NIRA_NONCE_LEN
- * bytes and nira_tag buffer is at least NAN_NIRA_TAG_LEN bytes.
+ * The caller must ensure that nonce buffer is at least NAN_NIRA_NONCE_LEN bytes
+ * and tag buffer is at least NAN_NIRA_TAG_LEN bytes.
  */
-int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nira_nonce,
-			   u8 *nira_tag)
+int nan_nira_get_tag_nonce(const struct nan_config *nan, u8 *nonce, u8 *tag)
 {
 	struct wpabuf *tag_buf;
 
-	if (os_get_random(nira_nonce, NAN_NIRA_NONCE_LEN) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to generate NIRA nonce");
+	if (os_get_random(nonce, NAN_NIRA_NONCE_LEN) < 0) {
+		wpa_printf(MSG_INFO, "NAN: Failed to generate NIRA nonce");
 		return -1;
 	}
 
 	tag_buf = nan_crypto_derive_nira_tag(nan->nik, NAN_NIK_LEN,
-					     nan->nmi_addr, nira_nonce);
+					     nan->nmi_addr, nonce);
 	if (!tag_buf)
 		return -1;
 
-	os_memcpy(nira_tag, wpabuf_head(tag_buf), NAN_NIRA_TAG_LEN);
+	os_memcpy(tag, wpabuf_head(tag_buf), NAN_NIRA_TAG_LEN);
 	wpabuf_free(tag_buf);
 
 	wpa_hexdump_key(MSG_DEBUG, "NAN: NIK", nan->nik, NAN_NIK_LEN);
-	wpa_hexdump(MSG_DEBUG, "NAN: NIRA-NONCE", nira_nonce,
-		    NAN_NIRA_NONCE_LEN);
-	wpa_hexdump(MSG_DEBUG, "NAN: NIRA-TAG", nira_tag, NAN_NIRA_TAG_LEN);
+	wpa_hexdump(MSG_DEBUG, "NAN: NIRA-NONCE", nonce, NAN_NIRA_NONCE_LEN);
+	wpa_hexdump(MSG_DEBUG, "NAN: NIRA-TAG", tag, NAN_NIRA_TAG_LEN);
 	return 0;
 }
 
 
-/*
+/**
  * nan_pairing_add_attrs - Add NAN pairing attributes to a buffer
  *
  * @nan: Pointer to NAN data structure containing configuration
@@ -72,9 +79,8 @@ int nan_pairing_add_attrs(struct nan_data *nan, struct wpabuf *buf)
 	nan_add_dev_capa_ext_attr(nan, buf);
 
 	if (nan->cfg->pairing_cfg.pairing_verification) {
-		if (nan_add_nira_attr(buf, nan->nira_tag, nan->nira_nonce)) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to add NIRA attribute");
+		if (nan_add_nira(buf, nan->nira_tag, nan->nira_nonce)) {
+			wpa_printf(MSG_INFO, "NAN: Failed to add NIRA");
 			return -1;
 		}
 	}
@@ -101,6 +107,9 @@ void nan_pairing_deinit_peer(struct nan_peer *peer)
 int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr)
 {
 	struct nan_peer *peer;
+	int cipher;
+	struct wpabuf *extra_ies;
+	int ret = -1;
 
 	peer = nan_get_peer(nan_data, peer_addr);
 	if (!peer) {
@@ -119,8 +128,58 @@ int nan_pairing_abort(struct nan_data *nan_data, const u8 *peer_addr)
 
 	wpa_printf(MSG_DEBUG, "NAN: Aborting pairing with peer " MACSTR,
 		   MAC2STR(peer_addr));
+
+	if (!peer->pairing.pending_auth1) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing abort: No pending Auth1 frame for peer "
+			   MACSTR, MAC2STR(peer_addr));
+		ret = 0;
+		goto done;
+	}
+
+	/* The auth mode and cipher are not important when rejecting.
+	 * Just make sure to use a supported cipher so
+	 * nan_pairing_pasn_initialize won't fail.
+	 */
+	cipher = (nan_data->cfg->pairing_cfg.cipher_suites &
+		  NAN_PAIRING_PASN_128) ? WPA_CIPHER_CCMP : WPA_CIPHER_GCMP_256;
+
+	if (nan_pairing_pasn_initialize(nan_data, peer, NAN_PASN_AUTH_MODE_PASN,
+					cipher, "",
+					NAN_PAIRING_ROLE_RESPONDER)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: Initialize failed");
+		goto done;
+	}
+
+	extra_ies = wpabuf_alloc(NAN_ELEMENT_MAX_SIZE);
+	if (!extra_ies) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing: Failed to allocate buffer for extra IEs");
+		goto done;
+	}
+
+	nan_pairing_prepare_pasn_elems(nan_data, peer, extra_ies,
+				       peer->pairing.peer_instance_id,
+				       NAN_PASN_AUTH_MODE_PASN);
+	pasn_set_extra_ies(peer->pairing.pasn, wpabuf_head_u8(extra_ies),
+			   wpabuf_len(extra_ies));
+	wpabuf_free(extra_ies);
+
+	nan_configure_peer_schedule(nan_data, peer, &nan_data->sched);
+
+	ret = handle_auth_pasn_resp(peer->pairing.pasn, nan_data->cfg->nmi_addr,
+				    peer_addr, NULL,
+				    WLAN_STATUS_UNSPECIFIED_FAILURE);
+	if (ret < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Pairing abort: Failed to send response");
+		nan_clear_peer_schedule(nan_data, peer);
+	}
+
+done:
 	nan_pairing_deinit_peer(peer);
-	return 0;
+	return ret;
 }
 
 
@@ -170,11 +229,11 @@ static int nan_pairing_set_password(struct pasn_data *pasn,
 #ifdef CONFIG_SAE
 	struct sae_pt *pt;
 
-	pt = sae_derive_pt(pasn->pasn_groups, (const u8 *)NAN_PASN_SSID,
-			   os_strlen(NAN_PASN_SSID), (const u8 *)passphrase,
+	pt = sae_derive_pt(pasn->pasn_groups, (const u8 *) NAN_PASN_SSID,
+			   os_strlen(NAN_PASN_SSID), (const u8 *) passphrase,
 			   os_strlen(passphrase), NULL, 0);
 	if (pasn_set_pt(pasn, pt) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Pairing: Failed to set SAE pt");
+		wpa_printf(MSG_INFO, "NAN: Pairing: Failed to set SAE pt");
 		sae_deinit_pt(pt);
 		return -1;
 	}
@@ -186,10 +245,11 @@ static int nan_pairing_set_password(struct pasn_data *pasn,
 }
 
 
-static struct wpabuf *nan_pairing_generate_rsnxe(int akmp)
+static struct wpabuf * nan_pairing_generate_rsnxe(int akmp)
 {
 	/* According to Wi-Fi Aware Specification version 4.0, Table 26,
-	 * the RSNXE's capabilities field in NAN PASN frames is 16 bits long
+	 * the RSNXE's capabilities field in NAN PASN Authentication frames is
+	 * 16 bits long.
 	 */
 	u16 capab = 1; /* bit 0-3 = Field length (n - 1) */
 
@@ -198,12 +258,12 @@ static struct wpabuf *nan_pairing_generate_rsnxe(int akmp)
 	if (wpa_key_mgmt_sae(akmp))
 		capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
 
-	/* IE header (2 octets) + capabilities field (2 octets) */
+	/* Element header (2 octets) + capabilities field (2 octets) */
 	buf = wpabuf_alloc(4);
 	if (!buf)
 		return NULL;
 
-	wpa_printf(MSG_DEBUG, "RSNXE capabilities: %04x", capab);
+	wpa_printf(MSG_DEBUG, "NAN: RSNXE capabilities: %04x", capab);
 	wpabuf_put_u8(buf, WLAN_EID_RSNX);
 	wpabuf_put_u8(buf, 2);
 	wpabuf_put_le16(buf, capab);
@@ -214,15 +274,14 @@ static struct wpabuf *nan_pairing_generate_rsnxe(int akmp)
 static int nan_pairing_send_cb(void *ctx, const u8 *data, size_t data_len,
 			       int noack, unsigned int freq, unsigned int wait)
 {
-	struct nan_data *nan_data = (struct nan_data *)ctx;
+	struct nan_data *nan_data = (struct nan_data *) ctx;
 
 	return nan_data->cfg->send_pasn(nan_data->cfg->cb_ctx, data, data_len);
 }
 
 
-/*
+/**
  * nan_pasn_verification_init - Initialize PASN data for pairing verification
- *
  * @nan_data: Pointer to NAN data structure containing configuration
  * @peer: Pointer to the NAN peer structure
  * Returns: 0 on success, -1 on failure
@@ -272,10 +331,10 @@ static int nan_pasn_verification_init(struct nan_data *nan_data,
 					       wpabuf_len(npk), NULL, akmp);
 
 	/*
-	 * According to Wi-Fi Aware Specification version 4.0, section 7.6.5,
-	 * pairing verification uses NPKID constructed from NIRA nonce and tag.
-	 * The same nonce and tag should be used in the NIRA added to PASN
-	 * first and second frames.
+	 * According to Wi-Fi Aware Specification v4.0, section 7.6.5, pairing
+	 * verification uses NPKID constructed from NIRA nonce and tag. The same
+	 * nonce and tag should be used in the NIRA added to PASN first and
+	 * second frames.
 	 */
 	if (nan_nira_get_tag_nonce(nan_data->cfg, npkid,
 				   &npkid[NAN_NIRA_NONCE_LEN]) < 0) {
@@ -292,8 +351,8 @@ static int nan_validate_custom_pmkid(void *ctx, const u8 *addr, const u8 *pmkid)
 {
 	/*
 	 * In NAN pairing, custom PMKID is constructed from NIRA nonce and tag.
-	 * Matching the tag to a known NIK is done during NIRA validation
-	 * so here we just accept any PMKID.
+	 * Matching the tag to a known NIK is done during NIRA validation so
+	 * here we just accept any PMKID.
 	 */
 	return 0;
 }
@@ -314,7 +373,7 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 	} else {
 		pairing->pasn = pasn_data_init();
 		if (!pairing->pasn) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Pairing: Failed to initialize PASN data");
 			return -1;
 		}
@@ -340,7 +399,7 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 		pasn->group = 19;
 		pasn->cipher = WPA_CIPHER_CCMP;
 	} else {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Unsupported cipher suite %s",
 			   wpa_cipher_txt(cipher));
 		goto fail;
@@ -352,7 +411,7 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 	os_free(pasn->pasn_groups);
 	pasn->pasn_groups = os_calloc(2, sizeof(*pasn->pasn_groups));
 	if (!pasn->pasn_groups) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Failed to allocate PASN groups");
 		goto fail;
 	}
@@ -367,7 +426,7 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 		}
 
 		if (nan_pairing_set_password(pasn, password) < 0) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Pairing: Failed to set password");
 			goto fail;
 		}
@@ -393,7 +452,7 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 	if (auth_mode != NAN_PASN_AUTH_MODE_PASN) {
 		rsnxe = nan_pairing_generate_rsnxe(pasn->akmp);
 		if (!rsnxe) {
-			wpa_printf(MSG_DEBUG,
+			wpa_printf(MSG_INFO,
 				   "NAN: Pairing: Failed to generate RSNXE");
 			goto fail;
 		}
@@ -403,7 +462,7 @@ static int nan_pairing_pasn_initialize(struct nan_data *nan_data,
 	}
 
 	pasn_register_callbacks(pasn, nan_data, nan_pairing_send_cb,
-				nan_validate_custom_pmkid);
+				nan_validate_custom_pmkid, NULL, NULL);
 	return 0;
 
 fail:
@@ -454,11 +513,7 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 
 	cs.instance_id = publish_id;
 
-	/*
-	 * TODO: get security capabilities from somewhere. For now, it doesn't
-	 * matter as the capability field is not used in pairing anyway
-	 */
-	nan_add_csia(extra_ies, 0, 1, &cs);
+	nan_add_csia(extra_ies, nan_data->cfg->security_capab, 1, &cs);
 
 	if (auth_mode == NAN_PASN_AUTH_MODE_SAE ||
 	    auth_mode == NAN_PASN_AUTH_MODE_PASN) {
@@ -466,16 +521,15 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 		if (peer->bootstrap.npba)
 			wpabuf_put_buf(extra_ies, peer->bootstrap.npba);
 	} else {
-		u8 *npkid = peer->pairing.pasn->custom_pmkid;
+		const u8 *npkid = peer->pairing.pasn->custom_pmkid;
 
 		/*
 		 * Add NIRA with the same nonce and tag as in the NPKID.
 		 * NPKID is: NONCE || TAG.
 		 */
-		if (nan_add_nira_attr(extra_ies, &npkid[NAN_NIRA_NONCE_LEN],
-				      npkid)) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to add NIRA attribute");
+		if (nan_add_nira(extra_ies, &npkid[NAN_NIRA_NONCE_LEN],
+				 npkid)) {
+			wpa_printf(MSG_DEBUG, "NAN: Failed to add NIRA");
 		}
 	}
 
@@ -483,26 +537,24 @@ static void nan_pairing_prepare_pasn_elems(struct nan_data *nan_data,
 }
 
 
-/*
+/**
  * nan_pairing_initiate_pasn_auth - Initiate PASN authentication for NAN pairing
- *
  * @nan_data: NAN data context
  * @addr: MAC address of the peer device
- * @auth_mode: Authentication mode to be used (PASN, SAE or PMK)
+ * @auth_mode: Authentication mode to be used (PASN, SAE, or PMK)
  * @cipher: Cipher suite to be used for the pairing
  * @handle: Handle of the service instance for which pairing is requested
  * @peer_instance_id: Instance ID of the peer service for which pairing is
  *	requested
  * @responder: Whether this device is acting as PASN responder
  * @password: Password to be used for authentication (if applicable)
- *
  * Returns: 0 on success, -1 on failure
  */
 int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 				   u8 auth_mode, int cipher, int handle,
 				   u8 peer_instance_id, bool responder,
 				   const char *password,
-				   struct nan_schedule *sched)
+				   const struct nan_schedule *sched)
 {
 	int ret = 0;
 	struct pasn_data *pasn;
@@ -510,35 +562,35 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 	struct wpabuf *extra_ies;
 
 	if (!addr) {
-		wpa_printf(MSG_DEBUG, "NAN: Pairing: Peer address missing");
+		wpa_printf(MSG_INFO, "NAN: Pairing: Peer address missing");
 		return -1;
 	}
 
 	peer = nan_get_peer(nan_data, addr);
 	if (!peer) {
-		wpa_printf(MSG_DEBUG, "NAN: Pairing: Peer not known");
+		wpa_printf(MSG_INFO, "NAN: Pairing: Peer not known");
 		return -1;
 	}
 
 	if (!nan_pairing_is_supported(nan_data, peer, auth_mode)) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing: Invalid params to initiate Authentication");
+		wpa_printf(MSG_INFO,
+			   "NAN: Pairing: Invalid params to initiate authentication");
 		return -1;
 	}
 
-	peer->pairing.self_pairing_role =
-	    responder ? NAN_PAIRING_ROLE_RESPONDER : NAN_PAIRING_ROLE_INITIATOR;
+	peer->pairing.self_pairing_role = responder ?
+		NAN_PAIRING_ROLE_RESPONDER : NAN_PAIRING_ROLE_INITIATOR;
 
 	if (nan_pairing_pasn_initialize(nan_data, peer, auth_mode, cipher,
 					password,
 					peer->pairing.self_pairing_role)) {
-		wpa_printf(MSG_DEBUG, "NAN: Pairing: Initialize failed");
+		wpa_printf(MSG_INFO, "NAN: Pairing: Initialize failed");
 		return -1;
 	}
 
 	pasn = peer->pairing.pasn;
 
-	extra_ies = wpabuf_alloc(NAN_IE_MAX_SIZE);
+	extra_ies = wpabuf_alloc(NAN_ELEMENT_MAX_SIZE);
 	if (!extra_ies)
 		return -1;
 
@@ -555,13 +607,15 @@ int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
 	peer->pairing.peer_instance_id = peer_instance_id;
 	peer->pairing.flags = 0;
 
-	nan_configure_peer_schedule(nan_data, peer, sched);
+	if (nan_configure_peer_schedule(nan_data, peer, sched))
+		wpa_printf(MSG_DEBUG, "NAN: Could not configure peer schedule");
 
 	if (responder) {
 		if (peer->pairing.pending_auth1) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Pairing: Responder - process pending Auth1");
-			ret = nan_pairing_auth_rx(nan_data,
+			ret = nan_pairing_auth_rx(
+				nan_data,
 				wpabuf_head(peer->pairing.pending_auth1),
 				wpabuf_len(peer->pairing.pending_auth1));
 			wpabuf_free(peer->pairing.pending_auth1);
@@ -607,15 +661,18 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 	u8 npk[NAN_NPK_LEN];
 	struct pasn_data *pasn = peer->pairing.pasn;
 	int cipher = pasn_get_cipher(pasn);
-	enum nan_cipher_suite_id csid;
 	u8 *initiator_nmi, *responder_nmi;
 	int ret;
 
 	peer->pairing.flags |= NAN_PAIRING_FLAG_PAIRED;
 
+	peer->pairing.pairing_csid = cipher == WPA_CIPHER_GCMP_256 ?
+    NAN_CS_PK_PASN_256 : NAN_CS_PK_PASN_128;
+	peer->pairing.pairing_akmp = pasn_get_akmp(pasn);
+
 	if (!nan_data->cfg->pairing_cfg.npk_caching ||
 	    !peer->pairing.pairing_cfg.npk_caching ||
-	    peer->pairing.flags & NAN_PAIRING_FLAG_NPK_VERIFICATION)
+	    (peer->pairing.flags & NAN_PAIRING_FLAG_NPK_VERIFICATION))
 		return;
 
 	wpa_printf(MSG_DEBUG, "NAN: Pairing: Derive KEK after PASN pairing");
@@ -628,10 +685,8 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 		responder_nmi = nan_data->cfg->nmi_addr;
 	}
 
-	csid = cipher == WPA_CIPHER_GCMP_256 ? NAN_CS_PK_PASN_256 :
-					       NAN_CS_PK_PASN_128;
-
-	ret = nan_crypto_derive_kek(pasn->ptk.kdk, pasn->ptk.kdk_len, csid,
+	ret = nan_crypto_derive_kek(pasn->ptk.kdk, pasn->ptk.kdk_len,
+				    peer->pairing.pairing_csid,
 				    initiator_nmi, responder_nmi,
 				    &pasn->ptk);
 	if (ret) {
@@ -650,7 +705,8 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 
 	wpa_printf(MSG_DEBUG, "NAN: Pairing: Derive NPK after PASN pairing");
 
-	ret = nan_crypto_derive_npk(pasn->ptk.kdk, pasn->ptk.kdk_len, csid,
+	ret = nan_crypto_derive_npk(pasn->ptk.kdk, pasn->ptk.kdk_len,
+				    peer->pairing.pairing_csid,
 				    initiator_nmi, responder_nmi, npk,
 				    sizeof(npk));
 	if (ret) {
@@ -659,14 +715,6 @@ static void nan_pairing_done(struct nan_data *nan_data, struct nan_peer *peer)
 		os_memcpy(pasn->pmk, npk, NAN_NPK_LEN);
 		pasn->pmk_len = NAN_NPK_LEN;
 	}
-}
-
-
-static void nan_add_kde_hdr(struct wpabuf *buf, u32 kde, size_t data_len)
-{
-	wpabuf_put_u8(buf, WLAN_EID_VENDOR_SPECIFIC);
-	wpabuf_put_u8(buf, RSN_SELECTOR_LEN + data_len);
-	RSN_SELECTOR_PUT(wpabuf_put(buf, RSN_SELECTOR_LEN), kde);
 }
 
 
@@ -707,16 +755,14 @@ static struct wpabuf *nan_nik_build_key_data(struct nan_data *nan_data)
 
 /**
  * nan_send_nik - Send NAN Identity Key (NIK) to a peer
- *
  * @nan_data: Pointer to NAN data structure containing configuration and state
  * @peer: Pointer to the NAN peer structure to send the NIK to
+ * Returns: 0 on success, -1 in case of an error
  *
  * This function sends the NAN Identity Key (NIK) and the NIK lifetime to a peer
  * device as part of the NAN pairing process. The NIK is encrypted using the KEK
  * (Key Encryption Key) derived from PASN and sent in a Shared Key Descriptor
  * Attribute (SKDA) within a follow-up message.
- *
- * Returns: 0 on success, -1 in case NPK caching is disabled or an error
  */
 static int nan_send_nik(struct nan_data *nan_data, struct nan_peer *peer)
 {
@@ -756,9 +802,9 @@ static int nan_send_nik(struct nan_data *nan_data, struct nan_peer *peer)
 	}
 
 	/* Encrypt the key data using the KEK from the PASN data */
-	encrypted_key_data =
-	    nan_crypto_encrypt_key_data(key_data, peer->pairing.pasn->ptk.kek,
-					peer->pairing.pasn->ptk.kek_len);
+	encrypted_key_data = nan_crypto_encrypt_key_data(
+		key_data, peer->pairing.pasn->ptk.kek,
+		peer->pairing.pasn->ptk.kek_len);
 	wpabuf_clear_free(key_data);
 	if (!encrypted_key_data) {
 		wpa_printf(MSG_DEBUG,
@@ -767,12 +813,12 @@ static int nan_send_nik(struct nan_data *nan_data, struct nan_peer *peer)
 	}
 
 	skda_len = sizeof(struct nan_shared_key) +
-		   sizeof(struct wpa_eapol_key) + 2 +
-		   wpabuf_len(encrypted_key_data);
+		sizeof(struct wpa_eapol_key) + 2 +
+		wpabuf_len(encrypted_key_data);
 
 	skda = wpabuf_alloc(NAN_ATTR_HDR_LEN + skda_len);
 	if (!skda) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Failed to allocate SKDA buffer");
 		wpabuf_free(encrypted_key_data);
 		return -1;
@@ -807,17 +853,17 @@ static int nan_send_nik(struct nan_data *nan_data, struct nan_peer *peer)
 	return ret;
 }
 
+
 static int nan_pairing_derive_nd_pmk(struct nan_data *nan_data,
 				     struct nan_peer *peer, u8 *nd_pmk)
 {
 	struct pasn_data *pasn = peer->pairing.pasn;
 	int cipher = pasn_get_cipher(pasn);
 	enum nan_cipher_suite_id csid;
-	u8 *initiator_nmi, *responder_nmi;
+	const u8 *initiator_nmi, *responder_nmi;
 	int ret;
 
-	wpa_printf(MSG_DEBUG,
-		   "NAN: Pairing: Derive ND-PMK after PASN pairing");
+	wpa_printf(MSG_DEBUG, "NAN: Pairing: Derive ND-PMK after PASN pairing");
 
 	if (peer->pairing.self_pairing_role == NAN_PAIRING_ROLE_INITIATOR) {
 		initiator_nmi = nan_data->cfg->nmi_addr;
@@ -828,22 +874,21 @@ static int nan_pairing_derive_nd_pmk(struct nan_data *nan_data,
 	}
 
 	csid = cipher == WPA_CIPHER_GCMP_256 ? NAN_CS_PK_PASN_256 :
-					       NAN_CS_PK_PASN_128;
+		NAN_CS_PK_PASN_128;
 
 	ret = nan_crypto_derive_nd_pmk_from_kdk(pasn->ptk.kdk,
 						pasn->ptk.kdk_len, csid,
 						initiator_nmi, responder_nmi,
 						nd_pmk);
 	if (ret)
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Failed to derive ND PMK");
 	return ret;
 }
 
 
-/*
- * nan_pairing_pasn_auth_tx_status - Handle PASN authentication frame TX status
- *
+/**
+ * nan_pairing_pasn_auth_tx_status - Handle PASN Authentication frame TX status
  * @nan: Pointer to NAN data structure
  * @data: Pointer to the transmitted frame data
  * @data_len: Length of the transmitted frame data in bytes
@@ -864,14 +909,23 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 	const struct ieee80211_mgmt *mgmt =
 		(const struct ieee80211_mgmt *) data;
 
-	if (!nan || !data || data_len < sizeof(*mgmt))
+	if (!nan || !data ||
+	    data_len < offsetof(struct ieee80211_mgmt, u.auth.variable))
 		return -1;
 
 	peer = nan_get_peer(nan, mgmt->da);
-	if (!peer || !peer->pairing.pasn) {
+	if (!peer) {
 		wpa_printf(MSG_DEBUG, "NAN: Pairing: Peer not found " MACSTR,
 			   MAC2STR(mgmt->da));
 		return -1;
+	}
+
+	/* Pairing was rejected. Clear peer schedule if no active NDPs */
+	if (!peer->pairing.pasn) {
+		if (dl_list_empty(&peer->ndps) && !peer->ndp_setup.ndp)
+			nan_clear_peer_schedule(nan, peer);
+
+		return 0;
 	}
 
 	pasn = peer->pairing.pasn;
@@ -888,14 +942,13 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 		}
 
 		ret = nan->cfg->pairing_result_cb(nan->cfg->cb_ctx,
-						  peer->nmi_addr,
-						  peer->pairing.peer_instance_id,
-						  pasn->akmp,
+						  peer->nmi_addr, pasn->akmp,
 						  pasn->cipher, pasn->status,
 						  &pasn->ptk,
 						  pasn->status ==
 						  WLAN_STATUS_SUCCESS ? nd_pmk :
 						  NULL);
+		forced_memzero(nd_pmk, PMK_LEN);
 		if (pasn->status != WLAN_STATUS_SUCCESS || ret < 0) {
 			nan_pairing_deinit_peer(peer);
 			return -1;
@@ -903,12 +956,15 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 
 		nan_pairing_done(nan, peer);
 
-                /*
-                 * The peer installs the key upon receiving 3d authentication
-                 * message. Give the peer some time to install the key before
-                 * sending the NIK.
-                 */
-                os_sleep(0, 50000);
+		/*
+		 * Allow the peer to install the keys before transmitting the
+		 * follow-up.
+		 */
+		/* FIX: A blocking sleep should not really be used here, i.e.,
+		 * this needs to be removed or replace with a registered eloop
+		 * timeout to avoid blocking the process. */
+		os_sleep(0, 30000);
+
 		if (nan_send_nik(nan, peer) < 0) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Pairing: Failed to send NIK");
@@ -924,26 +980,24 @@ int nan_pairing_pasn_auth_tx_status(struct nan_data *nan, const u8 *data,
 }
 
 
-/*
+/**
  * nan_parse_csia - Parse NAN Cipher Suite Info Attribute
- *
  * @csia: Pointer to the CSIA data buffer
  * @len: Length of the CSIA data buffer
  * @cs: Pointer to nan_cipher_suite structure to store parsed information
+ * Returns: 0 on success, -1 on failure
  *
  * Parses the NAN Cipher Suite Info Attribute (CSIA) and extracts the cipher
  * suite ID (csid) and instance ID from the attribute. It is assumed that only
  * one cipher suite is present in the attribute (which is the case for NAN
  * pairing).
- *
- * Returns: 0 on success, -1 on failure
  */
 static int nan_parse_csia(const u8 *csia, size_t len,
 			  struct nan_cipher_suite *cs)
 {
 	/* Capabilities (1) + Cipher Suite list (2) */
-	if (len != sizeof(struct nan_cipher_suite_info) +
-		   sizeof(struct nan_cipher_suite)) {
+	if (len < sizeof(struct nan_cipher_suite_info) +
+	    sizeof(struct nan_cipher_suite)) {
 		wpa_printf(MSG_DEBUG, "NAN: Pairing: CSIA too short");
 		return -1;
 	}
@@ -962,19 +1016,17 @@ static int nan_parse_csia(const u8 *csia, size_t len,
 }
 
 
-/*
+/**
  * nan_pairing_process_elems - Process NAN pairing information elements
- *
  * @nan_data: NAN state data
  * @peer: NAN peer information structure
- * @mgmt: PASN authentication frame
- * @len: Length of the PASN authentication frame
+ * @mgmt: PASN Authentication frame
+ * @len: Length of the PASN Authentication frame
  * @cs: Output cipher suite structure to be filled
+ * Returns: 0 on success, -1 on failure
  *
  * This function processes NAN pairing information elements from a PASN
- * authentication frame. It extracts the selected cipher suite and intance ID.
- *
- * Returns: 0 on success, -1 on failure
+ * Authentication frame. It extracts the selected cipher suite and intance ID.
  */
 static int nan_pairing_process_elems(struct nan_data *nan_data,
 				     struct nan_peer *peer,
@@ -1016,8 +1068,7 @@ static int nan_pairing_process_elems(struct nan_data *nan_data,
 	if (!attrs.cipher_suite_info || !attrs.cipher_suite_info_len ||
 	    nan_parse_csia(attrs.cipher_suite_info, attrs.cipher_suite_info_len,
 			   cs) < 0) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing: CSIA attribute missing or invalid");
+		wpa_printf(MSG_DEBUG, "NAN: Pairing: CSIA missing or invalid");
 		ret = -1;
 	}
 
@@ -1029,21 +1080,19 @@ fail:
 }
 
 
-/*
+/**
  * nan_pairing_handle_auth_1 - Handle the first PASN frame in NAN pairing
- *
  * @nan_data: Pointer to NAN data structure
  * @own_addr: Own MAC address
  * @peer: Pointer to NAN peer structure
  * @mgmt: Pointer to the received PASN frame
  * @len: Length of the PASN frame
+ * Returns: 0 on success, -1 on failure
  *
- * This function processes the first PASN authentication frame during NAN
+ * This function processes the first PASN Authentication frame during NAN
  * pairing as a responder. It initializes the PASN data structure, prepares
  * the necessary information elements, and delegates to the PASN module to
  * handle the authentication.
- *
- * Returns: 0 on success, -1 on failure
  */
 static int nan_pairing_handle_auth_1(struct nan_data *nan_data, u8 *own_addr,
 				     struct nan_peer *peer,
@@ -1069,7 +1118,7 @@ static int nan_pairing_handle_auth_1(struct nan_data *nan_data, u8 *own_addr,
 	}
 
 	cipher = cs.csid == NAN_CS_PK_PASN_256 ? WPA_CIPHER_GCMP_256 :
-						 WPA_CIPHER_CCMP;
+		WPA_CIPHER_CCMP;
 
 	if (cipher != pasn->cipher) {
 		wpa_printf(MSG_DEBUG,
@@ -1101,13 +1150,10 @@ static int nan_pairing_handle_auth_2(struct nan_data *nan_data,
 			     &pasn_data) < 0) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: wpa_pasn_auth_rx() failed");
-		nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
-						 peer->nmi_addr,
-						 peer->pairing.peer_instance_id,
-						 pasn->akmp,
-						 pasn->cipher,
-						 WLAN_STATUS_UNSPECIFIED_FAILURE,
-						 NULL, NULL);
+		nan_data->cfg->pairing_result_cb(
+			nan_data->cfg->cb_ctx, peer->nmi_addr, pasn->akmp,
+			pasn->cipher, WLAN_STATUS_UNSPECIFIED_FAILURE, NULL,
+			NULL);
 		nan_pairing_deinit_peer(peer);
 		return -1;
 	}
@@ -1123,7 +1169,7 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
 {
 	struct pasn_data *pasn = peer->pairing.pasn;
 	int ret;
-	u8 status = WLAN_STATUS_SUCCESS;
+	u16 status = WLAN_STATUS_SUCCESS;
 	u8 nd_pmk[PMK_LEN];
 
 	ret = handle_auth_pasn_3(pasn, nan_data->cfg->nmi_addr, peer->nmi_addr,
@@ -1140,13 +1186,12 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
 	}
 
 	ret = nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
-					       peer->nmi_addr,
-					       peer->pairing.peer_instance_id,
-					       pasn->akmp,
+					       peer->nmi_addr, pasn->akmp,
 					       pasn->cipher, status,
 					       &pasn->ptk,
 					       status == WLAN_STATUS_SUCCESS ?
 					       nd_pmk : NULL);
+	forced_memzero(nd_pmk, PMK_LEN);
 	if (ret < 0 || status != WLAN_STATUS_SUCCESS)
 		nan_pairing_deinit_peer(peer);
 	else if (status == WLAN_STATUS_SUCCESS)
@@ -1160,9 +1205,8 @@ static int nan_pairing_handle_auth_3(struct nan_data *nan_data,
 }
 
 
-/*
- * nan_pairing_auth_rx - Handle received NAN pairing authentication frames
- *
+/**
+ * nan_pairing_auth_rx - Handle received NAN pairing Authentication frames
  * @nan_data: Pointer to NAN data structure
  * @mgmt: Pointer to the PASN authentication frame
  * @len: Length of the PASN authentication frame in bytes
@@ -1181,7 +1225,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 	if (len < offsetof(struct ieee80211_mgmt, u.auth.variable))
 		return -1;
 
-	if (os_memcmp(mgmt->da, nan_data->cfg->nmi_addr, ETH_ALEN) != 0) {
+	if (!ether_addr_equal(mgmt->da, nan_data->cfg->nmi_addr)) {
 		wpa_printf(MSG_DEBUG, "NAN: Pairing: Not our frame");
 		return -1;
 	}
@@ -1207,20 +1251,18 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 	nan_ie = ieee802_11_defrag(buf + 2, buf[1], false);
 	if (!nan_ie) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing: No NAN IE in PASN authentication frame");
+			   "NAN: Pairing: No NAN element in PASN Authentication frame");
 		return -1;
 	}
 
 	ret = nan_add_peer(nan_data, mgmt->sa, wpabuf_head_u8(nan_ie) + 4,
 			   wpabuf_len(nan_ie) - 4);
+	wpabuf_free(nan_ie);
 	if (ret) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Failed to add peer from PASN");
-		wpabuf_free(nan_ie);
 		return -1;
 	}
-
-	wpabuf_free(nan_ie);
 
 	peer = nan_get_peer(nan_data, mgmt->sa);
 	if (!peer) {
@@ -1233,7 +1275,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 		if (status_code == WLAN_STATUS_SUCCESS &&
 		    auth_transaction == 1) {
 			struct nan_cipher_suite cs;
-			const u8 *rsn_ie;
+			const u8 *rsne;
 			struct wpa_ie_data rsn_data;
 
 			if (nan_pairing_process_elems(nan_data, peer, mgmt, len, &cs)) {
@@ -1242,20 +1284,20 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 				return -1;
 			}
 
-			rsn_ie = get_ie(mgmt->u.auth.variable,
-					len - offsetof(struct ieee80211_mgmt,
-					u.auth.variable),
-					WLAN_EID_RSN);
-			if (!rsn_ie) {
+			rsne = get_ie(mgmt->u.auth.variable,
+				      len - offsetof(struct ieee80211_mgmt,
+						     u.auth.variable),
+				      WLAN_EID_RSN);
+			if (!rsne) {
 				wpa_printf(MSG_DEBUG,
-					   "NAN: Pairing: RSN IE missing in Auth1");
+					   "NAN: Pairing: RSNE missing in Auth1");
 				return -1;
 			}
 
-			if (wpa_parse_wpa_ie_rsn(rsn_ie, rsn_ie[1] + 2,
+			if (wpa_parse_wpa_ie_rsn(rsne, rsne[1] + 2,
 						 &rsn_data)) {
 				wpa_printf(MSG_DEBUG,
-					   "NAN: Pairing: Failed to parse RSN IE in Auth1");
+					   "NAN: Pairing: Failed to parse RSNE in Auth1");
 				return -1;
 			}
 
@@ -1278,6 +1320,12 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 	}
 
 	if (status_code != WLAN_STATUS_SUCCESS) {
+		struct pasn_data *pasn = peer->pairing.pasn;
+
+		nan_data->cfg->pairing_result_cb(nan_data->cfg->cb_ctx,
+						 peer->nmi_addr, pasn->akmp,
+						 pasn->cipher, status_code,
+						 NULL, NULL);
 		nan_pairing_deinit_peer(peer);
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Authentication rejected - status=%u",
@@ -1298,9 +1346,8 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
 }
 
 
-/*
+/**
  * nan_pairing_followup_rx - Process received NAN pairing follow-up frame
- *
  * @nan_data: NAN data context
  * @peer_addr: MAC address of the peer device
  * @shared_key_descr: Pointer to the shared key descriptor attribute
@@ -1313,6 +1360,7 @@ int nan_pairing_auth_rx(struct nan_data *nan_data,
  * This function processes a received NAN pairing follow-up frame. It extracts
  * the NIK (NAN Identity Key) from the frame and notifies about the received
  * NIK.
+ *
  * If the local device acted as the responder in the pairing process, it also
  * sends the local NIK to the peer.
  */
@@ -1351,7 +1399,7 @@ bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 		return false;
 	}
 
-	key_desc = (void *)shared_key_descr->key;
+	key_desc = (const struct wpa_eapol_key *) shared_key_descr->key;
 	key_info = WPA_GET_BE16(key_desc->key_info);
 
 	if (!(key_info & WPA_KEY_INFO_KEY_TYPE)) {
@@ -1368,16 +1416,17 @@ bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 
 	if (attr_len < sizeof(*shared_key_descr) + sizeof(*key_desc) + 2) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing: Follow-up frame too short for key data length");
+			   "NAN: Pairing: Follow-up frame too short for Key Data Length field");
 		return false;
 	}
 
 	pos = shared_key_descr->key + sizeof(*key_desc);
 	key_data_len = WPA_GET_BE16(pos);
 
-	if (attr_len < sizeof(*shared_key_descr) + sizeof(*key_desc) + 2 + key_data_len) {
+	if (attr_len < sizeof(*shared_key_descr) + sizeof(*key_desc) + 2 +
+	    key_data_len) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing: Follow-up frame too short for key data");
+			   "NAN: Pairing: Follow-up frame too short for Key Data field");
 		return false;
 	}
 
@@ -1404,7 +1453,7 @@ bool nan_pairing_followup_rx(struct nan_data *nan_data, const u8 *peer_addr,
 		goto fail;
 	}
 
-	nik_kde = (void *)ie.nan_nik;
+	nik_kde = (const struct nan_nik_kde *) ie.nan_nik;
 	if (nik_kde->cipher_ver != NAN_NIRA_CIPHER_VER_128) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Pairing: Unsupported NIK cipher version: %u",
@@ -1475,7 +1524,7 @@ int nan_pairing_set_pairing_verification(struct nan_data *nan, bool value)
 	if (!nan->cfg->pairing_cfg.pairing_verification && value &&
 	    nan_nira_get_tag_nonce(nan->cfg, nan->nira_nonce,
 				   nan->nira_tag) < 0) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Failed to enable pairing verification");
 		return -1;
 	}
@@ -1489,7 +1538,7 @@ int nan_pairing_set_pairing_verification(struct nan_data *nan, bool value)
 int nan_pairing_set_cipher_suites(struct nan_data *nan, u32 value)
 {
 	if (value & ~(NAN_PAIRING_PASN_128 | NAN_PAIRING_PASN_256)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Pairing: Invalid cipher suites 0x%08x", value);
 		return -1;
 	}
@@ -1509,21 +1558,32 @@ int nan_pairing_set_nik(struct nan_data *nan, const u8 *nik, size_t nik_len)
 	u8 tag[NAN_NIRA_TAG_LEN];
 
 	if (!nik || nik_len != NAN_NIK_LEN) {
-		wpa_printf(MSG_DEBUG, "NAN: Pairing: Invalid NIK (len=%zu)",
+		wpa_printf(MSG_INFO, "NAN: Pairing: Invalid NIK (len=%zu)",
 			   nik_len);
 		return -1;
 	}
-	os_memcpy(nan->cfg->nik, nik, NAN_NIK_LEN);
-	if (nan->cfg->pairing_cfg.pairing_verification &&
-	    nan_nira_get_tag_nonce(nan->cfg, nonce, tag) < 0) {
-		wpa_printf(MSG_DEBUG, "NAN: Failed to set NIRA for new NIK");
-		return -1;
+
+	if (nan->cfg->pairing_cfg.pairing_verification) {
+		if (nan_nira_get_tag_nonce(nan->cfg, nonce, tag) < 0) {
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to set NIRA for new NIK");
+			return -1;
+		}
+		os_memcpy(nan->nira_nonce, nonce, NAN_NIRA_NONCE_LEN);
+		wpa_hexdump_key(MSG_DEBUG, "NAN: NIRA nonce",
+				nan->nira_nonce, NAN_NIRA_NONCE_LEN);
+		os_memcpy(nan->nira_tag, tag, NAN_NIRA_TAG_LEN);
+		wpa_hexdump_key(MSG_DEBUG, "NAN: NIRA tag",
+				nan->nira_tag, NAN_NIRA_TAG_LEN);
+	} else {
+		os_memset(nan->nira_nonce, 0, NAN_NIRA_NONCE_LEN);
+		os_memset(nan->nira_tag, 0, NAN_NIRA_TAG_LEN);
 	}
 
-	os_memcpy(nan->nira_nonce, nonce, NAN_NIRA_NONCE_LEN);
-	os_memcpy(nan->nira_tag, tag, NAN_NIRA_TAG_LEN);
+	os_memcpy(nan->cfg->nik, nik, NAN_NIK_LEN);
 
-	wpa_hexdump_key(MSG_DEBUG, "NAN: new NIK", nan->cfg->nik, NAN_NIK_LEN);
+	wpa_hexdump_key(MSG_DEBUG, "NAN: New NIK", nan->cfg->nik, NAN_NIK_LEN);
+
 	return 0;
 }
 
@@ -1531,8 +1591,7 @@ int nan_pairing_set_nik(struct nan_data *nan, const u8 *nik, size_t nik_len)
 int nan_pairing_set_nik_lifetime(struct nan_data *nan, u32 lifetime)
 {
 	if (!lifetime) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: Pairing: Invalid NIK lifetime (%u)",
+		wpa_printf(MSG_INFO, "NAN: Pairing: Invalid NIK lifetime (%u)",
 			   lifetime);
 		return -1;
 	}
@@ -1553,4 +1612,20 @@ bool nan_pairing_is_peer_paired(struct nan_data *nan_data, const u8 *peer_addr)
 		return 0;
 
 	return !!(peer->pairing.flags & NAN_PAIRING_FLAG_PAIRED);
+}
+
+
+void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr)
+{
+	struct nan_peer *peer;
+
+	peer = nan_get_peer(nan_data, peer_addr);
+	if (!peer)
+		return;
+
+	wpa_printf(MSG_DEBUG, "NAN: Unpair peer " MACSTR,
+		   MAC2STR(peer->nmi_addr));
+
+	peer->pairing.flags &= ~NAN_PAIRING_FLAG_PAIRED;
+	nan_pairing_deinit_peer(peer);
 }

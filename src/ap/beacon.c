@@ -675,7 +675,7 @@ static size_t he_elem_len(struct hostapd_data *hapd)
 	size_t len = 0;
 
 #ifdef CONFIG_IEEE80211AX
-	if (!hapd->iconf->ieee80211ax || hapd->conf->disable_11ax)
+	if (!hostapd_is_he_enabled(hapd))
 		return len;
 
 	len += 3 + sizeof(struct ieee80211_he_capabilities) +
@@ -771,7 +771,7 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
 	buflen += he_elem_len(hapd);
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+	if (hostapd_is_eht_enabled(hapd)) {
 
 		buflen += hostapd_eid_eht_capab_len(hapd, IEEE80211_MODE_AP);
 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
@@ -798,6 +798,10 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
 			 * switch */
 			buflen += 6;
 		}
+
+		if (hapd->conf->mld_ap)
+			buflen += hostapd_eid_eht_ml_tid_to_link_map_len(
+				hapd);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -903,7 +907,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 #endif /* CONFIG_FST */
 
 #ifdef CONFIG_IEEE80211AC
-	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac &&
+	if (hostapd_is_vht_enabled(hapd) &&
 	    !is_6ghz_op_class(hapd->iconf->op_class)) {
 		pos = hostapd_eid_vht_capabilities(hapd, pos, 0);
 		pos = hostapd_eid_vht_operation(hapd, pos);
@@ -912,7 +916,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211AC */
 
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax &&
+	if (hostapd_is_he_enabled(hapd) &&
 	    is_6ghz_op_class(hapd->iconf->op_class))
 		pos = hostapd_eid_txpower_envelope(hapd, pos);
 #endif /* CONFIG_IEEE80211AX */
@@ -928,7 +932,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 	pos = hostapd_get_rsnxe(hapd, pos, epos - pos);
 
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
+	if (hostapd_is_he_enabled(hapd)) {
 		u8 *cca_pos;
 
 		pos = hostapd_eid_he_capab(hapd, pos, IEEE80211_MODE_AP);
@@ -949,7 +953,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211AX */
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+	if (hostapd_is_eht_enabled(hapd)) {
 		if (params->mld_ap && params->mld_ap->conf->mld_ap) {
 			pos = hostapd_eid_eht_ml_beacon(
 				params->mld_ap, params->mld_info,
@@ -967,6 +971,9 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
 
 		pos = hostapd_eid_eht_capab(hapd, pos, IEEE80211_MODE_AP);
 		pos = hostapd_eid_eht_operation(hapd, pos);
+
+		if (hapd->conf->mld_ap)
+			pos = hostapd_eid_eht_ml_tid_to_link_map(hapd, pos);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -1885,21 +1892,21 @@ void sta_track_del(struct hostapd_sta_info *info)
 static u16 hostapd_gen_fils_discovery_phy_index(struct hostapd_data *hapd)
 {
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be)
+	if (hostapd_is_eht_enabled(hapd))
 		return FD_CAP_PHY_INDEX_EHT;
 #endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax)
+	if (hostapd_is_he_enabled(hapd))
 		return FD_CAP_PHY_INDEX_HE;
 #endif /* CONFIG_IEEE80211AX */
 
 #ifdef CONFIG_IEEE80211AC
-	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac)
+	if (hostapd_is_vht_enabled(hapd))
 		return FD_CAP_PHY_INDEX_VHT;
 #endif /* CONFIG_IEEE80211AC */
 
-	if (hapd->iconf->ieee80211n && !hapd->conf->disable_11n)
+	if (hostapd_is_ht_enabled(hapd))
 		return FD_CAP_PHY_INDEX_HT;
 
 	return 0;
@@ -2265,7 +2272,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	tail_len += he_elem_len(hapd);
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+	if (hostapd_is_eht_enabled(hapd)) {
 		tail_len += hostapd_eid_eht_capab_len(hapd, IEEE80211_MODE_AP);
 		tail_len += 3 + sizeof(struct ieee80211_eht_operation);
 		if (hapd->iconf->punct_bitmap)
@@ -2278,6 +2285,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		 */
 		if (hapd->conf->mld_ap) {
 			tail_len += 256;
+			tail_len +=
+				hostapd_eid_eht_ml_tid_to_link_map_len(hapd);
 
 			/* for Max Channel Switch Time element during channel
 			 * switch */
@@ -2300,9 +2309,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	tailpos = tail = os_malloc(tail_len);
 	if (head == NULL || tail == NULL) {
 		wpa_printf(MSG_ERROR, "Failed to set beacon data");
-		os_free(head);
-		os_free(tail);
-		return -1;
+		goto error;
 	}
 	tailend = tail + tail_len;
 
@@ -2380,11 +2387,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 
 	if (hapd->iconf->mbssid && hapd->iconf->num_bss > 1) {
 		if (ieee802_11_build_ap_params_mbssid(hapd, params)) {
-			os_free(head);
-			os_free(tail);
 			wpa_printf(MSG_ERROR,
 				   "MBSSID: Failed to set beacon data");
-			return -1;
+			goto error;
 		}
 		complete = hapd->iconf->mbssid == MBSSID_ENABLED ||
 			(hapd->iconf->mbssid == ENHANCED_MBSSID_ENABLED &&
@@ -2412,7 +2417,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 #endif /* CONFIG_FST */
 
 #ifdef CONFIG_IEEE80211AC
-	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac &&
+	if (hostapd_is_vht_enabled(hapd) &&
 	    !is_6ghz_op_class(hapd->iconf->op_class)) {
 		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos, 0);
 		tailpos = hostapd_eid_vht_operation(hapd, tailpos);
@@ -2421,7 +2426,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211AC */
 
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax &&
+	if (hostapd_is_he_enabled(hapd) &&
 	    is_6ghz_op_class(hapd->iconf->op_class))
 		tailpos = hostapd_eid_txpower_envelope(hapd, tailpos);
 #endif /* CONFIG_IEEE80211AX */
@@ -2439,7 +2444,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 					    params->mbssid.mbssid_elem_count);
 
 #ifdef CONFIG_IEEE80211AX
-	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
+	if (hostapd_is_he_enabled(hapd)) {
 		u8 *cca_pos;
 
 		tailpos = hostapd_eid_he_capab(hapd, tailpos,
@@ -2459,13 +2464,16 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 #endif /* CONFIG_IEEE80211AX */
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+	if (hostapd_is_eht_enabled(hapd)) {
 		if (hapd->conf->mld_ap)
 			tailpos = hostapd_eid_eht_ml_beacon(hapd, NULL,
 							    tailpos, false);
 		tailpos = hostapd_eid_eht_capab(hapd, tailpos,
 						IEEE80211_MODE_AP);
 		tailpos = hostapd_eid_eht_operation(hapd, tailpos);
+		if (hapd->conf->mld_ap)
+			tailpos = hostapd_eid_eht_ml_tid_to_link_map(hapd,
+								     tailpos);
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -2556,20 +2564,20 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 		if (hostapd_sae_pk_in_use(hapd->conf)) {
 			wpa_printf(MSG_ERROR,
 				   "SAE PK not supported with SAE offload");
-			return -1;
+			goto error;
 		}
 
 		if (hostapd_sae_pw_id_in_use(hapd->conf)) {
 			wpa_printf(MSG_ERROR,
 				   "SAE Password Identifiers not supported with SAE offload");
-			return -1;
+			goto error;
 		}
 
 		params->sae_password = sae_get_password(hapd, NULL, NULL, 0,
 							NULL, NULL, NULL);
 		if (!params->sae_password) {
 			wpa_printf(MSG_ERROR, "SAE password not configured for offload");
-			return -1;
+			goto error;
 		}
 	}
 #endif /* CONFIG_SAE */
@@ -2631,7 +2639,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 			hapd->iface->num_sta_no_short_slot_time > 0 ? 0 : 1;
 	else
 		params->short_slot_time = -1;
-	if (!hapd->iconf->ieee80211n || hapd->conf->disable_11n)
+	if (!hostapd_is_ht_enabled(hapd))
 		params->ht_opmode = -1;
 	else
 		params->ht_opmode = hapd->iface->ht_op_mode;
@@ -2663,14 +2671,21 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	}
 
 #ifdef CONFIG_IEEE80211BE
-	if (hapd->conf->mld_ap && hapd->iconf->ieee80211be &&
-	    !hapd->conf->disable_11be) {
+	if (hapd->conf->mld_ap) {
 		params->mld_ap = true;
 		params->mld_link_id = hapd->mld_link_id;
 	}
 #endif /* CONFIG_IEEE80211BE */
 
 	return 0;
+
+#if defined(CONFIG_SAE) || defined(NEED_AP_MLME)
+error:
+	os_free(head);
+	os_free(tail);
+	os_free(resp);
+	return -1;
+#endif /* CONFIG_SAE || NEED_AP_MLME */
 }
 
 

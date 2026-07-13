@@ -170,6 +170,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 #ifdef CONFIG_TESTING_OPTIONS
 	bss->sae_commit_status = -1;
 	bss->test_assoc_comeback_type = -1;
+	bss->association_response_status_code = -1;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_PASN
@@ -179,6 +180,11 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 #endif /* CONFIG_PASN */
 	bss->urnm_mfpr_x20 = -1;
 	bss->urnm_mfpr = -1;
+#ifdef CONFIG_ENC_ASSOC
+	bss->assoc_frame_encryption = 0;
+	bss->pmksa_caching_privacy = 0;
+	bss->eap_using_authentication_frames = 0;
+#endif /* CONFIG_ENC_ASSOC */
 }
 
 
@@ -309,6 +315,8 @@ struct hostapd_config * hostapd_config_defaults(void)
 #endif /* CONFIG_AIRTIME_POLICY */
 
 	hostapd_set_and_check_bw320_offset(conf, 0);
+
+	conf->disable_mcs15_rx = true;
 
 	return conf;
 }
@@ -1010,6 +1018,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
 
 #ifdef CONFIG_PASN
 	os_free(conf->pasn_groups);
+#ifdef CONFIG_TESTING_OPTIONS
+	os_free(conf->pasn_test_groups);
+#endif /* CONFIG_TESTING_OPTIONS */
 #endif /* CONFIG_PASN */
 
 	wpabuf_clear_free(conf->sae_pw_id_key);
@@ -1306,6 +1317,22 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
 					   " on interface '%s' and '%s'.",
 					   MAC2STR(bss->bssid),
 					   conf->bss[i]->iface, bss->iface);
+				return -1;
+			}
+		}
+	}
+
+	if (full_config) {
+		size_t i;
+
+		for (i = 0; i < conf->num_bss; i++) {
+			if (conf->bss[i] != bss &&
+			    os_strcmp(conf->bss[i]->iface, bss->iface) == 0) {
+				wpa_printf(MSG_ERROR,
+					   "Duplicate interface '%s' for BSSID "
+					   MACSTR " and " MACSTR, bss->iface,
+					   MAC2STR(conf->bss[i]->bssid),
+					   MAC2STR(bss->bssid));
 				return -1;
 			}
 		}

@@ -1439,6 +1439,11 @@ struct wpa_driver_associate_params {
 	 * p2p_mode - P2P R1 only, P2P R2 only, or PCC mode
 	 */
 	enum wpa_p2p_mode p2p_mode;
+
+	/**
+	 * eppke_supported - Whether EPPKE authentication is supported
+	 */
+	bool eppke_supported;
 };
 
 enum hide_ssid {
@@ -2181,34 +2186,33 @@ enum wpa_driver_if_type {
  * @drv_flags: NAN capability flags (WPA_DRIVER_FLAGS_NAN_*)
  * @num_radios: Maximum number of NAN radios
  * @sched_chans: Maximum number of channels in NAN schedule (per map)
- * @slot_duration: NAN schedule bitmap slot duration (16, 32, 64 or 128) in TUs
- * @schedule_period: Schedule period (powers of 2 in range: 128 - 8192) in TUs
+ * @slot_duration: NAN schedule bitmap slot duration (16, 32, 64, or 128) in TUs
+ * @schedule_period: Schedule period (powers of 2 in range: 128-8192) in TUs
  * @max_channel_switch_time: Max channel switch time in microseconds
  * @num_antennas: Number of antennas (lower nibble TX, upper nibble RX)
  * @op_modes: NAN capability operation modes
  * @dev_capa: NAN device capabilities
- * @ht_capab: HT capabilities information as defined in IEEE80211
- *     specification in section 9.4.2.54.2 (HT Capability Information field)
- * @ht_ampdu_params: HT A-MPDU parameters as defined in IEEE80211
- *     specification in section 9.4.2.54.3 (A-MPDU Parameters field)
- * @ht_mcs_set: HT MCS set as defined in IEEE80211 specification in
- *     section 9.4.2.54.4 (Supported MCS Set field)
- * @vht_capab: VHT capabilities information as defined in IEEE80211
- *     specification in section 9.4.2.156.2 (VHT Capabilities Information
- *     field)
- * @vht_mcs_set: VHT MCS set as defined in IEEE80211 specification in section
- *     9.4.2.156.3 (Supported VHT-MCS and NSS Set field)
+ * @ht_capab: HT capabilities information as defined in IEEE Std 802.11-2024,
+ *     9.4.2.54.2 (HT Capability Information field)
+ * @ht_ampdu_params: HT A-MPDU parameters as defined in IEEE Std 802.11-2024,
+ *     9.4.2.54.3 (A-MPDU Parameters field)
+ * @ht_mcs_set: HT MCS set as defined in IEEE Std 802.11-2024,9.4.2.54.4
+ *     (Supported MCS Set field)
+ * @vht_capab: VHT capabilities information as defined in IEEE Std 802.11-2024,
+ *     9.4.2.156.2 (VHT Capabilities Information field)
+ * @vht_mcs_set: VHT MCS set as defined in IEEE Std 802.11-2024, 9.4.2.156.3
+ *     (Supported VHT-MCS and NSS Set field)
  * @vht_valid: Whether &vht_capab and &vht_mcs_set are both valid
  * @he_capab: HE capabilities. See &struct he_capabilities.
  * @he_valid: Whether HE capabilities are valid
  *
  * For the schedule capabilities, even if the driver/device supports multiple
  * options, only a single option should be selected. For example, if both 16 TU
- * and 32 TU slot durations are supported, the driver should report
- * the shortest supported slot duration (16 TU). For schedule period, the
- * driver should report the maximum supported period, as longer periods can
- * always be represented by repetitions of the shorter schedule bitmap. In any
- * case 512/16 configuration is recommended for better interoperability.
+ * and 32 TU slot durations are supported, the driver should report the shortest
+ * supported slot duration (16 TU). For schedule period, the driver should
+ * report the maximum supported period, as longer periods can always be
+ * represented by repetitions of the shorter schedule bitmap. In any case,
+ * 512/16 configuration is recommended for better interoperability.
  *
  * As for the PHY capabilities, HT must be supported for NAN Data path, and
  * without valid HT capabilities NAN Data path would be disabled.
@@ -2520,6 +2524,16 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_NON_TRIGGER_BASED_INITIATOR	0x0000000040000000ULL
 /** Driver supports NAN Device interface and NAN Synchronization */
 #define WPA_DRIVER_FLAGS2_SUPPORT_NAN			0x0000000080000000ULL
+/** Driver supports P2P assisted DFS */
+#define WPA_DRIVER_FLAGS2_P2P_ASSISTED_DFS		0x0000000100000000ULL
+/** Driver supports (Re)Association Request/Response frame encryption */
+#define WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION	0x0000000200000000ULL
+/** Driver supports EPPKE authentication */
+#define WPA_DRIVER_FLAGS2_EPPKE				0x0000000400000000ULL
+/** Driver supports IEEE 802.1X authentication in Authentication frames */
+#define WPA_DRIVER_FLAGS2_802_1X_AUTH		0x0000000800000000ULL
+/** Driver supports PMKSA caching privacy */
+#define WPA_DRIVER_FLAGS2_PMKSA_PRIVACY		0x0000001000000000ULL
 	u64 flags2;
 /** Driver supports of adaptive 11r feature */
 #define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x8000000000000000ULL
@@ -2665,6 +2679,7 @@ struct wpa_driver_capa {
 
 #ifdef CONFIG_NAN
 	struct nan_capa nan_capa;
+	u32 nan_flags;
 #endif /* CONFIG_NAN */
 };
 
@@ -2755,6 +2770,9 @@ struct hostapd_sta_add_params {
 	size_t eht_capab_len;
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	u32 flags_mask; /* unset bits in flags */
+#ifdef CONFIG_ENC_ASSOC
+	bool epp_sta;
+#endif /* CONFIG_ENC_ASSOC */
 #ifdef CONFIG_MESH
 	enum mesh_plink_state plink_state;
 	u16 peer_aid;
@@ -2778,7 +2796,7 @@ struct hostapd_sta_add_params {
 	/*
 	 * For a station added to a NAN Data Interface (NDI) indicate the
 	 * address of the NAN Management Interface (NMI) to which this station
-	 * belongs
+	 * belongs.
 	 */
 	const u8 *nmi_addr;
 #endif /* CONFIG_NAN */
@@ -3151,6 +3169,13 @@ enum wpa_drv_update_connect_params_mask {
  *	from user space to the driver.
  * @pmkid: Generated PMKID as part of external auth exchange (e.g., SAE).
  * @mld_addr: AP's MLD address or %NULL if MLO is not used
+ * @auth_alg: Authentication algorithm to be used
+ * @pairwise_cipher: Pairwise cipher to be used, WPA_CIPHER_*
+ * @group_cipher: Group cipher to be used, WPA_CIPHER_*
+ * @group_mgmt_cipher: Group management cipher to be used, WPA_CIPHER_*
+ * @rsn_capab: RSN capabilities
+ * @rsnxe_data: Extended RSN capabilities data
+ * @rsnxe_data_len: Length of Extended RSN capabilities data in octets
  */
 struct external_auth {
 	enum {
@@ -3164,6 +3189,13 @@ struct external_auth {
 	u16 status;
 	const u8 *pmkid;
 	const u8 *mld_addr;
+	unsigned int auth_alg;
+	int pairwise_cipher;
+	int group_cipher;
+	int group_mgmt_cipher;
+	u16 rsn_capab;
+	const u8 *rsnxe_data;
+	size_t rsnxe_data_len;
 };
 
 #define WPAS_MAX_PASN_PEERS 10
@@ -3305,12 +3337,12 @@ struct driver_sta_mlo_info {
 /**
  * struct nan_band_config - NAN band specific configuration
  *
- * For details on NAN band configuration, see the Wi-Fi Aware (TM) Specification
+ * For details on NAN band configuration, see the Wi-Fi Aware Specification
  *
  * @frequency: Frequency in MHz for the band
  * @rssi_close: RSSI close threshold used for NAN state transition algorithm
  * @rssi_middle: RSSI middle threshold used for NAN state transition algorithm
- * @awake_dw_interval: committed DW information
+ * @awake_dw_interval: Committed DW information
  * @disable_scan: Disable scan for this band
  */
 struct nan_band_config {
@@ -3349,9 +3381,9 @@ struct nan_cluster_config {
 	u8 discovery_beacon_interval;
 	struct nan_band_config low_band_cfg;
 	struct nan_band_config high_band_cfg;
-	u8 *extra_nan_attrs;
+	const u8 *extra_nan_attrs;
 	size_t extra_nan_attrs_len;
-	u8 *vendor_elems;
+	const u8 *vendor_elems;
 	size_t vendor_elems_len;
 };
 
@@ -3366,10 +3398,15 @@ struct nan_cluster_config {
 /**
  * struct nan_schedule_config - NAN schedule configuration
  *
+ * @deferred: True if the driver should announce the schedule update to peers
+ *	before applying it
  * @num_channels: Number of channels in the schedule
  * @channels: Channel specific schedule information
+ * @avail_attr: NAN Availability attribute as defined in Wi-Fi Aware (TM) 4.0
+ *	specification Table 93
  */
 struct nan_schedule_config {
+	bool deferred;
 	u8 num_channels;
 
 	/**
@@ -3383,9 +3420,9 @@ struct nan_schedule_config {
 	 *     on the channel.
 	 * @rx_nss: Number of spatial streams supported for RX on the
 	 *     channel
-	 * @chan_entry: Channel Entry as defined in Wi-Fi
-	 *     Aware (TM) 4.0 specification Table 100 (Channel Entry
-	 *     format for the NAN Availability attribute).
+	 * @chan_entry: Channel Entry as defined in Wi-Fi Aware spec v4.0,
+	 *     Table 100 (Channel Entry format for the NAN Availability
+	 *     attribute).
 	 *
 	 * Note: Time bitmap slot duration and schedule length equal to the
 	 * reported NAN capabilities (see &nan_slot_duration and
@@ -3400,8 +3437,9 @@ struct nan_schedule_config {
 		u8 rx_nss;
 
 		u8 chan_entry[6];
-
 	} channels[MAX_NUM_NAN_SCHEDULE_CHANNELS];
+
+	struct wpabuf *avail_attr;
 };
 
 /**
@@ -3423,7 +3461,6 @@ struct nan_peer_schedule_config {
 		u8 map_id;
 		struct nan_schedule_config sched;
 	} maps[MAX_NUM_NAN_MAPS];
-
 };
 
 /**
@@ -4339,18 +4376,6 @@ struct wpa_driver_ops {
 			    int vlan_id, int link_id);
 
 	/**
-	 * commit - Optional commit changes handler (AP only)
-	 * @priv: driver private data
-	 * Returns: 0 on success, -1 on failure
-	 *
-	 * This optional handler function can be registered if the driver
-	 * interface implementation needs to commit changes (e.g., by setting
-	 * network interface up) at the end of initial configuration. If set,
-	 * this handler will be called after initial setup has been completed.
-	 */
-	int (*commit)(void *priv);
-
-	/**
 	 * set_radius_acl_auth - Notification of RADIUS ACL change
 	 * @priv: Private driver interface data
 	 * @mac: MAC address of the station
@@ -4775,20 +4800,6 @@ struct wpa_driver_ops {
 	 */
 	int (*channel_info)(void *priv, struct wpa_channel_info *channel_info);
 
-	/**
-	 * set_authmode - Set authentication algorithm(s) for static WEP
-	 * @priv: Private driver interface data
-	 * @authmode: 1=Open System, 2=Shared Key, 3=both
-	 * Returns: 0 on success, -1 on failure
-	 *
-	 * This function can be used to set authentication algorithms for AP
-	 * mode when static WEP is used. If the driver uses user space MLME/SME
-	 * implementation, there is no need to implement this function.
-	 *
-	 * DEPRECATED - use set_ap() instead
-	 */
-	int (*set_authmode)(void *priv, int authmode);
-
 #ifdef ANDROID
 	/**
 	 * driver_cmd - Execute driver-specific command
@@ -4872,20 +4883,6 @@ struct wpa_driver_ops {
 	 */
 	 int (*sta_auth)(void *priv,
 			 struct wpa_driver_sta_auth_params *params);
-
-	/**
-	 * add_tspec - Add traffic stream
-	 * @priv: Private driver interface data
-	 * @addr: MAC address of the station to associate
-	 * @tspec_ie: tspec ie buffer
-	 * @tspec_ielen: tspec ie length
-	 * Returns: 0 on success, -1 on failure
-	 *
-	 * This function adds the traffic steam for the station
-	 * and fills the medium_time in tspec_ie.
-	 */
-	 int (*add_tspec)(void *priv, const u8 *addr, u8 *tspec_ie,
-			  size_t tspec_ielen);
 
 	/**
 	 * add_sta_node - Add a station node in the driver
@@ -5782,24 +5779,25 @@ struct wpa_driver_ops {
 
 #ifdef CONFIG_NAN
 	/**
-	 * nan_start - start NAN operation
+	 * nan_start - Start NAN operation
 	 * @priv: Private driver interface data
 	 * @conf: NAN configuration parameters
-	 * Returns 0 on success, -1 on failure
+	 * Returns: 0 on success, -1 on failure
 	 *
 	 * This command joins an existing NAN cluster or starts a new one.
 	 */
-	int (*nan_start)(void *priv, struct nan_cluster_config *conf);
+	int (*nan_start)(void *priv, const struct nan_cluster_config *conf);
 
 	/**
 	 * nan_change_config - Update the NAN cluster configuration
 	 * @priv: Private driver interface data
 	 * @conf: NAN configuration parameters
-	 * Returns 0 on success, -1 on failure
+	 * Returns: 0 on success, -1 on failure
 	 *
 	 * This command modifies the NAN cluster configuration.
 	 */
-	int (*nan_change_config)(void *priv, struct nan_cluster_config *conf);
+	int (*nan_change_config)(void *priv,
+				 const struct nan_cluster_config *conf);
 
 	/**
 	 * nan_stop - stops NAN operation
@@ -5818,9 +5816,11 @@ struct wpa_driver_ops {
 	 * executed on NAN device interface after NAN has been started.
 	 * The configured schedule should be valid for RX for all NAN
 	 * activities (management and data).
+	 *
 	 * For devices that support multiple concurrent NAN radios, this
 	 * callback should be called for each radio with the corresponding
 	 * %map_id.
+	 *
 	 * If previous configuration exists, it is replaced with the new
 	 * one. To delete previous schedule, set %conf.num_channels = 0.
 	 */
@@ -5828,7 +5828,7 @@ struct wpa_driver_ops {
 				   struct nan_schedule_config *conf);
 
 	/**
-	 * nan_config_peer_schedule - configure NAN peer schedule
+	 * nan_config_peer_schedule - Configure NAN peer schedule
 	 * @priv: Private driver interface data
 	 * @peer: Peer's NAN device address
 	 * @cdw: Peer's committed DW.
@@ -5849,7 +5849,7 @@ struct wpa_driver_ops {
 					u16 max_chan_switch_time,
 					const struct wpabuf *ulw,
 					struct nan_peer_schedule_config *sched);
-#endif
+#endif /* CONFIG_NAN */
 };
 
 /**
@@ -6489,13 +6489,13 @@ enum wpa_event_type {
 	EVENT_SETUP_LINK_RECONFIG,
 
 	/**
-	 * EVENT_NAN_CLUSTER_JOIN - Notification of new cluster has been
+	 * EVENT_NAN_CLUSTER_JOIN - Notification of a new cluster having been
 	 * joined or started.
 	 *
-	 * This event is used to notify wpa_supplicant that a NAN cluster
-	 * has been joined or started. The event data includes the NAN cluster
-	 * ID and a boolean indicating whether a new cluster was started or
-	 * an existing cluster was joined.
+	 * This event is used to notify wpa_supplicant that a NAN cluster has
+	 * been joined or started. The event data includes the NAN cluster ID
+	 * and a boolean indicating whether a new cluster was started or an
+	 * existing cluster was joined.
 	 *
 	 * Described in wpa_event_data.nan_cluster_join_info.
 	 */
@@ -6511,6 +6511,28 @@ enum wpa_event_type {
 	 * The event data includes the DW frequency.
 	 */
 	EVENT_NAN_NEXT_DW,
+
+	/**
+	 * EVENT_INCUMBT_SIG_INTF_DETECTED - Notification of incumbent signal
+	 * interference detection.
+	 */
+	EVENT_INCUMBT_SIG_INTF_DETECTED,
+
+	/**
+	 * EVENT_NAN_SCHED_UPDATE_DONE - NAN schedule update completed
+	 *
+	 * This event is used to notify wpa_supplicant that a NAN schedule
+	 * update has been completed by the driver/firmware.
+	 */
+	EVENT_NAN_SCHED_UPDATE_DONE,
+
+	/**
+	 * EVENT_NAN_ULW_UPDATE - NAN ULW blob update
+	 *
+	 * This event is used to notify wpa_supplicant that the device ULW blob
+	 * has changed and can be attached to outgoing NAN frames.
+	 */
+	EVENT_NAN_ULW_UPDATE,
 };
 
 
@@ -6937,6 +6959,8 @@ union wpa_event_data {
 		u16 status_code;
 		const u8 *ies;
 		size_t ies_len;
+		const u8 *frame_body;
+		size_t frame_body_len;
 	} auth;
 
 	/**
@@ -7519,6 +7543,39 @@ union wpa_event_data {
 	struct nan_next_dw_info {
 		int freq;
 	} nan_next_dw_info;
+
+	/**
+	 * Data for EVENT_INCUMBT_SIG_INTF
+	 */
+	struct incumbt_sig_intf_event {
+		int freq;
+		enum chan_width chan_width;
+		int cf1;
+		int cf2;
+		u32 chan_bw_interference_bitmap;
+		int link_id;
+	} incumbt_sig_intf_event;
+
+	/**
+	 * struct nan_sched_update_done_info - Data for EVENT_NAN_SCHED_UPDATE_DONE
+	 * @success: Indicates whether the NAN schedule update was successful
+	 */
+	struct nan_sched_update_done_info {
+		bool success;
+	} nan_sched_update_done_info;
+
+	/**
+	 * struct nan_ulw_update_info - Data for EVENT_NAN_ULW_UPDATE
+	 * @ulw: Pointer to ULW blob data, containing one or more Unaligned
+	 *	Schedule attributes as defined in the Wi-Fi Aware (TM) 4.0
+	 *	specification Table 109, including attribute header for each
+	 *	attribute.
+	 * @ulw_len: ULW blob length in bytes
+	 */
+	struct nan_ulw_update_info {
+		const u8 *ulw;
+		size_t ulw_len;
+	} nan_ulw_update_info;
 };
 
 /**
@@ -7621,8 +7678,8 @@ int ht_supported(const struct hostapd_hw_modes *mode);
 int vht_supported(const struct hostapd_hw_modes *mode);
 bool he_supported(const struct hostapd_hw_modes *hw_mode,
 		  enum ieee80211_op_mode op_mode);
-int eht_supported(const struct hostapd_hw_modes *hw_mode,
-		  enum ieee80211_op_mode op_mode);
+bool eht_supported(const struct hostapd_hw_modes *hw_mode,
+		   enum ieee80211_op_mode op_mode);
 
 struct wowlan_triggers *
 wpa_get_wowlan_triggers(const char *wowlan_triggers,
@@ -7669,10 +7726,6 @@ extern const struct wpa_driver_ops wpa_driver_macsec_linux_ops;
 /* driver_roboswitch.c */
 extern const struct wpa_driver_ops wpa_driver_roboswitch_ops;
 #endif /* CONFIG_DRIVER_ROBOSWITCH */
-#ifdef CONFIG_DRIVER_ATHEROS
-/* driver_atheros.c */
-extern const struct wpa_driver_ops wpa_driver_atheros_ops;
-#endif /* CONFIG_DRIVER_ATHEROS */
 #ifdef CONFIG_DRIVER_NONE
 extern const struct wpa_driver_ops wpa_driver_none_ops; /* driver_none.c */
 #endif /* CONFIG_DRIVER_NONE */

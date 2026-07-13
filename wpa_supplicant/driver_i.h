@@ -1289,7 +1289,7 @@ wpas_drv_get_chip_vendor_id(struct wpa_supplicant *wpa_s)
 #ifdef CONFIG_NAN
 
 static inline int wpa_drv_nan_start(struct wpa_supplicant *wpa_s,
-				    struct nan_cluster_config *conf)
+				    const struct nan_cluster_config *conf)
 {
 	if (!wpa_s->driver->nan_start)
 		return -1;
@@ -1303,8 +1303,9 @@ static inline void wpa_drv_nan_stop(struct wpa_supplicant *wpa_s)
 	wpa_s->driver->nan_stop(wpa_s->drv_priv);
 }
 
-static inline int wpa_drv_nan_update_config(struct wpa_supplicant *wpa_s,
-					    struct nan_cluster_config *conf)
+static inline int
+wpa_drv_nan_update_config(struct wpa_supplicant *wpa_s,
+			  const struct nan_cluster_config *conf)
 {
 	if (!wpa_s->driver->nan_change_config)
 		return -1;
@@ -1335,6 +1336,16 @@ wpa_drv_nan_config_peer_schedule(struct wpa_supplicant *wpa_s, const u8 *peer,
 						       max_chan_switch_time,
 						       ulw, sched);
 }
+
+static inline int wpa_drv_get_inact_sec(struct wpa_supplicant *wpa_s,
+					const u8 *addr)
+{
+	if (!wpa_s->driver->get_inact_sec)
+		return -1;
+
+	return wpa_s->driver->get_inact_sec(wpa_s->drv_priv, addr);
+}
+
 #endif /* CONFIG_NAN */
 
 #endif /* DRIVER_I_H */

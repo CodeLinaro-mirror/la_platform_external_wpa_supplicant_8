@@ -35,6 +35,7 @@ struct ieee80211_ht_capabilities;
 struct full_dynamic_vlan;
 enum wps_event;
 union wps_event_data;
+struct rsn_pmksa_cache_entry;
 #ifdef CONFIG_MESH
 struct mesh_conf;
 #endif /* CONFIG_MESH */
@@ -332,6 +333,13 @@ struct hostapd_data {
 			   size_t psk_len);
 	void *new_psk_cb_ctx;
 
+#ifdef CONFIG_IEEE8021X_AUTH
+	void (*send_eap_req)(struct hostapd_data *hapd, struct sta_info *sta,
+			     u8 type, u16 auth_transaction, u16 status,
+			     struct rsn_pmksa_cache_entry *cached_pmk,
+			     const u8 *eap_req, size_t eap_req_len);
+#endif /* CONFIG_IEEE8021X_AUTH */
+
 	/* channel switch parameters */
 	struct hostapd_freq_params cs_freq_params;
 	u8 cs_count;
@@ -519,6 +527,8 @@ struct hostapd_data {
 
 #ifdef CONFIG_NAN_USD
 	struct nan_de *nan_de;
+	/* Whether nan_de should be freed on deinit */
+	bool nan_de_is_owned;
 #endif /* CONFIG_NAN_USD */
 
 	u64 scan_cookie; /* Scan instance identifier for the ongoing HT40 scan
@@ -752,6 +762,10 @@ struct hostapd_iface {
 	struct hostapd_multi_hw_info *multi_hw_info;
 	unsigned int num_multi_hws;
 	struct hostapd_multi_hw_info *current_hw_info;
+
+	/* Use assisted DFS functionality from the driver. This is used only
+	 * in wpa_supplicant builds for P2P GO functionality. */
+	bool assisted_dfs;
 };
 
 /* hostapd.c */
@@ -881,6 +895,8 @@ int hostapd_build_beacon_data(struct hostapd_data *hapd,
 void free_beacon_data(struct beacon_data *beacon);
 int hostapd_fill_cca_settings(struct hostapd_data *hapd,
 			      struct cca_settings *settings);
+void hostapd_switch_color_timeout_handler(void *eloop_data, void *user_ctx);
+bool hostapd_is_cca_in_progress(struct hostapd_iface *iface);
 void hostapd_refresh_all_iface_beacons(struct hostapd_iface *hapd_iface);
 
 #ifdef CONFIG_IEEE80211BE
@@ -917,5 +933,32 @@ hostapd_chan_width_from_freq_params(struct hostapd_freq_params *freq_params);
 
 struct hostapd_data *
 hostapd_get_mbssid_bss_by_idx(struct hostapd_data *hapd, size_t idx);
+
+bool hostapd_acceptable_sta_addr(struct hostapd_data *hapd, const u8 *addr,
+				 const u8 *addr_ml, bool mld);
+
+static inline bool
+hostapd_is_ht_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211n && !hapd->conf->disable_11n;
+}
+
+static inline bool
+hostapd_is_vht_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac;
+}
+
+static inline bool
+hostapd_is_he_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax;
+}
+
+static inline bool
+hostapd_is_eht_enabled(struct hostapd_data *hapd)
+{
+	return hapd->iconf->ieee80211be && !hapd->conf->disable_11be;
+}
 
 #endif /* HOSTAPD_H */

@@ -18,10 +18,10 @@
 #define NAN_TEST_MAX_LATENCY     3
 #define NAN_TEST_PUBLISH_INST_ID 12
 
-static const u8 g_pub_nmi[] = {0x00, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
-static const u8 g_pub_ndi[] = {0x00, 0xAA, 0xAA, 0x00, 0x00, 0x00};
-static const u8 g_sub_nmi[] = {0x00, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-static const u8 g_sub_ndi[] = {0x00, 0xBB, 0xBB, 0xBB, 0x00, 0x00};
+static const u8 g_pub_nmi[] = { 0x00, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA };
+static const u8 g_pub_ndi[] = { 0x00, 0xAA, 0xAA, 0x00, 0x00, 0x00 };
+static const u8 g_sub_nmi[] = { 0x00, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB };
+static const u8 g_sub_ndi[] = { 0x00, 0xBB, 0xBB, 0xBB, 0x00, 0x00 };
 
 /*
  * struct nan_test_action - NAN test action context
@@ -50,9 +50,8 @@ struct nan_test_action {
 	void *ctx;
 };
 
-/*
+/**
  * nan_test_tx_status_action - NAN test Tx status action context
- *
  * @data: Copy of the original NAF
  * @acked: True iff the NAF was acked
  * @dst: Destination of the NAF
@@ -63,9 +62,8 @@ struct nan_test_tx_status_action {
 	u8 dst[ETH_ALEN];
 };
 
-/*
+/**
  * nan_test_ndp_notify - NAN test NDP notification handling
- *
  * @type: Notification type
  * @ndp_id: NDP identifier
  * @ssi: Service specific information
@@ -113,9 +111,9 @@ do {                                                                  \
 	}                                                             \
 } while (0)
 
-/*
+
+/**
  * nan_test_global_init - Initialize NAN test global data structures
- *
  * @global: NAN test global data structure
  */
 static void nan_test_global_init(struct nan_test_global *global)
@@ -150,9 +148,8 @@ static void nan_test_global_init(struct nan_test_global *global)
 }
 
 
-/*
+/**
  * nan_test_dev_deinit - De-initialize NAN device
- *
  * @dev: NAN device
  */
 static void nan_test_dev_deinit(struct nan_device *dev)
@@ -166,9 +163,8 @@ static void nan_test_dev_deinit(struct nan_device *dev)
 }
 
 
-/*
+/**
  * nan_test_global_deinit - De-initialize NAN test global data structures
- *
  * @global: NAN test global data structure
  */
 static void nan_test_global_deinit(struct nan_test_global *global)
@@ -196,14 +192,13 @@ static void nan_test_global_deinit(struct nan_test_global *global)
 }
 
 
-/*
+/**
  * nan_test_add_action - Add a NAN test action to the list of actions
- *
  * @global: NAN test global data structure
  * @dev: NAN device for which the action is intended
  * @cb: Callback to be called for the action
  * @ctx: Parameter for the callback function
- * Returns a pointer to the newly added action, or NULL on failure
+ * Returns: A pointer to the newly added action, or NULL on failure
  */
 static struct nan_test_action *
 nan_test_add_action(struct nan_test_global *global,
@@ -228,10 +223,10 @@ nan_test_add_action(struct nan_test_global *global,
 }
 
 
-/*
+/**
  * nan_test_run_actions - Iterate over all NAN test actions and execute them
  * @global: NAN test global data structure
- * return 0 in success, -1 on error.
+ * Returns: 0 in success, -1 on error
  *
  * Runs as longs as there are actions to run. Exists where there are no more
  * action to perform or on error.
@@ -283,9 +278,10 @@ static int nan_test_run_actions(struct nan_test_global *global)
 	return 0;
 }
 
-static int nan_test_start_cb(void *ctx, struct nan_cluster_config *config)
+
+static int nan_test_start_cb(void *ctx, const struct nan_cluster_config *config)
 {
-	struct nan_device *dev = (struct nan_device *)ctx;
+	struct nan_device *dev = ctx;
 
 	DEV_NOT_INIT_ERR(dev);
 
@@ -295,7 +291,6 @@ static int nan_test_start_cb(void *ctx, struct nan_cluster_config *config)
 
 /*
  * nan_test_stop_cb - Stop the NAN device.
- *
  * @ctx: Pointer to the &struct nan_device
  */
 static void nan_test_stop_cb(void *ctx)
@@ -327,7 +322,6 @@ static int nan_test_nan_ndp_action(struct nan_device *dev, void *ctx)
 
 /*
  * nan_ndp_notify_action - Default NAN NDP notification handling
- *
  * @dev: NAN device
  * @ctx: Pointer to &struct nan_test_ndp_notify
  */
@@ -338,20 +332,20 @@ static int nan_ndp_notify_action(struct nan_device *dev, void *ctx)
 	int ret;
 
 	wpa_printf(MSG_INFO, "%s: %s: type=%u, peer_nmi=" MACSTR,
-		   dev->name, __func__,
-		   notify->type, MAC2STR(notify->ndp_id.peer_nmi));
+		   dev->name, __func__, notify->type,
+		   MAC2STR(notify->ndp_id.peer_nmi));
 
 	ret = -1;
 	if (notify->type == NAN_TEST_NDP_NOTIFY_REQUEST) {
 		struct nan_ndp_params *params;
 		struct nan_device *curd;
-		u8 found = 0;
+		bool found = false;
 
 		dl_list_for_each(curd, &dev->global->devs, struct nan_device,
 				 list) {
-			if (os_memcmp(curd->nmi, notify->ndp_id.peer_nmi,
-				      ETH_ALEN) == 0) {
-				found = 1;
+			if (ether_addr_equal(curd->nmi,
+					     notify->ndp_id.peer_nmi)) {
+				found = true;
 				break;
 			}
 		}
@@ -508,7 +502,7 @@ static int nan_ndp_notify_action(struct nan_device *dev, void *ctx)
 	}
 
 out:
-	os_free((void *)notify->ssi);
+	os_free((void *) notify->ssi);
 	os_free(notify);
 	return ret;
 }
@@ -553,24 +547,24 @@ static void nan_test_ndp_action(struct nan_device *dev, enum
 				notify))
 		return;
 
-	os_free((void *)notify->ssi);
+	os_free((void *) notify->ssi);
 	os_free(notify);
 }
 
 
-/*
+/**
  * nan_test_ndp_action_notfi_cb - Callback for NDP request
- *
  * @ctx: Pointer to &struct nan_device
  * @params: NDP action notification parameters
  *
  * The handling of the event is done asynchronously through the NAN test actions
  * processing.
  */
-static void nan_test_ndp_action_notfi_cb(void *ctx, struct
-					 nan_ndp_action_notif_params *params)
+static void
+nan_test_ndp_action_notfi_cb(void *ctx,
+			     struct nan_ndp_action_notif_params *params)
 {
-	struct nan_device *dev = (struct nan_device *)ctx;
+	struct nan_device *dev = (struct nan_device *) ctx;
 	enum nan_test_ndp_notify_type type;
 
 	DEV_NOT_INIT_ERR_VOID(dev);
@@ -592,6 +586,7 @@ static void nan_test_ndp_action_notfi_cb(void *ctx, struct
  *
  * @ctx: Pointer to &struct nan_device
  * @params: NDP action notification parameters
+ * Returns: 0 on success, -1 on failure
  *
  * The handling of the event is done asynchronously through the NAN test actions
  * processing. Returns 0 on success, -1 on failure.
@@ -624,7 +619,8 @@ static int nan_test_ndp_connected_cb(void *ctx,
 			wpa_printf(MSG_ERROR,
 				   "%s: Unexpected CSID: got %u expected %u",
 				   dev->name, dev->csid,
-				   dev->conf->ndp_confs[dev->n_ndps].expected_csid);
+				   dev->conf->ndp_confs[dev->n_ndps].
+				   expected_csid);
 			return -1;
 		}
 	}
@@ -650,6 +646,8 @@ static int nan_test_ndp_connected_cb(void *ctx,
  * @reason: Reason for disconnection
  * @locally_generated: true if locally generated, false if triggered by peer
  * @remove_sta: true if the NDI station should be removed
+ * @failure: true if NDP setup failed, false if graceful disconnection
+ * @gtk_id: GTK key ID used for the NDP; 0 if no GTK was used
  *
  * The handling of the event is done asynchronously through the NAN test actions
  * processing.
@@ -659,7 +657,9 @@ static void nan_test_ndp_disconnected_cb(void *ctx, struct nan_ndp_id *ndp_id,
 					 const u8 *peer_ndi,
 					 enum nan_reason reason,
 					 bool locally_generated,
-					 bool remove_sta)
+					 bool remove_sta,
+					 bool failure,
+					 u8 gtk_id)
 {
 	struct nan_device *dev = (struct nan_device *)ctx;
 
@@ -747,12 +747,15 @@ static int nan_test_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 
 	DEV_NOT_INIT_ERR(dev);
 
+	if (!dst)
+		return -1;
+
 	wpa_printf(MSG_INFO, "%s: %s: Enter " MACSTR, __func__, dev->name,
 		   MAC2STR(dst));
 
 	dl_list_for_each(curd, &dev->global->devs, struct nan_device, list) {
-		if (os_memcmp(curd->nmi, dst, ETH_ALEN) == 0 ||
-		    os_memcmp(curd->ndi, dst, ETH_ALEN) == 0) {
+		if (ether_addr_equal(curd->nmi, dst) ||
+		    ether_addr_equal(curd->ndi, dst)) {
 			found = true;
 			break;
 		}
@@ -806,8 +809,7 @@ static int nan_test_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 
 	/* First send the TX status */
 	dev_action = nan_test_add_action(dev->global, dev,
-					 nan_test_tx_status_action,
-					 tx_status);
+					 nan_test_tx_status_action, tx_status);
 	if (!dev_action)
 		goto fail;
 
@@ -815,14 +817,6 @@ static int nan_test_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 	cur_action = nan_test_add_action(curd->global, curd,
 					 nan_test_send_naf_cb_action,
 					 data);
-	if (!cur_action)
-		goto fail;
-
-	return 0;
-fail:
-	wpabuf_free(data);
-	if (tx_status)
-		wpabuf_free((struct wpabuf *)tx_status->data);
 
 	os_free(tx_status);
 
@@ -830,9 +824,8 @@ fail:
 }
 
 
-/*
+/**
  * nan_test_get_chans_cb - Get NAN supported channels callback
- *
  * @ctx: Pointer to &struct nan_device
  * @map_id: Channel map identifier
  * @chans: Pointer to &struct nan_channels to be filled with supported channels
@@ -850,9 +843,8 @@ static int nan_test_get_chans_cb(void *ctx, u8 map_id,
 }
 
 
-/*
+/**
  * nan_test_is_valid_publish_id_cb - Check if the publish instance ID is valid
- *
  * @ctx: Pointer to &struct nan_device
  * @instance_id: Publish instance ID
  * @service_id: Buffer to be filled with the service ID
@@ -886,12 +878,16 @@ nan_test_set_peer_schedule_cb(void *ctx, const u8 *nmi_addr, bool new_sta,
 	DEV_NOT_INIT_ERR(dev);
 
 	wpa_printf(MSG_INFO, "%s: %s: Enter", dev->name, __func__);
-	wpa_printf(MSG_INFO, "%s: nmi_addr=" MACSTR " new_sta=%d cdw=%u sequence_id=%u max_channel_switch_time=%u",
-		   dev->name, MAC2STR(nmi_addr), new_sta, cdw, sequence_id, max_channel_switch_time);
+	wpa_printf(MSG_INFO, "%s: nmi_addr=" MACSTR
+		   " new_sta=%d cdw=%u sequence_id=%u max_channel_switch_time=%u",
+		   dev->name, MAC2STR(nmi_addr), new_sta, cdw, sequence_id,
+		   max_channel_switch_time);
+
 	return 0;
 }
 
-/*
+
+/**
  * nan_test_dev_init - Initialize a test device instance
  *
  * @dev: the instance of the device to initialize
@@ -928,6 +924,9 @@ static int nan_test_dev_init(struct nan_device *dev)
 	nan.dev_capa_ext_reg_info = 0;
 	nan.pairing_cfg.npk_caching = true;
 	nan.pairing_cfg.pairing_setup = true;
+	nan.dev_capa_ext_pairing_npk_caching =
+		NAN_DEV_CAPA_EXT_INFO_1_PAIRING_SETUP |
+		NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING;
 
 	dev->nan = nan_init(&nan);
 	if (!dev->nan) {
@@ -963,7 +962,10 @@ nan_test_start_dev(struct nan_test_global *global,
 	if (!dev)
 		return NULL;
 
-	os_memcpy(dev->name, name, os_strlen(name));
+	nlen = os_strlen(name);
+	if (nlen >= sizeof(dev->name))
+		nlen = sizeof(dev->name) - 1;
+	os_memcpy(dev->name, name, nlen);
 	os_memcpy(dev->nmi, nmi, sizeof(dev->nmi));
 	os_memcpy(dev->ndi, ndi, sizeof(dev->ndi));
 	dl_list_init(&dev->list);
@@ -996,17 +998,16 @@ fail:
 }
 
 
-/*
+/**
  * nan_test_setup_devices - Setup the test devices
- *
  * @global: NAN test global data structure
  * @pub_conf: Publisher test configuration
  * @sub_conf: Subscriber test configuration
  */
 static struct nan_device *
 nan_test_setup_devices(struct nan_test_global *global,
-		       struct nan_test_dev_conf *pub_conf,
-		       struct nan_test_dev_conf *sub_conf)
+		       const struct nan_test_dev_conf *pub_conf,
+		       const struct nan_test_dev_conf *sub_conf)
 {
 	struct nan_cluster_config cconf = {
 		.master_pref = 2,
@@ -1100,9 +1101,8 @@ static int nan_test_ndp_request(struct nan_device *sub, const u8 *pub_nmi)
 }
 
 
-/*
+/**
  * nan_test_ndp_setup - test NDP setup
- *
  * @global: NAN test global data structure
  * @pub_conf: Publisher test configuration
  * @sub_conf: Subscriber test configuration
@@ -1111,9 +1111,10 @@ static int nan_test_ndp_request(struct nan_device *sub, const u8 *pub_nmi)
  * NDP establishment and trigger an NDP request flow based on the actions
  * mechanism.
  */
-static struct nan_device *nan_test_ndp_setup(struct nan_test_global *global,
-					     struct nan_test_dev_conf *pub_conf,
-					     struct nan_test_dev_conf *sub_conf)
+static struct nan_device *
+nan_test_ndp_setup(struct nan_test_global *global,
+		   const struct nan_test_dev_conf *pub_conf,
+		   const struct nan_test_dev_conf *sub_conf)
 {
 	if (pub_conf->n_ndps != sub_conf->n_ndps || !pub_conf->n_ndps ||
 	    pub_conf->n_ndps >= NAN_MAX_NUM_NDPS) {
@@ -1137,9 +1138,11 @@ static int nan_test_verify_expected_result(struct nan_device *dev)
 			   "%s: Expected connected notify not received",
 			   dev->name);
 		return -1;
-	} else if (dev->conf->ndp_confs[dev->n_ndps].expected_result ==
-		   NAN_TEST_NDP_NOTIFY_DISCONNECTED &&
-		   !dev->disconnected_notify_received) {
+	}
+
+	if (dev->conf->ndp_confs[dev->n_ndps].expected_result ==
+	    NAN_TEST_NDP_NOTIFY_DISCONNECTED &&
+	    !dev->disconnected_notify_received) {
 		wpa_printf(MSG_ERROR,
 			   "%s: Expected disconnected notify not received",
 			   dev->name);
@@ -1197,19 +1200,18 @@ static int nan_test_iteration_done(struct nan_test_global *global)
 }
 
 
-/*
- * nan_test_run - Run the NAN tests.
- *
+/**
+ * nan_test_run - Run the NAN tests
  * Iterates over all tests cases and for each test case initializes the global
  * context, creates the NAN devices and perform the test case.
  */
 static int nan_test_run(void)
 {
 	struct nan_test_global global;
-	struct nan_test_case *curr_tc;
+	const struct nan_test_case *curr_tc;
 	bool all_failed = false;
 
-	while ((curr_tc = nan_test_case_get_next()) != NULL) {
+	while ((curr_tc = nan_test_case_get_next())) {
 		struct nan_device *sub;
 		bool failed = false;
 		size_t i;
@@ -1241,7 +1243,8 @@ static int nan_test_run(void)
 
 			wpa_printf(MSG_INFO,
 				   "\n======> NAN TEST CASE: %s: iter=%zu: result=%s <======\n",
-				   curr_tc->name, i, ret ? "FAILED" : "SUCCESS");
+				   curr_tc->name, i,
+				   ret ? "FAILED" : "SUCCESS");
 
 			if (ret) {
 				failed = true;
@@ -1364,7 +1367,8 @@ static u8 nan_crypto_sha384_digest[SHA384_MAC_LEN] = {
 	0xd0, 0xcb, 0x09, 0xef, 0x2a, 0x8f, 0x08, 0x17,
 };
 
-static u8 sha_data[] = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+static const char sha_data[] =
+	"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
 
 static u8 sha256_digest[] = {
 	0x24, 0x8d, 0x6a, 0x61, 0xd2, 0x06, 0x38, 0xb8,
@@ -1397,7 +1401,7 @@ static int nan_test_crypto_key_mic(void)
 	u8 *data = nan_nonce[0];
 	size_t data_len = sizeof(nan_nonce[0]);
 
-	NAN_CRYPTO_FAIL(nan_crypto_key_mic(data, data_len, (u8 *)nan_key,
+	NAN_CRYPTO_FAIL(nan_crypto_key_mic(data, data_len, nan_key,
 					   sizeof(nan_key), NAN_CS_SK_CCM_128,
 					   digest));
 
@@ -1406,7 +1410,7 @@ static int nan_test_crypto_key_mic(void)
 
 	os_memset(digest, 0, sizeof(digest));
 
-	NAN_CRYPTO_FAIL(nan_crypto_key_mic(data, data_len, (u8 *)nan_key,
+	NAN_CRYPTO_FAIL(nan_crypto_key_mic(data, data_len, nan_key,
 					   sizeof(nan_key), NAN_CS_SK_GCM_256,
 					   digest));
 	NAN_CRYPTO_FAIL(os_memcmp(digest, nan_crypto_sha384_digest,
@@ -1465,8 +1469,8 @@ static int nan_test_ptk(void)
 static int nan_test_crypto_auth_token(void)
 {
 	u8 digest[SHA384_MAC_LEN];
-	u8 *data = sha_data;
-	size_t len = os_strlen((const char *)data);
+	const u8 *data = (const u8 *) sha_data;
+	size_t len = os_strlen(sha_data);
 
 	NAN_CRYPTO_FAIL(nan_crypto_calc_auth_token(NAN_CS_SK_CCM_128, data,
 						   len, digest));
@@ -1485,14 +1489,15 @@ static int nan_test_crypto_auth_token(void)
 static int nan_test_derive_nd_pmk(void)
 {
 	u8 pmk[PMK_LEN];
+	/* Wi-Fi Aware spec v4.0, Appendix M.1 - Test Vector 1 */
 	const char *pwd = "NAN";
-	u8 service_id[NAN_SERVICE_ID_LEN] = {
+	const u8 service_id[NAN_SERVICE_ID_LEN] = {
 		0x2b, 0x9c, 0x45, 0x0f, 0x66, 0x71,
 	};
-	u8 nmi[ETH_ALEN] = {
+	const u8 nmi[ETH_ALEN] = {
 		0x02, 0x90, 0x4c, 0x12, 0xd0, 0x01,
 	};
-	u8 expected_pmk_ccm128[PMK_LEN] = {
+	const u8 expected_pmk_ccm128[PMK_LEN] = {
 		0xee, 0x35, 0x85, 0x06, 0x30, 0x56, 0xd1, 0x64,
 		0xd1, 0x54, 0x54, 0xad, 0x39, 0x01, 0x0d, 0x4e,
 		0x26, 0x40, 0xb0, 0xd8, 0x2f, 0xb2, 0x4a, 0x2d,

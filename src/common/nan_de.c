@@ -11,12 +11,15 @@
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/crc32.h"
+#include "utils/list.h"
 #include "crypto/crypto.h"
 #include "crypto/sha256.h"
 #include "ieee802_11_defs.h"
+#include "nan/nan.h"
 #include "nan_defs.h"
 #include "nan_de.h"
 #include "nan/nan_i.h"
+#include "utils/crc32.h"
 
 static const u8 nan_network_id[ETH_ALEN] =
 { 0x51, 0x6f, 0x9a, 0x01, 0x00, 0x00 };
@@ -53,6 +56,10 @@ struct nan_de_service {
 	u8 a3[ETH_ALEN];
 	bool a3_set;
 
+	/* Source MAC address for this service (optional) */
+	u8 forced_addr[ETH_ALEN];
+	bool forced_addr_set;
+
 	/* pauseState information for Publish function */
 	struct os_reltime pause_state_end;
 	u8 sel_peer_id;
@@ -79,19 +86,36 @@ struct nan_de_service {
 	u8 srf_bf_idx;
 	struct wpabuf *srf;
 	bool close_proximity;
+	bool gtk_required;
 
 	/* Bootstrapping methods */
 	u16 pbm;
 
-	/* For Publish - NULL terminated list of supported cipher suites */
+	/* For Publish - int_array of supported cipher suites */
 	int *cipher_suites_list;
 
-	/* Bitmap of  NAN_CS_INFO_CAPA_* */
+	/* Bitmap of NAN_CS_INFO_CAPA_* */
 	u8 security_capab;
 
-	/* PMKIDs list for this service */
+	/* PMKID list for this service */
 	struct dl_list pmkid_list;
 };
+
+struct nan_de_tracked_tx {
+	struct dl_list list;
+	u8 dst[ETH_ALEN];
+	u32 cookie;
+	u32 digest;
+	bool with_wait;
+};
+
+enum nan_de_flush_tracked_tx_reason {
+	NAN_DE_FLUSH_TRACKED_TX_FLUSH_ALL,
+	NAN_DE_FLUSH_TRACKED_TX_WAIT_EXPIRED,
+};
+
+#define NAN_DE_N_MIN 5
+#define NAN_DE_N_MAX 10
 
 #define NAN_DE_RSSI_CLOSE_PROXIMITY (-70) /* dBm */
 
@@ -114,10 +138,19 @@ struct nan_de {
 	unsigned int tx_wait_status_freq;
 	unsigned int tx_wait_end_freq;
 
+	struct nan_de_cfg cfg;
+	struct os_reltime suspend_cycle_start;
+
 	int dw_freq;
 
 	/* RSSI threshold for close proximity, or zero if not limited */
 	int rssi_threshold;
+
+	/*
+	 * list of transmit requests for which the caller requested
+	 * status indicating if the frame was acknowledged or not.
+	 */
+	struct dl_list tracked_tx;
 };
 
 
@@ -149,7 +182,12 @@ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
 	de->max_listen = max_listen ? max_listen : 1000;
 	os_memcpy(&de->cb, cb, sizeof(*cb));
 
+	de->cfg.n_min = NAN_DE_N_MIN;
+	de->cfg.n_max = NAN_DE_N_MAX;
+
 	de->rssi_threshold = NAN_DE_RSSI_CLOSE_PROXIMITY;
+	dl_list_init(&de->tracked_tx);
+
 	return de;
 }
 
@@ -184,11 +222,114 @@ static void nan_de_service_deinit(struct nan_de *de, struct nan_de_service *srv,
 }
 
 
+static void nan_de_flush_tracked_tx(struct nan_de *de,
+				    enum nan_de_flush_tracked_tx_reason reason)
+{
+	struct nan_de_tracked_tx *tx, *tmp;
+
+	dl_list_for_each_safe(tx, tmp, &de->tracked_tx,
+			      struct nan_de_tracked_tx,
+			      list) {
+		if (reason == NAN_DE_FLUSH_TRACKED_TX_WAIT_EXPIRED &&
+		    !tx->with_wait)
+			continue;
+
+		de->cb.transmit_req_status(de->cb.ctx, tx->cookie,
+					   false);
+		dl_list_del(&tx->list);
+		os_free(tx);
+	}
+}
+
+
 static void nan_de_clear_pending(struct nan_de *de)
 {
+	nan_de_flush_tracked_tx(de,
+				NAN_DE_FLUSH_TRACKED_TX_FLUSH_ALL);
+
 	de->listen_freq = 0;
 	de->tx_wait_status_freq = 0;
 	de->tx_wait_end_freq = 0;
+}
+
+
+static u32 nan_de_track_tx_digest(const u8 *data, size_t len)
+{
+	return ieee80211_crc32(data, len);
+}
+
+
+static struct nan_de_tracked_tx *
+nan_de_add_tracked_tx(struct nan_de *de, const u8 *dst, bool with_wait,
+		      u32 cookie, const struct wpabuf *buf)
+{
+	struct nan_de_tracked_tx *tx;
+
+	if (!de->cb.transmit_req_status) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: No tx_status callback, cannot track Tx");
+		return NULL;
+	}
+
+	if (!cookie) {
+		wpa_printf(MSG_DEBUG, "NAN: Invalid cookie for Tx tracking");
+		return NULL;
+	}
+
+	dl_list_for_each(tx, &de->tracked_tx, struct nan_de_tracked_tx, list) {
+		if (ether_addr_equal(tx->dst, dst) && tx->cookie == cookie) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Already tracking Tx cookie %u to " MACSTR,
+				   tx->cookie, MAC2STR(tx->dst));
+			return NULL;
+		}
+	}
+
+	tx = os_zalloc(sizeof(*tx));
+	if (!tx)
+		return NULL;
+
+	os_memcpy(tx->dst, dst, ETH_ALEN);
+	tx->cookie = cookie;
+	tx->with_wait = with_wait;
+	tx->digest = nan_de_track_tx_digest(wpabuf_head(buf),
+					    wpabuf_len(buf));
+
+	dl_list_add(&de->tracked_tx, &tx->list);
+
+	wpa_printf(MSG_DEBUG, "NAN: Track Tx cookie %u digest 0x%08x",
+		   tx->cookie, tx->digest);
+
+	return tx;
+}
+
+
+static void nan_de_tx_status_match(struct nan_de *de, const u8 *data,
+				   size_t len, u8 acked)
+{
+	struct nan_de_tracked_tx *tx;
+	const struct ieee80211_mgmt *mgmt = (void *)data;
+	const u8 *pos = (void *)&mgmt->u.action;
+
+	if (len <= offsetof(struct ieee80211_mgmt, u.action))
+		return;
+
+	len = data + len - pos;
+
+	dl_list_for_each(tx, &de->tracked_tx, struct nan_de_tracked_tx, list) {
+		if (ether_addr_equal(tx->dst, mgmt->da) &&
+		    tx->digest == nan_de_track_tx_digest(pos, len)) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Tx status for cookie=%u ack=%u",
+				   tx->cookie, acked);
+
+			de->cb.transmit_req_status(de->cb.ctx, tx->cookie,
+						   acked);
+			dl_list_del(&tx->list);
+			os_free(tx);
+			return;
+		}
+	}
 }
 
 
@@ -233,8 +374,8 @@ static void nan_de_unpause_state(struct nan_de_service *srv)
 	srv->sel_peer_id = 0;
 }
 
-static struct wpabuf *nan_de_alloc_sdf(struct nan_de *de, const u8 *dst,
-				       size_t len)
+static struct wpabuf * nan_de_alloc_sdf(struct nan_de *de, const u8 *dst,
+					size_t len)
 {
 	struct wpabuf *buf;
 	u8 category = WLAN_ACTION_PUBLIC;
@@ -256,16 +397,30 @@ static struct wpabuf *nan_de_alloc_sdf(struct nan_de *de, const u8 *dst,
 static int nan_de_tx(struct nan_de *de, unsigned int freq,
 		     unsigned int wait_time,
 		     const u8 *dst, const u8 *src, const u8 *bssid,
-		     const struct wpabuf *buf)
+		     const struct wpabuf *buf,
+		     u32 *cookie)
 {
+	struct nan_de_tracked_tx *tracked_tx = NULL;
 	int res;
 
 	if (!de->cb.tx)
 		return -1;
 
+	if (cookie) {
+		tracked_tx = nan_de_add_tracked_tx(de, dst, !!wait_time,
+						   *cookie, buf);
+		if (!tracked_tx)
+			return -1;
+	}
+
 	res = de->cb.tx(de->cb.ctx, freq, wait_time, dst, src, bssid, buf);
-	if (res < 0)
+	if (res < 0) {
+		if (tracked_tx) {
+			dl_list_del(&tracked_tx->list);
+			os_free(tracked_tx);
+		}
 		return res;
+	}
 
 	de->tx_wait_status_freq = freq;
 	de->tx_wait_end_freq = wait_time ? freq : 0;
@@ -274,7 +429,8 @@ static int nan_de_tx(struct nan_de *de, unsigned int freq,
 }
 
 
-static void nan_buf_add_npba(struct nan_de *de, struct nan_de_service *srv,
+static void nan_buf_add_npba(const struct nan_de *de,
+			     const struct nan_de_service *srv,
 			     struct wpabuf *buf)
 {
 	u8 type_and_status = NAN_PBA_TYPE_ADVERTISE |
@@ -282,10 +438,10 @@ static void nan_buf_add_npba(struct nan_de *de, struct nan_de_service *srv,
 
 	wpa_printf(MSG_DEBUG, "NAN: Add NPBA");
 
-	wpabuf_put_u8(buf, NAN_ATTR_BPBA);
+	wpabuf_put_u8(buf, NAN_ATTR_NPBA);
 	wpabuf_put_le16(buf, 5);
 
-	/* Dialog token is 0 for advertise */
+	/* Dialog token is reserved (0) for advertise */
 	wpabuf_put_u8(buf, 0);
 	wpabuf_put_u8(buf, type_and_status);
 	wpabuf_put_u8(buf, NAN_REASON_RESERVED);
@@ -298,12 +454,14 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 			  enum nan_service_control_type type,
 			  const u8 *dst, const u8 *a3, u8 req_instance_id,
 			  const struct wpabuf *ssi,
-			  const struct wpabuf *attrs)
+			  const struct wpabuf *attrs,
+			  u32 *cookie)
 {
 	struct wpabuf *buf;
 	size_t len = 0, sda_len, sdea_len;
 	u8 ctrl = type;
 	u16 sdea_ctrl = 0;
+	const u8 *forced_addr;
 	size_t cs_num = int_array_len(srv->cipher_suites_list);
 
 	/* Service Descriptor attribute */
@@ -335,7 +493,7 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 	if (srv->elems)
 		len += NAN_ATTR_HDR_LEN + 1 + wpabuf_len(srv->elems);
 
-	/* NPBA attribute (dialog token, type and status, reason, pbm */
+	/* NPBA (dialog token, type and status, reason, pbm) */
 	if (srv->pbm && type != NAN_SRV_CTRL_FOLLOW_UP)
 		len += NAN_ATTR_HDR_LEN + 1 + 1 + 1 + 2;
 
@@ -387,7 +545,7 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 			srf_ctrl |= NAN_SRF_CTRL_INCLUDE;
 
 		srf_ctrl |= (srv->srf_bf_idx & NAN_SRF_CTRL_BF_IDX_MSK) <<
-			    NAN_SRF_CTRL_BF_IDX_POS;
+			NAN_SRF_CTRL_BF_IDX_POS;
 		wpabuf_put_u8(buf, wpabuf_len(srv->srf) + 1);
 		wpabuf_put_u8(buf, srf_ctrl);
 		wpabuf_put_buf(buf, srv->srf);
@@ -400,6 +558,8 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 				sdea_ctrl |= NAN_SDEA_CTRL_FSD_REQ;
 			if (srv->publish.fsd_gas)
 				sdea_ctrl |= NAN_SDEA_CTRL_FSD_GAS;
+			if (srv->gtk_required)
+				sdea_ctrl |= NAN_SDEA_CTRL_GTK_REQ;
 		}
 
 		if (sdea_ctrl || ssi) {
@@ -424,6 +584,9 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 		wpabuf_put_buf(buf, srv->elems);
 	}
 
+	/* Use per-service source address if configured, otherwise use NMI */
+	forced_addr = srv->forced_addr_set ? srv->forced_addr : de->nmi;
+
 	if (srv->pbm && type != NAN_SRV_CTRL_FOLLOW_UP)
 		nan_buf_add_npba(de, srv, buf);
 
@@ -443,7 +606,7 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 				cs_num * sizeof(struct nan_cipher_suite));
 		wpabuf_put_u8(buf, srv->security_capab);
 		for (i = 0; i < cs_num; i++) {
-			wpabuf_put_u8(buf, (u8)srv->cipher_suites_list[i]);
+			wpabuf_put_u8(buf, (u8) srv->cipher_suites_list[i]);
 			wpabuf_put_u8(buf, srv->id);
 		}
 	}
@@ -458,16 +621,16 @@ static void nan_de_tx_sdf(struct nan_de *de, struct nan_de_service *srv,
 		dl_list_for_each(pmkid, &srv->pmkid_list, struct nan_de_pmkid,
 				 list) {
 			wpabuf_put_le16(buf, PMKID_LEN);
-			wpabuf_put_u8(buf, NAN_SEC_CTX_TYPE_PMKID);
+			wpabuf_put_u8(buf, NAN_SEC_CTX_TYPE_ND_PMKID);
 			wpabuf_put_u8(buf, srv->id);
 			wpabuf_put_data(buf, pmkid->pmkid, PMKID_LEN);
 		}
 
-		WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
+		WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
 	}
 
 	nan_de_tx(de, srv->sync ? 0 : srv->freq, srv->sync ? 0 : wait_time,
-		  dst, de->nmi, a3, buf);
+		  dst, forced_addr, a3, buf, cookie);
 	wpabuf_free(buf);
 }
 
@@ -544,7 +707,6 @@ static void nan_de_tx_multicast(struct nan_de *de, struct nan_de_service *srv,
 			ms = nan_de_time_to_next_chan_change(srv);
 			if (ms < 100)
 				ms = 100;
-
 			wait_time = ms;
 		}
 	} else if (srv->type == NAN_DE_SUBSCRIBE) {
@@ -564,7 +726,7 @@ static void nan_de_tx_multicast(struct nan_de *de, struct nan_de_service *srv,
 	if (srv->sync) {
 		if (!de->cluster_id_set || !de->dw_freq) {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: Cluster ID or DW frequency are not set. Skip sync TX");
+				   "NAN: Cluster ID or DW frequency are not set - skip sync TX");
 			return;
 		}
 
@@ -573,7 +735,7 @@ static void nan_de_tx_multicast(struct nan_de *de, struct nan_de_service *srv,
 	}
 
 	nan_de_tx_sdf(de, srv, wait_time, type, network_id, bssid,
-		      req_instance_id, srv->ssi, NULL);
+		      req_instance_id, srv->ssi, NULL, NULL);
 	os_get_reltime(&srv->last_multicast);
 }
 
@@ -736,7 +898,8 @@ static int nan_de_srv_time_to_next(struct nan_de *de,
 }
 
 
-static void nan_de_start_new_publish_state(struct nan_de_service *srv,
+static void nan_de_start_new_publish_state(struct nan_de *de,
+					   struct nan_de_service *srv,
 					   bool force_single)
 {
 	unsigned int n;
@@ -749,9 +912,8 @@ static void nan_de_start_new_publish_state(struct nan_de_service *srv,
 	else
 		srv->in_multi_chan = !srv->in_multi_chan;
 
-	/* Use hardcoded Nmin=5 and Nmax=10 and pick a random N from that range.
-	 * Use same values for M. */
-	n = 5 + os_random() % 5;
+	/* Use same values for N and M. */
+	n = de->cfg.n_min + os_random() % (de->cfg.n_max - de->cfg.n_min);
 	srv->next_publish_duration = n * 100;
 
 	nan_de_set_publish_times(srv);
@@ -776,6 +938,26 @@ static void nan_de_start_new_publish_state(struct nan_de_service *srv,
 }
 
 
+static u32 nan_de_listen_duration(struct nan_de *de, struct nan_de_service *srv)
+{
+	u32 duration = 1000;
+	u32 max_duration = de->max_listen;
+
+	/* Limit the listen duration based on the maximal 'N' value */
+	if (de->cfg.n_max && de->cfg.n_max * 100 < max_duration)
+		max_duration = de->cfg.n_max * 100;
+
+	if (srv->type == NAN_DE_PUBLISH) {
+		nan_de_check_chan_change(srv);
+		duration = nan_de_time_to_next_chan_change(srv);
+		if (duration < 150)
+			duration = 150;
+	}
+
+	return MIN(duration, max_duration);
+}
+
+
 static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 {
 	struct nan_de *de = eloop_ctx;
@@ -785,6 +967,55 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 	struct os_reltime now;
 
 	os_get_reltime(&now);
+
+	/* Based on the USD specification, the device should always be either on
+	 * the default channel or one of the configured channels. However, to
+	 * allow operation of other interfaces, suspend the USD functionality
+	 * based on the cycle and suspend parameters. This would lower the
+	 * probability of service discovery, but would allow functionality of
+	 * other interfaces.
+	 */
+	if (!de->listen_freq && de->cfg.cycle) {
+		u32 diff_ms;
+
+		if (os_reltime_initialized(&de->suspend_cycle_start)) {
+			struct os_reltime diff;
+
+			os_reltime_sub(&now, &de->suspend_cycle_start, &diff);
+			diff_ms = os_reltime_in_ms(&diff);
+		} else {
+			/* We want to start a new cycle */
+			diff_ms = de->cfg.cycle;
+		}
+
+		if (diff_ms < de->cfg.suspend) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: USD: Suspend in progress: diff_ms=%u",
+				   diff_ms);
+
+			/* Set the timer to fire at the end of the suspend */
+			diff_ms = de->cfg.suspend - diff_ms;
+		} else if (diff_ms >= de->cfg.cycle) {
+			wpa_printf(MSG_DEBUG,
+				   "NAN: Suspend USD for %u ms (passed=%u ms)",
+				   de->cfg.suspend, diff_ms);
+			de->suspend_cycle_start = now;
+
+			/* Set the timer to fire at the end of the suspend */
+			diff_ms = de->cfg.suspend;
+		} else {
+			diff_ms = 0;
+		}
+
+		if (diff_ms) {
+			wpa_printf(MSG_DEBUG, "NAN: diff_ms=%u ms", diff_ms);
+
+			eloop_register_timeout(diff_ms / 1000,
+					       (diff_ms % 1000) * 1000,
+					       nan_de_timer, de, NULL);
+			return;
+		}
+	}
 
 	for (i = 0; i < NAN_DE_MAX_SERVICE; i++) {
 		struct nan_de_service *srv = de->service[i];
@@ -813,7 +1044,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 
 		if (os_reltime_initialized(&srv->next_publish_state) &&
 		    os_reltime_before(&srv->next_publish_state, &now))
-			nan_de_start_new_publish_state(srv, false);
+			nan_de_start_new_publish_state(de, srv, false);
 
 		if (srv->type == NAN_DE_PUBLISH &&
 		    os_reltime_initialized(&srv->pause_state_end) &&
@@ -868,7 +1099,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 		      !srv->publish.unsolicited && srv->publish.solicited) ||
 		     (srv->type == NAN_DE_SUBSCRIBE &&
 		      !srv->subscribe.active))) {
-			int duration = 1000;
+			u32 duration;
 
 			if (srv->listen_stopped) {
 				wpa_printf(MSG_DEBUG,
@@ -876,12 +1107,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
 				continue;
 			}
 
-			if (srv->type == NAN_DE_PUBLISH) {
-				nan_de_check_chan_change(srv);
-				duration = nan_de_time_to_next_chan_change(srv);
-				if (duration < 150)
-					duration = 150;
-			}
+			duration = nan_de_listen_duration(de, srv);
 
 			started = true;
 			if (de->cb.listen(de->cb.ctx, srv->freq, duration) == 0)
@@ -943,10 +1169,13 @@ void nan_de_update_nmi(struct nan_de *de, const u8 *nmi)
 }
 
 
-void nan_de_tx_status(struct nan_de *de, unsigned int freq, const u8 *dst)
+void nan_de_tx_status(struct nan_de *de, unsigned int freq, const u8 *dst,
+		      const u8 *data, size_t data_len, bool ack)
 {
 	if (freq == de->tx_wait_status_freq)
 		de->tx_wait_status_freq = 0;
+
+	nan_de_tx_status_match(de, data, data_len, ack);
 }
 
 
@@ -956,6 +1185,10 @@ void nan_de_tx_wait_ended(struct nan_de *de)
 		wpa_printf(MSG_DEBUG,
 			   "NAN: TX wait for response ended (freq=%u)",
 			   de->tx_wait_end_freq);
+
+	nan_de_flush_tracked_tx(de,
+				NAN_DE_FLUSH_TRACKED_TX_WAIT_EXPIRED);
+
 	de->tx_wait_end_freq = 0;
 	nan_de_run_timer(de);
 }
@@ -1054,14 +1287,15 @@ static void nan_de_get_sdea(const u8 *buf, size_t len, u8 instance_id,
 }
 
 
-static size_t nan_de_parse_csia(const u8 *buf, size_t len, u8 instance_id,
-				u8 *cipher_suites, size_t max_cipher_suites,
-				u8 *capabilities)
+static unsigned int nan_de_parse_csia(const u8 *buf, size_t len, u8 instance_id,
+				      u8 *cipher_suites,
+				      unsigned int max_cipher_suites,
+				      u8 *capabilities)
 {
 	const u8 *csia, *pos, *end;
 	u16 csia_len;
-	size_t cs_count = 0;
-	struct nan_cipher_suite_info *cs_info;
+	unsigned int cs_count = 0;
+	const struct nan_cipher_suite_info *cs_info;
 
 	csia = nan_de_get_attr(buf, len, NAN_ATTR_CSIA, 0);
 	if (!csia)
@@ -1078,7 +1312,7 @@ static size_t nan_de_parse_csia(const u8 *buf, size_t len, u8 instance_id,
 		   "NAN: Parsing Cipher Suite Information attribute (len=%u)",
 		   csia_len);
 
-	cs_info = (struct nan_cipher_suite_info *)csia;
+	cs_info = (const struct nan_cipher_suite_info *) csia;
 
 	if (capabilities)
 		*capabilities = cs_info->capab;
@@ -1088,10 +1322,8 @@ static size_t nan_de_parse_csia(const u8 *buf, size_t len, u8 instance_id,
 
 	/* Parse cipher suite list. Each entry is 2 bytes (csid + publish_id) */
 	while (end - pos >= 2 && cs_count < max_cipher_suites) {
-		u8 csid = *pos;
-		u8 publish_id = pos[1];
-
-		pos += 2;
+		u8 csid = *pos++;
+		u8 publish_id = *pos++;
 
 		if (csid == NAN_CS_NONE || csid >= NAN_CS_MAX) {
 			wpa_printf(MSG_DEBUG,
@@ -1114,19 +1346,19 @@ static size_t nan_de_parse_csia(const u8 *buf, size_t len, u8 instance_id,
 	}
 
 	wpa_printf(MSG_DEBUG,
-		   "NAN: Parsed %zu cipher suites from CSIA for publish ID %u",
+		   "NAN: Parsed %u cipher suites from CSIA for publish ID %u",
 		   cs_count, instance_id);
 
 	return cs_count;
 }
 
 
-static size_t nan_de_parse_scia(const u8 *buf, size_t len, u8 instance_id,
-				u8 *pmkid_list, size_t max_pmkids)
+static unsigned int nan_de_parse_scia(const u8 *buf, size_t len, u8 instance_id,
+				      u8 *pmkid_list, unsigned int max_pmkids)
 {
 	const u8 *scia, *end;
 	u16 scia_len;
-	size_t pmkid_count = 0;
+	unsigned int pmkid_count = 0;
 
 	scia = nan_de_get_attr(buf, len, NAN_ATTR_SCIA, 0);
 	if (!scia)
@@ -1143,22 +1375,22 @@ static size_t nan_de_parse_scia(const u8 *buf, size_t len, u8 instance_id,
 		   scia_len);
 
 	/* Parse list of Security Context Identifiers */
-	while (end - scia >= (unsigned int)sizeof(struct nan_sec_ctxt)) {
-		struct nan_sec_ctxt *sec_ctx = (void *)scia;
+	while ((size_t) (end - scia) >= sizeof(struct nan_sec_ctxt)) {
+		const struct nan_sec_ctxt *sec_ctx =
+			(const struct nan_sec_ctxt *) scia;
 		u16 scid_len = le_to_host16(sec_ctx->len);
 
-		if (scid_len + (unsigned int)sizeof(*sec_ctx) > end - scia) {
+		if (scid_len + sizeof(*sec_ctx) > (size_t) (end - scia)) {
 			wpa_printf(MSG_DEBUG,
 				   "NAN: Invalid SCID length %u (remaining %zu)",
-				   scid_len, end - scia);
+				   scid_len, (size_t) (end - scia));
 			break;
 		}
 
 		/* Check if this is for our instance_id and is a PMKID type */
-		if (sec_ctx->scid == NAN_SEC_CTX_TYPE_PMKID &&
+		if (sec_ctx->scid == NAN_SEC_CTX_TYPE_ND_PMKID &&
 		    sec_ctx->instance_id == instance_id) {
-			if (scid_len == PMKID_LEN &&
-			    pmkid_count < max_pmkids) {
+			if (scid_len == PMKID_LEN && pmkid_count < max_pmkids) {
 				os_memcpy(&pmkid_list[pmkid_count * PMKID_LEN],
 					  sec_ctx->ctxt, PMKID_LEN);
 				pmkid_count++;
@@ -1174,8 +1406,7 @@ static size_t nan_de_parse_scia(const u8 *buf, size_t len, u8 instance_id,
 		scia += scid_len + sizeof(*sec_ctx);
 	}
 
-	wpa_printf(MSG_DEBUG, "NAN: Parsed %zu PMKIDs from SCIA",
-		   pmkid_count);
+	wpa_printf(MSG_DEBUG, "NAN: Parsed %u PMKIDs from SCIA", pmkid_count);
 
 	return pmkid_count;
 }
@@ -1209,6 +1440,56 @@ static void nan_de_process_elem_container(struct nan_de *de, const u8 *buf,
 	if (pr && de->cb.process_pr_usd_elems)
 		de->cb.process_pr_usd_elems(de->cb.ctx, elem, elem_len,
 					     peer_addr, freq);
+}
+
+
+static void nan_de_parse_dcea(const u8 *buf, size_t len, bool *pairing_setup,
+			      bool *npk_nik_caching)
+{
+	const u8 *dcea;
+	u16 dcea_len;
+
+	*pairing_setup = false;
+	*npk_nik_caching = false;
+
+	dcea = nan_de_get_attr(buf, len, NAN_ATTR_DCEA, 0);
+	if (!dcea)
+		return;
+
+	dcea_len = WPA_GET_LE16(dcea + 1);
+	if (dcea_len < 2) {
+		wpa_printf(MSG_DEBUG, "NAN: DCEA length=%u too short",
+			   dcea_len);
+		return;
+	}
+
+	*pairing_setup =  !!(dcea[4] & NAN_DEV_CAPA_EXT_INFO_1_PAIRING_SETUP);
+	*npk_nik_caching = !!(dcea[4] &
+			      NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING);
+}
+
+
+static u16 nan_de_get_advertise_pbm(const u8 *buf, size_t len)
+{
+	const u8 *npba;
+	u16 npba_len;
+
+	npba = nan_de_get_attr(buf, len, NAN_ATTR_NPBA, 0);
+	if (!npba)
+		return 0;
+
+	npba_len = WPA_GET_LE16(npba + 1);
+	if (npba_len < 5) {
+		wpa_printf(MSG_DEBUG, "NAN: Invalid NPBA length %u", npba_len);
+		return 0;
+	}
+
+	/* Skip the attribute ID and length */
+	npba += NAN_ATTR_HDR_LEN;
+	if ((npba[1] & NAN_PBA_TYPE_MASK) != NAN_PBA_TYPE_ADVERTISE)
+		return 0;
+
+	return WPA_GET_LE16(npba + 3);
 }
 
 
@@ -1254,7 +1535,7 @@ static bool nan_de_filter_match(struct nan_de_service *srv,
 	spos_end = subscribe_filter + subscribe_filter_len;
 
 	ppos = publish_filter;
-	ppos_end = publish_filter + publish_filter_len;
+	ppos_end = publish_filter ? publish_filter + publish_filter_len : NULL;
 
 	wpa_hexdump(MSG_DEBUG, "NAN: subscribe filter",
 		    spos, spos_end - spos);
@@ -1272,9 +1553,9 @@ static bool nan_de_filter_match(struct nan_de_service *srv,
 			return false;
 
 		/* Read publish filter */
-		if (ppos) {
+		if (ppos && ppos < ppos_end) {
 			plen = *ppos++;
-			if (ppos + plen > ppos_end)
+			if (plen > ppos_end - ppos)
 				return false;
 		}
 
@@ -1282,19 +1563,19 @@ static bool nan_de_filter_match(struct nan_de_service *srv,
 			if (!ppos)
 				return false;
 
-			/* for non zero filters, compare */
+			/* For non zero filters, compare */
 			if (plen &&
-			    (plen != slen || os_memcmp(spos, ppos, plen)))
+			    (plen != slen || os_memcmp(spos, ppos, plen) != 0))
 				return false;
 
-			/* filter matches */
+			/* Filter matches */
 		}
 
 		spos += slen;
 
 		/*
-		 * If ppos is NULL we can still have match if the
-		 * subscribe filter is <0><0>...
+		 * If ppos is NULL we can still have match if the subscribe
+		 * filter is <0><0>...
 		 */
 		if (!ppos)
 			continue;
@@ -1320,12 +1601,14 @@ static bool nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
 			      bool range_limit, int rssi,
 			      const u8 *buf, size_t buf_len)
 {
+	struct nan_discovery_result res;
+
 	/* The SCIA can potentially contain a PMKID for each cipher suite */
 	u8 pmkid_list[(NAN_CS_MAX - 1) * PMKID_LEN];
-	size_t pmkid_count = 0;
+	unsigned int pmkid_count = 0;
 	/* Cipher suites from CSIA */
 	u8 cipher_suites[NAN_CS_MAX - 1];
-	size_t cipher_suite_count = 0;
+	unsigned int cipher_suite_count = 0;
 
 	if (!nan_de_filter_match(srv, matching_filter, matching_filter_len))
 		return false;
@@ -1362,36 +1645,50 @@ static bool nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
 		 * Service Specific Info field if it received a matching
 		 * unsolicited Publish message. */
 		nan_de_transmit(de, srv->id, NULL, NULL, peer_addr,
-				instance_id, NULL);
+				instance_id, NULL, NULL);
 	}
 
 send_event:
-	/* Parse Cipher Suite Information Attribute for cipher suites */
-	if (buf && buf_len > 0) {
-		cipher_suite_count =
-			nan_de_parse_csia(buf, buf_len, instance_id,
-					  cipher_suites,
-					  ARRAY_SIZE(cipher_suites), NULL);
-	}
+	os_memset(&res, 0, sizeof(res));
 
-	/* Parse Security Context Information attribute for PMKIDs */
 	if (buf && buf_len > 0) {
+		/* Parse Cipher Suite Information Attribute */
+		cipher_suite_count = nan_de_parse_csia(
+			buf, buf_len, instance_id, cipher_suites,
+			ARRAY_SIZE(cipher_suites), NULL);
+
+		/* Parse Security Context Information attribute */
 		pmkid_count = nan_de_parse_scia(buf, buf_len, instance_id,
 						pmkid_list,
 						sizeof(pmkid_list) / PMKID_LEN);
+
+		/*
+		 * Parse Device Capability Extension attribute for pairing
+		 * setup and NPK/NIK caching support
+		 */
+		nan_de_parse_dcea(buf, buf_len,
+				  &res.pairing_setup_supp,
+				  &res.npk_nik_caching_supp);
+
+		/* Get the bootstrapping methods */
+		res.pbm = nan_de_get_advertise_pbm(buf, buf_len);
 	}
 
+	res.subscribe_id = srv->id;
+	res.srv_proto_type = srv_proto_type;
+	res.ssi = ssi;
+	res.ssi_len = ssi_len;
+	res.peer_publish_id = instance_id;
+	res.peer_addr = peer_addr;
+	res.fsd = !!(sdea_control & NAN_SDEA_CTRL_FSD_REQ);
+	res.fsd_gas = !!(sdea_control & NAN_SDEA_CTRL_FSD_GAS);
+	res.cipher_suites = cipher_suite_count > 0 ? cipher_suites : NULL;
+	res.n_cipher_suites = cipher_suite_count;
+	res.pmkid_list = pmkid_count > 0 ? pmkid_list : NULL;
+	res.pmkid_count = pmkid_count;
+
 	if (de->cb.discovery_result)
-		de->cb.discovery_result(
-			de->cb.ctx, srv->id, srv_proto_type,
-			ssi, ssi_len, instance_id,
-			peer_addr,
-			sdea_control & NAN_SDEA_CTRL_FSD_REQ,
-			sdea_control & NAN_SDEA_CTRL_FSD_GAS,
-			pmkid_count > 0 ? pmkid_list : NULL,
-			pmkid_count,
-			cipher_suite_count > 0 ? cipher_suites : NULL,
-			cipher_suite_count,
+		de->cb.discovery_result(de->cb.ctx, &res,
 			matching_filter, matching_filter_len);
 
 	return true;
@@ -1438,6 +1735,8 @@ static bool nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 	if (de->offload)
 		goto offload;
 
+	/* Reply with a solicited Publish message */
+
 	if (srv->is_p2p)
 		network_id = p2p_network_id;
 	else
@@ -1449,9 +1748,13 @@ static bool nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
 		a3 = de->nmi;
 
 	nan_de_tx_sdf(de, srv, 100, NAN_SRV_CTRL_PUBLISH,
-		      srv->publish.solicited_multicast ?
-		      network_id : peer_addr, a3, instance_id, srv->ssi,
-		      NULL);
+			srv->publish.solicited_multicast ?
+			network_id : peer_addr, a3, instance_id, srv->ssi,
+			NULL, NULL);
+
+	if (!srv->is_p2p && !srv->sync)
+		nan_de_pause_state(srv, peer_addr, instance_id);
+
 offload:
 	if (!srv->publish.disable_events && de->cb.replied)
 		de->cb.replied(de->cb.ctx, srv->id, peer_addr, instance_id,
@@ -1529,9 +1832,11 @@ static bool nan_srf_match(struct nan_de *de, const u8 *srf, size_t srf_len)
 	srf_type_bf = !!(srf_ctrl & NAN_SRF_CTRL_BF);
 	include = !!(srf_ctrl & NAN_SRF_CTRL_INCLUDE);
 	srf_bf_idx = (srf_ctrl >> NAN_SRF_CTRL_BF_IDX_POS) &
-		     NAN_SRF_CTRL_BF_IDX_MSK;
+		NAN_SRF_CTRL_BF_IDX_MSK;
 
 	if (srf_type_bf) {
+		if (srf_len == 0)
+			return false;
 		if (nan_check_bloom_filter(de->nmi, srf, srf_len, srf_bf_idx))
 			return include;
 	} else {
@@ -1631,13 +1936,17 @@ static bool nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
 
 		if (end - sda < 1)
 			return false;
-
 		flen = *sda++;
 
 		if (end - sda < flen)
 			return false;
 
 		if (flen) {
+			/* This case of SSI in SDA does not have an explicit
+			 * indication of a service protocol type unlike the
+			 * SDEA case. For now, leave srv_proto_type to 0 for
+			 * this SDA case since that is a reserved value for the
+			 * SDEA cases. */
 			ssi = sda;
 			ssi_len = flen;
 			wpa_hexdump(MSG_MSGDUMP, "NAN: ssi", ssi, ssi_len);
@@ -1684,16 +1993,13 @@ static bool nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
 
 		switch (type) {
 		case NAN_SRV_CTRL_PUBLISH:
-			ret |= nan_de_rx_publish(de, srv, peer_addr, a3,
-						 instance_id,
-						 matching_filter,
-						 matching_filter_len,
-						 req_instance_id,
-						 sdea_control, srv_proto_type,
-						 ssi, ssi_len,
-						 ctrl &
-						 NAN_SRV_CTRL_DISCOVERY_RANGE_LIMITED,
-						 rssi, buf, len);
+			ret |= nan_de_rx_publish(
+				de, srv, peer_addr, a3, instance_id,
+				matching_filter, matching_filter_len,
+				req_instance_id, sdea_control, srv_proto_type,
+				ssi, ssi_len,
+				ctrl & NAN_SRV_CTRL_DISCOVERY_RANGE_LIMITED,
+				rssi, buf, len);
 			break;
 		case NAN_SRV_CTRL_SUBSCRIBE:
 			ret |= nan_de_rx_subscribe(de, srv, peer_addr, a3,
@@ -1708,8 +2014,8 @@ static bool nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr, const u8 *a3,
 			break;
 		case NAN_SRV_CTRL_FOLLOW_UP:
 			ret |= nan_de_rx_follow_up(de, srv, peer_addr, a3,
-						   instance_id,
-						   ssi, ssi_len, buf, len);
+						   instance_id, ssi, ssi_len,
+						   buf, len);
 			break;
 		}
 	}
@@ -1815,7 +2121,8 @@ const u8 * nan_de_get_service_id(struct nan_de *de, int id)
 int nan_de_publish(struct nan_de *de, const char *service_name,
 		   enum nan_service_protocol_type srv_proto_type,
 		   const struct wpabuf *ssi, const struct wpabuf *elems,
-		   struct nan_publish_params *params, bool p2p)
+		   struct nan_publish_params *params, bool p2p,
+		   const u8 *addr)
 {
 	int publish_id;
 	struct nan_de_service *srv;
@@ -1899,8 +2206,8 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 			wpabuf_parse_bin(params->match_filter_rx);
 		if (!srv->matching_filter_rx ||
 		    wpabuf_len(srv->matching_filter_rx) > 255) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to parse rx matching filter");
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to parse RX matching filter");
 			goto fail;
 		}
 	}
@@ -1910,13 +2217,20 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 			wpabuf_parse_bin(params->match_filter_tx);
 		if (!srv->matching_filter_tx ||
 		    wpabuf_len(srv->matching_filter_tx) > 255) {
-			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to parse tx matching filter");
+			wpa_printf(MSG_INFO,
+				   "NAN: Failed to parse TX matching filter");
 			goto fail;
 		}
 	}
 
 	srv->sync = params->sync;
+
+	if (addr && params->forced_addr) {
+		os_memcpy(srv->forced_addr, addr, ETH_ALEN);
+		srv->forced_addr_set = true;
+		wpa_printf(MSG_DEBUG, "NAN: Using source address " MACSTR
+			   " for publish service", MAC2STR(srv->forced_addr));
+	}
 
 	srv->security_capab = params->security_capab;
 
@@ -1935,7 +2249,7 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 		}
 
 		srv->cipher_suites_list =
-		    int_array_dup(params->cipher_suites_list);
+			int_array_dup(params->cipher_suites_list);
 		if (!srv->cipher_suites_list)
 			goto fail;
 	}
@@ -1950,7 +2264,7 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 	/* Prepare for single and multi-channel states; starting with
 	 * single channel */
 	srv->first_multi_chan = true;
-	nan_de_start_new_publish_state(srv, true);
+	nan_de_start_new_publish_state(de, srv, true);
 
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new publish handle %d for %s",
 		   publish_id, service_name ? service_name : "Ranging");
@@ -1959,6 +2273,7 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
 	srv->is_pr = params->proximity_ranging && params->solicited;
 	srv->close_proximity = params->close_proximity;
 	srv->pbm = params->pbm;
+	srv->gtk_required = params->gtk_required;
 
 	nan_de_add_srv(de, srv);
 	nan_de_run_timer(de);
@@ -2045,7 +2360,7 @@ static void bloom_filter_add(u8 *bf, u8 bf_idx, u8 bf_len, const u8 *mac)
 		os_memcpy(&a_j_x[1], mac, ETH_ALEN);
 		crc = (~ieee80211_crc32(a_j_x, 1 + ETH_ALEN)) & 0xFFFF;
 		crc %= bf_len * 8;
-		bf[crc / 8] |= (1 << (crc % 8));
+		bf[crc / 8] |= 1 << (crc % 8);
 	}
 }
 
@@ -2062,7 +2377,7 @@ static struct wpabuf * nan_build_bloom_filter(const char *srf_mac_list,
 		return NULL;
 
 	if (os_strlen(srf_mac_list) % (ETH_ALEN * 2)) {
-		wpa_printf(MSG_DEBUG,
+		wpa_printf(MSG_INFO,
 			   "NAN: Invalid SRF MAC list length %zu",
 			   os_strlen(srf_mac_list));
 		return NULL;
@@ -2097,7 +2412,8 @@ out:
 int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		     enum nan_service_protocol_type srv_proto_type,
 		     const struct wpabuf *ssi, const struct wpabuf *elems,
-		     struct nan_subscribe_params *params, bool p2p)
+		     struct nan_subscribe_params *params, bool p2p,
+		     const u8 *addr)
 {
 	int subscribe_id;
 	struct nan_de_service *srv;
@@ -2176,7 +2492,7 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		if (!srv->matching_filter_rx ||
 		    wpabuf_len(srv->matching_filter_rx) > 255) {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to parse rx matching filter");
+				   "NAN: Failed to parse RX matching filter");
 			goto fail;
 		}
 	}
@@ -2187,7 +2503,7 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		if (!srv->matching_filter_tx ||
 		    wpabuf_len(srv->matching_filter_tx) > 255) {
 			wpa_printf(MSG_DEBUG,
-				   "NAN: Failed to parse tx matching filter");
+				   "NAN: Failed to parse TX matching filter");
 			goto fail;
 		}
 	}
@@ -2202,7 +2518,7 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		} else {
 			srv->srf = wpabuf_parse_bin(params->srf_mac_list);
 			if (wpabuf_len(srv->srf) % ETH_ALEN) {
-				wpa_printf(MSG_DEBUG,
+				wpa_printf(MSG_INFO,
 					   "NAN: Invalid SRF MAC list length");
 				goto fail;
 			}
@@ -2217,6 +2533,13 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 		srv->srf_include = params->srf_include;
 	}
 
+	if (addr && params->forced_addr) {
+		os_memcpy(srv->forced_addr, addr, ETH_ALEN);
+		srv->forced_addr_set = true;
+		wpa_printf(MSG_DEBUG, "NAN: Using source address " MACSTR
+			   " for subscribe service", MAC2STR(srv->forced_addr));
+	}
+
 	dl_list_init(&srv->pmkid_list);
 
 	wpa_printf(MSG_DEBUG, "NAN: Assigned new subscribe handle %d for %s",
@@ -2227,6 +2550,7 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
 	srv->sync = params->sync;
 	srv->close_proximity = params->close_proximity;
 	srv->pbm = params->pbm;
+	srv->gtk_required = params->gtk_required;
 
 	nan_de_add_srv(de, srv);
 	nan_de_run_timer(de);
@@ -2253,7 +2577,8 @@ void nan_de_cancel_subscribe(struct nan_de *de, int subscribe_id)
 int nan_de_transmit(struct nan_de *de, int handle,
 		    const struct wpabuf *ssi, const struct wpabuf *elems,
 		    const u8 *peer_addr, u8 req_instance_id,
-		    const struct wpabuf *nan_attrs)
+		    const struct wpabuf *nan_attrs,
+		    u32 *cookie)
 {
 	struct nan_de_service *srv;
 	const u8 *a3;
@@ -2284,7 +2609,8 @@ int nan_de_transmit(struct nan_de *de, int handle,
 	else
 		a3 = network_id;
 	nan_de_tx_sdf(de, srv, 100, NAN_SRV_CTRL_FOLLOW_UP,
-		      peer_addr, a3, req_instance_id, ssi, nan_attrs);
+		      peer_addr, a3, req_instance_id, ssi, nan_attrs,
+		      cookie);
 
 	srv->listen_stopped = false;
 	return 0;
@@ -2302,6 +2628,47 @@ int nan_de_stop_listen(struct nan_de *de, int handle)
 	if (!srv)
 		return -1;
 	srv->listen_stopped = true;
+	return 0;
+}
+
+
+int nan_de_config(struct nan_de *de, struct nan_de_cfg *cfg)
+{
+	if (!de || !cfg)
+		return -1;
+
+	 /* No change in configuration */
+	if (de->cfg.n_min == cfg->n_min && de->cfg.n_max == cfg->n_max &&
+	    de->cfg.cycle == cfg->cycle && de->cfg.suspend == cfg->suspend)
+		return 0;
+
+	wpa_printf(MSG_DEBUG,
+		   "NAN: Configuring NAN DE: n=(%u, %u), suspend=%u, cycle=%u",
+		   cfg->n_min, cfg->n_max, cfg->suspend, cfg->cycle);
+
+	if (!cfg->n_min && !cfg->n_max) {
+		cfg->n_min = NAN_DE_N_MIN;
+		cfg->n_max = NAN_DE_N_MAX;
+	} else if (cfg->n_min < 1 || cfg->n_max < cfg->n_min) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Invalid configuration parameters: N");
+		return -1;
+	}
+
+	if (((!!cfg->suspend) ^ (!!cfg->cycle)) ||
+	    (cfg->cycle && cfg->suspend >= cfg->cycle)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: Invalid configuration parameters: cycle");
+		return -1;
+	}
+
+	de->cfg = *cfg;
+
+	os_memset(&de->suspend_cycle_start, 0, sizeof(de->suspend_cycle_start));
+
+	if (!de->listen_freq)
+		nan_de_run_timer(de);
+
 	return 0;
 }
 
@@ -2384,4 +2751,68 @@ u16 nan_de_get_service_bootstrap_methods(struct nan_de *de, int handle)
 		return 0;
 
 	return srv->pbm;
+}
+
+
+bool nan_de_service_supports_csid(struct nan_de *de, int handle, int csid)
+{
+	struct nan_de_service *srv;
+	int i;
+
+	if (handle < 1 || handle > NAN_DE_MAX_SERVICE)
+		return false;
+
+	srv = de->service[handle - 1];
+	if (!srv)
+		return false;
+
+	/* If cipher_suites_list is not set, all CSIDs are allowed */
+	if (!srv->cipher_suites_list)
+		return true;
+
+	/* Check if the CSID is in the service's cipher suite list */
+	for (i = 0; srv->cipher_suites_list[i]; i++) {
+		if (srv->cipher_suites_list[i] == csid)
+			return true;
+	}
+
+	return false;
+}
+
+
+int nan_de_get_status(struct nan_de *de, char *buf, size_t buflen)
+{
+	char *pos, *end;
+	unsigned int i;
+
+	if (!de)
+		return -1;
+
+	pos = buf;
+	end = buf + buflen;
+
+	pos += os_snprintf(pos, end - pos, "num_services=%u\n",
+			   de->num_service);
+	if (pos >= end)
+		return pos - buf;
+
+	for (i = 0; i < NAN_DE_MAX_SERVICE; i++) {
+		struct nan_de_service *srv = de->service[i];
+
+		if (!srv)
+			continue;
+
+		pos += os_snprintf(pos, end - pos,
+				   "service=%u type=%s name=%s sync=%d\n",
+				   srv->id,
+				   srv->type == NAN_DE_PUBLISH ? "publish" :
+				   (srv->type == NAN_DE_SUBSCRIBE ? "subscribe" :
+				    "unknown"),
+				   srv->service_name ? srv->service_name : "",
+				   srv->sync);
+		if (pos >= end)
+			return pos - buf;
+	}
+
+	return pos - buf;
 }
