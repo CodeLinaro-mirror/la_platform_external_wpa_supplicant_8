@@ -472,7 +472,6 @@ hostapd_cc_defaults_type {
     cflags: [
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
-        "-DCONFIG_MLD_DRIVE_LINK_ADDR",
         "-DCONFIG_OWE",
         "-DCONFIG_FST",
         "-DCONFIG_MBO",
