@@ -2646,7 +2646,7 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
 			      wpabuf_len(pasn->secret),
 			      pasn_get_ptk(sta->pasn), pasn_get_akmp(sta->pasn),
 			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len,
-			      sta->pasn->kek_len);
+			      sta->pasn->kek_len, &sta->pasn->hash_alg);
 	if (ret) {
 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
 		goto fail;
@@ -2834,7 +2834,8 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
 	pasn_set_peer_addr(pasn, sta->addr);
 	pasn_set_wpa_key_mgmt(pasn, hapd->conf->wpa_key_mgmt);
 	pasn_set_rsn_pairwise(pasn, hapd->conf->rsn_pairwise);
-	pasn->pasn_groups = hapd->conf->pasn_groups;
+	os_free(pasn->pasn_groups);
+	pasn->pasn_groups = int_array_dup(hapd->conf->pasn_groups);
 	pasn->noauth = hapd->conf->pasn_noauth;
 	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP)
 		pasn_enable_kdk_derivation(pasn);

@@ -521,7 +521,7 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 			list[0] = 60;
 			list[1] = 120;
 			list[2] = 240;
-			list[3] = -1;
+			list[3] = 0;
 		}
 		conf->basic_rates = list;
 
@@ -535,7 +535,7 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 			list[5] = 360;
 			list[6] = 480;
 			list[7] = 540;
-			list[8] = -1;
+			list[8] = 0;
 		}
 		conf->supported_rates = list;
 	}
@@ -1155,6 +1155,14 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 		hapd_iface->bss[i]->ext_eapol_frame_io =
 			wpa_s->ext_eapol_frame_io;
 #endif /* CONFIG_TESTING_OPTIONS */
+
+#ifdef CONFIG_NAN_USD
+		/*
+		 * Copy NAN DE pointer from wpa_supplicant to hostapd for AP
+		 * to continue processing NAN USD frames.
+		 */
+		hapd_iface->bss[i]->nan_de = wpa_s->nan_de;
+#endif /* CONFIG_NAN_USD */
 
 #ifdef CONFIG_WNM_AP
 		if (ssid->mode == WPAS_MODE_AP)

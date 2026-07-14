@@ -78,8 +78,9 @@ struct pasn_data {
 	size_t pmk_len;
 	u8 pmk[PMK_LEN_MAX];
 	bool using_pmksa;
+	enum rsn_hash_alg hash_alg;
 
-	u8 hash[SHA384_MAC_LEN];
+	struct wpabuf *auth1;
 
 	struct wpabuf *beacon_rsne_rsnxe;
 	struct wpa_ptk ptk;

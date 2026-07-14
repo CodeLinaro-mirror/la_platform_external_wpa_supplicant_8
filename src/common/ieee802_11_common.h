@@ -383,7 +383,8 @@ struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem);
 const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type);
 const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len);
 
-int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx);
+int get_max_nss_capability(struct ieee802_11_elems *elems, int parse_for_rx,
+			   enum chan_width bw);
 
 struct supported_chan_width {
 	u8 is_160_supported;
