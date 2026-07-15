@@ -778,6 +778,44 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+		if (hapd->conf->mld_ap) {
+			unsigned int link_id;
+			unsigned int num_links = 0;
+			struct hostapd_data *link_bss;
+
+			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+				if (hostapd_mld_get_link_bss(hapd, link_id))
+					num_links++;
+			}
+
+			ret = os_snprintf(buf + len, buflen - len,
+					  "num_links=%u\n"
+					  "link_id=%u\n"
+					  "link_addr=" MACSTR "\n",
+					  num_links,
+					  hapd->mld_link_id,
+					  MAC2STR(hapd->own_addr));
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+
+			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+				if (link_id == hapd->mld_link_id)
+					continue;
+				link_bss = hostapd_mld_get_link_bss(hapd, link_id);
+				if (!link_bss)
+					continue;
+
+				ret = os_snprintf(buf + len, buflen - len,
+						  "partner_link[%u]=" MACSTR "\n",
+						  link_id,
+						  MAC2STR(link_bss->own_addr));
+				if (os_snprintf_error(buflen - len, ret))
+					return len;
+				len += ret;
+			}
+		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
