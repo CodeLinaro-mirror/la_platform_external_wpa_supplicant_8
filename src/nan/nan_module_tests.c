@@ -6,6 +6,11 @@
  * See README for more details.
  */
 
+#include "utils/includes.h"
+#include "utils/common.h"
+#include "common/nan_defs.h"
+#include "drivers/driver.h"
+#include "nan_i.h"
 #include "nan_module_tests.h"
 #include "crypto/sha256.h"
 #include "crypto/sha384.h"
@@ -23,9 +28,8 @@ static const u8 g_pub_ndi[] = { 0x00, 0xAA, 0xAA, 0x00, 0x00, 0x00 };
 static const u8 g_sub_nmi[] = { 0x00, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB };
 static const u8 g_sub_ndi[] = { 0x00, 0xBB, 0xBB, 0xBB, 0x00, 0x00 };
 
-/*
+/**
  * struct nan_test_action - NAN test action context
- *
  * @list: Used for global actions list
  * @dev: NAN device for which the action is intended
  * @cb: Callback to be called for the action
@@ -78,9 +82,8 @@ struct nan_test_ndp_notify {
 
 #define NAN_TEST_MAX_TKS 2
 
-/*
+/**
  * nan_test_global - Global context for the NAN testing
- *
  * @devs: List of devices. See &struct nan_device.
  * @actions: tracks the NAN actions
  * @elems: Default HT/VHT/HE capabilities elements
@@ -141,8 +144,7 @@ static void nan_test_global_init(struct nan_test_global *global)
 	dl_list_init(&global->devs);
 	dl_list_init(&global->actions);
 
-	global->elems = wpabuf_alloc(sizeof(elems));
-	wpabuf_put_data(global->elems, elems, sizeof(elems));
+	global->elems = wpabuf_alloc_copy(elems, sizeof(elems));
 
 	wpa_printf(MSG_INFO, "%s: Done\n", __func__);
 }
@@ -458,7 +460,8 @@ static int nan_ndp_notify_action(struct nan_device *dev, void *ctx)
 		   dev->conf->ndp_confs[dev->n_ndps].expected_result) {
 		ret = 0;
 		if (notify->type == NAN_TEST_NDP_NOTIFY_CONNECTED) {
-			if (dev->conf->ndp_confs[dev->n_ndps].term_once_connected) {
+			if (dev->conf->ndp_confs[dev->n_ndps].
+			    term_once_connected) {
 				struct nan_ndp_params *params;
 
 				wpa_printf(MSG_INFO,
@@ -480,9 +483,9 @@ static int nan_ndp_notify_action(struct nan_device *dev, void *ctx)
 					  ETH_ALEN);
 				params->ndp_id.id = notify->ndp_id.id;
 
-				action = nan_test_add_action(dev->global, dev,
-							     nan_test_nan_ndp_action,
-							     params);
+				action = nan_test_add_action(
+					dev->global, dev,
+					nan_test_nan_ndp_action, params);
 				if (action)
 					ret = 0;
 			}
@@ -576,20 +579,18 @@ nan_test_ndp_action_notfi_cb(void *ctx,
 
 	nan_test_ndp_action(dev, type, &params->ndp_id,
 			    params->publish_inst_id, params->ssi,
-			    params->ssi_len,
-			    params->csid, params->pmkid);
+			    params->ssi_len, params->csid, params->pmkid);
 }
 
 
-/*
+/**
  * nan_test_ndp_connected_cb - Callback for NDP connected
- *
  * @ctx: Pointer to &struct nan_device
  * @params: NDP action notification parameters
  * Returns: 0 on success, -1 on failure
  *
  * The handling of the event is done asynchronously through the NAN test actions
- * processing. Returns 0 on success, -1 on failure.
+ * processing.
  */
 static int nan_test_ndp_connected_cb(void *ctx,
 				     struct nan_ndp_connection_params *params)
@@ -605,17 +606,16 @@ static int nan_test_ndp_connected_cb(void *ctx,
 		   dev->name, __func__,
 		   MAC2STR(params->local_ndi), MAC2STR(params->peer_ndi));
 
-	nan_peer_get_schedule_info(dev->nan, params->ndp_id.peer_nmi,
-				   &sched);
-	nan_peer_get_pot_avail(dev->nan, params->ndp_id.peer_nmi,
-			       &pot);
+	nan_peer_get_schedule_info(dev->nan, params->ndp_id.peer_nmi, &sched);
+	nan_peer_get_pot_avail(dev->nan, params->ndp_id.peer_nmi, &pot);
 
 	if (nan_peer_get_tk(dev->nan, params->ndp_id.peer_nmi,
 			    params->peer_ndi, params->local_ndi,
 			    dev->tk, &dev->tk_len, &dev->csid) == 0) {
 		wpa_hexdump(MSG_DEBUG, "NAN Test: TK", dev->tk, dev->tk_len);
 
-		if (dev->csid != dev->conf->ndp_confs[dev->n_ndps].expected_csid) {
+		if (dev->csid !=
+		    dev->conf->ndp_confs[dev->n_ndps].expected_csid) {
 			wpa_printf(MSG_ERROR,
 				   "%s: Unexpected CSID: got %u expected %u",
 				   dev->name, dev->csid,
@@ -625,10 +625,8 @@ static int nan_test_ndp_connected_cb(void *ctx,
 		}
 	}
 
-	nan_test_ndp_action(dev, NAN_TEST_NDP_NOTIFY_CONNECTED,
-			    &params->ndp_id, 0,
-			    params->ssi, params->ssi_len,
-			    NAN_CS_NONE, NULL);
+	nan_test_ndp_action(dev, NAN_TEST_NDP_NOTIFY_CONNECTED, &params->ndp_id,
+			    0, params->ssi, params->ssi_len, NAN_CS_NONE, NULL);
 
 	dev->connected_notify_received = true;
 
@@ -636,9 +634,8 @@ static int nan_test_ndp_connected_cb(void *ctx,
 }
 
 
-/*
+/**
  * nan_test_ndp_disconnected_cb - Callback for NDP disconnected
- *
  * @ctx: Pointer to &struct nan_device
  * @ndp_id: NDP identifier
  * @local_ndi: Local NDI address
@@ -674,9 +671,8 @@ static void nan_test_ndp_disconnected_cb(void *ctx, struct nan_ndp_id *ndp_id,
 }
 
 
-/*
+/**
  * nan_test_send_naf_cb_action - NAN test action to send a NAN to a device
- *
  * @dev: NAN device
  * @ctx: Pointer to a buffer holding the NAF to be sent
  */
@@ -696,9 +692,9 @@ static int nan_test_send_naf_cb_action(struct nan_device *dev, void *ctx)
 	return ret;
 }
 
-/*
+
+/**
  * nan_test_tx_status_action - NAN test action to send Tx status to a device
- *
  * @dev: NAN device
  * @ctx: Pointer to &struct nan_test_tx_status_action
  */
@@ -721,9 +717,9 @@ static int nan_test_tx_status_action(struct nan_device *dev, void *ctx)
 	return ret;
 }
 
-/*
+
+/**
  * nan_test_send_naf_cb - NAN send NAF callback function
- *
  * @ctx: Pointer to &struct nan_device
  * @dst: Destination NAN Management Interface address
  * @src: Source NAN Management Interface address
@@ -778,8 +774,7 @@ static int nan_test_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 	hdr->frame_control =
 		IEEE80211_FC(WLAN_FC_TYPE_MGMT, WLAN_FC_STYPE_ACTION);
 
-	if (dst)
-		os_memcpy(hdr->addr1, dst, ETH_ALEN);
+	os_memcpy(hdr->addr1, dst, ETH_ALEN);
 	if (!src)
 		os_memcpy(hdr->addr2, dev->nmi, ETH_ALEN);
 	else
@@ -815,8 +810,16 @@ static int nan_test_send_naf_cb(void *ctx, const u8 *dst, const u8 *src,
 
 	/* And then deliver the frame */
 	cur_action = nan_test_add_action(curd->global, curd,
-					 nan_test_send_naf_cb_action,
-					 data);
+					 nan_test_send_naf_cb_action, data);
+	if (!cur_action)
+		goto fail;
+
+	return 0;
+
+fail:
+	wpabuf_free(data);
+	if (tx_status)
+		wpabuf_free((struct wpabuf *) tx_status->data);
 
 	os_free(tx_status);
 
@@ -889,7 +892,6 @@ nan_test_set_peer_schedule_cb(void *ctx, const u8 *nmi_addr, bool new_sta,
 
 /**
  * nan_test_dev_init - Initialize a test device instance
- *
  * @dev: the instance of the device to initialize
  */
 static int nan_test_dev_init(struct nan_device *dev)
@@ -924,9 +926,6 @@ static int nan_test_dev_init(struct nan_device *dev)
 	nan.dev_capa_ext_reg_info = 0;
 	nan.pairing_cfg.npk_caching = true;
 	nan.pairing_cfg.pairing_setup = true;
-	nan.dev_capa_ext_pairing_npk_caching =
-		NAN_DEV_CAPA_EXT_INFO_1_PAIRING_SETUP |
-		NAN_DEV_CAPA_EXT_INFO_1_NPK_NIK_CACHING;
 
 	dev->nan = nan_init(&nan);
 	if (!dev->nan) {
@@ -938,9 +937,8 @@ static int nan_test_dev_init(struct nan_device *dev)
 }
 
 
-/*
+/**
  * nan_test_start_dev - Start a NAN test device
- *
  * @global: NAN test global data structure
  * @name: Name of the device
  * @nmi: NAN Management interface address
@@ -953,10 +951,11 @@ nan_test_start_dev(struct nan_test_global *global,
 		   const char *name, const u8 *nmi,
 		   const u8 *ndi,
 		   struct nan_cluster_config *conf,
-		   struct nan_test_dev_conf *dconf)
+		   const struct nan_test_dev_conf *dconf)
 {
 	struct nan_device *dev;
 	int ret;
+	size_t nlen;
 
 	dev = os_zalloc(sizeof(struct nan_device));
 	if (!dev)
@@ -990,8 +989,8 @@ nan_test_start_dev(struct nan_test_global *global,
 
 	dl_list_add(&global->devs, &dev->list);
 	return dev;
+
 fail:
-	os_free(dev->pot_avail);
 	nan_test_dev_deinit(dev);
 	os_free(dev);
 	return NULL;
@@ -1053,6 +1052,7 @@ nan_test_setup_devices(struct nan_test_global *global,
 
 	wpa_printf(MSG_INFO, "\n%s: Done\n", __func__);
 	return sub;
+
 fail:
 	wpa_printf(MSG_INFO, "\n%s: Fail\n", __func__);
 	return NULL;
@@ -1518,6 +1518,7 @@ int nan_test_crypto(void)
 	NAN_CRYPTO_FAIL(nan_test_ptk());
 	NAN_CRYPTO_FAIL(nan_test_crypto_auth_token());
 	NAN_CRYPTO_FAIL(nan_test_derive_nd_pmk());
+
 	return 0;
 }
 

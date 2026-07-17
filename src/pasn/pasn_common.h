@@ -147,6 +147,7 @@ struct pasn_data {
 	const int *pasn_test_groups;
 #endif /* CONFIG_TESTING_OPTIONS */
 	int network_id;
+	void *network_ctx;
 
 	u8 wrapped_data_format;
 	struct wpabuf *secret;
@@ -281,6 +282,7 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 struct pasn_data * pasn_data_init(void);
 void pasn_data_deinit(struct pasn_data *pasn);
 #define PASN_CALLBACKS_WITH_EPPKE 1
+void pasn_set_password(struct pasn_data *pasn, const char *password);
 void pasn_register_callbacks(struct pasn_data *pasn, void *cb_ctx,
 			     int (*send_mgmt)(void *ctx, const u8 *data,
 					      size_t data_len, int noack,
@@ -302,7 +304,6 @@ void pasn_enable_kdk_derivation(struct pasn_data *pasn);
 void pasn_disable_kdk_derivation(struct pasn_data *pasn);
 
 void pasn_set_akmp(struct pasn_data *pasn, int akmp);
-void pasn_set_password(struct pasn_data *pasn, const char *password);
 void pasn_set_cipher(struct pasn_data *pasn, int cipher);
 void pasn_set_own_addr(struct pasn_data *pasn, const u8 *addr);
 void pasn_set_own_mld_addr(struct pasn_data *pasn, const u8 *addr);

@@ -945,9 +945,6 @@ void wpa_pasn_reset(struct pasn_data *pasn)
 
 	wpabuf_free(pasn->frame);
 	pasn->frame = NULL;
-
-	wpabuf_free(pasn->auth1);
-	pasn->auth1 = NULL;
 }
 
 
@@ -1037,7 +1034,8 @@ static int wpas_pasn_set_pmk(struct pasn_data *pasn,
 						    pasn->pmk_len,
 						    pasn->sae.pmkid,
 						    NULL, 0, pasn->peer_addr,
-						    pasn->own_addr, NULL,
+						    pasn->own_addr,
+						    pasn->network_ctx,
 						    pasn->akmp, NULL,
 						    pasn->auth_alg);
 		return 0;
@@ -1254,8 +1252,9 @@ static bool is_pasn_auth_frame(struct pasn_data *pasn,
 		    !ether_addr_equal(mgmt->da, pasn->peer_addr)))
 		return false;
 
-	/* Not PASN; do nothing */
-	if (mgmt->u.auth.auth_alg != host_to_le16(WLAN_AUTH_PASN))
+	/* Not PASN/EPPKE; do nothing */
+	if (mgmt->u.auth.auth_alg != host_to_le16(WLAN_AUTH_PASN) &&
+	    mgmt->u.auth.auth_alg != host_to_le16(WLAN_AUTH_EPPKE))
 		return false;
 
 	return true;
@@ -1527,7 +1526,9 @@ int wpas_parse_pasn_frame(struct pasn_data *pasn, u16 auth_type,
 
 	if (pasn->derive_kek) {
 		wpa_printf(MSG_DEBUG, "PASN: Derive PTK-KEK");
-		pasn->kek_len = wpa_kek_len(pasn->akmp, pasn->pmk_len);
+		if (!pasn->kek_len)
+			pasn->kek_len = wpa_kek_len(pasn->akmp,
+						    pasn->pmk_len);
 		wpa_printf(MSG_DEBUG, "PASN: kek_len=%zu", pasn->kek_len);
 	}
 

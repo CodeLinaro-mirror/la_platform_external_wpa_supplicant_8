@@ -189,7 +189,6 @@ static int pasn_wd_handle_sae_commit(struct pasn_data *pasn,
 		pasn->dec_pw_id_len = dec_pw_id_len;
 	}
 
-	// TODO: check if password field should be synced from upstream
 	if (!pt && !pasn->pt) {
 		wpa_printf(MSG_DEBUG, "PASN: No SAE PT found");
 		return -1;
@@ -486,7 +485,9 @@ pasn_derive_keys(struct pasn_data *pasn,
 		own_addr = pasn->mld_addr;
 
 	if (pasn->derive_kek) {
-		pasn->kek_len = wpa_kek_len(pasn->akmp, pasn->pmk_len);
+		if (!pasn->kek_len)
+			pasn->kek_len = wpa_kek_len(pasn->akmp,
+						    pasn->pmk_len);
 		wpa_printf(MSG_DEBUG, "PASN: kek_len=%zu", pasn->kek_len);
 	}
 #endif /* CONFIG_ENC_ASSOC */
@@ -609,7 +610,7 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
 	}
 	if (status != WLAN_STATUS_SUCCESS) {
 		wpa_pasn_add_extra_ies(buf, pasn->extra_ies,
-						pasn->extra_ies_len);
+				       pasn->extra_ies_len);
 		goto done;
 	}
 

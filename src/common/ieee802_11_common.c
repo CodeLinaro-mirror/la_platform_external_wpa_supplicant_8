@@ -452,6 +452,14 @@ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
 		elems->supported_groups = pos;
 		elems->supported_groups_len = elen;
 		break;
+	case WLAN_EID_EXT_UHR_CAPABILITIES:
+		elems->uhr_capabilities = pos;
+		elems->uhr_capabilities_len = elen;
+		break;
+	case WLAN_EID_EXT_UHR_OPERATION:
+		elems->uhr_operation = pos;
+		elems->uhr_operation_len = elen;
+		break;
 	default:
 		if (show_errors) {
 			wpa_printf(MSG_MSGDUMP,
@@ -1025,6 +1033,14 @@ void ieee802_11_elems_clear_ext_ids(struct ieee802_11_elems *elems,
 		case WLAN_EID_EXT_EHT_OPERATION:
 			elems->eht_operation = NULL;
 			elems->eht_operation_len = 0;
+			break;
+		case WLAN_EID_EXT_UHR_CAPABILITIES:
+			elems->uhr_capabilities = NULL;
+			elems->uhr_capabilities_len = 0;
+			break;
+		case WLAN_EID_EXT_UHR_OPERATION:
+			elems->uhr_operation = NULL;
+			elems->uhr_operation_len = 0;
 			break;
 		}
 	}
@@ -3636,6 +3652,7 @@ ssize_t ieee802_11_defrag_mle_subelem(struct wpabuf *mlbuf,
 
 		os_memmove(pos, pos + 2, end - (pos + 2));
 		end -= 2;
+		mlbuf->used -= 2;
 		pos += elen - 2;
 		subelem_len += elen - 2;
 
@@ -3739,6 +3756,7 @@ int get_basic_mle_link_id(const u8 *buf, size_t len)
 		ETH_ALEN; /* MLD MAC Address field (Basic) */
 	size_t common_info_limit;
 	u8 common_info_len;
+	u8 link_id;
 
 	if (len < MULTI_LINK_CONTROL_LEN)
 		return -1;
@@ -3760,7 +3778,11 @@ int get_basic_mle_link_id(const u8 *buf, size_t len)
 	if (link_id_pos + EHT_ML_LINK_ID_LEN > common_info_limit)
 		return -1;
 
-	return buf[link_id_pos] & BASIC_MLE_STA_CTRL_LINK_ID_MASK;
+	link_id = buf[link_id_pos] & BASIC_MLE_STA_CTRL_LINK_ID_MASK;
+	if (link_id >= MAX_NUM_MLD_LINKS)
+		return -1;
+
+	return link_id;
 }
 
 
@@ -3840,13 +3862,13 @@ unsigned int get_max_nss_capability(struct ieee802_11_elems *elems,
 		const u8 *optional = hecaps->optional;
 
 		if (bw == CHAN_WIDTH_160) {
-			const le16 *mcs_160 = (const le16 *) &optional[0];
-
-			mcs_map = parse_for_rx ? mcs_160[0] : mcs_160[1];
+			mcs_map = host_to_le16(
+				WPA_GET_LE16(parse_for_rx ?
+					     &optional[0] : &optional[2]));
 		} else if (bw == CHAN_WIDTH_80P80) {
-			const le16 *mcs_80p80 = (const le16 *) &optional[4];
-
-			mcs_map = parse_for_rx ? mcs_80p80[0] : mcs_80p80[1];
+			mcs_map = host_to_le16(
+				WPA_GET_LE16(parse_for_rx ?
+					     &optional[4] : &optional[6]));
 		} else {
 			mcs_map = parse_for_rx ?
 				hecaps->he_basic_supported_mcs_set.rx_map :

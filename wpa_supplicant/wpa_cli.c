@@ -1497,6 +1497,7 @@ static const char *network_fields[] = {
 	"disable_he",
 #endif /* CONFIG_HE_OVERRIDES */
 	"disable_eht",
+	"disable_uhr",
 	"ap_max_inactivity", "dtim_period", "beacon_int",
 #ifdef CONFIG_MACSEC
 	"macsec_policy",
@@ -3406,17 +3407,20 @@ static int wpa_cli_cmd_nan_stop(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "NAN_STOP", 0, argc, argv);
 }
 
+
 static int wpa_cli_cmd_nan_set(struct wpa_ctrl *ctrl, int argc,
 			       char *argv[])
 {
 	return wpa_cli_cmd(ctrl, "NAN_SET", 2, argc, argv);
 }
 
+
 static int wpa_cli_cmd_nan_update_conf(struct wpa_ctrl *ctrl, int argc,
 				       char *argv[])
 {
 	return wpa_cli_cmd(ctrl, "NAN_UPDATE_CONF", 0, argc, argv);
 }
+
 
 static int wpa_cli_cmd_nan_sched_config_map(struct wpa_ctrl *ctrl, int argc,
 					     char *argv[])
@@ -3452,11 +3456,12 @@ static int wpa_cli_cmd_nan_peer_info(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "NAN_PEER_INFO", 2, argc, argv);
 }
 
-static int wpa_cli_cmd_nan_status(struct wpa_ctrl *ctrl, int argc,
-				  char *argv[])
+
+static int wpa_cli_cmd_nan_status(struct wpa_ctrl *ctrl, int argc, char *argv[])
 {
 	return wpa_ctrl_command(ctrl, "NAN_STATUS");
 }
+
 
 static int wpa_cli_cmd_nan_bootstrap(struct wpa_ctrl *ctrl, int argc,
 				     char *argv[])
@@ -3464,11 +3469,13 @@ static int wpa_cli_cmd_nan_bootstrap(struct wpa_ctrl *ctrl, int argc,
 	return wpa_cli_cmd(ctrl, "NAN_BOOTSTRAP", 4, argc, argv);
 }
 
+
 static int wpa_cli_cmd_nan_bootstrap_reset(struct wpa_ctrl *ctrl,
 					   int argc, char *argv[])
 {
 	return wpa_cli_cmd(ctrl, "NAN_BOOTSTRAP_RESET", 1, argc, argv);
 }
+
 
 #ifdef CONFIG_PASN
 
@@ -3483,7 +3490,9 @@ static int wpa_cli_cmd_nan_pair_abort(struct wpa_ctrl *ctrl, int argc,
 {
 	return wpa_cli_cmd(ctrl, "NAN_PAIR_ABORT", 1, argc, argv);
 }
+
 #endif /* CONFIG_PASN */
+
 #endif /* CONFIG_NAN */
 
 
@@ -3492,6 +3501,7 @@ static int wpa_cli_cmd_generate_new_mac(struct wpa_ctrl *ctrl, int argc,
 {
 	return wpa_ctrl_command(ctrl, "NEW_RANDOM_MAC_ADDRESS");
 }
+
 
 enum wpa_cli_cmd_flags {
 	cli_cmd_flag_none		= 0x00,
@@ -4275,7 +4285,8 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "nan_update_conf", wpa_cli_cmd_nan_update_conf, NULL,
 	  cli_cmd_flag_none, "= update NAN configuration" },
 	{ "nan_sched_config_map", wpa_cli_cmd_nan_sched_config_map, NULL,
-	  cli_cmd_flag_none, "map_id=<id> [freq:bitmap_hex] = Configure NAN schedule. Clear if no bitmaps provided" },
+	  cli_cmd_flag_none,
+	  "map_id=<id> [freq:bitmap_hex] = Configure NAN schedule. Clear if no bitmaps provided" },
 	{ "nan_ndp_request", wpa_cli_cmd_nan_ndp_request, NULL,
 	  cli_cmd_flag_sensitive,
 	  "handle=<id> ndi=<ifname> peer_nmi=<nmi> peer_id=<peer_instance_id> [ssi=<hexdata>] [qos=<slots:latency>] [csid = <cipher_suite> <password=<string>|pmk=<hex>>] = Request NAN data path" },
@@ -4283,9 +4294,11 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  cli_cmd_flag_sensitive,
 	  "accept|reject peer_nmi=<nmi> [reason_code=<reject_reason>] [ndi=<ifname> handle=<service_handle> init_ndi=<ndi> ndp_id=<id> [ssi=<hexdata>] [qos=<slots:latency>] [csid=<csid> <password=<string>|pmk=<hex>]] = Respond to NAN data path request" },
 	{ "nan_ndp_terminate", wpa_cli_cmd_nan_ndp_terminate, NULL,
-	  cli_cmd_flag_none, "peer_nmi=<nmi> init_ndi=<ndi> ndp_id=<id> = Terminate NAN data path" },
+	  cli_cmd_flag_none,
+	  "peer_nmi=<nmi> init_ndi=<ndi> ndp_id=<id> = Terminate NAN data path" },
 	{ "nan_peer_info", wpa_cli_cmd_nan_peer_info, NULL,
-	  cli_cmd_flag_none, "<addr> <schedule|potential|capa|ndps> [map_id] = Get NAN peer information" },
+	  cli_cmd_flag_none,
+	  "<addr> <schedule|potential|capa|ndps> [map_id] = Get NAN peer information" },
 	{ "nan_status", wpa_cli_cmd_nan_status, NULL,
 	  cli_cmd_flag_none, "= Get NAN status" },
 	{ "nan_bootstrap", wpa_cli_cmd_nan_bootstrap, NULL,
@@ -4296,7 +4309,7 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
 	  " = <peer_mac> = Reset NAN boostrapping with peer" },
 #ifdef CONFIG_PASN
 	{ "nan_pair", wpa_cli_cmd_nan_pair, NULL,
-	  cli_cmd_flag_none,
+	  cli_cmd_flag_sensitive,
 	  " = <peer_mac> <handle=<service handle>> <peer_instance_id=<peer requestor id>> <auth=<0|1|2>> <cipher=<CCMP|GCMP-256>> [password=<password>] [responder] = Request or authorize NAN pairing with peer" },
 	{ "nan_pair_abort", wpa_cli_cmd_nan_pair_abort, NULL,
 	  cli_cmd_flag_none,
