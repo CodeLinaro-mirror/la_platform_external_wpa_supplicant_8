@@ -524,7 +524,7 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
 		ssid->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
 					 (const u8 *) ssid->wpa_passphrase,
 					 os_strlen(ssid->wpa_passphrase),
-					 NULL);
+					 NULL, 0);
 		if (!ssid->pt)
 			return -1;
 	}
@@ -534,7 +534,9 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
 		pw->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
 				       (const u8 *) pw->password,
 				       os_strlen(pw->password),
-				       pw->identifier);
+				       (const u8 *) pw->identifier,
+				       pw->identifier ?
+				       os_strlen(pw->identifier) : 0);
 		if (!pw->pt)
 			return -1;
 	}

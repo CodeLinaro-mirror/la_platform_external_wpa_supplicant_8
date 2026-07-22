@@ -254,7 +254,8 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
 			u8 *rnr_count, u8 **rnr_offset, size_t rnr_len);
 bool hostapd_is_mld_ap(struct hostapd_data *hapd);
 const char * sae_get_password(struct hostapd_data *hapd,
-			      struct sta_info *sta, const char *rx_id,
+			      struct sta_info *sta, const u8 *rx_id,
+			      size_t rx_id_len,
 			      struct sae_password_entry **pw_entry,
 			      struct sae_pt **s_pt, const struct sae_pk **s_pk);
 struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
