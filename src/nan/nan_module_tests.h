@@ -6,31 +6,21 @@
  * See README for more details.
  */
 
-#include "utils/includes.h"
-#include "utils/list.h"
-#include "utils/os.h"
-#include "utils/common.h"
-#include "utils/eloop.h"
-#include "common/ieee802_11_defs.h"
-#include "drivers/driver.h"
-#include "nan_i.h"
-
 #ifndef NAN_MODULE_TESTS_H
 #define NAN_MODULE_TESTS_H
 
 #define NAN_TEST_NAME_MAX     32
 
-/*
+/**
  * enum nan_test_ndp_notify_type - NDP notification
- *
- * NAN_TEST_NDP_NOTIFY_INVALID: Invalid.
+ * NAN_TEST_NDP_NOTIFY_INVALID: Invalid
  * NAN_TEST_NDP_NOTIFY_REQUEST: NDP request
  * NAN_TEST_NDP_NOTIFY_RESPONSE: NDP response
  * NAN_TEST_NDP_NOTIFY_CONNECTED: NDP connected
- * NAN_TEST_NDP_NOTIFY_DISCONNECTED: NDP disconnected.
+ * NAN_TEST_NDP_NOTIFY_DISCONNECTED: NDP disconnected
  */
 enum nan_test_ndp_notify_type {
-	NAN_TEST_NDP_NOTIFY_INVALID = 0,
+	NAN_TEST_NDP_NOTIFY_INVALID,
 	NAN_TEST_NDP_NOTIFY_REQUEST,
 	NAN_TEST_NDP_NOTIFY_RESPONSE,
 	NAN_TEST_NDP_NOTIFY_CONNECTED,
@@ -59,8 +49,6 @@ enum nan_test_ndp_notify_type {
  * @term_once_connected: Terminate once connected.
  * @expected_result: Expected NDP establishment result
  * @reason: For publisher device, indicates the reject reason
- * @pot_avail: Device potential availability
- * @pot_avail_len: Length of the device potential availability
  * @csid: Cipher suite ID
  * @expected_csid: Expected Cipher suite ID in case of a successful connection
  * @pmk: Pairwise Master Key
@@ -86,9 +74,8 @@ struct nan_test_dev_conf {
 	u8 pmk[PMK_LEN];
 };
 
-/*
+/**
  * nan_device - Represents a NAN test device
- *
  * @list: Used for global devices list
  * @global: Pointer to NAN test global data structure
  * @name: Test device name
@@ -133,9 +120,8 @@ struct nan_device {
 	enum nan_cipher_suite_id csid;
 };
 
-/*
+/**
  * nan_test_case - Single NAN test configuration
- *
  * @name: Test name
  * @pub_conf: Publisher test configuration
  * @sub_conf: Subscriber test configuration

@@ -12,6 +12,7 @@
 #include "common/ieee802_11_common.h"
 #include "nan_i.h"
 
+
 struct ndl_attr_params {
 	u8 dialog_token;
 	u8 type;
@@ -30,7 +31,8 @@ struct ndl_attr_params {
 	const u8 *immut_sched; u16 immut_sched_len;
 };
 
-static const char *nan_ndl_state_str(enum nan_ndl_state state)
+
+static const char * nan_ndl_state_str(enum nan_ndl_state state)
 {
 #define C2S(x) case x: return #x;
 	switch (state) {
@@ -189,29 +191,30 @@ static struct nan_ndl * nan_ndl_alloc(struct nan_data *nan)
 }
 
 
-bool nan_ndl_validate_peer_avail(struct nan_data *nan,
-					struct nan_peer *peer)
+bool nan_ndl_validate_peer_avail(struct nan_data *nan, struct nan_peer *peer)
 {
 	struct nan_ndl *ndl = peer->ndl;
 	bool ret;
 
-	/* first validate if immutable is covered by the availability map */
+	/* First, validate if immutable is covered by the availability map */
 	ret = nan_sched_covered_by_avail_entries(nan, &peer->info.avail_entries,
 						 ndl->immut_sched,
 						 ndl->immut_sched_len);
 	if (!ret) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Peer avail: Immutable is not covered by avail");
+		peer->ndl->reason = NAN_REASON_IMMUTABLE_UNACCEPTABLE;
 		return ret;
 	}
 
-	/* now validate NDC schedule is covered by the availability map */
+	/* Now validate NDC schedule is covered by the availability map */
 	ret = nan_sched_covered_by_avail_entries(nan, &peer->info.avail_entries,
 						 ndl->ndc_sched,
 						 ndl->ndc_sched_len);
 	if (!ret) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: Peer avail: NDC is not covered by avail");
+		peer->ndl->reason = NAN_REASON_NDL_UNACCEPTABLE;
 		return ret;
 	}
 
@@ -295,7 +298,7 @@ nan_ndl_match_sched_vs_common(struct nan_data *nan,
 	nan_flush_avail_entries(&sched_entries);
 
 	/*
-	 * Now that the schedule is represented as bitfield and the map ID is
+	 * Now that the schedule is represented as a bitfield and the map ID is
 	 * obtained, compare these against the peer availability entries and
 	 * channel configuration. A successful match means that the schedule is
 	 * covered by the peer availability entries for the given channel.
@@ -329,8 +332,8 @@ nan_ndl_match_sched_vs_common(struct nan_data *nan,
 }
 
 
-bool nan_ndl_meets_qos(struct nan_data *nan, struct nan_peer *peer,
-		       struct bitfield *common_bf)
+bool nan_ndl_meets_qos(struct nan_data *nan, const struct nan_peer *peer,
+		       const struct bitfield *common_bf)
 {
 	size_t size, max_latency, i;
 	u16 crbs;
@@ -338,7 +341,7 @@ bool nan_ndl_meets_qos(struct nan_data *nan, struct nan_peer *peer,
 	/* No QoS requirements */
 	if (peer->ndl->peer_qos.min_slots == NAN_QOS_MIN_SLOTS_NO_PREF &&
 	    peer->ndl->peer_qos.max_latency == NAN_QOS_MAX_LATENCY_NO_PREF) {
-		wpa_printf(MSG_DEBUG, "NAN: No QoS requirements from Peer");
+		wpa_printf(MSG_DEBUG, "NAN: No QoS requirements from peer");
 		return true;
 	}
 
@@ -385,7 +388,6 @@ static enum nan_ndl_status nan_ndl_determine_status(struct nan_data *nan,
 	enum nan_ndl_ver verdict;
 	size_t i;
 	int ret;
-
 
 	*reason = NAN_REASON_RESERVED;
 
@@ -726,6 +728,7 @@ int nan_ndl_setup(struct nan_data *nan, struct nan_peer *peer,
 		   ndl->dialog_token);
 
 	return 0;
+
 out_fail:
 	wpa_printf(MSG_DEBUG, "NAN: NDL: Failed. reason=%u", reason);
 	if (ndl->state == NAN_NDL_STATE_REQ_RECV ||
@@ -733,11 +736,15 @@ out_fail:
 		ndl->status = NAN_NDL_STATUS_REJECTED;
 		ndl->reason = reason;
 		ndl->send_naf_on_error = 1;
+
+		/*
+		 * Do not modify the state. Full cleanup will be done on Tx
+		 * status handling.
+		 */
+	} else {
+		nan_ndl_clear(nan, peer);
 	}
 
-	/* Clear the NDL info but leave the state, status, and reason. Full
-	 * cleanup will be done on Tx status handling. */
-	nan_ndl_clear(nan, peer);
 	return -1;
 }
 
@@ -882,13 +889,16 @@ static int nan_ndl_attr_handle_req(struct nan_data *nan, struct nan_peer *peer,
 	}
 
 	ret = nan_ndl_validate_peer_avail(nan, peer);
-	if (!ret)
-		goto fail;
+	if (!ret) {
+		ndl->status = NAN_NDL_STATUS_REJECTED;
+		ndl->send_naf_on_error = 1;
+	}
 
 	nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_REQ_RECV);
 
 	wpa_printf(MSG_DEBUG, "NAN: NDL: Handle request done");
 	return 0;
+
 fail:
 	nan_ndl_reset(nan, peer);
 	return -1;
@@ -1012,6 +1022,7 @@ static int nan_ndl_attr_handle_resp(struct nan_data *nan, struct nan_peer *peer,
 		nan_ndl_set_state(nan, ndl, NAN_NDL_STATE_DONE);
 
 	return 0;
+
 fail:
 	nan_ndl_clear(nan, peer);
 	ndl->status = NAN_NDL_STATUS_REJECTED;
@@ -1165,6 +1176,7 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 	 * "done" here.
 	 */
 	if (msg->oui_subtype == NAN_SUBTYPE_DATA_PATH_CONFIRM &&
+	    peer->ndl &&
 	    peer->ndl->state == NAN_NDL_STATE_REQ_RECV &&
 	    peer->ndl->status == NAN_NDL_STATUS_ACCEPTED) {
 		wpa_printf(MSG_DEBUG,
@@ -1193,6 +1205,7 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 
 	params.status = BITS(ndl_attr->type_and_status, NAN_NDL_STATUS_MASK,
 			     NAN_NDL_STATUS_POS);
+	params.reason = ndl_attr->reason_code;
 	control = le_to_host16(ndl_attr->ctrl);
 
 	if (peer->ndl)
@@ -1263,7 +1276,7 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 		ndc_ok = 0;
 	}
 
-	if (!ndc_ok) {
+	if (!ndc_ok && params.status != NAN_NDL_STATUS_REJECTED) {
 		wpa_printf(MSG_DEBUG, "NAN: NDL: Missing valid selected NDC");
 		return -1;
 	}
@@ -1325,18 +1338,17 @@ int nan_ndl_handle_ndl_attr(struct nan_data *nan, struct nan_peer *peer,
 
 
 /**
- * nan_ndl_add_ndl_attr - Add NDL attribute to frame
+ * nan_ndl_add_avail_attrs - Add availability attributes
  * @nan: NAN module context from nan_init()
  * @peer: NAN peer for NDL establishment
  * @buf: Frame buffer to which the attribute would be added
- * Returns: 0 on success, negative on failure.
+ * Returns: 0 on success, negative on failure
  *
  * An availability attribute is added for each map (identified by map ID) in the
- * NDL schedule. Each attribute would hold an availability entry for committed
- * slots and an availability entry for conditional slots.
+ * NDL schedule. Each attribute holds an availability entry for committed slots
+ * and an availability entry for conditional slots.
  */
-int nan_ndl_add_avail_attrs(struct nan_data *nan,
-			    const struct nan_peer *peer,
+int nan_ndl_add_avail_attrs(struct nan_data *nan, const struct nan_peer *peer,
 			    struct wpabuf *buf)
 {
 	struct nan_schedule *sched;
@@ -1363,9 +1375,8 @@ int nan_ndl_add_avail_attrs(struct nan_data *nan,
 		return -1;
 	}
 
-	/* In case that NDL exchange was complete successfully,
-	 * consider the conditional entries as committed, as
-	 * this is expected by the spec.
+	/* In case the NDL exchange was complete successfully, consider the
+	 * conditional entries as committed, as this is expected by the spec.
 	 */
 	if (peer->ndl->status == NAN_NDL_STATUS_ACCEPTED) {
 		wpa_printf(MSG_DEBUG,
@@ -1380,22 +1391,19 @@ int nan_ndl_add_avail_attrs(struct nan_data *nan,
 }
 
 
-/*
+/**
  * nan_ndl_add_ndl_attr - Add NDL attribute to frame
- *
  * @nan: NAN module context from nan_init()
  * @peer: NAN peer for NDL establishment
  * @buf: Frame buffer to which the attribute would be added
- *
  * Returns: 0 on success, negative on failure.
  */
-int nan_ndl_add_ndl_attr(struct nan_data *nan,
-			 const struct nan_peer *peer,
+int nan_ndl_add_ndl_attr(struct nan_data *nan, const struct nan_peer *peer,
 			 struct wpabuf *buf)
 {
 	struct nan_ndl *ndl;
 	struct nan_schedule *sched = &nan->sched;
-	u16 ndl_ctrl;
+	u16 ndl_ctrl = 0;
 	u8 *len_ptr;
 	u8 type;
 
@@ -1403,14 +1411,12 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
 		return -1;
 
 	ndl = peer->ndl;
-	ndl_ctrl = 0;
 
-	wpa_printf(MSG_DEBUG, "NAN: add NDL attribute. state=%s, status=%u",
+	wpa_printf(MSG_DEBUG, "NAN: Add NDL attribute. state=%s, status=%u",
 		   nan_ndl_state_str(ndl->state), ndl->status);
 
 	if (nan->cfg->max_ndl_idle_period) {
-		wpa_printf(MSG_DEBUG,
-			   "NAN: NDL: max idle period=%u",
+		wpa_printf(MSG_DEBUG, "NAN: NDL: max idle period=%u",
 			   nan->cfg->max_ndl_idle_period);
 
 		ndl_ctrl |= NAN_NDL_CTRL_MAX_IDLE_PERIOD_PRESENT;
@@ -1455,15 +1461,14 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
 	len_ptr = wpabuf_put(buf, 2);
 
 	wpabuf_put_u8(buf, ndl->dialog_token);
-	wpabuf_put_u8(buf, type |
-		      (ndl->status << NAN_NDL_STATUS_POS));
+	wpabuf_put_u8(buf, type | (ndl->status << NAN_NDL_STATUS_POS));
 	wpabuf_put_u8(buf, ndl->reason);
 	wpabuf_put_u8(buf, ndl_ctrl);
 
 	if (nan->cfg->max_ndl_idle_period)
 		wpabuf_put_le16(buf, nan->cfg->max_ndl_idle_period);
 
-	WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
+	WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
 
 	return 0;
 }
@@ -1476,8 +1481,7 @@ int nan_ndl_add_ndl_attr(struct nan_data *nan,
  * @buf: Frame buffer to which the attribute would be added
  * Returns: 0 on success, negative on failure.
  */
-int nan_ndl_add_ndc_attr(struct nan_data *nan,
-			 const struct nan_peer *peer,
+int nan_ndl_add_ndc_attr(struct nan_data *nan, const struct nan_peer *peer,
 			 struct wpabuf *buf)
 {
 	struct nan_ndl *ndl;
@@ -1508,7 +1512,7 @@ int nan_ndl_add_ndc_attr(struct nan_data *nan,
 	 */
 	if (!sched->ndc.len) {
 		if (ndl->state != NAN_NDL_STATE_START) {
-			wpa_printf(MSG_DEBUG, "NAN: NDL: no NDC to add");
+			wpa_printf(MSG_DEBUG, "NAN: NDL: No NDC to add");
 			return -1;
 		}
 

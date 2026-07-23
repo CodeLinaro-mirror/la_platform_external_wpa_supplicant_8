@@ -3295,7 +3295,7 @@ static void wpas_start_listen_cb(struct wpa_radio_work *work, int deinit)
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
 
-	if (wpa_drv_remain_on_channel(wpa_s, lwork->freq, duration) < 0) {
+	if (wpa_drv_remain_on_channel(wpa_s, lwork->freq, duration, NULL) < 0) {
 		wpa_printf(MSG_DEBUG, "P2P: Failed to request the driver "
 			   "to remain on channel (%u MHz) for Listen "
 			   "state", lwork->freq);
@@ -6345,8 +6345,8 @@ static void wpas_p2p_check_join_scan_limit(struct wpa_supplicant *wpa_s)
 			return;
 		}
 		if (wpa_s->p2p_fallback_to_go_neg) {
-			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Join operating "
-				"failed - fall back to GO Negotiation");
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"P2P: Join operation failed - fall back to GO Negotiation");
 			wpa_msg_global(wpa_s->p2pdev, MSG_INFO,
 				       P2P_EVENT_FALLBACK_TO_GO_NEG
 				       "reason=join-failed");
@@ -7671,28 +7671,20 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 				return -1;
 
 			/*
-			 * most of 5G channels are DFS, only operating class 115 and 124
-			 * are available possibly, randomly pick a start to check them.
+			 * Most of the 5 GHz channels require DFS. Only
+			 * operating classes 115 and 124 are available possibly
+			 * without that requirement. Check these for
+			 * availability starting from a randomly picked
+			 * position.
 			 */
-			int possible_5g_freqs[] = {
-				/* operating class 115 */
-				5180, 5200, 5220, 5240,
-				/* operating class 124 */
-				5745, 5765, 5785, 5805,
-			};
-			int possible_5g_freqs_num =
-			    sizeof(possible_5g_freqs)/sizeof(possible_5g_freqs[0]);
-
-			for (i = 0; i < possible_5g_freqs_num; i++, r++) {
-				if (p2p_supported_freq_go(
-				    wpa_s->global->p2p,
-				    possible_5g_freqs[r % possible_5g_freqs_num])) {
-					freq = possible_5g_freqs[r % possible_5g_freqs_num];
+			for (i = 0; i < num_freqs; i++, r++) {
+				freq = freqs[r % num_freqs];
+				if (p2p_supported_freq_go(wpa_s->global->p2p,
+							  freq))
 					break;
-				}
 			}
 
-			if (i >= possible_5g_freqs_num) {
+			if (i >= num_freqs) {
 				wpa_printf(MSG_DEBUG, "P2P: Could not select "
 					   "5 GHz channel for P2P group");
 				return -1;

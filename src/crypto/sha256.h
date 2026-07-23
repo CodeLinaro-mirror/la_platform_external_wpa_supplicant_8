@@ -28,4 +28,5 @@ int hmac_sha256_kdf(const u8 *secret, size_t secret_len,
 		    u8 *out, size_t outlen);
 int pbkdf2_sha256(const char *passphrase, const u8 *salt, size_t salt_len,
 		  int iterations, u8 *buf, size_t buflen);
+
 #endif /* SHA256_H */

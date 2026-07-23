@@ -285,10 +285,18 @@ void wpas_notify_nan_nik_received(struct wpa_supplicant *wpa_s,
 void wpas_notify_pr_pasn_result(struct wpa_supplicant *wpa_s, u8 role,
 				u8 protocol_type, u8 op_class, u8 op_channel,
 				const char *country);
+void wpas_notify_pr_negotiation_started(struct wpa_supplicant *wpa_s,
+					const u8 *peer_addr, u8 role,
+					u8 protocol_type);
 void wpas_notify_pr_ranging_params(struct wpa_supplicant *wpa_s,
 				   const u8 *dev_addr, const u8 *peer_addr,
 				   u8 role, u8 protocol, int freq, int channel,
 				   int bw, int format_bw);
+void wpas_notify_pr_measurement_result(
+	struct wpa_supplicant *wpa_s,
+	const struct peer_measurement_result *result);
+void wpas_notify_pr_ranging_complete(struct wpa_supplicant *wpa_s,
+				     u64 cookie);
 void wpas_notify_nan_bootstrap_request(struct wpa_supplicant *wpa_s,
 				       const u8 *peer_addr, u16 pbm,
 				       int handle, u8 requestor_instance_id);
@@ -313,8 +321,7 @@ void wpas_notify_nan_ndp_counter_request(struct wpa_supplicant *wpa_s,
 					 const u8 *ssi, size_t ssi_len);
 void wpas_notify_nan_ndp_connected(struct wpa_supplicant *wpa_s,
 				   const u8 *peer_nmi, u32 ndp_id,
-				   const u8 *local_ndi,
-				   const u8 *peer_ndi,
+				   const u8 *local_ndi, const u8 *peer_ndi,
 				   const u8 *ssi, size_t ssi_len,
 				   const u8 *interface_id);
 void wpas_notify_nan_ndp_disconnected(struct wpa_supplicant *wpa_s,
@@ -329,10 +336,12 @@ void wpas_notify_nan_cluster_join(struct wpa_supplicant *wpa_s,
 void wpas_notify_nan_schedule_changed(struct wpa_supplicant *wpa_s,
 				      const u8 *peer_nmi);
 void wpas_notify_nan_sched_update_done(struct wpa_supplicant *wpa_s,
-					       bool success);
+				       bool success);
 void wpas_notify_nan_pairing_status(struct wpa_supplicant *wpa_s,
-				    const u8 *peer_addr, int akmp,
-				    int cipher, u8 status,
-				    const u8 *nd_pmk);
+				    const u8 *peer_addr, int akmp, int cipher,
+				    u16 status, const u8 *nd_pmk);
+void wpas_notify_nan_chan_evacuation(struct wpa_supplicant *wpa_s,
+				     u8 map_id, int freq);
+void wpas_notify_nan_stopped(struct wpa_supplicant *wpa_s);
 
 #endif /* NOTIFY_H */

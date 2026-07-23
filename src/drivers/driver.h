@@ -30,6 +30,7 @@
 
 struct nan_subscribe_params;
 struct nan_publish_params;
+struct pr_pasn_ranging_params;
 
 #define HOSTAPD_CHAN_DISABLED 0x00000001
 #define HOSTAPD_CHAN_NO_IR 0x00000002
@@ -216,6 +217,13 @@ struct eht_capabilities {
 	u8 ppet[EHT_PPE_THRESH_CAPAB_LEN];
 };
 
+/* struct uhr_capabilities - IEEE 802.11bn UHR capabilities */
+struct uhr_capabilities {
+	bool uhr_supported;
+	u8 mac[6];
+	u8 phy[5];
+};
+
 #define HOSTAPD_MODE_FLAG_HT_INFO_KNOWN BIT(0)
 #define HOSTAPD_MODE_FLAG_VHT_INFO_KNOWN BIT(1)
 #define HOSTAPD_MODE_FLAG_HE_INFO_KNOWN BIT(2)
@@ -326,6 +334,11 @@ struct hostapd_hw_modes {
 	 * eht_capab - EHT (IEEE 802.11be) capabilities
 	 */
 	struct eht_capabilities eht_capab[IEEE80211_MODE_NUM];
+
+	/**
+	 * uhr_capab - UHR (IEEE 802.11bn) capabilities
+	 */
+	struct uhr_capabilities uhr_capab[IEEE80211_MODE_NUM];
 };
 
 
@@ -1410,6 +1423,11 @@ struct wpa_driver_associate_params {
 	 */
 	int disable_eht;
 
+	/**
+	 * disable_uhr - Disable UHR for this connection
+	 */
+	bool disable_uhr;
+
 	/*
 	 * mld_params - MLD association parameters
 	 */
@@ -1940,6 +1958,12 @@ struct wpa_driver_ap_params {
 	 * sae_password - SAE password for SAE offload
 	 */
 	const char *sae_password;
+
+	/**
+	 * uhr_oper - Full UHR operation (beacon only has abridged data),
+	 * includes the extended element header
+	 */
+	u8 *uhr_oper;
 };
 
 struct wpa_driver_mesh_bss_params {
@@ -1984,6 +2008,12 @@ struct wpa_driver_set_key_params {
 	/**
 	 * ifname - Interface name (for multi-SSID/VLAN support) */
 	const char *ifname;
+
+	/**
+	 * own_addr - Own MAC address identifying the virtual interface for
+	 * the key operation, or %NULL to use the default interface (ifname)
+	 */
+	const u8 *own_addr;
 
 	/**
 	 * alg - Encryption algorithm
@@ -2106,6 +2136,21 @@ struct wpa_driver_set_key_params {
 	 *
 	 * Set to a valid Link ID (0-14) when applicable, otherwise -1. */
 	int link_id;
+
+	/**
+	 * ltf_keyseed_len - Length of the LTF keyseed in octets
+	 *
+	 * Set to 0 if no LTF keyseed is provided.
+	 */
+	u8 ltf_keyseed_len;
+
+	/**
+	 * ltf_keyseed - LTF keyseed for secure ranging (IEEE 802.11az)
+	 *
+	 * Used to configure the secure LTF key seed for a peer measurement
+	 * session. Set to NULL if not applicable.
+	 */
+	const u8 *ltf_keyseed;
 };
 
 enum wpa_driver_if_type {
@@ -2176,6 +2221,11 @@ enum wpa_driver_if_type {
 	 */
 	WPA_IF_NAN_DATA,
 
+	/*
+	 * WPA_IF_PD - Proxymity Detection (PD) Device
+	 */
+	WPA_IF_PD,
+
 	/* keep last */
 	WPA_IF_MAX
 };
@@ -2229,6 +2279,8 @@ struct nan_capa {
 #define WPA_DRIVER_FLAGS_NAN_SUPPORT_USERSPACE_DE	0x00000004
 /** Driver supports NAN Data path */
 #define WPA_DRIVER_FLAGS_NAN_SUPPORT_NDP		0x00000008
+/** Driver supports NAN beacon protection */
+#define WPA_DRIVER_FLAGS_NAN_SUPPORT_BEACON_PROT	0x00000010
 	u32 drv_flags;
 	u8 num_radios;
 	u8 sched_chans;
@@ -2250,6 +2302,18 @@ struct nan_capa {
 	struct he_capabilities he_capab;
 	bool he_valid;
 };
+
+/* Bit index values for pd_bandwidths bitmap */
+#define WPA_PR_CHAN_WIDTH_20	0
+#define WPA_PR_CHAN_WIDTH_40	1
+#define WPA_PR_CHAN_WIDTH_80	2
+#define WPA_PR_CHAN_WIDTH_80P80	3
+#define WPA_PR_CHAN_WIDTH_160	4
+
+/* Bit index values for pd_preambles bitmap */
+#define WPA_PR_PREAMBLE_HT	0
+#define WPA_PR_PREAMBLE_VHT	1
+#define WPA_PR_PREAMBLE_HE	2
 
 /**
  * struct wpa_driver_capa - Driver capability information
@@ -2534,6 +2598,8 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS2_802_1X_AUTH		0x0000000800000000ULL
 /** Driver supports PMKSA caching privacy */
 #define WPA_DRIVER_FLAGS2_PMKSA_PRIVACY		0x0000001000000000ULL
+/** Driver supports MAC address filter for remain-on-channel */
+#define WPA_DRIVER_FLAGS2_ROC_ADDR_FILTER	0x0000002000000000ULL
 	u64 flags2;
 /** Driver supports of adaptive 11r feature */
 #define WPA_DRIVER_FLAGS_ADAPTIVE_11R	        0x8000000000000000ULL
@@ -2662,12 +2728,11 @@ struct wpa_driver_capa {
 	size_t max_probe_req_ie_len;
 
 	/* EDCA based ranging capabilities */
-	u8 edca_format_and_bw;
 	u8 max_tx_antenna;
 	u8 max_rx_antenna;
+	u32 edca_min_ranging_interval;
 
 	/* NTB based ranging capabilities */
-	u8 ntb_format_and_bw;
 	u8 max_tx_ltf_repetations;
 	u8 max_rx_ltf_repetations;
 	u8 max_tx_ltf_total;
@@ -2676,10 +2741,38 @@ struct wpa_driver_capa {
 	u8 max_rx_sts_gt_80;
 	u8 max_tx_sts_le_80;
 	u8 max_tx_sts_gt_80;
+	u32 ntb_min_ranging_interval;
+
+	/* Peer measurement capabilities */
+	u32 pmsr_max_peers;
+	u8 max_ftms_per_burst;
+	bool concurrent_ista_rsta;
+	bool support_6ghz;
+	bool asap_support;
+	u32 pd_preambles;
+	u32 pd_bandwidths;
+
+	struct {
+		bool support_ntb;
+		bool support_tb;
+		bool support_edca;
+		u32 max_peers;
+	} ista;
+
+	struct {
+		bool support_ntb;
+		bool support_tb;
+		bool support_edca;
+		u32 max_peers;
+	} rsta;
+
+	struct {
+		bool infra_support;
+		bool pd_support;
+	} ranging_type;
 
 #ifdef CONFIG_NAN
 	struct nan_capa nan_capa;
-	u32 nan_flags;
 #endif /* CONFIG_NAN */
 };
 
@@ -2791,6 +2884,9 @@ struct hostapd_sta_add_params {
 	s8 mld_link_id;
 	const u8 *mld_link_addr;
 	u16 eml_cap;
+
+	const struct ieee80211_uhr_capabilities *uhr_capab;
+	size_t uhr_capab_len;
 
 #ifdef CONFIG_NAN
 	/*
@@ -3176,6 +3272,9 @@ enum wpa_drv_update_connect_params_mask {
  * @rsn_capab: RSN capabilities
  * @rsnxe_data: Extended RSN capabilities data
  * @rsnxe_data_len: Length of Extended RSN capabilities data in octets
+ * @kck: Key Confirmation Key (KCK) to pass to driver for IEEE 802.1X
+ *	Authentication offload
+ * @kck_len: Length of the KCK
  */
 struct external_auth {
 	enum {
@@ -3196,6 +3295,9 @@ struct external_auth {
 	u16 rsn_capab;
 	const u8 *rsnxe_data;
 	size_t rsnxe_data_len;
+
+	const u8 *kck;
+	size_t kck_len;
 };
 
 #define WPAS_MAX_PASN_PEERS 10
@@ -3398,12 +3500,12 @@ struct nan_cluster_config {
 /**
  * struct nan_schedule_config - NAN schedule configuration
  *
- * @deferred: True if the driver should announce the schedule update to peers
+ * @deferred: true if the driver should announce the schedule update to peers
  *	before applying it
  * @num_channels: Number of channels in the schedule
  * @channels: Channel specific schedule information
- * @avail_attr: NAN Availability attribute as defined in Wi-Fi Aware (TM) 4.0
- *	specification Table 93
+ * @avail_attr: NAN Availability attribute as defined in Wi-Fi Aware spec v4.0,
+ *	Table 93
  */
 struct nan_schedule_config {
 	bool deferred;
@@ -4501,6 +4603,8 @@ struct wpa_driver_ops {
 	 * @priv: Private driver interface data
 	 * @freq: Frequency (in MHz) of the channel
 	 * @duration: Duration in milliseconds
+	 * @filter_addr: an additional MAC address to accept frames to (NULL for
+	 *	using only the interface address)
 	 * Returns: 0 on success, -1 on failure
 	 *
 	 * This command is used to request the driver to remain awake on the
@@ -4508,6 +4612,10 @@ struct wpa_driver_ops {
 	 * Action frames with EVENT_RX_MGMT events. Optionally, received
 	 * Probe Request frames may also be requested to be reported by calling
 	 * probe_req_report(). These will be reported with EVENT_RX_PROBE_REQ.
+	 *
+	 * If filter_addr is provided, the driver will configure an additional
+	 * MAC address for frame filtering, i.e., this new address will be used
+	 * in addition to the interface address.
 	 *
 	 * The driver may not be at the requested channel when this function
 	 * returns, i.e., the return code is only indicating whether the
@@ -4519,7 +4627,7 @@ struct wpa_driver_ops {
 	 * executed.
 	 */
 	int (*remain_on_channel)(void *priv, unsigned int freq,
-				 unsigned int duration);
+				 unsigned int duration, const u8 *filter_addr);
 
 	/**
 	 * cancel_remain_on_channel - Cancel remain-on-channel operation
@@ -5686,7 +5794,8 @@ struct wpa_driver_ops {
 			   const char *service_name, const u8 *service_id,
 			   enum nan_service_protocol_type srv_proto_type,
 			   const struct wpabuf *ssi, const struct wpabuf *elems,
-			   struct nan_publish_params *params);
+			   struct nan_publish_params *params,
+			   const u8 *network_id);
 
 	/**
 	 * nan_cancel_publish - NAN offload for CancelPublish()
@@ -5723,7 +5832,8 @@ struct wpa_driver_ops {
 			     enum nan_service_protocol_type srv_proto_type,
 			     const struct wpabuf *ssi,
 			     const struct wpabuf *elems,
-			     struct nan_subscribe_params *params);
+			     struct nan_subscribe_params *params,
+			     const u8 *network_id);
 
 	/**
 	 * nan_cancel_subscribe - NAN offload for CancelSubscribe()
@@ -5800,7 +5910,7 @@ struct wpa_driver_ops {
 				 const struct nan_cluster_config *conf);
 
 	/**
-	 * nan_stop - stops NAN operation
+	 * nan_stop - Stop NAN operation
 	 * @priv: Private driver interface data
 	 */
 	void (*nan_stop)(void *priv);
@@ -5850,6 +5960,49 @@ struct wpa_driver_ops {
 					const struct wpabuf *ulw,
 					struct nan_peer_schedule_config *sched);
 #endif /* CONFIG_NAN */
+
+#ifdef CONFIG_PR
+	/**
+	 * pd_start - Create interface for Proximity Detection
+	 * @priv: Private driver interface data
+	 * @addr: Requested MAC address
+	 * @pd_addr: MAC address of the interface
+	 * Returns: 0 on success, -1 on failure
+	 */
+	int (*pd_start)(void *priv, const u8 *addr, u8 *pd_addr);
+
+	/**
+	 * pd_stop - Stop interface for Proximity Detection
+	 * @priv: Private driver interface data
+	 */
+	void (*pd_stop)(void *priv);
+
+	/**
+	 * start_peer_measurement - Start peer measurement (FTM ranging)
+	 * @priv: Private driver interface data
+	 * @peer_addr: Peer MAC address
+	 * @freq: Operating frequency in MHz
+	 * @channel: Operating channel number
+	 * @bw: Channel bandwidth in MHz
+	 * @params: Ranging parameters (EDCA/NTB specific)
+	 * Returns: 0 on success, -1 on failure
+	 *
+	 * This function triggers peer measurement (FTM ranging) after
+	 * successful PASN authentication for proximity ranging.
+	 */
+	int (*start_peer_measurement)(void *priv, const u8 *peer_addr,
+				      int freq, u8 channel, int bw,
+				      struct pr_pasn_ranging_params *params);
+
+	/**
+	 * stop_peer_measurement - Stop peer measurement and destroy ranging socket
+	 * @priv: Private driver interface data
+	 *
+	 * Unregisters the ranging socket from eloop and frees all associated
+	 * resources. Safe to call when no ranging session is active (no-op).
+	 */
+	void (*stop_peer_measurement)(void *priv);
+#endif /* CONFIG_PR */
 };
 
 /**
@@ -6533,6 +6686,31 @@ enum wpa_event_type {
 	 * has changed and can be attached to outgoing NAN frames.
 	 */
 	EVENT_NAN_ULW_UPDATE,
+
+	/**
+	 * EVENT_NAN_CHAN_EVACUATION - Notification of NAN channel evacuation
+	 *
+	 * This event is used to notify wpa_supplicant that the device/driver
+	 * evacuated one of the channels used for NAN operation, e.g., due to
+	 * resource constraints (not enough resources to support NAN and other
+	 * activities).
+	 */
+	EVENT_NAN_CHAN_EVACUATION,
+
+	/**
+	 * EVENT_PEER_MEASUREMENT_RESULT - Ranging measurement result
+	 *
+	 * This event is used to indicate a ranging measurement result.
+	 */
+	EVENT_PEER_MEASUREMENT_RESULT,
+
+	/**
+	 * EVENT_PEER_MEASUREMENT_COMPLETE - Ranging session fully done
+	 *
+	 * This event is used to notify that the entire peer
+	 * measurement session identified by the cookie has ended.
+	 */
+	EVENT_PEER_MEASUREMENT_COMPLETE,
 };
 
 
@@ -6795,6 +6973,13 @@ union wpa_event_data {
 		 *	-1 if MLO is not used
 		 */
 		int assoc_link_id;
+
+		/**
+		 * assoc_encrypted - Indicate that the (Re)Association
+		 * Request/Response frames are transmitted encrypted over the
+		 * air.
+		 */
+		bool assoc_encrypted;
 	} assoc_info;
 
 	/**
@@ -7567,15 +7752,88 @@ union wpa_event_data {
 	/**
 	 * struct nan_ulw_update_info - Data for EVENT_NAN_ULW_UPDATE
 	 * @ulw: Pointer to ULW blob data, containing one or more Unaligned
-	 *	Schedule attributes as defined in the Wi-Fi Aware (TM) 4.0
-	 *	specification Table 109, including attribute header for each
-	 *	attribute.
+	 *	Schedule attributes as defined in the Wi-Fi Aware spec v4.0,
+	 *	Table 109 (Unaligned Schedule attribute format), including
+	 *	attribute header for each attribute.
 	 * @ulw_len: ULW blob length in bytes
 	 */
 	struct nan_ulw_update_info {
 		const u8 *ulw;
 		size_t ulw_len;
 	} nan_ulw_update_info;
+
+	/**
+	 * struct nan_chan_evacuation_info - Data for EVENT_NAN_CHAN_EVACUATION
+	 * @freq: Control frequency of the evacuated channel in MHz
+	 */
+	struct nan_chan_evacuation_info {
+		int freq;
+	} nan_chan_evacuation_info;
+
+	/**
+	 * struct peer_measurement_result - Ranging measurement result for
+	 * EVENT_PEER_MEASUREMENT_RESULT
+	 */
+	struct peer_measurement_result {
+		u8 addr[ETH_ALEN];
+		u32 status;
+		u64 host_time;
+		u64 ap_tsf;
+		bool final;
+		u64 cookie;
+
+		/**
+		 * struct peer_measurement_ftm_result -
+		 * FTM-specific measurement results
+		 */
+		struct peer_measurement_ftm_result {
+			bool fail;
+			u32 fail_reason;
+			u32 burst_index;
+			u32 num_ftmr_attempts;
+			u32 num_ftmr_successes;
+			u32 busy_retry_time;
+			u32 num_bursts_exp;
+			u32 burst_duration;
+			u32 ftms_per_burst;
+			s32 rssi_avg;
+			s32 rssi_spread;
+			s64 rtt_avg;
+			u64 rtt_variance;
+			u64 rtt_spread;
+			s64 dist_avg;
+			u64 dist_variance;
+			u64 dist_spread;
+			const u8 *lci;
+			size_t lci_len;
+			const u8 *civicloc;
+			size_t civicloc_len;
+			/* Additional FTM parameters */
+			u32 burst_period;
+			u32 tx_ltf_repetition_count;
+			u32 rx_ltf_repetition_count;
+			u32 max_time_between_measurements;
+			u32 min_time_between_measurements;
+			u32 num_tx_spatial_streams;
+			u32 num_rx_spatial_streams;
+			u32 nominal_time;
+			u8 availability_window;
+			u32 band_width;
+			u32 preamble;
+			bool is_delayed_lmr;
+			/* Flag indicating if FTM data is present */
+			bool has_data;
+		} ftm;
+
+	} peer_measurement_result;
+
+	/**
+	 * struct peer_measurement_complete - Ranging session complete for
+	 * EVENT_PEER_MEASUREMENT_COMPLETE
+	 */
+	struct peer_measurement_complete {
+		u64 cookie;
+	} peer_measurement_complete;
 };
 
 /**
@@ -7679,6 +7937,8 @@ int vht_supported(const struct hostapd_hw_modes *mode);
 bool he_supported(const struct hostapd_hw_modes *hw_mode,
 		  enum ieee80211_op_mode op_mode);
 bool eht_supported(const struct hostapd_hw_modes *hw_mode,
+		   enum ieee80211_op_mode op_mode);
+bool uhr_supported(const struct hostapd_hw_modes *hw_mode,
 		   enum ieee80211_op_mode op_mode);
 
 struct wowlan_triggers *

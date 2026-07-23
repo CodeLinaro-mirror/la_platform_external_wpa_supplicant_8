@@ -86,7 +86,7 @@ void bitfield_clear(struct bitfield *bf, size_t bit)
 }
 
 
-int bitfield_is_set(struct bitfield *bf, size_t bit)
+int bitfield_is_set(const struct bitfield *bf, size_t bit)
 {
 	if (bit >= bf->max_bits)
 		return 0;
@@ -241,6 +241,7 @@ int bitfield_intersects(const struct bitfield *a, const struct bitfield *b)
 
 void bitfield_dump(struct bitfield *bf, const char *title)
 {
-	wpa_printf(MSG_DEBUG, "bitfield: %s: max_bits=%zu", title, bf->max_bits);
+	wpa_printf(MSG_DEBUG, "bitfield: %s: max_bits=%zu",
+		   title, bf->max_bits);
 	wpa_hexdump(MSG_DEBUG, "bits: ", bf->bits, bf->max_bits / 8);
 }

@@ -49,8 +49,7 @@ struct nan_device_capabilities {
 
 /**
  * struct nan_qos - NAN QoS requirements
- *
- * @min_slots: Minimal number of slots.
+ * @min_slots: Minimal number of slots
  * @max_latency: Maximum allowed NAN slots between every two non-contiguous
  *     NAN Data Link (NDL) Common Resource Blocks (CRB)
  */
@@ -59,16 +58,15 @@ struct nan_qos {
 	u16 max_latency;
 };
 
-/*
+/**
  * enum nan_ndp_action - NDP action
- *
- * @NAN_NDP_ACTION_REQ: Request NDP establishment.
- * @NAN_NDP_ACTION_RESP: Response to NDP establishment request.
- * @NAN_NDP_ACTION_CONF: Confirm NDP establishment.
- * @NAN_NDP_ACTION_TERM: Request NDP termination.
+ * @NAN_NDP_ACTION_REQ: Request NDP establishment
+ * @NAN_NDP_ACTION_RESP: Response to NDP establishment request
+ * @NAN_NDP_ACTION_CONF: Confirm NDP establishment
+ * @NAN_NDP_ACTION_TERM: Request NDP termination
  */
 enum nan_ndp_action {
-	NAN_NDP_ACTION_REQ = 0,
+	NAN_NDP_ACTION_REQ,
 	NAN_NDP_ACTION_RESP,
 	NAN_NDP_ACTION_CONF,
 	NAN_NDP_ACTION_TERM,
@@ -77,8 +75,8 @@ enum nan_ndp_action {
 /**
  * struct nan_ndp_id - Unique identifier of an NDP
  *
- * @peer_nmi: peer NAN Management Interface (NMI)
- * @init_ndi: initiator NAN Data Interface (NDI)
+ * @peer_nmi: Peer NAN Management Interface (NMI)
+ * @init_ndi: Initiator NAN Data Interface (NDI)
  * @id: NDP identifier
  */
 struct nan_ndp_id {
@@ -99,11 +97,12 @@ struct nan_ndp_id {
  * struct nan_time_bitmap - NAN time bitmap
  *
  * @duration: Slot duration represented by each bit in the bitmap. Valid values
- *     are as defined in nan_defs.h and Table 97 (Time Bitmap Control field
- *     format).
+ *     are as defined in nan_defs.h and Wi-Fi Aware spec v4.0, Table 97 (Time
+ *     Bitmap Control field format for the NAN Availability attribute).
  * @period: Indicates the repeat interval of the bitmap.
  *     When set to zero, the bitmap is not repeated. Valid values are
- *     as defined in nan_defs.h and Table 97 (Time Bitmap Control field format).
+ *     as defined in nan_defs.h and Wi-Fi Aware spec v4.0, Table 97 (Time
+ *     Bitmap Control field format for the NAN Availability attribute).
  * @offset: The time period specified by the %bitmap field starts at
  *     16 * offset TUs after DW0.
  * @len: Length of the %bitmap field, in bytes. If this is zero, the NAN device
@@ -127,8 +126,8 @@ struct nan_time_bitmap {
  *
  * @freq: Primary channel center frequency of the 20 MHz
  * @center_freq1: Center frequency of the first segment
- * @center_freq2: Center frequency of the second segment
- * @bandwidth: The channel bandwidth in MHz.
+ * @center_freq2: Center frequency of the second segment, if any
+ * @bandwidth: The channel bandwidth in MHz
  */
 struct nan_sched_chan {
 	int freq;
@@ -140,11 +139,11 @@ struct nan_sched_chan {
 /**
  * struct nan_chan_schedule - NAN channel schedule
  *
- * @chan: The channel associated with the schedule.
- * @committed: Committed schedule time bitmap.
- * @conditonal: Conditional schedule time bitmap.
+ * @chan: The channel associated with the schedule
+ * @committed: Committed schedule time bitmap
+ * @conditonal: Conditional schedule time bitmap
  * @map_id: The map_id of the availability attribute where this schedule is
- *     represented.
+ *     represented
  */
 struct nan_chan_schedule {
 	struct nan_sched_chan chan;
@@ -153,12 +152,13 @@ struct nan_chan_schedule {
 	u8 map_id;
 };
 
-/* struct nan_sched_qos - QoS requirements in units of 16 TUs per 512 TUs.
+/**
+ * struct nan_sched_qos - QoS requirements in units of 16 TUs per 512 TUs
  *
- * @required_slots: Number of required slots.
+ * @required_slots: Number of required slots
  * @min_slots: Minimum number of CRB slots needed for this NDL. If this amount
  *     of CRB slots can't be scheduled the NDL should fail.
- * @max_gap: Maximum allowed latency (in slots) of the CRB schedule.
+ * @max_gap: Maximum allowed latency (in slots) of the CRB schedule
  */
 struct nan_sched_qos {
 	u8 required_slots;
@@ -179,9 +179,9 @@ struct nan_sched_qos {
  * @chans:  The channels included in the schedule. The channels must be sorted
  *     such that the map IDs (in struct nan_chan_schedule) are in ascending
  *     order.
- * @ndc: NDC bitmap schedule.
- * @ndc_map_id: The NDC map ID.
- * @sequence_id: Schedule sequence id.
+ * @ndc: NDC bitmap schedule
+ * @ndc_map_id: The NDC map ID
+ * @sequence_id: Schedule sequence ID
  * @elems: Additional elements to be set in an element container attribute
  */
 struct nan_schedule {
@@ -194,7 +194,7 @@ struct nan_schedule {
 	struct wpabuf *elems;
 };
 
-/*
+/**
  * struct nan_gtk - NAN GTK information
 
  * @gtk: Group Temporal Key (GTK)
@@ -207,10 +207,9 @@ struct nan_gtk {
 	u8 csid;
 };
 
-/*
+/**
  * struct nan_ndp_sec_params - NAN NDP security parameters
- *
- * @csid: Cipher suite ID. See &enum nan_cipher_suite_id
+ * @csid: Cipher suite ID
  * @pmk: NAN Pairwise Master Key (PMK)
  * @gtk: Group Temporal Key (GTK) information
  */
@@ -220,8 +219,8 @@ struct nan_ndp_sec_params {
 	struct nan_gtk gtk;
 };
 
-/*
- * struct nan_ndp_params - Holds the ndp parameters for setting up or
+/**
+ * struct nan_ndp_params - Holds the NDP parameters for setting up or
  * terminating an NDP.
  *
  * @type: The request type. See &enum nan_ndp_action
@@ -242,13 +241,13 @@ struct nan_ndp_sec_params {
  * @resp_ndi: In case of successful response, the responder's NDI. In case of
  *     response to a counter proposal, the initiator's NDI (the one used with
  *     NAN_NDP_ACTION_REQ).
- * @status: Response status.
+ * @status: Response status
  * @reason_code: In case of rejected response, the rejection reason.
- * @sched_valid: Indicates whether the schedule field is valid.
- * @sched: The NAN schedule associated with the NDP parameters.
+ * @sched_valid: Indicates whether the schedule field is valid
+ * @sched: The NAN schedule associated with the NDP parameters
  * @interface_id: The interface identifier to be used for the NDP. The interface
  *    identifier is used to derive the IPv6 link-local address as specified in
- *    Table 90 in WiFi Aware specification v4.0.
+ *    Wi-Fi Aware specification v4.0, Table 90 (IPv6 Link Local TLV format).
  */
 struct nan_ndp_params {
 	enum nan_ndp_action type;
@@ -279,70 +278,7 @@ struct nan_ndp_params {
 
 	bool sched_valid;
 	struct nan_schedule sched;
-	u8 *interface_id;
-};
-
-/*
- * struct nan_ndp_connection_params - Parameters for NDP connection
- *
- * @ndp_id: NDP identifier
- * @peer_ndi: peer NDI MAC address
- * @local_ndi: local NDI MAC address
- * @ssi: service specific information
- * @ssi_len: service specific information length
- * @install_keys: whether the new keys should be installed
- * @first_ndp: whether this is the first NDP with the peer
- * @new_ndi_sta: whether a new NDI station needs to be added (peer_ndi not
- *     already used by another NDP with this peer)
- * @interface_id: The interface identifier to be used by the peer for the NDP.
- * @local_gtk: pointer to local GTK info. NULL if local GTK is
- *	not to be installed
- * @peer_gtk: pointer to peer GTK info. NULL if peer GTK is
- *	not to be installed
- * @peer_gtk_rsc: pointer to the peer GTK receive sequence counter
- */
-struct nan_ndp_connection_params {
-	struct nan_ndp_id ndp_id;
-	const u8 *peer_ndi;
-	const u8 *local_ndi;
-	const u8 *ssi;
-	size_t ssi_len;
-	bool install_keys;
-	bool first_ndp;
-	bool new_ndi_sta;
 	const u8 *interface_id;
-
-	struct nan_gtk *local_gtk;
-	struct nan_gtk *peer_gtk;
-	u8 *peer_gtk_rsc;
-};
-
-/*
- * struct nan_ndp_action_notif_params - Parameters for NDP action notification
- *
- * @ndp_id: NDP identifier
- * @is_request: Whether the data is associated with an NDP request frame (true)
- *     or with an NDP response (false).
- * @ndp_status: NDP status
- * @ndl_status: NDL status
- * @publish_inst_id: identifier for the publish instance function
- * @ssi: service specific information
- * @ssi_len: service specific information length
- * @csid: NAN cipher suite identifier
- * @pmkid: NAN PMK identifier; can be NULL if security is not negotiated
- */
-struct nan_ndp_action_notif_params {
-	struct nan_ndp_id ndp_id;
-	bool is_request;
-
-	enum nan_ndp_status ndp_status;
-	enum nan_ndl_status ndl_status;
-
-	u8 publish_inst_id;
-	const u8 *ssi;
-	size_t ssi_len;
-	enum nan_cipher_suite_id csid;
-	const u8 *pmkid;
 };
 
 /**
@@ -364,8 +300,69 @@ struct nan_channel_info {
  * @chans: Array of channel information. Sorted by preference.
  */
 struct nan_channels {
-	size_t n_chans;
+	unsigned int n_chans;
 	struct nan_channel_info *chans;
+};
+
+/**
+ * struct nan_ndp_connection_params - Parameters for NDP connection
+ * @ndp_id: NDP identifier
+ * @peer_ndi: Peer NDI MAC address
+ * @local_ndi: Local NDI MAC address
+ * @ssi: Service specific information
+ * @ssi_len: Service specific information length
+ * @install_keys: Whether the new keys should be installed
+ * @first_ndp: Whether this is the first NDP with the peer
+ * @new_ndi_sta: Whether a new NDI station needs to be added (peer_ndi not
+ * 	already used by another NDP with this peer)
+ * @interface_id: The interface identifier to be used by the peer for the NDP
+ * @local_gtk: Pointer to local GTK info. NULL if local GTK is
+ *	not to be installed
+ * @peer_gtk: Pointer to peer GTK info. NULL if peer GTK is
+ *	not to be installed
+ * @peer_gtk_rsc: Pointer to the peer GTK receive sequence counter
+ */
+struct nan_ndp_connection_params {
+	struct nan_ndp_id ndp_id;
+	const u8 *peer_ndi;
+	const u8 *local_ndi;
+	const u8 *ssi;
+	size_t ssi_len;
+	bool install_keys;
+	bool first_ndp;
+	bool new_ndi_sta;
+	const u8 *interface_id;
+
+	const struct nan_gtk *local_gtk;
+	const struct nan_gtk *peer_gtk;
+	const u8 *peer_gtk_rsc;
+};
+
+/**
+ * struct nan_ndp_action_notif_params - Parameters for NDP action notification
+ * @ndp_id: NDP identifier
+ * @is_request: Whether the data is associated with an NDP request frame (true)
+ *     or with an NDP response (false).
+ * @ndp_status: NDP status
+ * @ndl_status: NDL status
+ * @publish_inst_id: Identifier for the publish instance function
+ * @ssi: Service specific information
+ * @ssi_len: Service specific information length
+ * @csid: NAN cipher suite identifier
+ * @pmkid: NAN PMK identifier; can be NULL if security is not negotiated
+ */
+struct nan_ndp_action_notif_params {
+	struct nan_ndp_id ndp_id;
+	bool is_request;
+
+	enum nan_ndp_status ndp_status;
+	enum nan_ndl_status ndl_status;
+
+	u8 publish_inst_id;
+	const u8 *ssi;
+	size_t ssi_len;
+	enum nan_cipher_suite_id csid;
+	const u8 *pmkid;
 };
 
 #define NAN_MAX_MAPS 8
@@ -373,7 +370,6 @@ struct nan_channels {
 
 /**
  * struct nan_peer_schedule - NAN peer schedule information
- *
  * @n_maps: Number of maps
  * @maps: Array of maps
  * @map_id: Map ID
@@ -523,7 +519,6 @@ struct nan_config {
 
 	/**
 	 * ndp_action_notif - Notify NDP action is required
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @params: NDP action notification parameters
 	 *
@@ -535,21 +530,18 @@ struct nan_config {
 
 	/**
 	 * ndp_connected - Notify that NDP was successfully connected
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @params: NDP connection parameters
-	 *
 	 * Returns: 0 on success, negative on failure. Note that new NDPs
-	 * may trigger security upgrade for the peer NDI station.
-	 * If this fails, -2 is returned and the caller should cleanup
-	 * all the existing NDPs with this peer NDI.
+	 * may trigger security upgrade for the peer NDI station. If this fails,
+	 * -2 is returned and the caller should clean up all the existing NDPs
+	 * with this peer NDI.
 	 */
 	int (*ndp_connected)(void *ctx,
 			     struct nan_ndp_connection_params *params);
 
 	/**
-	 * ndp_disconnected - Notify that NDP was disconnected.
-	 *
+	 * ndp_disconnected - Notify that NDP was disconnected
 	 * @ctx: Callback context from cb_ctx
 	 * @ndp_id: NDP identifier
 	 * @local_ndi: Local NDI MAC address
@@ -577,11 +569,11 @@ struct nan_config {
 	/**
 	 * get_chans - Get the prioritized allowed channel information to be
 	 * used for building the potential availability entries associated with
-	 * the given map id.
+	 * the given map ID.
 	 *
 	 * @ctx: Callback context from cb_ctx
-	 * @map_id: Map ID of the availability attribute for which
-	 *     the channels are requested.
+	 * @map_id: Map ID of the availability attribute for which the channels
+	 *     are requested.
 	 * @chans: Pointer to a nan_channels structure that should be filled
 	 *     with the prioritized frequencies. On successful return the
 	 *     channels should be sorted having the higher priority channels
@@ -612,19 +604,20 @@ struct nan_config {
 	/**
 	 * is_valid_publish_id - Check if a publish instance ID is valid
 	 * @ctx: Callback context from cb_ctx
-	 * @instance_id: the instance ID to check
-	 * Return true iff there is a local publish service ID with the given
-	 * instance ID
+	 * @instance_id: The instance ID to check
+	 * @service_id: On return, holds the service ID if the instance ID is
+	 *	valid
+	 * Returns: true if there is a local publish service ID with the given
+	 * instance ID; false otherse
 	 */
 	bool (*is_valid_publish_id)(void *ctx, u8 instance_id, u8 *service_id);
 
 	/**
 	 * set_peer_schedule - Configure peer schedule
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @nmi_addr: NAN Management Interface address of the peer
 	 * @new_sta: Indicates whether this is a new STA (true) or an existing
-	 *     STA that is being re-configured (false).
+	 *     STA that is being re-configured (false)
 	 * @cdw: Committed DW information (from device capabilities)
 	 * @sequence_id: Schedule sequence ID
 	 * @max_channel_switch_time: Maximum channel switch time
@@ -639,7 +632,6 @@ struct nan_config {
 				 const struct wpabuf *ulw_elems);
 	/**
 	 * bootstrap_request - Notify about received bootstrap request
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
 	 * @pbm: Pairing Bootstrapping Methods from the request. As defined in
@@ -652,12 +644,11 @@ struct nan_config {
 
 	/**
 	 * bootstrap_completed - Notify about completed bootstrap
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
-	 * @pbm: Pairing Bootstrapping Method used. As defined in Table 128
-	 *     (NPBA format).
-	 * @success: true if bootstrap was successful
+	 * @pbm: Pairing Bootstrapping Method used. As defined in Wi-Fi Aware
+	 *     spec v4.0, Table 128 (NPBA format).
+	 * @success: Whether bootstrap was successful
 	 * @reason_code: Reason code for failure (0 if success is true)
 	 * @handle: Service handle
 	 * @requestor_instance_id: Requestor instance ID
@@ -667,11 +658,10 @@ struct nan_config {
 				    int handle, u8 requestor_instance_id);
 
 	/**
-	 * transmit_followup - Transmit follow-up message to the peer
-	 *
+	 * transmit_followup - Transmit Follow-up message to the peer
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
-	 * @attrs: Attributes to include in the follow-up message
+	 * @attrs: Attributes to include in the Follow-up message
 	 * @handle: Service handle for which the follow-up is sent
 	 * @req_instance_id: Peer's service instance ID
 	 */
@@ -681,7 +671,6 @@ struct nan_config {
 
 	/**
 	 * get_supported_bootstrap_methods - Get supported bootstrap methods
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @handle: Service handle for which PBM should have been defined
 	 * Returns: Supported Pairing Bootstrapping Methods (PBM) bitfield as
@@ -717,14 +706,13 @@ struct nan_config {
 
 	/**
 	 * update_pairing_credentials - Report received NIK and NPK for a peer
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @nik: NAN Identity Key received from peer
 	 * @nik_len: Length of the NIK
 	 * @cipher_ver: Cipher version of the NIK
 	 * @nik_lifetime: Lifetime of the NIK in seconds
 	 * @akmp: AKMP suite used to establish the NPKSA
-	 * @npk: the NPK associated with the received NIK
+	 * @npk: The NPK associated with the received NIK
 	 * @npk_len: Length of the NPK
 	 * @cipher: Cipher suite used to establish the NPKSA
 	 * @handle: Service handle of the service associated with this followup
@@ -739,13 +727,11 @@ struct nan_config {
 
 	/**
 	 * get_npk_akmp - Get the cached NPK and AKMP for a peer
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
 	 * @nonce: Nonce from the peer's NIRA
 	 * @tag: Tag from the peer's NIRA
-	 * @akmp: On success, would hold the AKMP suite used to establish
-	 *	the NPKSA.
+	 * @akmp: On success, set to the AKMP suite used to establish the NPKSA
 	 * Returns: The NPK on success, NULL on failure
 	 */
 	const struct wpabuf * (*get_npk_akmp)(void *ctx, const u8 *peer_nmi,
@@ -766,16 +752,15 @@ struct nan_config {
 
 	/**
 	 * set_group_key - Install a group key
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @alg: Encryption algorithm (WPA_ALG_* )
 	 * @addr: Address of the peer STA for Rx group keys, ff:ff:ff:ff:ff:ff
-	 *	for Tx keys; when clearing keys, %NULL is used to
-	 *	indicate that both the broadcast-only and default key of the
-	 *	specified key index is to be cleared
+	 *	for Tx keys; when clearing keys, %NULL is used to indicate that
+	 *	both the broadcast-only and default key of the specified key
+	 *	index is to be cleared
 	 * @key_idx: Key index
-	 * @seq: Packet number, the next packet number to be
-	 *	used for in replay protection; %NULL if not set
+	 * @seq: Packet number, the next packet number to be used for in replay
+	 *	protection; %NULL if not set
 	 * @key: Key buffer
 	 * @key_len: Length of the key buffer in octets
 	 * @key_flags: bitwise OR of KEY_FLAG_*
@@ -787,8 +772,7 @@ struct nan_config {
 			     enum key_flag key_flags);
 
 	/**
-	 * get_seqnum - Get current PN for a group key
-	 *
+	 * get_seqnum - Get the current PN for a group key
 	 * @ctx: Callback context from cb_ctx
 	 * @key_idx: Key index
 	 * @seq: Buffer for returning the latest used PN value
@@ -796,11 +780,10 @@ struct nan_config {
 	 *	NMI group keys
 	 * Returns: 0 on success, -1 on failure
 	 */
-	int (*get_seqnum)(void *ctx, int key_idx, u8 *seq, u8 *ndi_addr);
+	int (*get_seqnum)(void *ctx, int key_idx, u8 *seq, const u8 *ndi_addr);
 
 	/**
 	 * get_peer_inactivity - Get the inactivity time for a peer
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @local_ndi: Local NDI address
 	 * @peer_ndi: Peer NDI address
@@ -811,7 +794,6 @@ struct nan_config {
 
 	/**
 	 * schedule_changed - Notify about peer schedule change
-	 *
 	 * @ctx: Callback context from cb_ctx
 	 * @peer_nmi: Peer NMI address
 	 */
@@ -823,6 +805,7 @@ void nan_deinit(struct nan_data *nan);
 int nan_start(struct nan_data *nan, const struct nan_cluster_config *config);
 int nan_update_config(struct nan_data *nan,
 		      const struct nan_cluster_config *config);
+void nan_set_cdw_overwrite(struct nan_data *nan, int map_id_2g, int map_id_5g);
 void nan_stop(struct nan_data *nan);
 void nan_flush(struct nan_data *nan);
 
@@ -847,7 +830,8 @@ int nan_tx_status(struct nan_data *nan, const u8 *dst, const u8 *data,
 		  size_t data_len, bool acked);
 int nan_handle_ndp_setup(struct nan_data *nan, struct nan_ndp_params *params);
 struct nan_device_capabilities *
-nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr, u8 map_id);
+nan_peer_get_device_capabilities(struct nan_data *nan, const u8 *addr,
+				 u8 map_id);
 int nan_peer_get_tk(struct nan_data *nan, const u8 *addr,
 		    const u8 *peer_ndi, const u8 *local_ndi,
 		    u8 *tk, size_t *tk_len, enum nan_cipher_suite_id *csid);
@@ -870,9 +854,10 @@ int nan_convert_sched_to_avail_attrs(struct nan_data *nan, u8 sequence_id,
 				     struct wpabuf *buf,
 				     bool include_potential);
 void nan_local_sched_update(struct nan_data *nan, struct nan_schedule *sched);
+void nan_set_sched_update_pending(struct nan_data *nan, bool pending);
 bool nan_peer_pairing_supported(struct nan_data *nan, const u8 *addr);
 bool nan_peer_npk_nik_caching_supported(struct nan_data *nan, const u8 *addr);
-int nan_get_peer_ndc_freq(struct nan_data *nan ,
+int nan_get_peer_ndc_freq(struct nan_data *nan,
 			  const struct nan_peer_schedule *peer_sched,
 			  u8 map_idx);
 int nan_crypto_derive_nd_pmk(const char *pwd, const u8 *service_id,
@@ -891,16 +876,20 @@ int nan_set_bootstrap_configuration(struct nan_data *nan,
 				    u16 supported_bootstrap_methods,
 				    u16 auto_accept_bootstrap_methods,
 				    u16 bootstrap_comeback_timeout);
-struct wpabuf *nan_crypto_derive_nira_tag(const u8 *nik, size_t nik_len,
-					  const u8 *nmi_addr,
-					  const u8 *nira_nonce);
-int nan_ndp_requested_gtk_csid(struct nan_data *nan, struct nan_ndp_id *ndp_id);
+struct wpabuf * nan_crypto_derive_nira_tag(const u8 *nik, size_t nik_len,
+					   const u8 *nmi_addr,
+					   const u8 *nira_nonce);
+int nan_ndp_requested_gtk_csid(struct nan_data *nan,
+			       const struct nan_ndp_id *ndp_id);
 int nan_set_mgmt_group_cipher(struct nan_data *nan, int cipher);
+int nan_set_beacon_prot(struct nan_data *nan, bool enable);
 int nan_set_max_ndl_idle_period(struct nan_data *nan, u16 max_idle_period);
 bool nan_has_active_ndp(struct nan_data *nan);
 int nan_get_status(struct nan_data *nan, char *buf, size_t buflen);
 int nan_peer_dump_ndps_to_buf(struct nan_data *nan, const u8 *addr,
 			      char *buf, size_t buflen);
+void nan_terminate_ndi_ndps(struct nan_data *nan, const u8 *ndi_addr);
+
 #ifdef CONFIG_PASN
 int nan_pairing_add_attrs(struct nan_data *nan_data, struct wpabuf *buf);
 int nan_pairing_initiate_pasn_auth(struct nan_data *nan_data, const u8 *addr,
@@ -960,7 +949,9 @@ bool nan_pairing_is_peer_paired(struct nan_data *nan_data, const u8 *peer_addr)
 
 static inline
 void nan_pairing_unpair_peer(struct nan_data *nan_data, const u8 *peer_addr)
-{}
+{
+}
 
 #endif /* CONFIG_PASN */
+
 #endif /* NAN_H */

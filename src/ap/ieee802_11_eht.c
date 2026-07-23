@@ -479,6 +479,12 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 		common_info_len++;
 	}
 
+	if (hostapd_is_uhr_enabled(hapd)) {
+		/* Enhanced Critical Updates Information */
+		control |= BASIC_MULTI_LINK_CTRL_PRES_ENH_CRIT_UPD;
+		common_info_len++;
+	}
+
 	wpabuf_put_le16(buf, control);
 
 	wpabuf_put_u8(buf, common_info_len);
@@ -489,8 +495,7 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 	/* Own Link ID */
 	wpabuf_put_u8(buf, hapd->mld_link_id);
 
-	/* Currently hard code the BSS Parameters Change Count to 0x1 */
-	wpabuf_put_u8(buf, 0x1);
+	wpabuf_put_u8(buf, hapd->eht_mld_bss_param_change);
 
 	wpa_printf(MSG_DEBUG, "MLD: EML Capabilities=0x%x",
 		   hapd->iface->mld_eml_capa);
@@ -525,6 +530,10 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 		wpabuf_put_u8(buf, hostapd_get_mld_id(hapd));
 	}
 
+	/* Currently hard-code Enhanced Critical Updates Information to zero */
+	if (hostapd_is_uhr_enabled(hapd))
+		wpabuf_put_u8(buf, 0);
+
 	if (!mld_info)
 		goto out;
 
@@ -550,6 +559,9 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 		 * frames */
 		if (include_bpcc)
 			sta_info_len++;
+		/* Enhanced Critical Updates Information */
+		if (include_bpcc && hostapd_is_uhr_enabled(hapd))
+			sta_info_len++;
 
 		total_len = sta_info_len + link->resp_sta_profile_len;
 
@@ -571,6 +583,8 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 
 		if (include_bpcc)
 			control |= BASIC_MLE_STA_CTRL_PRES_BSS_PARAM_COUNT;
+		if (include_bpcc && hostapd_is_uhr_enabled(hapd))
+			control |= BASIC_MLE_STA_CTRL_PRES_ENH_CRIT_UPD;
 
 		wpabuf_put_le16(buf, control);
 
@@ -594,7 +608,10 @@ u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
 
 		/* BSS Parameters Change Count */
 		if (include_bpcc)
-			wpabuf_put_u8(buf, hapd->eht_mld_bss_param_change);
+			wpabuf_put_u8(buf, link_bss->eht_mld_bss_param_change);
+		/* Enhanced Critical Updates Information */
+		if (include_bpcc && hostapd_is_uhr_enabled(hapd))
+			wpabuf_put_u8(buf, 0);
 
 		if (!link->resp_sta_profile)
 			continue;
@@ -1386,6 +1403,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 		u16 control;
 		const u8 *sub_elem_end;
 		int num_frag_subelems;
+		u8 link_id;
 
 		num_frag_subelems =
 			ieee802_11_defrag_mle_subelem(mlbuf, pos,
@@ -1396,6 +1414,8 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 			goto out;
 		}
 
+		if ((size_t) num_frag_subelems * 2 > ml_len)
+			goto out;
 		ml_len -= num_frag_subelems * 2;
 		ml_end = ((const u8 *) ml) + ml_len;
 
@@ -1437,8 +1457,13 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
 			goto out;
 		}
 		control = WPA_GET_LE16(pos);
-		link_info = &info->links[control &
-					 BASIC_MLE_STA_CTRL_LINK_ID_MASK];
+		link_id = control & BASIC_MLE_STA_CTRL_LINK_ID_MASK;
+		if (link_id >= MAX_NUM_MLD_LINKS) {
+			wpa_printf(MSG_DEBUG,
+				   "MLD: Invalid Link ID in Per-STA Profile subelement");
+			goto out;
+		}
+		link_info = &info->links[link_id];
 		pos += 2;
 
 		if (!(control & BASIC_MLE_STA_CTRL_COMPLETE_PROFILE)) {
@@ -2164,6 +2189,8 @@ hostapd_parse_link_reconf_req_sta_profile(struct hostapd_data *hapd,
 
 	link_id = sta_control & EHT_PER_STA_RECONF_CTRL_LINK_ID_MSK;
 	wpa_printf(MSG_DEBUG, "MLD: Per-STA profile for link=%u", link_id);
+	if (link_id >= MAX_NUM_MLD_LINKS)
+		goto out;
 
 	reconf_type_mask =
 		sta_control & EHT_PER_STA_RECONF_CTRL_OP_UPDATE_TYPE_MSK;
@@ -2449,6 +2476,8 @@ hostapd_parse_link_reconf_req_reconf_mle(
 			goto fail;
 		}
 
+		if ((size_t) num_frag_subelems * 2 > len)
+			goto fail;
 		len -= num_frag_subelems * 2;
 		end = ((const u8 *) ml) + len;
 

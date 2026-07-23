@@ -885,6 +885,9 @@ static_assert(
 	P2pProvDiscStatusCode::INFO_UNAVAILABLE) ==
 	P2P_PROV_DISC_INFO_UNAVAILABLE,
 	"P2P status code value mismatch");
+
+WifiChannelWidthInMhz convertSupplicantChannelWidthToAidl(int channel_width);
+
 }  // namespace supplicant
 }  // namespace wifi
 }  // namespace hardware

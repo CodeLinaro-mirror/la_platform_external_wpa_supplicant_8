@@ -10,7 +10,8 @@
 #include "common.h"
 #include "nan_i.h"
 
-static const char *nan_ndp_state_str(enum nan_ndp_state state)
+
+static const char * nan_ndp_state_str(enum nan_ndp_state state)
 {
 #define C2S(x) case x: return #x;
 	switch (state) {
@@ -137,8 +138,7 @@ int nan_ndp_setup_req(struct nan_data *nan, struct nan_peer *peer,
 
 	if (params->sec.csid) {
 		peer->ndp_setup.sec.i_csid = params->sec.csid;
-		os_memcpy(peer->ndp_setup.sec.pmk, params->sec.pmk,
-			  PMK_LEN);
+		os_memcpy(peer->ndp_setup.sec.pmk, params->sec.pmk, PMK_LEN);
 
 		peer->ndp_setup.sec.present = true;
 		peer->ndp_setup.sec.valid = true;
@@ -232,7 +232,8 @@ int nan_ndp_setup_resp(struct nan_data *nan, struct nan_peer *peer,
 			peer->ndp_setup.sec.r_csid = params->sec.csid;
 			os_memcpy(peer->ndp_setup.sec.pmk, params->sec.pmk,
 				  PMK_LEN);
-			os_memcpy(&peer->ndp_setup.sec.local_gtk, &params->sec.gtk,
+			os_memcpy(&peer->ndp_setup.sec.local_gtk,
+				  &params->sec.gtk,
 				  sizeof(peer->ndp_setup.sec.local_gtk));
 
 			ret = nan_sec_init_resp(nan, peer);
@@ -249,7 +250,6 @@ int nan_ndp_setup_resp(struct nan_data *nan, struct nan_peer *peer,
 
 			peer->ndp_setup.status = NAN_NDP_STATUS_CONTINUED;
 		}
-
 	}
 
 	/* Store service specific information */
@@ -317,7 +317,7 @@ static int nan_ndp_attr_handle_tlvs(struct nan_data *nan,
 						  tlv_data, tlv_len);
 			if (ret)
 				wpa_printf(MSG_DEBUG,
-					   "NAN: NDP: Failed to save ssi. continue");
+					   "NAN: NDP: Failed to save ssi - continue");
 			break;
 		default:
 			wpa_printf(MSG_DEBUG, "NAN: NDP: unknown TLV type=%u",
@@ -347,7 +347,6 @@ static int nan_ndp_attr_handle_req(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_ndp_setup *ndp_setup = &peer->ndp_setup;
 	u16 exp_len = sizeof(struct ieee80211_ndp);
 	u8 publish_inst_id;
-	int ret;
 
 	if (ndp_setup->ndp) {
 		wpa_printf(MSG_DEBUG,
@@ -401,13 +400,15 @@ static int nan_ndp_attr_handle_req(struct nan_data *nan, struct nan_peer *peer,
 	/* Handle service specific information */
 	ndp_len -= exp_len;
 
-	if (!ndpe && ndp_attr->ndp_ctrl & NAN_NDP_CTRL_SPEC_INFO_PRESENT &&
+	if (!ndpe && (ndp_attr->ndp_ctrl & NAN_NDP_CTRL_SPEC_INFO_PRESENT) &&
 	    ndp_len) {
+		int ret;
+
 		wpa_printf(MSG_DEBUG,
 			   "NAN: NDP: req: Handle NDP service specific information");
 
 		ret = nan_ndp_ssi(nan, &peer->ndp_setup,
-				  (u8 *)ndp_attr->optional + 1,
+				  (const u8 *) ndp_attr->optional + 1,
 				  ndp_len);
 		if (ret)
 			wpa_printf(MSG_DEBUG,
@@ -417,7 +418,8 @@ static int nan_ndp_attr_handle_req(struct nan_data *nan, struct nan_peer *peer,
 
 	if (ndpe)
 		return nan_ndp_attr_handle_tlvs(nan, peer,
-						ndp_attr->optional + 1, ndp_len);
+						ndp_attr->optional + 1,
+						ndp_len);
 
 	return 0;
 }
@@ -537,15 +539,14 @@ static int nan_ndp_attr_handle_res(struct nan_data *nan, struct nan_peer *peer,
 
 store_ssi:
 	/* Handle service specific information */
-	ndp_len -= (sizeof(struct ieee80211_ndp) + opt_len);
-	if (!ndpe && ndp_attr->ndp_ctrl & NAN_NDP_CTRL_SPEC_INFO_PRESENT &&
+	ndp_len -= sizeof(struct ieee80211_ndp) + opt_len;
+	if (!ndpe && (ndp_attr->ndp_ctrl & NAN_NDP_CTRL_SPEC_INFO_PRESENT) &&
 	    ndp_len) {
 		int ret;
 
 		wpa_printf(MSG_DEBUG, "NAN: NDP: resp: Handle NDP ssi");
 		ret = nan_ndp_ssi(nan, &peer->ndp_setup,
-				  ndp_attr->optional + opt_len,
-				  ndp_len);
+				  ndp_attr->optional + opt_len, ndp_len);
 		if (ret)
 			wpa_printf(MSG_DEBUG,
 				   "NAN: NDP: resp: Failed to save ssi. continue");
@@ -605,13 +606,13 @@ static int nan_ndp_attr_handle_confirm(struct nan_data *nan,
 	sec_present = !!(ndp_attr->ndp_ctrl & NAN_NDP_CTRL_SECURITY_PRESENT);
 	if (ndp_setup->sec.present != sec_present) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NDP: confirm security present mismatch");
+			   "NAN: NDP: confirm: Security present mismatch");
 		return -1;
 	}
 
 	if (sec_present && status != NAN_NDP_STATUS_CONTINUED) {
 		wpa_printf(MSG_DEBUG,
-			   "NAN: NDP: confirm: Security present mismatch");
+			   "NAN: NDP: confirm: status != continued with security");
 		return -1;
 	}
 
@@ -628,8 +629,7 @@ static int nan_ndp_attr_handle_confirm(struct nan_data *nan,
 		nan_ndp_set_state(nan, &peer->ndp_setup,
 				  NAN_NDP_STATE_CON_RECV);
 	else
-		nan_ndp_set_state(nan, &peer->ndp_setup,
-				  NAN_NDP_STATE_DONE);
+		nan_ndp_set_state(nan, &peer->ndp_setup, NAN_NDP_STATE_DONE);
 
 	return 0;
 }
@@ -716,7 +716,8 @@ static int nan_ndp_attr_handle_term(struct nan_data *nan, struct nan_peer *peer,
 	struct nan_ndp *pndp;
 
 	wpa_printf(MSG_DEBUG,
-		   "NAN: NDP: Termination peer=" MACSTR " ndp_id=%u, init_ndi=" MACSTR,
+		   "NAN: NDP: Termination peer=" MACSTR " ndp_id=%u, init_ndi="
+		   MACSTR,
 		   MAC2STR(peer->nmi_addr), ndp_attr->ndp_id,
 		   MAC2STR(ndp_attr->initiator_ndi));
 
@@ -725,21 +726,15 @@ static int nan_ndp_attr_handle_term(struct nan_data *nan, struct nan_peer *peer,
 	 * establishment. Since the NDP establishment is not yet done, the NDP
 	 * is not added to the list of NDPs, so just reject the establishment.
 	 */
-	if (ndp_setup->ndp) {
-		if (ndp_setup->ndp->ndp_id == ndp_attr->ndp_id &&
-			ether_addr_equal(ndp_setup->ndp->init_ndi,
-					ndp_attr->initiator_ndi)) {
-			wpa_printf(MSG_DEBUG,
-					"NAN: NDP: term: WIP with peer. Terminate");
+	if (ndp_setup->ndp && ndp_setup->ndp->ndp_id == ndp_attr->ndp_id &&
+	    ether_addr_equal(ndp_setup->ndp->init_ndi,
+			     ndp_attr->initiator_ndi)) {
+		wpa_printf(MSG_DEBUG,
+			   "NAN: NDP: Termination while NDP is in progress");
 
-			nan_ndp_set_state(nan, &peer->ndp_setup,
-						NAN_NDP_STATE_DONE);
-			ndp_setup->status = NAN_NDP_STATUS_REJECTED;
-			ndp_setup->reason = NAN_REASON_UNSPECIFIED_REASON;
-		} else {
-			wpa_printf(MSG_DEBUG,
-					"NAN: NDP: term: different NDP WIP with peer. Ignore");
-		}
+		nan_ndp_set_state(nan, &peer->ndp_setup, NAN_NDP_STATE_DONE);
+		ndp_setup->status = NAN_NDP_STATUS_REJECTED;
+		ndp_setup->reason = NAN_REASON_UNSPECIFIED_REASON;
 		return 0;
 	}
 
@@ -784,9 +779,8 @@ static int nan_ndp_attr_handle_term(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
-/*
+/**
  * nan_ndp_handle_ndp_attr - Handle NDP attribute and update local state
- *
  * @nan: NAN module context from nan_init()
  * @peer: The peer from which the original message was received
  * @msg: Parsed NAN Action frame
@@ -813,17 +807,19 @@ int nan_ndp_handle_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * The NDP attribute and the NDPE attribute are very similar in
-	 * structure so handle them in the same way where possible
+	 * structure so handle them in the same way where possible.
 	 */
 	if (ndpe_supported) {
-		ndp_attr = (struct ieee80211_ndp *)msg->attrs.ndpe;
+		ndp_attr = (struct ieee80211_ndp *) msg->attrs.ndpe;
 		ndp_attr_len = msg->attrs.ndpe_len;
 	}
 
 	if (!ndp_attr || !ndp_attr_len) {
-		ndp_attr = (struct ieee80211_ndp *)msg->attrs.ndp;
+		ndp_attr = (struct ieee80211_ndp *) msg->attrs.ndp;
 		ndp_attr_len = msg->attrs.ndp_len;
 		ndpe_supported = false;
+		if (!ndp_attr || !ndp_attr_len)
+			return -1;
 	}
 
 	type = BITS(ndp_attr->type_and_status, NAN_NDP_TYPE_MASK,
@@ -885,9 +881,8 @@ int nan_ndp_handle_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
-/*
+/**
  * nan_ndp_add_ndp_attr - Add NDP attribute to frame
- *
  * @nan: NAN module context from nan_init()
  * @peer: The peer to which the NAF should be sent
  * @buf: wpabuf to which the attribute would be added
@@ -956,7 +951,7 @@ int nan_ndp_add_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 
 	/*
 	 * The NDP attribute and the NDPE attribute are very similar in
-	 * structure so handle them in the same way where possible
+	 * structure so handle them in the same way where possible.
 	 */
 	if (ndpe_supported)
 		wpabuf_put_u8(buf, NAN_ATTR_NDP_EXT);
@@ -978,9 +973,6 @@ int nan_ndp_add_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 
 	if (ndp_ctrl & NAN_NDP_CTRL_RESPONDER_NDI_PRESENT)
 		wpabuf_put_data(buf, ndp_setup->ndp->resp_ndi, ETH_ALEN);
-
-	if (ndp_ctrl & NAN_NDP_CTRL_SPEC_INFO_PRESENT)
-		wpabuf_put_data(buf, ndp_setup->ssi, ndp_setup->ssi_len);
 
 	if (add_srv_info) {
 		if (!ndpe_supported) {
@@ -1008,7 +1000,7 @@ int nan_ndp_add_ndp_attr(struct nan_data *nan, struct nan_peer *peer,
 				NAN_NDPE_TLV_IPV6_LINK_LOCAL_LEN);
 	}
 
-	WPA_PUT_LE16(len_ptr, (u8 *)wpabuf_put(buf, 0) - len_ptr - 2);
+	WPA_PUT_LE16(len_ptr, (u8 *) wpabuf_put(buf, 0) - len_ptr - 2);
 	return 0;
 }
 
@@ -1187,16 +1179,15 @@ int nan_ndp_term_req(struct nan_data *nan, struct nan_peer *peer,
 }
 
 
-/*
+/**
  * nan_ndp_requested_gtk_csid - Get the GTK CSID requested by peer for NDP setup
- *
  * @nan: NAN module context from nan_init()
  * @ndp_id: NDP identifier
- *
  * Returns: The GTK CSID requested by peer, or NAN_CS_NONE if no matching NDP is
  *	found or GTK is not requested by peer.
  */
-int nan_ndp_requested_gtk_csid(struct nan_data *nan, struct nan_ndp_id *ndp_id)
+int nan_ndp_requested_gtk_csid(struct nan_data *nan,
+			       const struct nan_ndp_id *ndp_id)
 {
 	struct nan_peer *peer;
 
@@ -1209,8 +1200,8 @@ int nan_ndp_requested_gtk_csid(struct nan_data *nan, struct nan_ndp_id *ndp_id)
 
 	if (!peer->ndp_setup.ndp ||
 	    peer->ndp_setup.ndp->ndp_id != ndp_id->id ||
-	    os_memcmp(peer->ndp_setup.ndp->init_ndi,
-		      ndp_id->init_ndi, ETH_ALEN) != 0) {
+	    !ether_addr_equal(peer->ndp_setup.ndp->init_ndi,
+			      ndp_id->init_ndi)) {
 		wpa_printf(MSG_DEBUG,
 			   "NAN: NDP: No matching NDP found for GTK CSID request");
 		return NAN_CS_NONE;
