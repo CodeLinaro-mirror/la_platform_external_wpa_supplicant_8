@@ -376,3 +376,8 @@ filegroup {
     name: "android.hardware.wifi.hostapd.xml",
     srcs: ["android.hardware.wifi.hostapd.xml"],
 }
+
+filegroup {
+    name: "hostapd_aidl_ieee80211_common_srcs",
+    srcs: ["src/common/ieee802_11_common.c"],
+}

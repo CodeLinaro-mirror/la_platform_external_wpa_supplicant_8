@@ -45,6 +45,7 @@ hostapd_cc_library_static_aidl_type {
     srcs: [
         "aidl.cpp",
         "hostapd.cpp",
+        ":hostapd_aidl_ieee80211_common_srcs",
     ],
     shared_libs: [
         "android.hardware.wifi.hostapd-V1-ndk",
