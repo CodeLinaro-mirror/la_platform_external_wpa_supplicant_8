@@ -402,44 +402,6 @@ std::string getInterfaceMacAddress(const std::string& if_name)
 	return mac_addr;
 }
 
-#if defined(CONFIG_IEEE80211BE) && defined(CONFIG_MLD_DRIVE_LINK_ADDR)
-
-//Mask for the 3 lower bits of byte[5] used in link address derivation.
-#define INTF_MACADDR_MASK 0x7
-
-/*
- * Derive a per-link MAC address from the MLD address.
- * This guarantees that each link id produces a unique,
- * stable address as long as the MLD address does not change.
- */
-std::string deriveLinkBssidFromMldAddr(const std::string& mld_addr_str,
-                                       int link_id)
-{
-	u8 mld_addr[ETH_ALEN] = {};
-	if (hwaddr_aton(mld_addr_str.c_str(), mld_addr) < 0) {
-		wpa_printf(MSG_ERROR, "Invalid MLD address: %s",
-			   mld_addr_str.c_str());
-		return "";
-	}
-
-	u8 link_addr[ETH_ALEN];
-	os_memcpy(link_addr, mld_addr, ETH_ALEN);
-	/* set locally administered bit */
-	link_addr[0] |= 0x02;
-
-	uint8_t last_byte = mld_addr[5];
-	uint8_t temp_byte = (((last_byte >> 4) & INTF_MACADDR_MASK) +
-			     link_id) & INTF_MACADDR_MASK;
-	link_addr[5] = last_byte + temp_byte;
-	link_addr[5] ^= (1 << INTF_MACADDR_MASK);
-
-	wpa_printf(MSG_DEBUG,
-		   "MLO link addr derived: mld=" MACSTR " id=%d link=" MACSTR,
-		   MAC2STR(mld_addr), link_id, MAC2STR(link_addr));
-	return StringPrintf("" MACSTR, MAC2STR(link_addr));
-}
-#endif /* CONFIG_IEEE80211BE && CONFIG_MLD_DRIVE_LINK_ADDR */
-
 std::string trimWhitespace(const std::string& str) {
 	size_t pos = 0;
 	size_t len = str.size();
@@ -673,20 +635,6 @@ std::string CreateHostapdConfig(
 					"mld_addr=%s\n"
 					"mld_ap=1",
 					interface_mac_addr.c_str());
-#ifdef CONFIG_MLD_DRIVE_LINK_ADDR
-				/*
-				 * Drive a stable, locally-administered link bssid from
-				 * mld address, iface_params.name is a numeric link id
-				 * string for MLO SAP case.
-				 */
-				int link_id = std::stoi(iface_params.name);
-				std::string link_bssid = deriveLinkBssidFromMldAddr(
-							interface_mac_addr, link_id);
-				if (!link_bssid.empty()) {
-					eht_params_as_string += StringPrintf("\nbssid=%s",
-									     link_bssid.c_str());
-				}
-#endif /* CONFIG_MLD_DRIVE_LINK_ADDR */
 			} else {
 				eht_params_as_string += StringPrintf(
 					"bssid=%s\n"
