@@ -3677,6 +3677,12 @@ static void convertNtbFormatAndBwToAidl(UsdServiceDiscoveryInfo &info,
 			info.prInfo->maxSupportedPreambleNtb =
 				RttPreamble::HE;
 			break;
+		case NTB_FORMAT_AND_BW_HE160_SINGLE_LO:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_160MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
 		default:
 			wpa_printf(MSG_ERROR, "PR: NTB format and bandwidth conversion failed,"
 				" unknown format_bw: %d", static_cast<int>(format_bw));
@@ -3740,6 +3746,12 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 			convertNtbFormatAndBwToAidl(discoveryInfo,
 					(enum ntb_format_and_bw_value)((dev->ntb_caps.ntb_hw_caps &
 						NTB_FORMAT_AND_BW_MASK) >> NTB_FORMAT_AND_BW));
+		}
+		if (dev->dik_valid) {
+			discoveryInfo.peerDevIk.emplace();
+			std::copy(dev->dik,
+				  dev->dik + DEVICE_IDENTITY_KEY_LEN,
+				  std::begin(discoveryInfo.peerDevIk->data));
 		}
 	}
 #endif

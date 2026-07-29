@@ -542,6 +542,7 @@ ndk::ScopedAStatus SupplicantWifiRttController::rangeCancelInternal(
 	}
 
 	wpas_pr_abort_ranging(wpa_s);
+	wpas_pr_clear_dev_iks(wpa_s);
 
 	AidlManager *aidl_manager = AidlManager::getInstance();
 	if (aidl_manager) {
