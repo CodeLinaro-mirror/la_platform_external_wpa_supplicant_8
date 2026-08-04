@@ -6376,7 +6376,7 @@ static void p2p_pairing_set_password(struct pasn_data *pasn, u8 pasn_type,
 	}
 	pasn->pt = sae_derive_pt(pasn_groups, (const u8 *) P2P_PAIRING_SSID,
 				 os_strlen(P2P_PAIRING_SSID),
-				 (const u8 *) passphrase, len, NULL, 0);
+				 (const u8 *) passphrase, len, NULL);
 	/* Set passphrase for pairing responder to validate PASN auth 1 frame */
 	pasn->password = passphrase;
 }
