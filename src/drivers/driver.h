@@ -1462,6 +1462,12 @@ struct wpa_driver_associate_params {
 	 * eppke_supported - Whether EPPKE authentication is supported
 	 */
 	bool eppke_supported;
+
+	/**
+	 * ieee8021x_auth_supported - Whether IEEE 802.1X authentication in
+	 * Authentication frames is supported by wpa_supplicant
+	 */
+	bool ieee8021x_auth_supported;
 };
 
 enum hide_ssid {
