@@ -3746,12 +3746,12 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 			convertNtbFormatAndBwToAidl(discoveryInfo,
 					(enum ntb_format_and_bw_value)((dev->ntb_caps.ntb_hw_caps &
 						NTB_FORMAT_AND_BW_MASK) >> NTB_FORMAT_AND_BW));
-		}
-		if (dev->dik_valid) {
-			discoveryInfo.peerDevIk.emplace();
-			std::copy(dev->dik,
-				  dev->dik + DEVICE_IDENTITY_KEY_LEN,
-				  std::begin(discoveryInfo.peerDevIk->data));
+			if (dev->dik_valid) {
+				discoveryInfo.peerDevIk.emplace();
+				std::copy(dev->dik,
+					dev->dik + DEVICE_IDENTITY_KEY_LEN,
+					std::begin(discoveryInfo.peerDevIk->data));
+			}
 		}
 	}
 #endif
