@@ -739,6 +739,9 @@ cc_defaults {
         "-DCONFIG_IEEE80211AX",
         "-DCONFIG_IEEE80211BE",
         "-DCONFIG_HE_OVERRIDES",
+        "-DCONFIG_ENC_ASSOC",
+        "-DCONFIG_PMKSA_PRIVACY",
+        "-DCONFIG_IEEE8021X_AUTH",
     ],
 }
 
