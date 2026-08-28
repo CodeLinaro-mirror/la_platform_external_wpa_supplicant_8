@@ -7,6 +7,7 @@
  */
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -3676,6 +3677,12 @@ static void convertNtbFormatAndBwToAidl(UsdServiceDiscoveryInfo &info,
 			info.prInfo->maxSupportedPreambleNtb =
 				RttPreamble::HE;
 			break;
+		case NTB_FORMAT_AND_BW_HE160_SINGLE_LO:
+			info.prInfo->maxSupportedPacketBandwidthNtb =
+				RttBw::BW_160MHZ;
+			info.prInfo->maxSupportedPreambleNtb =
+				RttPreamble::HE;
+			break;
 		default:
 			wpa_printf(MSG_ERROR, "PR: NTB format and bandwidth conversion failed,"
 				" unknown format_bw: %d", static_cast<int>(format_bw));
@@ -3708,6 +3715,11 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 			if (dev->pr_caps.device_name[0] != '\0') {
 				discoveryInfo.prInfo->deviceName =
 					misc_utils::charBufToString(dev->pr_caps.device_name);
+				for (char &c : discoveryInfo.prInfo->deviceName) {
+					if (!isprint(static_cast<unsigned char>(c))) {
+						c = ' ';
+					}
+				}
 			}
 			// general ranging capabilities
 			discoveryInfo.prInfo->isEdcaBasedRangingSupported = dev->pr_caps.edca_support;
@@ -3734,6 +3746,12 @@ UsdServiceDiscoveryInfo createUsdServiceDiscoveryInfo(
 			convertNtbFormatAndBwToAidl(discoveryInfo,
 					(enum ntb_format_and_bw_value)((dev->ntb_caps.ntb_hw_caps &
 						NTB_FORMAT_AND_BW_MASK) >> NTB_FORMAT_AND_BW));
+			if (dev->dik_valid) {
+				discoveryInfo.peerDevIk.emplace();
+				std::copy(dev->dik,
+					dev->dik + DEVICE_IDENTITY_KEY_LEN,
+					std::begin(discoveryInfo.peerDevIk->data));
+			}
 		}
 	}
 #endif
@@ -4149,6 +4167,7 @@ void AidlManager::notifyRttContinuousRangingResultEvent(struct wpa_supplicant *w
 		}
 	}
 #endif
+
 	std::vector<RttResult> results = {outputResult};
 	callWithEachWifiRttControllerEventCallback(
 		misc_utils::charBufToString(wpa_s->ifname),
@@ -4184,14 +4203,18 @@ void AidlManager::notifyRttContinuousRangingStatusChangedEvent(struct wpa_suppli
 static ContinuousRangingTerminateReasonCode convert_rtt_terminated_reason_to_aidl(
 	u32 status)
 {
-	if (status == NL80211_PMSR_STATUS_SUCCESS) {
-		return ContinuousRangingTerminateReasonCode::RECEIVED_RTT_TERMINATE;
-	} else if (status == NL80211_PMSR_STATUS_TIMEOUT) {
-		return ContinuousRangingTerminateReasonCode::TIMEOUT;
-	} else if (status == NL80211_PMSR_STATUS_FAILURE) {
-		return ContinuousRangingTerminateReasonCode::PR_RANGE_NEG_FAILED;
+	switch (status) {
+		case PR_SESSION_END_TIMEOUT:
+			return ContinuousRangingTerminateReasonCode::TIMEOUT;
+		case PR_SESSION_END_NEG_FAILED:
+			return ContinuousRangingTerminateReasonCode::PR_RANGE_NEG_FAILED;
+		case PR_SESSION_END_PEER_COMPLETE:
+			return ContinuousRangingTerminateReasonCode::RECEIVED_RTT_TERMINATE;
+		case PR_SESSION_END_USER_ABORT:
+			return ContinuousRangingTerminateReasonCode::USER_REQUEST;
+		default:
+			return ContinuousRangingTerminateReasonCode::UNKNOWN;
 	}
-	return ContinuousRangingTerminateReasonCode::UNKNOWN;
 }
 
 void AidlManager::notifyRttContinuousRangingTerminatedEvent(struct wpa_supplicant *wpa_s,

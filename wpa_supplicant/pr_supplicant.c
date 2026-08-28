@@ -27,7 +27,7 @@ static void wpas_pr_pasn_auth_work_done(struct wpa_supplicant *wpa_s);
 static void wpas_pr_pasn_auth_retry_timeout(void *eloop_ctx, void *timeout_ctx);
 
 /* Total listen window (ms) for the PASN responder ROC */
-#define PR_PASN_RESPONDER_ROC_DURATION 5000
+#define PR_PASN_RESPONDER_ROC_DURATION 10000
 /* Initiator PASN authentication timeout (s) */
 #define PR_PASN_AUTH_TIMEOUT           10
 /* Retry interval (ms) for unacked PASN Authentication frame 1 */
@@ -1140,6 +1140,8 @@ static void wpas_pr_pasn_roc_start_cb(struct wpa_radio_work *work, int deinit)
 			   "PR PASN: Failed to start ROC for responder");
 		wpas_pr_pasn_roc_work_done(wpa_s);
 		wpas_pr_pasn_abort_responder(wpa_s);
+		wpas_notify_pr_ranging_terminated(wpa_s,
+						  PR_SESSION_END_NEG_FAILED);
 		return;
 	}
 
@@ -1162,6 +1164,11 @@ static void wpas_pr_schedule_responder_roc(struct wpa_supplicant *wpa_s,
 		goto fail;
 	}
 	rwork->freq = freq;
+
+	if (wpa_s->pr_responder_mode &&
+	    !is_zero_ether_addr(wpa_s->pr_responder_src_addr))
+		os_memcpy(rwork->src_addr, wpa_s->pr_responder_src_addr,
+			  ETH_ALEN);
 
 	if (!radio_add_work(wpa_s, freq, "pr-pasn-roc", 0,
 			    wpas_pr_pasn_roc_start_cb, rwork)) {
