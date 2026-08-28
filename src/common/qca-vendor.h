@@ -2545,6 +2545,25 @@ enum qca_wlan_vendor_acs_hw_mode {
  * early (using QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA), without
  * waiting for the originally configured NoA duration to expire.
  *
+ * @QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC: Indicates that the driver
+ *	supports generating an Opportunistic Key Caching (OKC) PMKSA entry for
+ *	the target AP and including the corresponding OKC-derived PMKID in
+ *	(Re)Association Request frames.
+ *
+ *	When enabled, the driver derives an OKC PMKSA entry for the target AP
+ *	by cloning the PMKSA of the previously connected AP (reusing the same
+ *	PMK with the new AP BSSID) if no PMKSA entry already exists for the
+ *	target AP. The derived PMKID is then added to the (Re)Association
+ *	Request.
+ *
+ *	The supplicant can infer this behavior by validating that the PMKID in
+ *	the (Re)Association Request corresponds to an OKC-derived PMKID in the
+ *	absence of an existing PMKSA cache entry for the target AP.
+ *
+ *	This feature is used together with
+ *	%QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC to indicate mutual support
+ *	between driver and supplicant.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits
  */
 enum qca_wlan_vendor_features {
@@ -2585,6 +2604,7 @@ enum qca_wlan_vendor_features {
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_ASSISTED_DFS = 34,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GO_CANCEL_ONE_SHOT_NOA = 35,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA = 36,
+	QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC = 38,
 	NUM_QCA_WLAN_VENDOR_FEATURES /* keep last */
 };
 
@@ -19979,10 +19999,19 @@ enum qca_wlan_vendor_attr_audio_transport_switch {
  * is available only when the driver indicates support for
  * @QCA_WLAN_VENDOR_FEATURE_RSN_OVERRIDE_STA.
  *
+ * @QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC: Indicates that the supplicant
+ * supports handling driver-generated OKC-derived PMKIDs in (Re)Association
+ * Request frames. When set, the supplicant can detect an OKC-derived PMKID
+ * inserted by the driver and update the current PMKSA to the corresponding OKC
+ * PMKSA. This flag shall be set only if the driver advertises
+ * %QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC and OKC is enabled in the
+ * supplicant configuration.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits.
  */
 enum qca_wlan_connect_ext_features {
 	QCA_CONNECT_EXT_FEATURE_RSNO	= 0,
+	QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC = 3,
 	NUM_QCA_CONNECT_EXT_FEATURES /* keep last */
 };
 

@@ -7350,6 +7350,13 @@ static int nl80211_connect_ext(struct i802_bss *bss,
 		connect_ext_feature_set(features, QCA_CONNECT_EXT_FEATURE_RSNO);
 	}
 
+	if (params->okc_pmkid_in_assoc) {
+		wpa_printf(MSG_DEBUG,
+			   "- OKC derived PMKID in (Re)Association Request frames");
+		connect_ext_feature_set(features,
+					QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC);
+	}
+
 	if (nla_put(msg, QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES,
 		    sizeof(features), features))
 		goto fail;
