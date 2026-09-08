@@ -1482,6 +1482,12 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_PCC_MODE, &info))
 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE;
 
+	if (check_feature(QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC, &info)) {
+		wpa_printf(MSG_DEBUG,
+			   "Driver supports adding OKC PMKID in (Re)Association Request frames");
+		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_OKC_PMKID_IN_ASSOC;
+	}
+
 	os_free(info.flags);
 }
 
