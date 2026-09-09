@@ -2649,6 +2649,9 @@ struct ieee80211_he_mu_edca_parameter_set {
 #define RNR_TBTT_INFO_LEN                           13
 #define RNR_TBTT_INFO_MLD_LEN                       16
 #define RNR_NEIGHBOR_AP_OFFSET_UNKNOWN              255
+
+/* IEEE Std 802.11be-2024, 9.4.2.321 - EHT Operation element */
+#define EHT_OPERATION_IE_MIN_LEN                       5
 /* Figure 9-632a - BSS Parameters subfield format */
 #define RNR_BSS_PARAM_OCT_RECOMMENDED               BIT(0)
 #define RNR_BSS_PARAM_SAME_SSID                     BIT(1)
