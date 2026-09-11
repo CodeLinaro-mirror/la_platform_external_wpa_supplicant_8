@@ -1859,12 +1859,18 @@ int p2p_go_params(struct p2p_data *p2p, struct p2p_go_neg_results *params)
 	}
 	p2p->ssid_set = 0;
 
+	if (p2p->passphrase_set) {
+		os_memcpy(params->passphrase, p2p->passphrase,
+			  os_strlen(p2p->passphrase));
+	} else {
+		p2p_random(params->passphrase, p2p->cfg->passphrase_len);
+		params->passphrase[p2p->cfg->passphrase_len] = '\0';
+	}
+	p2p->passphrase_set = 0;
+
 	params->cipher = WPA_CIPHER_CCMP;
 	if (p2p->cfg->pairing_config.pasn_type & 0xc)
 		params->cipher |= WPA_CIPHER_GCMP_256;
-
-	p2p_random(params->passphrase, p2p->cfg->passphrase_len);
-	params->passphrase[p2p->cfg->passphrase_len] = '\0';
 
 	if (params->p2p2) {
 		os_strlcpy(p2p->dev_sae_password, params->passphrase,
