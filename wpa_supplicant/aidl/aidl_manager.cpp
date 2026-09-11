@@ -3938,6 +3938,19 @@ void AidlManager::notifyNanPublishReplied(
 	if (!areAidlServiceAndClientAtLeastVersion(4))
 		return;
 
+	if (p2p_iface_object_map_.find(wpa_s->ifname) !=
+		p2p_iface_object_map_.end()) {
+		P2pUsdBasedServiceDiscoveryResultParams p2pDiscoveryInfo =
+			createP2pUsdBasedServiceDiscoveryResult(
+				srv_proto_type, publish_id, peer_subscribe_id,
+				peer_addr, ssi, ssi_len);
+		callWithEachP2pIfaceCallback(
+			misc_utils::charBufToString(wpa_s->ifname),
+			std::bind(
+			&ISupplicantP2pIfaceCallback::onUsdBasedServiceDiscoveryResult,
+			std::placeholders::_1, p2pDiscoveryInfo));
+		return;
+	}
 	UsdServiceDiscoveryInfo discoveryInfo = createUsdServiceDiscoveryInfo(
 		wpa_s, srv_proto_type, publish_id, peer_subscribe_id, peer_addr,
 		false /* fsd */, ssi, ssi_len);
