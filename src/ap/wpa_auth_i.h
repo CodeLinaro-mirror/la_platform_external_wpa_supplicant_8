@@ -21,8 +21,6 @@ struct wpa_state_machine {
 	struct wpa_group *group;
 
 	u8 addr[ETH_ALEN];
-	bool is_mld;
-	u8 link_addr[ETH_ALEN];
 	u8 p2p_dev_addr[ETH_ALEN];
 	u16 auth_alg;
 
@@ -154,6 +152,7 @@ struct wpa_state_machine {
 
 #ifdef CONFIG_P2P
 	u8 ip_addr[4];
+	unsigned int ip_addr_bit;
 #endif /* CONFIG_P2P */
 
 #ifdef CONFIG_FILS
@@ -172,6 +171,24 @@ struct wpa_state_machine {
 	void *eapol_status_cb_ctx1;
 	void *eapol_status_cb_ctx2;
 #endif /* CONFIG_TESTING_OPTIONS */
+
+#ifdef CONFIG_IEEE80211BE
+	u8 own_mld_addr[ETH_ALEN];
+	u8 peer_mld_addr[ETH_ALEN];
+	s8 mld_assoc_link_id;
+	u8 n_mld_affiliated_links;
+
+	struct mld_link {
+		bool valid;
+		u8 peer_addr[ETH_ALEN];
+		u8 own_addr[ETH_ALEN];
+
+		const u8 *rsne;
+		size_t rsne_len;
+		const u8 *rsnxe;
+		size_t rsnxe_len;
+	} mld_links[MAX_NUM_MLD_LINKS];
+#endif /* CONFIG_IEEE80211BE */
 };
 
 

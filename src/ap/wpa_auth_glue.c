@@ -445,17 +445,6 @@ static int hostapd_wpa_auth_get_msk(void *ctx, const u8 *addr, u8 *msk,
 }
 
 
-static int hostapd_wpa_auth_mlo_set_key(void *ctx, int link_id, int vlan_id, enum wpa_alg alg,
-				    const u8 *addr, int idx, u8 *key,
-				    size_t key_len, enum key_flag key_flag)
-{
-	struct hostapd_data *hapd = ctx;
-	const char *ifname = hapd->conf->iface;
-	return hostapd_drv_mlo_set_key(ifname, hapd, link_id, alg, addr, idx, vlan_id, 1,
-				   NULL, 0, key, key_len, key_flag);
-}
-
-
 static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 				    const u8 *addr, int idx, u8 *key,
 				    size_t key_len, enum key_flag key_flag)
@@ -519,11 +508,18 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
 }
 
 
-static int hostapd_wpa_auth_get_seqnum(void *ctx, int link_id, const u8 *addr,
-				       int idx, u8 *seq)
+static int hostapd_wpa_auth_get_seqnum(void *ctx, const u8 *addr, int idx,
+				       u8 *seq)
 {
 	struct hostapd_data *hapd = ctx;
-	return hostapd_get_seqnum(hapd->conf->iface, hapd, link_id, addr, idx, seq);
+	int link_id = -1;
+
+#ifdef CONFIG_IEEE80211BE
+	if (hapd->conf->mld_ap && idx)
+		link_id = hapd->mld_link_id;
+#endif /* CONFIG_IEEE80211BE */
+	return hostapd_get_seqnum(hapd->conf->iface, hapd, addr, idx, link_id,
+				  seq);
 }
 
 
@@ -534,6 +530,11 @@ int hostapd_wpa_auth_send_eapol(void *ctx, const u8 *addr,
 	struct hostapd_data *hapd = ctx;
 	struct sta_info *sta;
 	u32 flags = 0;
+	int link_id = -1;
+
+#ifdef CONFIG_IEEE80211BE
+	link_id = hapd->conf->mld_ap ? hapd->mld_link_id : -1;
+#endif /* CONFIG_IEEE80211BE */
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (hapd->ext_eapol_frame_io) {
@@ -551,11 +552,16 @@ int hostapd_wpa_auth_send_eapol(void *ctx, const u8 *addr,
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	sta = ap_get_sta(hapd, addr);
-	if (sta)
+	if (sta) {
 		flags = hostapd_sta_flags_to_drv(sta->flags);
+#ifdef CONFIG_IEEE80211BE
+		if (sta->mld_info.mld_sta && (sta->flags & WLAN_STA_AUTHORIZED))
+			link_id = -1;
+#endif /* CONFIG_IEEE80211BE */
+	}
 
 	return hostapd_drv_hapd_send_eapol(hapd, addr, data, data_len,
-					   encrypt, flags);
+					   encrypt, flags, link_id);
 }
 
 
@@ -1081,7 +1087,7 @@ hostapd_wpa_auth_add_sta(void *ctx, const u8 *sta_addr)
 	if (ret < 0 && ret != -EOPNOTSUPP)
 		return NULL;
 
-	sta = ap_sta_add(hapd, sta_addr, NULL);
+	sta = ap_sta_add(hapd, sta_addr);
 	if (sta == NULL)
 		return NULL;
 	if (ret == 0)
@@ -1093,7 +1099,7 @@ hostapd_wpa_auth_add_sta(void *ctx, const u8 *sta_addr)
 		return sta->wpa_sm;
 	}
 
-	sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth, sta->addr, NULL, NULL);
+	sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth, sta->addr, NULL);
 	if (sta->wpa_sm == NULL) {
 		ap_free_sta(hapd, sta);
 		return NULL;
@@ -1498,6 +1504,96 @@ static int hostapd_set_ltf_keyseed(void *ctx, const u8 *peer_addr,
 #endif /* CONFIG_PASN */
 
 
+#ifdef CONFIG_IEEE80211BE
+
+static int hostapd_wpa_auth_get_ml_rsn_info(void *ctx,
+					    struct wpa_auth_ml_rsn_info *info)
+{
+	struct hostapd_data *hapd = ctx;
+	unsigned int i, j;
+
+	wpa_printf(MSG_DEBUG, "WPA_AUTH: MLD: Get RSN info CB: n_mld_links=%u",
+		   info->n_mld_links);
+
+	if (!hapd->conf->mld_ap || !hapd->iface || !hapd->iface->interfaces)
+		return -1;
+
+	for (i = 0; i < info->n_mld_links; i++) {
+		unsigned int link_id = info->links[i].link_id;
+
+		wpa_printf(MSG_DEBUG,
+			   "WPA_AUTH: MLD: Get link RSN CB: link_id=%u",
+			   link_id);
+
+		for (j = 0; j < hapd->iface->interfaces->count; j++) {
+			struct hostapd_iface *iface =
+				hapd->iface->interfaces->iface[j];
+
+			if (!iface->bss[0]->conf->mld_ap ||
+			    hapd->conf->mld_id != iface->bss[0]->conf->mld_id ||
+			    link_id != iface->bss[0]->mld_link_id)
+				continue;
+
+			wpa_auth_ml_get_rsn_info(iface->bss[0]->wpa_auth,
+						 &info->links[i]);
+			break;
+		}
+
+		if (j == hapd->iface->interfaces->count)
+			wpa_printf(MSG_DEBUG,
+				   "WPA_AUTH: MLD: link=%u not found", link_id);
+	}
+
+	return 0;
+}
+
+
+static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
+					    struct wpa_auth_ml_key_info *info)
+{
+	struct hostapd_data *hapd = ctx;
+	unsigned int i, j;
+
+	wpa_printf(MSG_DEBUG, "WPA_AUTH: MLD: Get key info CB: n_mld_links=%u",
+		   info->n_mld_links);
+
+	if (!hapd->conf->mld_ap || !hapd->iface || !hapd->iface->interfaces)
+		return -1;
+
+	for (i = 0; i < info->n_mld_links; i++) {
+		u8 link_id = info->links[i].link_id;
+
+		wpa_printf(MSG_DEBUG,
+			   "WPA_AUTH: MLD: Get link info CB: link_id=%u",
+			   link_id);
+
+		for (j = 0; j < hapd->iface->interfaces->count; j++) {
+			struct hostapd_iface *iface =
+				hapd->iface->interfaces->iface[j];
+
+			if (!iface->bss[0]->conf->mld_ap ||
+			    hapd->conf->mld_id != iface->bss[0]->conf->mld_id ||
+			    link_id != iface->bss[0]->mld_link_id)
+				continue;
+
+			wpa_auth_ml_get_key_info(iface->bss[0]->wpa_auth,
+						 &info->links[i],
+						 info->mgmt_frame_prot,
+						 info->beacon_prot);
+			break;
+		}
+
+		if (j == hapd->iface->interfaces->count)
+			wpa_printf(MSG_DEBUG,
+				   "WPA_AUTH: MLD: link=%u not found", link_id);
+	}
+
+	return 0;
+}
+
+#endif /* CONFIG_IEEE80211BE */
+
+
 int hostapd_setup_wpa(struct hostapd_data *hapd)
 {
 	struct wpa_auth_config _conf;
@@ -1511,7 +1607,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 		.get_psk = hostapd_wpa_auth_get_psk,
 		.get_msk = hostapd_wpa_auth_get_msk,
 		.set_key = hostapd_wpa_auth_set_key,
-		.mlo_set_key = hostapd_wpa_auth_mlo_set_key,
 		.get_seqnum = hostapd_wpa_auth_get_seqnum,
 		.send_eapol = hostapd_wpa_auth_send_eapol,
 		.for_each_sta = hostapd_wpa_auth_for_each_sta,
@@ -1548,6 +1643,10 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 #ifdef CONFIG_PASN
 		.set_ltf_keyseed = hostapd_set_ltf_keyseed,
 #endif /* CONFIG_PASN */
+#ifdef CONFIG_IEEE80211BE
+		.get_ml_rsn_info = hostapd_wpa_auth_get_ml_rsn_info,
+		.get_ml_key_info = hostapd_wpa_auth_get_ml_key_info,
+#endif /* CONFIG_IEEE80211BE */
 	};
 	const u8 *wpa_ie;
 	size_t wpa_ie_len;
@@ -1590,8 +1689,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
 	_conf.prot_range_neg =
 		!!(hapd->iface->drv_flags2 &
 		   WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_AP);
-
-	_conf.link_id = hapd_link_id(hapd);
 
 	hapd->wpa_auth = wpa_init(hapd->own_addr, &_conf, &cb, hapd);
 	if (hapd->wpa_auth == NULL) {

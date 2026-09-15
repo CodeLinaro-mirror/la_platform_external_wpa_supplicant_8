@@ -58,7 +58,7 @@ gas_dialog_create(struct hostapd_data *hapd, const u8 *addr, u8 dialog_token)
 		 */
 		wpa_printf(MSG_DEBUG, "ANQP: Add a temporary STA entry for "
 			   "GAS query");
-		sta = ap_sta_add(hapd, addr, NULL);
+		sta = ap_sta_add(hapd, addr);
 		if (!sta) {
 			wpa_printf(MSG_DEBUG, "Failed to add STA " MACSTR
 				   " for GAS query", MAC2STR(addr));

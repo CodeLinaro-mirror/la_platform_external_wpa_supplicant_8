@@ -2197,7 +2197,7 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
 {
 	if (wpa_auth->cb->get_seqnum == NULL)
 		return -1;
-	return wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, -1, addr, idx, seq);
+	return wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, addr, idx, seq);
 }
 
 

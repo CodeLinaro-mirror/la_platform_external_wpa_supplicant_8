@@ -748,7 +748,6 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  "ieee80211ac=%d\n"
 			  "ieee80211ax=%d\n"
 			  "ieee80211be=%d\n"
-			  "link_id=%d\n"
 			  "beacon_int=%u\n"
 			  "dtim_period=%d\n",
 			  iface->conf->channel,
@@ -763,7 +762,6 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 			  !hapd->conf->disable_11ax,
 			  iface->conf->ieee80211be &&
 			  !hapd->conf->disable_11be,
-			  hapd_link_id(hapd),
 			  iface->conf->beacon_int,
 			  hapd->conf->dtim_period);
 	if (os_snprintf_error(buflen - len, ret))
@@ -780,6 +778,44 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+		if (hapd->conf->mld_ap) {
+			unsigned int link_id;
+			unsigned int num_links = 0;
+			struct hostapd_data *link_bss;
+
+			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+				if (hostapd_mld_get_link_bss(hapd, link_id))
+					num_links++;
+			}
+
+			ret = os_snprintf(buf + len, buflen - len,
+					  "num_links=%u\n"
+					  "link_id=%u\n"
+					  "link_addr=" MACSTR "\n",
+					  num_links,
+					  hapd->mld_link_id,
+					  MAC2STR(hapd->own_addr));
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+
+			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+				if (link_id == hapd->mld_link_id)
+					continue;
+				link_bss = hostapd_mld_get_link_bss(hapd, link_id);
+				if (!link_bss)
+					continue;
+
+				ret = os_snprintf(buf + len, buflen - len,
+						  "partner_link[%u]=" MACSTR "\n",
+						  link_id,
+						  MAC2STR(link_bss->own_addr));
+				if (os_snprintf_error(buflen - len, ret))
+					return len;
+				len += ret;
+			}
+		}
 	}
 #endif /* CONFIG_IEEE80211BE */
 
@@ -888,6 +924,21 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 		if (os_snprintf_error(buflen - len, ret))
 			return len;
 		len += ret;
+
+#ifdef CONFIG_IEEE80211BE
+		if (bss->conf->mld_ap) {
+			ret = os_snprintf(buf + len, buflen - len,
+					  "mld_addr[%d]=" MACSTR "\n"
+					  "mld_id[%d]=%d\n"
+					  "mld_link_id[%d]=%d\n",
+					  (int) i, MAC2STR(bss->mld_addr),
+					  (int) i, bss->conf->mld_id,
+					  (int) i, bss->mld_link_id);
+			if (os_snprintf_error(buflen - len, ret))
+				return len;
+			len += ret;
+		}
+#endif /* CONFIG_IEEE80211BE */
 	}
 
 	if (hapd->conf->chan_util_avg_period) {
@@ -930,16 +981,27 @@ int hostapd_parse_csa_settings(const char *pos,
 		} \
 	} while (0)
 
+#define SET_CSA_SETTING_EXT(str) \
+	do { \
+		const char *pos2 = os_strstr(pos, " " #str "="); \
+		if (pos2) { \
+			pos2 += sizeof(" " #str "=") - 1; \
+			settings->str = atoi(pos2); \
+		} \
+	} while (0)
+
 	SET_CSA_SETTING(center_freq1);
 	SET_CSA_SETTING(center_freq2);
 	SET_CSA_SETTING(bandwidth);
 	SET_CSA_SETTING(sec_channel_offset);
+	SET_CSA_SETTING_EXT(punct_bitmap);
 	settings->freq_params.ht_enabled = !!os_strstr(pos, " ht");
 	settings->freq_params.vht_enabled = !!os_strstr(pos, " vht");
 	settings->freq_params.he_enabled = !!os_strstr(pos, " he");
 	settings->freq_params.eht_enabled = !!os_strstr(pos, " eht");
 	settings->block_tx = !!os_strstr(pos, " blocktx");
 #undef SET_CSA_SETTING
+#undef SET_CSA_SETTING_EXT
 
 	return 0;
 }

@@ -456,7 +456,6 @@ static int ibss_rsn_auth_init_group(struct ibss_rsn *ibss_rsn,
 	conf.wpa_group_rekey = ssid->group_rekey ? ssid->group_rekey : 600;
 	conf.wpa_group_update_count = 4;
 	conf.wpa_pairwise_update_count = 4;
-	conf.link_id = -1;
 
 	ibss_rsn->auth_group = wpa_init(own_addr, &conf, &cb, ibss_rsn);
 	if (ibss_rsn->auth_group == NULL) {
@@ -473,8 +472,7 @@ static int ibss_rsn_auth_init_group(struct ibss_rsn *ibss_rsn,
 static int ibss_rsn_auth_init(struct ibss_rsn *ibss_rsn,
 			      struct ibss_rsn_peer *peer)
 {
-	peer->auth = wpa_auth_sta_init(ibss_rsn->auth_group, peer->addr, NULL,
-				       NULL);
+	peer->auth = wpa_auth_sta_init(ibss_rsn->auth_group, peer->addr, NULL);
 	if (peer->auth == NULL) {
 		wpa_printf(MSG_DEBUG, "AUTH: wpa_auth_sta_init() failed");
 		return -1;
@@ -775,7 +773,8 @@ static int ibss_rsn_eapol_dst_supp(const u8 *buf, size_t len)
 
 static int ibss_rsn_process_rx_eapol(struct ibss_rsn *ibss_rsn,
 				     struct ibss_rsn_peer *peer,
-				     const u8 *buf, size_t len)
+				     const u8 *buf, size_t len,
+				     enum frame_encryption encrypted)
 {
 	int supp;
 	u8 *tmp;
@@ -791,7 +790,7 @@ static int ibss_rsn_process_rx_eapol(struct ibss_rsn *ibss_rsn,
 		peer->authentication_status |= IBSS_RSN_AUTH_EAPOL_BY_PEER;
 		wpa_printf(MSG_DEBUG, "RSN: IBSS RX EAPOL for Supplicant from "
 			   MACSTR, MAC2STR(peer->addr));
-		wpa_sm_rx_eapol(peer->supp, peer->addr, tmp, len);
+		wpa_sm_rx_eapol(peer->supp, peer->addr, tmp, len, encrypted);
 	} else {
 		if (ibss_rsn_is_auth_started(peer) == 0) {
 			wpa_printf(MSG_DEBUG, "RSN: IBSS EAPOL for "
@@ -812,7 +811,8 @@ static int ibss_rsn_process_rx_eapol(struct ibss_rsn *ibss_rsn,
 
 
 int ibss_rsn_rx_eapol(struct ibss_rsn *ibss_rsn, const u8 *src_addr,
-		      const u8 *buf, size_t len)
+		      const u8 *buf, size_t len,
+		      enum frame_encryption encrypted)
 {
 	struct ibss_rsn_peer *peer;
 
@@ -821,7 +821,8 @@ int ibss_rsn_rx_eapol(struct ibss_rsn *ibss_rsn, const u8 *src_addr,
 
 	peer = ibss_rsn_get_peer(ibss_rsn, src_addr);
 	if (peer)
-		return ibss_rsn_process_rx_eapol(ibss_rsn, peer, buf, len);
+		return ibss_rsn_process_rx_eapol(ibss_rsn, peer, buf, len,
+						 encrypted);
 
 	if (ibss_rsn_eapol_dst_supp(buf, len) > 0) {
 		/*
@@ -839,7 +840,7 @@ int ibss_rsn_rx_eapol(struct ibss_rsn *ibss_rsn, const u8 *src_addr,
 					    IBSS_RSN_AUTH_EAPOL_BY_US);
 
 		return ibss_rsn_process_rx_eapol(ibss_rsn, ibss_rsn->peers,
-						 buf, len);
+						 buf, len, encrypted);
 	}
 
 	return 0;

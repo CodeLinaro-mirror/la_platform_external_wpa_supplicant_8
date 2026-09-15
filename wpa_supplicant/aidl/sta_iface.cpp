@@ -987,6 +987,9 @@ ndk::ScopedAStatus StaIface::initiateTdlsDiscoverInternal(
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	int ret;
+	if (mac_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	const u8 *peer = mac_address.data();
 	if (wpa_tdls_is_external_setup(wpa_s->wpa)) {
 		ret = wpa_tdls_send_discovery_request(wpa_s->wpa, peer);
@@ -1004,6 +1007,9 @@ ndk::ScopedAStatus StaIface::initiateTdlsSetupInternal(
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	int ret;
+	if (mac_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	const u8 *peer = mac_address.data();
 	if (wpa_tdls_is_external_setup(wpa_s->wpa) &&
 		!(wpa_s->conf->tdls_external_control)) {
@@ -1023,6 +1029,9 @@ ndk::ScopedAStatus StaIface::initiateTdlsTeardownInternal(
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	int ret;
+	if (mac_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	const u8 *peer = mac_address.data();
 	if (wpa_tdls_is_external_setup(wpa_s->wpa) &&
 		!(wpa_s->conf->tdls_external_control)) {
@@ -1059,6 +1068,9 @@ ndk::ScopedAStatus StaIface::initiateAnqpQueryInternal(
 			static_cast<std::underlying_type<
 			Hs20AnqpSubtypes>::type>(type));
 	}
+	if (mac_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 
 	if (anqp_send_req(
 		wpa_s, mac_address.data(), 0, info_elems_buf, num_info_elems,
@@ -1073,6 +1085,9 @@ ndk::ScopedAStatus StaIface::initiateVenueUrlAnqpQueryInternal(
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
 	uint16_t info_elems_buf[1] = {ANQP_VENUE_URL};
+	if (mac_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 
 	if (anqp_send_req(
 		wpa_s, mac_address.data(), 0, info_elems_buf, 1, 0, 0)) {
@@ -1085,6 +1100,9 @@ ndk::ScopedAStatus StaIface::initiateHs20IconQueryInternal(
 	const std::vector<uint8_t> &mac_address, const std::string &file_name)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	if (mac_address.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	wpa_s->fetch_osu_icon_in_progress = 0;
 	if (hs20_anqp_send_req(
 		wpa_s, mac_address.data(), BIT(HS20_STYPE_ICON_REQUEST),
@@ -1186,6 +1204,10 @@ ndk::ScopedAStatus StaIface::setCountryCodeInternal(
 	const std::vector<uint8_t> &code)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	//2-Character alphanumeric country code
+	if (code.size() != 2) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	ndk::ScopedAStatus status = doOneArgDriverCommand(
 		wpa_s, kSetCountryCode,
 		std::string(std::begin(code), std::end(code)));
@@ -1207,6 +1229,9 @@ ndk::ScopedAStatus StaIface::startWpsRegistrarInternal(
 	const std::vector<uint8_t> &bssid, const std::string &pin)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	if (bssid.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	if (wpas_wps_start_reg(wpa_s, bssid.data(), pin.c_str(), nullptr)) {
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
@@ -1217,6 +1242,9 @@ ndk::ScopedAStatus StaIface::startWpsPbcInternal(
 	const std::vector<uint8_t> &bssid)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	if (bssid.size() != ETH_ALEN) {
+		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
+	}
 	const uint8_t *bssid_addr =
 		is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
 	if (wpas_wps_start_pbc(wpa_s, bssid_addr, 0, 0)) {
@@ -1239,6 +1267,9 @@ std::pair<std::string, ndk::ScopedAStatus> StaIface::startWpsPinDisplayInternal(
 	const std::vector<uint8_t> &bssid)
 {
 	struct wpa_supplicant *wpa_s = retrieveIfacePtr();
+	if (bssid.size() != ETH_ALEN) {
+		return {"", createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	const uint8_t *bssid_addr =
 		is_zero_ether_addr(bssid.data()) ? nullptr : bssid.data();
 	int pin =
@@ -1610,6 +1641,9 @@ StaIface::generateDppBootstrapInfoForResponderInternal(
 	}
 	cmd += " chan=" + listen_channel_str;
 
+	if (mac_address.size() != ETH_ALEN) {
+		return {bootstrap_info, createStatus(SupplicantStatusCode::FAILURE_UNKNOWN)};
+	}
 	cmd += " mac=";
 	for (int i = 0;i < 6;i++) {
 		snprintf(buf, sizeof(buf), "%02x", mac_address[i]);

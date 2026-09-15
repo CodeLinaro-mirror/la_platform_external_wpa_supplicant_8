@@ -66,6 +66,36 @@ struct mbo_non_pref_chan_info {
 struct pending_eapol_rx {
 	struct wpabuf *buf;
 	struct os_reltime rx_time;
+	enum frame_encryption encrypted;
+};
+
+#define EHT_ML_MAX_STA_PROF_LEN 1024
+struct mld_info {
+	bool mld_sta;
+
+	struct ml_common_info {
+		u8 mld_addr[ETH_ALEN];
+		u16 medium_sync_delay;
+		u16 eml_capa;
+		u16 mld_capa;
+	} common_info;
+
+	struct mld_link_info {
+		u8 valid;
+		u8 local_addr[ETH_ALEN];
+		u8 peer_addr[ETH_ALEN];
+
+		size_t nstr_bitmap_len;
+		u8 nstr_bitmap[2];
+
+		u16 capability;
+
+		u16 status;
+		size_t resp_sta_profile_len;
+		u8 resp_sta_profile[EHT_ML_MAX_STA_PROF_LEN];
+
+		const u8 *rsne, *rsnxe;
+	} links[MAX_NUM_MLD_LINKS];
 };
 
 struct sta_info {
@@ -297,8 +327,11 @@ struct sta_info {
 #ifdef CONFIG_PASN
 	struct pasn_data *pasn;
 #endif /* CONFIG_PASN */
-	bool is_mld;
-	u8 link_addr[ETH_ALEN];
+
+#ifdef CONFIG_IEEE80211BE
+	struct mld_info mld_info;
+	u8 mld_assoc_link_id;
+#endif /* CONFIG_IEEE80211BE */
 };
 
 
@@ -325,7 +358,6 @@ int ap_for_each_sta(struct hostapd_data *hapd,
 struct sta_info * ap_get_sta(struct hostapd_data *hapd, const u8 *sta);
 struct sta_info * ap_get_sta_p2p(struct hostapd_data *hapd, const u8 *addr);
 void ap_sta_hash_add(struct hostapd_data *hapd, struct sta_info *sta);
-void ap_sta_hash_del(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta);
 void ap_sta_ip6addr_del(struct hostapd_data *hapd, struct sta_info *sta);
 void hostapd_free_stas(struct hostapd_data *hapd);
@@ -338,8 +370,7 @@ void ap_sta_no_session_timeout(struct hostapd_data *hapd,
 			       struct sta_info *sta);
 void ap_sta_session_warning_timeout(struct hostapd_data *hapd,
 				    struct sta_info *sta, int warning_time);
-struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr,
-			     const u8 *link_addr);
+struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr);
 void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
 			 u16 reason);
 void ap_sta_deauthenticate(struct hostapd_data *hapd, struct sta_info *sta,
