@@ -1246,7 +1246,12 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 				!!(drv_flags2 &
 				   WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP);
 
-		if (!ap_sae_offload && data.num_pmkid && !sm->pmksa) {
+		wpa_auth_vlogger(wpa_auth, sm->addr, LOGGER_DEBUG,
+				 "SAE DEBUG: auth_alg=%d ap_sae_offload=%d pmksa=%p",
+				 sm->auth_alg, ap_sae_offload, (void *)sm->pmksa);
+
+		if (!ap_sae_offload && data.num_pmkid && !sm->pmksa
+			&& sm->auth_alg == WLAN_AUTH_OPEN) {
 			wpa_auth_vlogger(wpa_auth, sm->addr, LOGGER_DEBUG,
 					 "No PMKSA cache entry found for SAE");
 			return WPA_INVALID_PMKID;
