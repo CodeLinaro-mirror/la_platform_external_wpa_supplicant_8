@@ -1265,7 +1265,7 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_PMKSA_PRIVACY
 	if (ssid->pmksa_privacy ||
 	    (wpas_security_profile_active(wpa_s) &&
-	     sec_prof_list_has_sae(ssid->security_profiles)))
+	     sec_prof_list_has_epp(ssid->security_profiles)))
 		capab |= BIT(WLAN_RSNX_CAPAB_PMKSA_CACHING_PRIVACY);
 #endif /* CONFIG_PMKSA_PRIVACY */
 	pasn->derive_kek = true;
@@ -1310,8 +1310,11 @@ static int wpas_eppke_initialize(struct wpa_supplicant *wpa_s,
 					 WPA_PARAM_SAE_PW_ID_CHANGE, 1);
 		}
 #endif /* CONFIG_SAE */
-	} else if (wpa_key_mgmt_eppke(ssid->key_mgmt) &&
-		   wpa_key_mgmt_only_enhanced_open(ssid->key_mgmt)) {
+	} else if ((wpa_key_mgmt_eppke(ssid->key_mgmt) &&
+		    wpa_key_mgmt_only_enhanced_open(ssid->key_mgmt)) ||
+		   (wpa_s->sel_security_profile &&
+		    wpa_s->sel_security_profile->key_mgmt ==
+		    WPA_KEY_MGMT_EPPKE)) {
 		/* EPPKE without base AKM: verify AP supports unauthenticated
 		 * EPPKE per IEEE P802.11bi/D4.0, 12.16.9.1 */
 		if (!ieee802_11_rsnx_capab(ap_rsnxe,
@@ -1507,12 +1510,34 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	int omit_rsnxe = 0;
 	unsigned int keys_to_clear = 0;
 	bool set_suites_done = false;
+	bool local_ft;
 
 	if (bss == NULL) {
 		wpa_msg(wpa_s, MSG_ERROR, "SME: No scan result available for "
 			"the network");
 		wpas_connect_work_done(wpa_s);
 		return;
+	}
+
+	os_memset(&params, 0, sizeof(params));
+
+	wpas_sme_set_mlo_links(wpa_s, bss, ssid);
+
+	if (wpa_s->valid_links) {
+		wpa_printf(MSG_DEBUG, "MLD: In authentication");
+
+#ifdef CONFIG_TESTING_OPTIONS
+		bss = wpas_ml_connect_pref(wpa_s, bss, ssid);
+
+		if (wpa_s->conf->mld_force_single_link) {
+			wpa_printf(MSG_DEBUG, "MLD: Force single link");
+			wpa_s->valid_links = BIT(wpa_s->mlo_assoc_link_id);
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
+		params.mld = true;
+		params.mld_link_id = wpa_s->mlo_assoc_link_id;
+		params.ap_mld_addr = wpa_s->ap_mld_addr;
+		wpas_ml_handle_removed_links(wpa_s, bss);
 	}
 
 	if (start && wpas_security_profile_active(wpa_s) &&
@@ -1541,27 +1566,6 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 			return;
 		}
 		set_suites_done = true;
-	}
-
-	os_memset(&params, 0, sizeof(params));
-
-	wpas_sme_set_mlo_links(wpa_s, bss, ssid);
-
-	if (wpa_s->valid_links) {
-		wpa_printf(MSG_DEBUG, "MLD: In authentication");
-
-#ifdef CONFIG_TESTING_OPTIONS
-		bss = wpas_ml_connect_pref(wpa_s, bss, ssid);
-
-		if (wpa_s->conf->mld_force_single_link) {
-			wpa_printf(MSG_DEBUG, "MLD: Force single link");
-			wpa_s->valid_links = BIT(wpa_s->mlo_assoc_link_id);
-		}
-#endif /* CONFIG_TESTING_OPTIONS */
-		params.mld = true;
-		params.mld_link_id = wpa_s->mlo_assoc_link_id;
-		params.ap_mld_addr = wpa_s->ap_mld_addr;
-		wpas_ml_handle_removed_links(wpa_s, bss);
 	}
 
 	skip_auth = wpa_s->conf->reassoc_same_bss_optim &&
@@ -1608,7 +1612,6 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 #ifdef CONFIG_ENC_ASSOC
 	} else if (wpa_s->sel_security_profile &&
 		   (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
-		   wpa_key_mgmt_sae(wpa_s->sel_security_profile->key_mgmt) &&
 		   (wpa_s->sel_security_profile->key_mgmt &
 		    WPA_KEY_MGMT_EPPKE)) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
@@ -1898,8 +1901,10 @@ skip_setup:
 	if (ie && ie[1] >= MOBILITY_DOMAIN_ID_LEN)
 		md = ie + 2;
 	wpa_sm_set_ft_params(wpa_s->wpa, ie, ie ? 2 + ie[1] : 0);
-	if (md && (!wpa_key_mgmt_ft(ssid->key_mgmt) ||
-		   !wpa_key_mgmt_ft(wpa_s->key_mgmt)))
+	local_ft = wpa_key_mgmt_ft(ssid->key_mgmt) ||
+		(wpa_s->sel_security_profile &&
+		 wpa_key_mgmt_ft(wpa_s->sel_security_profile->key_mgmt));
+	if (md && (!local_ft || !wpa_key_mgmt_ft(wpa_s->key_mgmt)))
 		md = NULL;
 	if (md) {
 		/* Prepare for the next transition */

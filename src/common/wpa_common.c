@@ -4598,6 +4598,7 @@ int wpa_pasn_validate_rsne(const struct wpa_ie_data *data, bool is_eppke)
 #ifdef CONFIG_SAE
 	case WPA_KEY_MGMT_SAE:
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
+	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 	/* fall through */
 #endif /* CONFIG_SAE */
 #ifdef CONFIG_FILS
@@ -4900,30 +4901,6 @@ security_profile_table[] = {
 
 	/* 9: SAE (AKM 24) */
 	{ 9, WPA_KEY_MGMT_SAE_EXT_KEY, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 10: FT‑SAE (AKM 25) */
-	{ 10, WPA_KEY_MGMT_FT_SAE_EXT_KEY, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 11: 802.1X (AKM 5) */
-	{ 11, WPA_KEY_MGMT_IEEE8021X_SHA256, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 12: FT‑802.1X (AKM 3) */
-	{ 12, WPA_KEY_MGMT_FT_IEEE8021X, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 13: 802.1X (AKM 23) */
-	{ 13, WPA_KEY_MGMT_IEEE8021X_SHA384, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 14: FT‑802.1X (AKM 22) */
-	{ 14, WPA_KEY_MGMT_FT_IEEE8021X_SHA384, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 15: 802.1X (AKM 12) */
-	{ 15, WPA_KEY_MGMT_IEEE8021X_SUITE_B_192, WPA_CIPHER_GCMP_256,
 	  false, false, false },
 };
 
