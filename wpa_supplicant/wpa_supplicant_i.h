@@ -2155,6 +2155,7 @@ static inline int wpas_mode_to_ieee80211_mode(enum wpas_mode mode)
 
 int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
+bool sec_prof_list_has_epp(const int *numbers);
 bool sec_prof_list_has_sae(const int *numbers);
 enum sae_pwe wpas_get_ssid_sae_pwe(struct wpa_supplicant *wpa_s,
 				   struct wpa_ssid *ssid);
@@ -2266,7 +2267,8 @@ int wpas_pasn_auth_start(struct wpa_supplicant *wpa_s, const u8 *own_addr,
 			 const u8 *comeback, size_t comeback_len,
 			 unsigned int auth_alg, int group_cipher,
 			 int group_mgmt_cipher, u16 rsn_capab,
-			 const u8 *rsnxe_data, bool is_ml_peer);
+			 const u8 *rsnxe_data, bool is_ml_peer,
+			 bool ltf_keyseed_required);
 void wpas_pasn_auth_stop(struct wpa_supplicant *wpa_s);
 void wpas_pasn_free_params(struct wpa_supplicant *wpa_s);
 int wpas_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
