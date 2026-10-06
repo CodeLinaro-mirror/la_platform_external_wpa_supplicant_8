@@ -96,7 +96,8 @@ int wpa_eapol_key_send(struct wpa_sm *sm, struct wpa_ptk *ptk,
 		       u8 *msg, size_t msg_len, u8 *key_mic)
 {
 	int ret = -1;
-	size_t mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg);
+	size_t mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+				     sm->pasn_group);
 
 	wpa_printf(MSG_DEBUG, "WPA: Send EAPOL-Key frame to " MACSTR
 		   " ver=%d mic_len=%d key_mgmt=0x%x",
@@ -126,7 +127,7 @@ int wpa_eapol_key_send(struct wpa_sm *sm, struct wpa_ptk *ptk,
 		if (key_mic &&
 		    wpa_eapol_key_mic(ptk->kck, ptk->kck_len, sm->key_mgmt,
 				      sm->hash_alg, ver, msg, msg_len,
-				      key_mic)) {
+				      key_mic, sm->pasn_group)) {
 			wpa_msg(sm->ctx->msg_ctx, MSG_ERROR,
 				"WPA: Failed to generate EAPOL-Key version %d key_mgmt 0x%x MIC",
 				ver, sm->key_mgmt);
@@ -252,7 +253,8 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
 	else
 		ver = WPA_KEY_INFO_TYPE_HMAC_MD5_RC4;
 
-	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg);
+	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+			      sm->pasn_group);
 	hdrlen = sizeof(*reply) + mic_len + 2;
 	rbuf = wpa_sm_alloc_eapol(sm, IEEE802_1X_TYPE_EAPOL_KEY, NULL,
 				  hdrlen, &rlen, (void *) &reply);
@@ -627,7 +629,8 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
 
-	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg);
+	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+			      sm->pasn_group);
 	hdrlen = sizeof(*reply) + mic_len + 2;
 	rbuf = wpa_sm_alloc_eapol(sm, IEEE802_1X_TYPE_EAPOL_KEY,
 				  NULL, hdrlen + wpa_ie_len + extra_len,
@@ -2429,7 +2432,8 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
 	}
 #endif /* CONFIG_TESTING_OPTIONS */
 
-	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg);
+	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+			      sm->pasn_group);
 	hdrlen = sizeof(*reply) + mic_len + 2;
 	rbuf = wpa_sm_alloc_eapol(sm, IEEE802_1X_TYPE_EAPOL_KEY, NULL,
 				  hdrlen + kde_len + extra_len, &rlen,
@@ -3162,7 +3166,8 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
 		kde_len = OCV_OCI_KDE_LEN;
 #endif /* CONFIG_OCV */
 
-	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg);
+	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+			      sm->pasn_group);
 	hdrlen = sizeof(*reply) + mic_len + 2;
 	rbuf = wpa_sm_alloc_eapol(sm, IEEE802_1X_TYPE_EAPOL_KEY, NULL,
 				  hdrlen + kde_len, &rlen, (void *) &reply);
@@ -3606,14 +3611,16 @@ static int wpa_supplicant_verify_eapol_key_mic(struct wpa_sm *sm,
 {
 	u8 mic[WPA_EAPOL_KEY_MIC_MAX_LEN];
 	int ok = 0;
-	size_t mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg);
+	size_t mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len, sm->hash_alg,
+				     sm->pasn_group);
 
 	os_memcpy(mic, key + 1, mic_len);
 	if (sm->tptk_set) {
 		os_memset(key + 1, 0, mic_len);
 		if (wpa_eapol_key_mic(sm->tptk.kck, sm->tptk.kck_len,
 				      sm->key_mgmt, sm->hash_alg,
-				      ver, buf, len, (u8 *) (key + 1)) < 0 ||
+				      ver, buf, len, (u8 *) (key + 1),
+				      sm->pasn_group) < 0 ||
 		    os_memcmp_const(mic, key + 1, mic_len) != 0) {
 			wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
 				"WPA: Invalid EAPOL-Key MIC "
@@ -3644,7 +3651,8 @@ static int wpa_supplicant_verify_eapol_key_mic(struct wpa_sm *sm,
 		os_memset(key + 1, 0, mic_len);
 		if (wpa_eapol_key_mic(sm->ptk.kck, sm->ptk.kck_len,
 				      sm->key_mgmt, sm->hash_alg,
-				      ver, buf, len, (u8 *) (key + 1)) < 0 ||
+				      ver, buf, len, (u8 *) (key + 1),
+				      sm->pasn_group) < 0 ||
 		    os_memcmp_const(mic, key + 1, mic_len) != 0) {
 			wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
 				"WPA: Invalid EAPOL-Key MIC - "
@@ -4012,7 +4020,8 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
 	pmk_len = sm->pmk_len;
 	if (!pmk_len && sm->cur_pmksa)
 		pmk_len = sm->cur_pmksa->pmk_len;
-	mic_len = wpa_mic_len(sm->key_mgmt, pmk_len, sm->hash_alg);
+	mic_len = wpa_mic_len(sm->key_mgmt, pmk_len, sm->hash_alg,
+			      sm->pasn_group);
 	keyhdrlen = sizeof(*key) + mic_len + 2;
 
 	if (len < sizeof(*hdr) + keyhdrlen) {
@@ -4728,11 +4737,12 @@ void wpa_sm_notify_disassoc(struct wpa_sm *sm)
  * @pmk_len: The length of the new PMK in bytes
  * @pmkid: Calculated PMKID
  * @bssid: AA to add into PMKSA cache or %NULL to not cache the PMK
+ * @pasn_group: Negotiated group during PASN/EPPKE exchange
  *
  * Configure the PMK for WPA state machine.
  */
 void wpa_sm_set_pmk(struct wpa_sm *sm, const u8 *pmk, size_t pmk_len,
-		    const u8 *pmkid, const u8 *bssid)
+		    const u8 *pmkid, const u8 *bssid, u16 pasn_group)
 {
 	if (sm == NULL)
 		return;
@@ -4752,6 +4762,11 @@ void wpa_sm_set_pmk(struct wpa_sm *sm, const u8 *pmk, size_t pmk_len,
 			sm->hash_alg = RSN_HASH_SHA512;
 	}
 #endif /* CONFIG_SAE */
+
+#ifdef CONFIG_ENC_ASSOC
+	if (sm->key_mgmt == WPA_KEY_MGMT_EPPKE)
+		sm->pasn_group = pasn_group;
+#endif /* CONFIG_ENC_ASSOC */
 
 #ifdef CONFIG_IEEE80211R
 	/* Set XXKey to be PSK for FT key derivation */
@@ -7631,7 +7646,7 @@ struct wpabuf * wpa_sm_known_sta_identification(struct wpa_sm *sm, const u8 *aa,
 		return NULL;
 
 	mic_len = wpa_mic_len(sm->last_kck_key_mgmt, sm->last_kck_pmk_len,
-			      sm->hash_alg);
+			      sm->hash_alg, sm->pasn_group);
 
 	ie = wpabuf_alloc(3 + 8 + 1 + mic_len);
 	if (!ie)
@@ -7647,7 +7662,7 @@ struct wpabuf * wpa_sm_known_sta_identification(struct wpa_sm *sm, const u8 *aa,
 	if (wpa_eapol_key_mic(sm->last_kck, sm->last_kck_len,
 			      sm->last_kck_key_mgmt, sm->hash_alg,
 			      sm->last_kck_eapol_key_ver,
-			      start, 8, mic) < 0) {
+			      start, 8, mic, sm->pasn_group) < 0) {
 		wpabuf_free(ie);
 		return NULL;
 	}

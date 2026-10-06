@@ -398,7 +398,9 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 	if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X) {
 		/* Add PMKSA cache entry */
 		wpa_printf(MSG_INFO, "add pmksa entry for the PMK");
-		wpa_sm_set_pmk(wpa_s->wpa, pmk, pmk_len, NULL, wpa_sm_get_auth_addr(wpa_s->wpa));
+		wpa_sm_set_pmk(wpa_s->wpa, pmk, pmk_len, NULL,
+			       wpa_sm_get_auth_addr(wpa_s->wpa),
+			       PASN_GROUP_NOT_SPECIFIED);
 	}
 
 	if (wpa_s->wpa_proto == WPA_PROTO_RSN &&
@@ -407,7 +409,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		auth_addr = wpa_sm_get_auth_addr(wpa_s->wpa);
 		if (!is_zero_ether_addr(auth_addr))
 			wpa_sm_set_pmk(wpa_s->wpa, pmk, pmk_len, NULL,
-				       auth_addr);
+				       auth_addr, PASN_GROUP_NOT_SPECIFIED);
 	}
 
 	wpa_supplicant_cancel_scan(wpa_s);
