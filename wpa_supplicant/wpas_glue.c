@@ -293,6 +293,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 				    void *ctx)
 {
 	struct wpa_supplicant *wpa_s = ctx;
+	const u8 *auth_addr;
 	int res, pmk_len;
 	u8 pmk[PMK_LEN_MAX];
 
@@ -398,6 +399,15 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
 		/* Add PMKSA cache entry */
 		wpa_printf(MSG_INFO, "add pmksa entry for the PMK");
 		wpa_sm_set_pmk(wpa_s->wpa, pmk, pmk_len, NULL, wpa_sm_get_auth_addr(wpa_s->wpa));
+	}
+
+	if (wpa_s->wpa_proto == WPA_PROTO_RSN &&
+	    !wpa_key_mgmt_suite_b(wpa_s->key_mgmt) &&
+	    !wpa_key_mgmt_ft(wpa_s->key_mgmt)) {
+		auth_addr = wpa_sm_get_auth_addr(wpa_s->wpa);
+		if (!is_zero_ether_addr(auth_addr))
+			wpa_sm_set_pmk(wpa_s->wpa, pmk, pmk_len, NULL,
+				       auth_addr);
 	}
 
 	wpa_supplicant_cancel_scan(wpa_s);
