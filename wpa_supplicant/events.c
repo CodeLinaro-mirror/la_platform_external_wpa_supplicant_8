@@ -443,10 +443,117 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 
 	wpabuf_free(wpa_s->pending_eapol_rx);
 	wpa_s->pending_eapol_rx = NULL;
+	wpa_s->ext_auth_to_same_bss = false;
 }
 
 
-static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
+static int wpa_find_assoc_pmkid_okc(struct wpa_supplicant *wpa_s,
+				     struct wpa_ie_data *ie,
+				     struct rsn_pmksa_cache_entry *cur_pmksa,
+				     int authorized)
+{
+	struct rsn_pmksa_cache_entry *okc_entry;
+	u8 derived_pmkid[PMKID_LEN];
+	const u8 *aa;
+	u8 bssid[ETH_ALEN];
+	size_t i;
+
+	if (!wpa_s->current_ssid ||
+	    !(wpa_s->current_ssid->proactive_key_caching < 0 ?
+	      wpa_s->conf->okc : wpa_s->current_ssid->proactive_key_caching) ||
+	    !(wpa_s->current_ssid->proto & WPA_PROTO_RSN)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"OKC: Proactive key caching not enabled");
+		return -1;
+	}
+
+	if (!cur_pmksa) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "OKC: Current PMKSA not set");
+		return -1;
+	}
+
+	/*
+	 * SAE and FILS reuse the original PMKID when cloning, so the direct
+	 * PMKID lookup in wpa_find_assoc_pmkid() would have already matched.
+	 * No point trying OKC for these AKMs.
+	 */
+	if (wpa_key_mgmt_sae(cur_pmksa->akmp) ||
+	    wpa_key_mgmt_fils(cur_pmksa->akmp)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "OKC: Current PMKSA AKM is SAE/FILS");
+		return -1;
+	}
+
+	/*
+	 * wpa_s->bssid is not updated to the newly associated bssid yet,
+	 * fetch it from the driver.
+	 */
+	if (wpa_drv_get_bssid(wpa_s, bssid) < 0 || is_zero_ether_addr(bssid)) {
+		wpa_dbg(wpa_s, MSG_ERROR, "OKC: Fetching BSSID failed");
+		return -1;
+	}
+
+	aa = wpa_s->valid_links ? wpa_s->ap_mld_addr : bssid;
+
+	/*
+	 * Skip OKC fallback if a PMKSA cache entry already exists for the
+	 * target AP, the direct PMKID search loop already compared all PMKIDs
+	 * in the (Re)Association Request frame RSNE against it and found no
+	 * match.
+	 */
+	if (pmksa_cache_get(wpa_sm_get_pmksa_cache(wpa_s->wpa), aa,
+			    wpa_s->own_addr, NULL,
+			    wpa_s->current_ssid, 0)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"OKC: Newly associated BSSID already has PMKSA entry");
+		return -1;
+	}
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"RSN: No direct PMKID match found - trying OKC for "
+		MACSTR " to identify driver-derived PMKID", MAC2STR(aa));
+
+	pmksa_cache_derive_pmkid(cur_pmksa, aa, wpa_s->own_addr, derived_pmkid);
+
+	for (i = 0; i < ie->num_pmkid; i++) {
+		if (os_memcmp(derived_pmkid, ie->pmkid + i * PMKID_LEN,
+			      PMKID_LEN) != 0)
+			continue;
+
+		/* PMKID matched - now create the OKC cache entry and set it as
+		 * current. */
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"RSN: PMKSA cache entry found via OKC for " MACSTR,
+			MAC2STR(aa));
+		okc_entry = pmksa_cache_clone_entry(
+			wpa_sm_get_pmksa_cache(wpa_s->wpa), cur_pmksa, aa);
+		if (!okc_entry)
+			return -1;
+		/*
+		 * When the association is already authorized (4-Way Handshake
+		 * was handled by the driver/firmware), the OKC PMKSA entry
+		 * should not be marked as opportunistic since there is no
+		 * pending handshake that would later confirm and clear the
+		 * flag.
+		 */
+		if (authorized) {
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"RSN: Port already authorized - marking OKC PMKSA entry as non-opportunistic (4-Way Handshake completed by the driver/firmware)");
+			okc_entry->opportunistic = 0;
+		}
+		pmksa_cache_set_current(wpa_s->wpa, okc_entry->pmkid, NULL,
+					NULL, 0, NULL, 0, true);
+		eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
+		wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
+		return 0;
+	}
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"RSN: OKC derived PMKID does not match any PMKID in (Re)Associaton Request frame RSNE");
+	return -1;
+}
+
+
+static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
 {
 	struct wpa_ie_data ie;
 	int pmksa_set = -1;
@@ -475,6 +582,11 @@ static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
 			break;
 		}
 	}
+
+	if (pmksa_set != 0 &&
+	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OKC_PMKID_IN_ASSOC))
+		pmksa_set = wpa_find_assoc_pmkid_okc(wpa_s, &ie, cur_pmksa,
+						     authorized);
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "RSN: PMKID from assoc IE %sfound from "
 		"PMKSA cache", pmksa_set == 0 ? "" : "not ");
@@ -3571,7 +3683,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
 				break;
 			found = 1;
-			wpa_find_assoc_pmkid(wpa_s);
+			wpa_find_assoc_pmkid(wpa_s,
+					     data->assoc_info.authorized);
 		}
 #ifndef CONFIG_NO_WPA
 		if (!found_x && p[0] == WLAN_EID_RSNX) {
@@ -4642,6 +4755,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_DRIVER_NL80211_BRCM || CONFIG_DRIVER_NL80211_SYNA */
 
 	wpa_s->last_eapol_matches_bssid = 0;
+	wpa_s->ext_auth_to_same_bss = false;
 
 #ifdef CONFIG_TESTING_OPTIONS
 	if (wpa_s->rsne_override_eapol) {
@@ -6395,6 +6509,55 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_PASN */
 
 
+static void wpas_roam_status(struct wpa_supplicant *wpa_s,
+			     struct roam_auth_status *roam)
+{
+	const u8 *connected_addr = wpa_s->valid_links ?
+		wpa_s->ap_mld_addr : wpa_s->bssid;
+	const u8 *event_addr;
+
+	if (!is_zero_ether_addr(roam->ap_mld_addr)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"roam auth status: action=%d from " MACSTR
+			" ap_mld_addr=" MACSTR,
+			roam->action, MAC2STR(roam->bssid),
+			MAC2STR(roam->ap_mld_addr));
+		event_addr = roam->ap_mld_addr;
+	} else {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"roam auth status: action=%d from " MACSTR,
+			roam->action, MAC2STR(roam->bssid));
+		event_addr = roam->bssid;
+	}
+
+	if (!ether_addr_equal(event_addr, connected_addr)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"roam auth status: event_addr=" MACSTR
+			" does not match connected_addr=" MACSTR
+			" - ignoring",
+			MAC2STR(event_addr), MAC2STR(connected_addr));
+		return;
+	}
+
+	if (roam->action == ROAM_AUTH_STATUS_ACTION_AUTH_DONE) {
+		/*
+		 * Defer EAPOL frame processing until the matching roam
+		 * indication is received to avoid misinterpreting an
+		 * EAPOL-Key message 1 for the new association as a PTK
+		 * rekeying message for the current association. The
+		 * AUTH_DONE acknowledgement is handled internally in the
+		 * driver wrapper.
+		 */
+		wpa_s->ext_auth_to_same_bss =
+			wpa_s->wpa_state > WPA_ASSOCIATED;
+	} else if (roam->action == ROAM_AUTH_STATUS_ACTION_ROAM_ABORT) {
+		wpa_s->ext_auth_to_same_bss = false;
+		wpabuf_free(wpa_s->pending_eapol_rx);
+		wpa_s->pending_eapol_rx = NULL;
+	}
+}
+
+
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
@@ -7377,6 +7540,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_SETUP_LINK_RECONFIG:
 		if (data)
 			wpas_setup_link_reconfig(wpa_s, &data->reconfig_info);
+		break;
+	case EVENT_ROAM_STATUS:
+		if (data)
+			wpas_roam_status(wpa_s, &data->roam_auth_status);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);

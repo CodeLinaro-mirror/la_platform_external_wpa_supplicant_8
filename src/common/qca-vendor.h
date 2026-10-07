@@ -1475,6 +1475,36 @@ enum qca_radiotap_vendor_ids {
  *
  *	No attributes are used in the request. The response includes attributes
  *	defined in enum qca_wlan_vendor_attr_qsh_stats.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_ROAM_STATUS: This vendor subcommand is used
+ *	both as a vendor event and as a vendor command to synchronize roam
+ *	authentication state between the driver/firmware and userspace when
+ *	the driver/firmware handles (re)association and userspace handles the
+ *	EAPOL exchange for the roam, e.g., an FT initial mobility domain
+ *	association to the AP with which the station is already associated.
+ *
+ *	In such cases, there is a window between the driver/firmware
+ *	completing IEEE 802.11 authentication with the target AP and userspace
+ *	being notified of the roam (e.g., through
+ *	%QCA_NL80211_VENDOR_SUBCMD_KEY_MGMT_ROAM_AUTH) during which EAPOL
+ *	frames for the new association may already arrive. Since no EAPOL
+ *	exchange takes place for a full FT protocol roam and Key Replay
+ *	Counter tracking is reset on the roam indication, userspace cannot
+ *	otherwise reliably distinguish an EAPOL-Key message 1 for the new
+ *	association from a PTK rekeying message using the previous
+ *	association's replay counter space.
+ *
+ *	This subcommand allows userspace to be notified of, and to acknowledge,
+ *	the authentication step before the (Re)Association Request frame is
+ *	sent, closing that race window. Userspace indicates support for this
+ *	subcommand with %QCA_CONNECT_EXT_FEATURE_ROAM_STATUS.
+ *
+ *	The action is indicated by %QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_ACTION;
+ *	see enum qca_wlan_roam_status_action for the direction and meaning of
+ *	each action value.
+ *
+ *	The attributes used with this subcommand are defined in
+ *	enum qca_wlan_vendor_attr_roam_status.
  */
 enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
@@ -1729,6 +1759,7 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_ATF_OFFLOAD_OPS = 268,
 	QCA_NL80211_VENDOR_SUBCMD_DCS_CONFIG = 269,
 	QCA_NL80211_VENDOR_SUBCMD_QSH_GET_STATS = 270,
+	QCA_NL80211_VENDOR_SUBCMD_ROAM_STATUS = 283,
 };
 
 /* Compatibility defines for previously used subcmd names.
@@ -2545,6 +2576,25 @@ enum qca_wlan_vendor_acs_hw_mode {
  * early (using QCA_WLAN_VENDOR_ATTR_P2P_SET_GO_CANCEL_ONE_SHOT_NOA), without
  * waiting for the originally configured NoA duration to expire.
  *
+ * @QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC: Indicates that the driver
+ *	supports generating an Opportunistic Key Caching (OKC) PMKSA entry for
+ *	the target AP and including the corresponding OKC-derived PMKID in
+ *	(Re)Association Request frames.
+ *
+ *	When enabled, the driver derives an OKC PMKSA entry for the target AP
+ *	by cloning the PMKSA of the previously connected AP (reusing the same
+ *	PMK with the new AP BSSID) if no PMKSA entry already exists for the
+ *	target AP. The derived PMKID is then added to the (Re)Association
+ *	Request.
+ *
+ *	The supplicant can infer this behavior by validating that the PMKID in
+ *	the (Re)Association Request corresponds to an OKC-derived PMKID in the
+ *	absence of an existing PMKSA cache entry for the target AP.
+ *
+ *	This feature is used together with
+ *	%QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC to indicate mutual support
+ *	between driver and supplicant.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits
  */
 enum qca_wlan_vendor_features {
@@ -2585,6 +2635,7 @@ enum qca_wlan_vendor_features {
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_ASSISTED_DFS = 34,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GO_CANCEL_ONE_SHOT_NOA = 35,
 	QCA_WLAN_VENDOR_FEATURE_SUPPORT_P2P_GC_KEEP_AWAKE_DURING_ONE_SHOT_NOA = 36,
+	QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC = 38,
 	NUM_QCA_WLAN_VENDOR_FEATURES /* keep last */
 };
 
@@ -19979,10 +20030,28 @@ enum qca_wlan_vendor_attr_audio_transport_switch {
  * is available only when the driver indicates support for
  * @QCA_WLAN_VENDOR_FEATURE_RSN_OVERRIDE_STA.
  *
+ * @QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC: Indicates that the supplicant
+ * supports handling driver-generated OKC-derived PMKIDs in (Re)Association
+ * Request frames. When set, the supplicant can detect an OKC-derived PMKID
+ * inserted by the driver and update the current PMKSA to the corresponding OKC
+ * PMKSA. This flag shall be set only if the driver advertises
+ * %QCA_WLAN_VENDOR_FEATURE_OKC_PMKID_IN_ASSOC and OKC is enabled in the
+ * supplicant configuration.
+ *
+ * @QCA_CONNECT_EXT_FEATURE_ROAM_STATUS: Indicates that the supplicant supports
+ * %QCA_NL80211_VENDOR_SUBCMD_ROAM_STATUS. When set, the supplicant handles
+ * %QCA_WLAN_ROAM_STATUS_ACTION_AUTH_DONE vendor events from the driver/firmware
+ * by deferring EAPOL frame processing until the matching roam indication is
+ * received, and sends %QCA_WLAN_ROAM_STATUS_ACTION_AUTH_ACK. The
+ * driver/firmware shall use %QCA_NL80211_VENDOR_SUBCMD_ROAM_STATUS only if this
+ * flag is set.
+ *
  * @NUM_QCA_WLAN_VENDOR_FEATURES: Number of assigned feature bits.
  */
 enum qca_wlan_connect_ext_features {
 	QCA_CONNECT_EXT_FEATURE_RSNO	= 0,
+	QCA_CONNECT_EXT_FEATURE_OKC_PMKID_IN_ASSOC = 3,
+	QCA_CONNECT_EXT_FEATURE_ROAM_STATUS = 4,
 	NUM_QCA_CONNECT_EXT_FEATURES /* keep last */
 };
 
@@ -23272,6 +23341,75 @@ enum qca_wlan_vendor_attr_qsh_stats {
 	QCA_WLAN_VENDOR_ATTR_QSH_STATS_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_QSH_STATS_MAX =
 	QCA_WLAN_VENDOR_ATTR_QSH_STATS_AFTER_LAST - 1
+};
+
+/**
+ * enum qca_wlan_roam_status_action - Action values for
+ * %QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_ACTION used with
+ * %QCA_NL80211_VENDOR_SUBCMD_ROAM_STATUS.
+ *
+ * @QCA_WLAN_ROAM_STATUS_ACTION_AUTH_DONE: Sent by the driver/firmware as a
+ *	vendor event to indicate that IEEE 802.11 authentication has been
+ *	completed with the target AP for a roam for which the driver/firmware
+ *	will subsequently send the (Re)Association Request frame, but for which
+ *	userspace is responsible for the EAPOL exchange (e.g., FT initial
+ *	mobility domain association to the AP with which the station is already
+ *	associated). Userspace is expected to arm its EAPOL deferral logic and
+ *	then acknowledge this event with a vendor command carrying action
+ *	%QCA_WLAN_ROAM_STATUS_ACTION_AUTH_ACK so that the driver/firmware knows
+ *	it can proceed with sending the (Re)Association Request frame. This
+ *	makes sure that userspace does not misinterpret an EAPOL-Key message 1
+ *	for the new association as a PTK rekeying message for the existing
+ *	association when both use the same BSSID and MLD MAC address.
+ *
+ * @QCA_WLAN_ROAM_STATUS_ACTION_AUTH_ACK: Sent by userspace as a vendor
+ *	command to acknowledge a %QCA_WLAN_ROAM_STATUS_ACTION_AUTH_DONE event
+ *	once userspace has armed its EAPOL deferral logic. Userspace must send
+ *	exactly one AUTH_ACK for each AUTH_DONE event received before the
+ *	driver/firmware proceeds with the (Re)Association Request frame.
+ *
+ * @QCA_WLAN_ROAM_STATUS_ACTION_ROAM_ABORT: Sent by the driver/firmware as a
+ *	vendor event to indicate that the roam attempt for which the most
+ *	recent %QCA_WLAN_ROAM_STATUS_ACTION_AUTH_DONE event was sent has been
+ *	aborted, e.g., due to a failure to complete (re)association or because
+ *	the AUTH_ACK was not received within an implementation-defined timeout.
+ *	This event is sent only after a %QCA_WLAN_ROAM_STATUS_ACTION_AUTH_DONE
+ *	event and only until either a (Re)Association Response frame is received
+ *	for the same roam attempt or this event is sent.
+ */
+enum qca_wlan_roam_status_action {
+	QCA_WLAN_ROAM_STATUS_ACTION_AUTH_DONE = 0,
+	QCA_WLAN_ROAM_STATUS_ACTION_AUTH_ACK = 1,
+	QCA_WLAN_ROAM_STATUS_ACTION_ROAM_ABORT = 2,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_roam_status - Attributes used with
+ * %QCA_NL80211_VENDOR_SUBCMD_ROAM_STATUS.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_ACTION: u8 attribute. Indicates the
+ *	action associated with this event or command. Mandatory in both the
+ *	vendor event and the vendor command directions. Values are defined in
+ *	enum qca_wlan_roam_status_action.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_BSSID: 6-byte MAC address attribute. The
+ *	link-level BSSID of the AP for which the roam authentication status is
+ *	being indicated. Mandatory in all cases.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_AP_MLD_ADDR: 6-byte MAC address
+ *	attribute. AP MLD MAC address of the AP. Optional; present only for
+ *	ML connections.
+ */
+enum qca_wlan_vendor_attr_roam_status {
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_ACTION = 1,
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_BSSID = 2,
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_AP_MLD_ADDR = 3,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_MAX =
+	QCA_WLAN_VENDOR_ATTR_ROAM_STATUS_AFTER_LAST - 1,
 };
 
 #endif /* QCA_VENDOR_H */
