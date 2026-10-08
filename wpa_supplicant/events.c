@@ -461,6 +461,10 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 	wpabuf_free(wpa_s->pending_eapol_rx);
 	wpa_s->pending_eapol_rx = NULL;
 	wpa_s->ext_auth_to_same_bss = false;
+
+	wpa_s->sel_security_profile = NULL;
+	wpa_sm_set_security_profile(wpa_s->wpa, NULL);
+	wpa_s->security_profile_len = 0;
 }
 
 
@@ -3537,7 +3541,8 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
 			return -1;
 		}
 
-		wpa_sm_set_pmk(wpa_s->wpa, ssid->psk, PMK_LEN, NULL, NULL);
+		wpa_sm_set_pmk(wpa_s->wpa, ssid->psk, PMK_LEN, NULL, 0,
+			       PASN_GROUP_NOT_SPECIFIED);
 		if (wpa_s->conf->key_mgmt_offload &&
 		    (wpa_s->drv_flags & WPA_DRIVER_FLAGS_KEY_MGMT_OFFLOAD) &&
 		    wpa_drv_set_key(wpa_s, -1, 0, NULL, 0, 0, NULL, 0,
@@ -4096,7 +4101,8 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 							return -1;
 						}
 						wpa_sm_set_pmk(wpa_s->wpa, wpa_s->current_ssid->psk,
-							PMK_LEN, NULL, bssid);
+							       PMK_LEN, NULL, bssid,
+							       PASN_GROUP_NOT_SPECIFIED);
 					}
 				}
 			}
