@@ -4324,24 +4324,12 @@ no_pfs:
 
 		if (bss && is_assisted_p2p_dfs_allowed(wpa_s, bss) &&
 		    is_dfs_owner_ap(wpa_s, bss)) {
-			enum chan_width ap_operation_chan_width =
-				CHAN_WIDTH_UNKNOWN;
-			struct ieee802_11_elems resp_elems_local;
-
-			/* Parse resp_ies locally to extract AP operation
-			 * channel width */
-			if (data->assoc_info.resp_ies &&
-			    ieee802_11_parse_elems(
-				    data->assoc_info.resp_ies,
-				    data->assoc_info.resp_ies_len,
-				    &resp_elems_local, 0) != ParseFailed)
-				ap_operation_chan_width =
-					get_operation_channel_width(
-						&resp_elems_local);
-
 			wpa_s->assisted_dfs = true;
-			wpas_update_dfs_ap_info(wpa_s, wpa_s->assoc_freq,
-						ap_operation_chan_width, false);
+			wpas_update_dfs_ap_info(
+				wpa_s, wpa_s->assoc_freq,
+				wpa_s->connection_set ?
+				wpa_s->connection_channel_bandwidth :
+				CHAN_WIDTH_UNKNOWN, false);
 		}
 	} else if (wpa_s->allow_p2p_assisted_dfs && wpa_s->valid_links) {
 		/* For MLO, check other links as well for DFS */
@@ -7011,6 +6999,55 @@ static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_PASN */
 
 
+static void wpas_roam_status(struct wpa_supplicant *wpa_s,
+			     struct roam_auth_status *roam)
+{
+	const u8 *connected_addr = wpa_s->valid_links ?
+		wpa_s->ap_mld_addr : wpa_s->bssid;
+	const u8 *event_addr;
+
+	if (!is_zero_ether_addr(roam->ap_mld_addr)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"roam auth status: action=%d from " MACSTR
+			" ap_mld_addr=" MACSTR,
+			roam->action, MAC2STR(roam->bssid),
+			MAC2STR(roam->ap_mld_addr));
+		event_addr = roam->ap_mld_addr;
+	} else {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"roam auth status: action=%d from " MACSTR,
+			roam->action, MAC2STR(roam->bssid));
+		event_addr = roam->bssid;
+	}
+
+	if (!ether_addr_equal(event_addr, connected_addr)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"roam auth status: event_addr=" MACSTR
+			" does not match connected_addr=" MACSTR
+			" - ignoring",
+			MAC2STR(event_addr), MAC2STR(connected_addr));
+		return;
+	}
+
+	if (roam->action == ROAM_AUTH_STATUS_ACTION_AUTH_DONE) {
+		/*
+		 * Defer EAPOL frame processing until the matching roam
+		 * indication is received to avoid misinterpreting an
+		 * EAPOL-Key message 1 for the new association as a PTK
+		 * rekeying message for the current association. The
+		 * AUTH_DONE acknowledgement is handled internally in the
+		 * driver wrapper.
+		 */
+		wpa_s->ext_auth_to_same_bss =
+			wpa_s->wpa_state > WPA_ASSOCIATED;
+	} else if (roam->action == ROAM_AUTH_STATUS_ACTION_ROAM_ABORT) {
+		wpa_s->ext_auth_to_same_bss = false;
+		wpabuf_free(wpa_s->pending_eapol_rx);
+		wpa_s->pending_eapol_rx = NULL;
+	}
+}
+
+
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
@@ -8054,6 +8091,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 					 &data->nan_chan_evacuation_info);
 		break;
 #endif /* CONFIG_NAN */
+	case EVENT_ROAM_STATUS:
+		if (data)
+			wpas_roam_status(wpa_s, &data->roam_auth_status);
+		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);
 		break;
