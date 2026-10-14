@@ -461,7 +461,7 @@ static void wpas_aidl_notify_nan_cluster_event(
 static void wpas_aidl_notify_nan_match_expired(
     struct wpa_supplicant* wpa_s, int subscribe_id, int peer_publish_id) {}
 #ifdef CONFIG_USE_VENDOR_AIDL
-void wpas_aidl_notify_vendor_ctrl_evet(struct wpa_supplicant *wpas, const char *msg)
+static void wpas_aidl_notify_vendor_ctrl_event(struct wpa_supplicant *wpas, const char *msg)
 {}
 #endif
 static void wpas_aidl_notify_nan_bootstrap_request(
