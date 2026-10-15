@@ -4392,6 +4392,12 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit) {
     }
   }
 
+  if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OKC_PMKID_IN_ASSOC) &&
+      (ssid->proactive_key_caching < 0 ? wpa_s->conf->okc :
+       ssid->proactive_key_caching) &&
+      (ssid->proto & WPA_PROTO_RSN))
+    params.okc_pmkid_in_assoc = true;
+
   params.drop_unencrypted = use_crypt;
 
   params.mgmt_frame_protection = wpas_get_ssid_pmf(wpa_s, ssid);
@@ -5479,6 +5485,7 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr, const u8 *buf,
 #endif /* CONFIG_TESTING_OPTIONS */
 
   if (wpa_s->wpa_state < WPA_ASSOCIATED ||
+      wpa_s->ext_auth_to_same_bss ||
       (wpa_s->last_eapol_matches_bssid &&
 #ifdef CONFIG_AP
        !wpa_s->ap_iface &&
