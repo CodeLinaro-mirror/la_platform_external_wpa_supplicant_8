@@ -2726,7 +2726,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
 		dfs_range += hostapd_is_dfs_overlap(
 			iface, bandwidth, settings.freq_params.center_freq2);
 
-	if (dfs_range) {
+	if (dfs_range && !(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
 		ret = ieee80211_freq_to_chan(settings.freq_params.freq, &chan);
 		if (ret == NUM_HOSTAPD_MODES) {
 			wpa_printf(MSG_ERROR,
