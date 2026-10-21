@@ -544,6 +544,11 @@ struct hostapd_mld {
 	struct hostapd_data *fbss;
 	struct dl_list links; /* List head of all affiliated links */
 
+	/* Back-pointer to the owning hapd_interfaces, mirroring
+	 * hostapd_iface::interfaces. Used to find a live hostapd_iface
+	 * for this MLD on demand (e.g. for ENABLE_MLD). */
+	struct hapd_interfaces *interfaces;
+
 	int ctrl_sock;
 	struct dl_list ctrl_dst;
 	char *ctrl_interface; /* Directory for UNIX domain sockets */

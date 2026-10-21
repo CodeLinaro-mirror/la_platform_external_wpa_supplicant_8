@@ -3156,6 +3156,7 @@ void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
 	if (interfaces->mld_ctrl_iface_init(mld))
 		goto fail;
 
+	mld->interfaces = interfaces;
 	hapd->mld = mld;
 	hostapd_mld_ref_inc(mld);
 	hostapd_bss_alloc_link_id(hapd);

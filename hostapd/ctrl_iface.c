@@ -4776,6 +4776,27 @@ done:
 #ifdef CONFIG_IEEE80211BE
 #ifndef CONFIG_CTRL_IFACE_UDP
 
+/* Find a live hostapd_iface belonging to this MLD (bss[0]->mld == mld),
+ * looked up on demand since hapd->mld is never cleared by
+ * hostapd_mld_remove_link() even when mld->fbss is NULL. */
+static struct hostapd_iface * hostapd_mld_any_iface(struct hostapd_mld *mld)
+{
+	size_t i;
+
+	if (!mld->interfaces)
+		return NULL;
+
+	for (i = 0; i < mld->interfaces->count; i++) {
+		struct hostapd_iface *iface = mld->interfaces->iface[i];
+
+		if (iface->num_bss && iface->bss[0]->mld == mld)
+			return iface;
+	}
+
+	return NULL;
+}
+
+
 static int hostapd_mld_ctrl_iface_receive_process(struct hostapd_mld *mld,
 						  char *buf, char *reply,
 						  size_t reply_size,
@@ -4828,6 +4849,16 @@ static int hostapd_mld_ctrl_iface_receive_process(struct hostapd_mld *mld,
 		link_hapd = link_itr;
 	} else {
 		link_hapd = mld->fbss;
+		if (!link_hapd) {
+			/* mld->fbss is NULL right after a full DISABLE_MLD -
+			 * fall back to any live iface of this MLD so e.g.
+			 * ENABLE_MLD can still be routed below. */
+			struct hostapd_iface *any_iface =
+				hostapd_mld_any_iface(mld);
+
+			if (any_iface)
+				link_hapd = any_iface->bss[0];
+		}
 	}
 
 	if (os_strcmp(cmd, "PING") == 0) {
