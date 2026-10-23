@@ -2851,7 +2851,8 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 		wpa_s, usdPublishConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
 			usdPublishConfig.usdBaseConfig.serviceProtoType),
-		ssiBuffer.get(), &nanPublishParams, false /* p2p */);
+		wpabuf_len(ssiBuffer.get()) == 0 ? nullptr : ssiBuffer.get(),
+		&nanPublishParams, false /* p2p */);
 
 	// Core supplicant does not have an internal callback for USD publish, but some
 	// implementations may decide to offload and return the result in a callback.
@@ -2894,7 +2895,8 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 		wpa_s, usdSubscribeConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
 			usdSubscribeConfig.usdBaseConfig.serviceProtoType),
-		ssiBuffer.get(), &nanSubscribeParams, false /* p2p */);
+		wpabuf_len(ssiBuffer.get()) == 0 ? nullptr : ssiBuffer.get(),
+		&nanSubscribeParams, false /* p2p */);
 
 	// See comment in startUsdPublishInternal regarding callbacks
 	AidlManager *aidl_manager = AidlManager::getInstance();
@@ -2923,7 +2925,8 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);
 	}
 	int status = wpas_nan_update_publish(
-		retrieveIfacePtr(), publishId, ssiBuffer.get());
+		retrieveIfacePtr(), publishId,
+		wpabuf_len(ssiBuffer.get()) == 0 ? nullptr : ssiBuffer.get());
 	if (status < 0) {
 		wpa_printf(MSG_INFO, "Failed to update USD publish");
 		return createStatus(SupplicantStatusCode::FAILURE_UNKNOWN);

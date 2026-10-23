@@ -2102,9 +2102,11 @@ static void wpas_start_gc(struct wpa_supplicant *wpa_s,
 	}
 	ssid->proto = WPA_PROTO_RSN;
 	if (wpa_s->p2p_mode == WPA_P2P_MODE_WFD_PCC)
-		ssid->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PSK;
+		ssid->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY |
+			WPA_KEY_MGMT_PSK;
 	else
 		ssid->key_mgmt = WPA_KEY_MGMT_SAE;
+	ssid->p2p_mode = wpa_s->p2p_mode;
 	ssid->pairwise_cipher = WPA_CIPHER_CCMP;
 	ssid->group_cipher = WPA_CIPHER_CCMP;
 	if (res->cipher)
@@ -2846,6 +2848,7 @@ wpas_p2p_init_group_interface(struct wpa_supplicant *wpa_s, int go)
 
 	wpas_p2p_clone_config(group_wpa_s, wpa_s);
 	group_wpa_s->p2p2 = wpa_s->p2p2;
+	group_wpa_s->p2p_mode = wpa_s->p2p_mode;
 
 	/* Propagate assisted-DFS state from the STA interface */
 	src_wpa_s = wpas_p2p_get_assisted_dfs_src(wpa_s);
@@ -8264,7 +8267,15 @@ wpas_p2p_get_group_iface(struct wpa_supplicant *wpa_s, int addr_allocated,
 			 * We may be called on the p2p_dev interface which
 			 * cannot be used for group operations, so always use
 			 * the primary interface.
+			 *
+			 * Propagate p2p2 and p2p_mode to the parent interface
+			 * before switching. When p2p_no_group_iface=1 the
+			 * caller sets these flags on the p2p_mgmt interface,
+			 * but the group operation reads them back from the
+			 * parent after this function returns.
 			 */
+			wpa_s->parent->p2p2 = wpa_s->p2p2;
+			wpa_s->parent->p2p_mode = wpa_s->p2p_mode;
 			wpa_s->parent->p2pdev = wpa_s;
 			wpa_s = wpa_s->parent;
 		}
@@ -8581,7 +8592,7 @@ int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
 				os_strlcpy(wpa_s->pending_join_password,
 					   ssid->passphrase,
 					   sizeof(wpa_s->pending_join_password));
-			return wpas_p2p_join_start(wpa_s, 0, ssid->ssid,
+			return wpas_p2p_join_start(wpa_s, freq, ssid->ssid,
 						   ssid->ssid_len);
 		}
 
