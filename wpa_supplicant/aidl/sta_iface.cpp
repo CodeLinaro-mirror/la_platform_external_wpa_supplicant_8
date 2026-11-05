@@ -452,9 +452,9 @@ void setUsdDevIks(struct wpa_supplicant *wpa_s, const UsdBaseConfig& base) {
 				wpas_pr_set_dev_ik(wpa_s, peerKey->data.data(),
 						   nullptr, nullptr, 0, false /* peer */);
 			} else {
-				wpa_printf(MSG_WARNING,
-					   "USD: peerDevIk size mismatch (%zu != %d), skipping",
-					   peerKey->data.size(), DEVICE_IDENTITY_KEY_LEN);
+			wpa_printf(MSG_WARNING,
+				   "USD: peerDevIk size mismatch (%zu != %d), skipping",
+				   peerKey->data.size(), DEVICE_IDENTITY_KEY_LEN);
 			}
 		}
 	}
@@ -953,7 +953,7 @@ void StaIface::setProximityRangingMacAddress(const std::array<uint8_t, 6>& macAd
 {
 	return validateAndCall(
 		this, SupplicantStatusCode::FAILURE_IFACE_INVALID,
-		&StaIface::generateDppBootstrapInfoForResponderInternal, _aidl_return, 
+		&StaIface::generateDppBootstrapInfoForResponderInternal, _aidl_return,
 		in_macAddress, in_deviceInfo, in_curve);
 }
 
@@ -1922,7 +1922,7 @@ ndk::ScopedAStatus StaIface::stopDppInitiatorInternal()
 
 std::pair<DppResponderBootstrapInfo, ndk::ScopedAStatus>
 StaIface::generateDppBootstrapInfoForResponderInternal(
-	const std::vector<uint8_t> &mac_address, 
+	const std::vector<uint8_t> &mac_address,
 	const std::string& device_info, DppCurve curve)
 {
 #ifdef CONFIG_DPP
@@ -2483,13 +2483,15 @@ static int set_type4_frame_classifier(QosPolicyScsData qos_policy_data,
 	}
 
 	if (inMask & static_cast<uint32_t>(QosPolicyClassifierParamsMask::FLOW_LABEL)) {
+		// Flow label is expected to have a length of 3 bytes.
 		if (qos_policy_data.classifierParams.flowLabelIpv6.size() !=
 		    sizeof(param->ip_params.v6.flow_label)) {
 			wpa_printf(MSG_ERROR, "Invalid flow label");
 			return -1;
 		}
-		os_memcpy(param->ip_params.v6.flow_label, qos_policy_data.classifierParams.flowLabelIpv6.data(),
-			  sizeof(qos_policy_data.classifierParams.flowLabelIpv6));
+		os_memcpy(param->ip_params.v6.flow_label,
+			qos_policy_data.classifierParams.flowLabelIpv6.data(),
+			sizeof(param->ip_params.v6.flow_label));
 
 		/* Classifier Mask - bit 7 = flow level */
 		classifier_mask |= BIT(7);
@@ -2847,6 +2849,7 @@ ndk::ScopedAStatus StaIface::startUsdPublishInternal(
 		setUsdDevIks(wpa_s, usdPublishConfig.usdBaseConfig);
 	}
 
+
 	int publishId = wpas_nan_publish(
 		wpa_s, usdPublishConfig.usdBaseConfig.serviceName.c_str(),
 		convertAidlServiceProtoTypeToInternal(
@@ -2890,6 +2893,7 @@ ndk::ScopedAStatus StaIface::startUsdSubscribeInternal(
 	if (nanSubscribeParams.proximity_ranging) {
 		setUsdDevIks(wpa_s, usdSubscribeConfig.usdBaseConfig);
 	}
+
 
 	int subscribeId = wpas_nan_subscribe(
 		wpa_s, usdSubscribeConfig.usdBaseConfig.serviceName.c_str(),

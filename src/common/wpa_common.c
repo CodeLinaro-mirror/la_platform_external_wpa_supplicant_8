@@ -43,6 +43,10 @@ static unsigned int wpa_kck_len(int akmp, size_t pmk_len)
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return pmk_len / 2;
+#ifdef CONFIG_ENC_ASSOC
+	case WPA_KEY_MGMT_EPPKE:
+		return 32;
+#endif /* CONFIG_ENC_ASSOC */
 	default:
 		return 16;
 	}
@@ -64,7 +68,7 @@ static unsigned int wpa_kck2_len(int akmp)
 #endif /* CONFIG_IEEE80211R */
 
 
-unsigned int wpa_kek_len(int akmp, size_t pmk_len)
+unsigned int wpa_kek_len(int akmp, size_t pmk_len, u16 pasn_group)
 {
 	switch (akmp) {
 	case WPA_KEY_MGMT_FILS_SHA384:
@@ -83,6 +87,12 @@ unsigned int wpa_kek_len(int akmp, size_t pmk_len)
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return pmk_len <= 32 ? 16 : 32;
+#ifdef CONFIG_ENC_ASSOC
+	case WPA_KEY_MGMT_EPPKE:
+		if (pasn_group == 21 || pasn_group == 20)
+			return 32;
+		return 16;
+#endif /* CONFIG_ENC_ASSOC */
 	default:
 		return 16;
 	}
@@ -104,6 +114,22 @@ static unsigned int wpa_kek2_len(int akmp)
 #endif /* CONFIG_IEEE80211R */
 
 
+#ifdef CONFIG_ENC_ASSOC
+static int rsn_eppke_mic_len(u16 pasn_group)
+{
+	/* MIC length is half of the output length of the hash algorithm */
+	switch (pasn_group) {
+	case 21:
+		return 32;
+	case 20:
+		return 24;
+	default:
+		return 16;
+	}
+}
+#endif /* CONFIG_ENC_ASSOC */
+
+
 static int rsn_mic_len_hash(size_t pmk_len, enum rsn_hash_alg hash)
 {
 	switch (hash) {
@@ -118,7 +144,8 @@ static int rsn_mic_len_hash(size_t pmk_len, enum rsn_hash_alg hash)
 	}
 }
 
-unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash)
+unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash,
+			 u16 pasn_group)
 {
 	switch (akmp) {
 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
@@ -137,6 +164,10 @@ unsigned int wpa_mic_len(int akmp, size_t pmk_len, enum rsn_hash_alg hash)
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 		return rsn_mic_len_hash(pmk_len, hash);
+#ifdef CONFIG_ENC_ASSOC
+	case WPA_KEY_MGMT_EPPKE:
+		return rsn_eppke_mic_len(pasn_group);
+#endif /* CONFIG_ENC_ASSOC */
 	default:
 		return 16;
 	}
@@ -252,6 +283,7 @@ int wpa_use_akm_defined(int akmp)
 		akmp == WPA_KEY_MGMT_DPP ||
 		akmp == WPA_KEY_MGMT_FT_IEEE8021X_SHA384 ||
 		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
+		akmp == WPA_KEY_MGMT_EPPKE ||
 		wpa_key_mgmt_sae(akmp) ||
 		wpa_key_mgmt_suite_b(akmp) ||
 		wpa_key_mgmt_fils(akmp);
@@ -289,11 +321,55 @@ int wpa_use_aes_key_wrap(int akmp)
 	return akmp == WPA_KEY_MGMT_OWE ||
 		akmp == WPA_KEY_MGMT_DPP ||
 		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
+		akmp == WPA_KEY_MGMT_EPPKE ||
 		wpa_key_mgmt_ft(akmp) ||
 		wpa_key_mgmt_sha256(akmp) ||
 		wpa_key_mgmt_sae(akmp) ||
 		wpa_key_mgmt_suite_b(akmp);
 }
+
+
+#ifdef CONFIG_ENC_ASSOC
+static int rsn_eapol_key_eppke_mic(const u8 *key, size_t key_len,
+				   u16 pasn_group, const u8 *buf,
+				   size_t len, u8 *mic)
+{
+	u8 hash[SHA512_MAC_LEN];
+	size_t mic_len;
+
+	switch (pasn_group) {
+	case 19:
+		wpa_printf(MSG_DEBUG, "RSN: EAPOL-Key MIC using HMAC-SHA256");
+		if (hmac_sha256(key, key_len, buf, len, hash))
+			return -1;
+		mic_len = 16;
+		break;
+#ifdef CONFIG_SHA384
+	case 20:
+		wpa_printf(MSG_DEBUG, "RSN: EAPOL-Key MIC using HMAC-SHA384");
+		if (hmac_sha384(key, key_len, buf, len, hash))
+			return -1;
+		mic_len = 24;
+		break;
+#endif /* CONFIG_SHA384 */
+#ifdef CONFIG_SHA512
+	case 21:
+		wpa_printf(MSG_DEBUG, "RSN: EAPOL-Key MIC using HMAC-SHA512");
+		if (hmac_sha512(key, key_len, buf, len, hash))
+			return -1;
+		mic_len = 32;
+		break;
+#endif /* CONFIG_SHA512 */
+	default:
+		wpa_printf(MSG_INFO, "EPPKE: Unsupported group: %u",
+			   pasn_group);
+		return -1;
+	}
+	os_memcpy(mic, hash, mic_len);
+	wpa_hexdump(MSG_DEBUG, "RSN: EAPOL-Key MIC", mic, mic_len);
+	return 0;
+}
+#endif /* CONFIG_ENC_ASSOC */
 
 
 #if defined(CONFIG_SAE) || defined(CONFIG_OWE) || defined(CONFIG_DPP)
@@ -375,7 +451,7 @@ static int rsn_eapol_key_mic_hash(const u8 *key, size_t key_len, int akmp,
  */
 int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp,
 		      enum rsn_hash_alg hash_alg, int ver,
-		      const u8 *buf, size_t len, u8 *mic)
+		      const u8 *buf, size_t len, u8 *mic, u16 pasn_group)
 {
 	u8 hash[SHA512_MAC_LEN];
 
@@ -415,6 +491,13 @@ int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp,
 				return -1;
 			break;
 #endif /* CONFIG_SAE */
+#ifdef CONFIG_ENC_ASSOC
+		case WPA_KEY_MGMT_EPPKE:
+			if (rsn_eapol_key_eppke_mic(key, key_len, pasn_group,
+						    buf, len, mic) < 0)
+				return -1;
+			break;
+#endif /* CONFIG_ENC_ASSOC */
 #ifdef CONFIG_SUITEB
 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B:
 			wpa_printf(MSG_DEBUG,
@@ -509,7 +592,7 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 		   const u8 *addr1, const u8 *addr2,
 		   const u8 *nonce1, const u8 *nonce2,
 		   struct wpa_ptk *ptk, int akmp, int cipher,
-		   const u8 *z, size_t z_len, size_t kdk_len)
+		   const u8 *z, size_t z_len, size_t kdk_len, u16 pasn_group)
 {
 #define MAX_Z_LEN 66 /* with NIST P-521 */
 	u8 data[2 * ETH_ALEN + 2 * WPA_NONCE_LEN + MAX_Z_LEN];
@@ -565,7 +648,7 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 	}
 
 	ptk->kck_len = wpa_kck_len(akmp, pmk_len);
-	ptk->kek_len = wpa_kek_len(akmp, pmk_len);
+	ptk->kek_len = wpa_kek_len(akmp, pmk_len, pasn_group);
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	ptk->kdk_len = kdk_len;
 	if (ptk->tk_len == 0) {
@@ -841,7 +924,7 @@ int fils_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa, const u8 *aa,
 		os_memcpy(pos, dhss, dhss_len);
 
 	ptk->kck_len = 0;
-	ptk->kek_len = wpa_kek_len(akmp, pmk_len);
+	ptk->kek_len = wpa_kek_len(akmp, pmk_len, PASN_GROUP_NOT_SPECIFIED);
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	if (wpa_key_mgmt_sha384(akmp))
 		*ick_len = 48;
@@ -1856,7 +1939,8 @@ int wpa_auth_802_1x_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const u8 *spa,
 {
 	return wpa_pmk_to_ptk(pmk, pmk_len, "Pairwise key expansion",
 			      spa, aa, snonce, anonce, ptk, akmp,
-			      cipher, dhss, dhss_len, kdk_len);
+			      cipher, dhss, dhss_len, kdk_len,
+			      PASN_GROUP_NOT_SPECIFIED);
 }
 
 
@@ -2751,7 +2835,7 @@ int wpa_pmk_r1_to_ptk(const u8 *pmk_r1, size_t pmk_r1_len,
 
 	ptk->kck_len = wpa_kck_len(akmp, key_len);
 	ptk->kck2_len = wpa_kck2_len(akmp);
-	ptk->kek_len = wpa_kek_len(akmp, key_len);
+	ptk->kek_len = wpa_kek_len(akmp, key_len, PASN_GROUP_NOT_SPECIFIED);
 	ptk->kek2_len = wpa_kek2_len(akmp);
 	ptk->tk_len = wpa_cipher_key_len(cipher);
 	ptk->kdk_len = kdk_len;
@@ -4598,6 +4682,7 @@ int wpa_pasn_validate_rsne(const struct wpa_ie_data *data, bool is_eppke)
 #ifdef CONFIG_SAE
 	case WPA_KEY_MGMT_SAE:
 	case WPA_KEY_MGMT_SAE_EXT_KEY:
+	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
 	/* fall through */
 #endif /* CONFIG_SAE */
 #ifdef CONFIG_FILS
@@ -4900,30 +4985,6 @@ security_profile_table[] = {
 
 	/* 9: SAE (AKM 24) */
 	{ 9, WPA_KEY_MGMT_SAE_EXT_KEY, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 10: FT‑SAE (AKM 25) */
-	{ 10, WPA_KEY_MGMT_FT_SAE_EXT_KEY, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 11: 802.1X (AKM 5) */
-	{ 11, WPA_KEY_MGMT_IEEE8021X_SHA256, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 12: FT‑802.1X (AKM 3) */
-	{ 12, WPA_KEY_MGMT_FT_IEEE8021X, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 13: 802.1X (AKM 23) */
-	{ 13, WPA_KEY_MGMT_IEEE8021X_SHA384, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 14: FT‑802.1X (AKM 22) */
-	{ 14, WPA_KEY_MGMT_FT_IEEE8021X_SHA384, WPA_CIPHER_GCMP_256,
-	  false, false, false },
-
-	/* 15: 802.1X (AKM 12) */
-	{ 15, WPA_KEY_MGMT_IEEE8021X_SUITE_B_192, WPA_CIPHER_GCMP_256,
 	  false, false, false },
 };
 

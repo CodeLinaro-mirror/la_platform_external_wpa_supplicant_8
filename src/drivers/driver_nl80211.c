@@ -15216,12 +15216,15 @@ static int nl80211_write_to_file(const char *name, unsigned int val)
 static int nl80211_configure_data_frame_filters(void *priv, u32 filter_flags)
 {
 	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
 	char path[128];
 	int ret;
 
-	/* P2P/NAN-Device has no netdev that can (or should) be configured here
+	/* P2P/NAN-Device has no netdev that can (or should) be configured here.
+	 * Use the cached nlmode instead of NL80211_CMD_GET_INTERFACE to reduce
+	 * caller time.
 	 */
-	if (!nl80211_is_netdev_iftype(nl80211_get_ifmode(bss)))
+	if (!nl80211_is_netdev_iftype(drv->nlmode))
 		return 0;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Data frame filter flags=0x%x",
@@ -16534,6 +16537,7 @@ failed_stop:
 	nl80211_set_pr_dev(pd_bss, 0);
 failed:
 	nl80211_del_non_netdev(pd_bss);
+	nl80211_destroy_bss(pd_bss);
 	os_free(pd_bss);
 	return -1;
 }
@@ -16546,20 +16550,29 @@ static void nl80211_pd_stop(void *priv)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct i802_bss *pd_bss = drv->pd_bss;
 
-	if (!drv->pd_bss)
+	if (!pd_bss)
 		return;
 
 	wpa_printf(MSG_DEBUG,
 		   "nl80211: Stopping PD wdev wdev_id=0x%llx addr=" MACSTR,
-		   (unsigned long long) drv->pd_bss->wdev_id,
-		   MAC2STR(drv->pd_bss->addr));
+		   (unsigned long long) pd_bss->wdev_id,
+		   MAC2STR(pd_bss->addr));
 
-	nl80211_set_pr_dev(drv->pd_bss, 0);
-	nl80211_destroy_bss(drv->pd_bss);
-	nl80211_del_non_netdev(drv->pd_bss);
-	os_free(drv->pd_bss);
+	/*
+	 * Detach the PD BSS from the driver first so that no event or command
+	 * routing path (nl80211_get_event_bss(), send_mlme(), set_key(),
+	 * start_peer_measurement()) can pick it up while it is being torn
+	 * down.
+	 */
 	drv->pd_bss = NULL;
+
+	nl80211_mgmt_unsubscribe(pd_bss, "PD wdev stop");
+	nl80211_set_pr_dev(pd_bss, 0);
+	nl80211_del_non_netdev(pd_bss);
+	nl80211_destroy_bss(pd_bss);
+	os_free(pd_bss);
 }
 
 

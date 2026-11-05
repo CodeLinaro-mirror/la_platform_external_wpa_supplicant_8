@@ -2958,7 +2958,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 			if (wpa_supplicant_get_psk(wpa_s, bss, ssid,
 						   psk) == 0) {
 				wpa_sm_set_pmk(wpa_s->wpa, psk, PMK_LEN, NULL,
-					       NULL);
+					       NULL, PASN_GROUP_NOT_SPECIFIED);
 				psk_set = 1;
 			}
 			forced_memzero(psk, sizeof(psk));
@@ -4941,7 +4941,7 @@ static u8 * wpas_populate_assoc_ies(
 	} else
 #endif /* CONFIG_TESTING_OPTIONS */
 	if (algs == WPA_AUTH_ALG_OPEN &&
-	    ssid->key_mgmt == WPA_KEY_MGMT_OWE &&
+	    wpa_s->key_mgmt == WPA_KEY_MGMT_OWE &&
 	    !(wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OWE_OFFLOAD_STA)) {
 		struct wpabuf *owe_ie;
 		u16 group;
@@ -10334,6 +10334,25 @@ int wpas_get_ssid_pmf(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
 	}
 
 	return ssid->ieee80211w;
+}
+
+
+bool sec_prof_list_has_epp(const int *numbers)
+{
+	int i;
+
+	if (!numbers)
+		return false;
+
+	for (i = 0; numbers[i] != -1; i++) {
+		const struct security_profile_entry *e;
+
+		e = sec_prof_get(numbers[i]);
+		if (e)
+			return e->pmksa_caching_privacy;
+	}
+
+	return false;
 }
 
 

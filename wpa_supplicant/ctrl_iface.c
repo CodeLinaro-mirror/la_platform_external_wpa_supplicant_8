@@ -2406,6 +2406,15 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 			pos += ret;
 		}
 		if (wpa_s->connection_set) {
+			struct wpa_signal_info si;
+			enum chan_width cw;
+
+			if (wpa_drv_signal_poll(wpa_s, &si) == 0 &&
+			    si.chanwidth != CHAN_WIDTH_UNKNOWN)
+				cw = si.chanwidth;
+			else
+				cw = wpa_s->connection_channel_bandwidth;
+
 			ret = os_snprintf(
 				pos, end - pos,
 				"max_nss_rx=%u\n"
@@ -2413,8 +2422,7 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 				"channel_width=%u\n",
 				wpa_s->connection_max_nss_rx,
 				wpa_s->connection_max_nss_tx,
-				channel_width_to_int(
-					wpa_s->connection_channel_bandwidth));
+				channel_width_to_int(cw));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
@@ -4832,6 +4840,7 @@ int wpa_supplicant_ctrl_iface_get_capability(
 	bool strict = false;
 	char field[50];
 	size_t len;
+	unsigned int key_mgmt = 0;
 
 	/* Determine whether or not strict checking was requested */
 	len = os_strlcpy(field, _field, sizeof(field));
@@ -4864,6 +4873,10 @@ int wpa_supplicant_ctrl_iface_get_capability(
 	}
 
 	res = wpa_drv_get_capa(wpa_s, &capa);
+	if (res == 0)
+		key_mgmt = capa.key_mgmt;
+	else
+		key_mgmt = 0xffffffff;
 
 	if (os_strcmp(field, "pairwise") == 0)
 		return ctrl_iface_get_capability_pairwise(res, strict, &capa,
@@ -5068,6 +5081,61 @@ int wpa_supplicant_ctrl_iface_get_capability(
 		if (os_snprintf_error(buflen, res))
 			return -1;
 		return res;
+	}
+
+	if (os_strcmp(field, "security_profiles") == 0 &&
+	    wpas_security_profile_active(wpa_s)) {
+		u32 sec_profs = 0;
+		int i;
+		bool first = true;
+
+#ifdef CONFIG_SAE
+		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE)
+			sec_profs |= BIT(SEC_PROF_SAE);
+#endif /* CONFIG_SAE */
+#if defined(CONFIG_ENC_ASSOC) && defined(CONFIG_PASN) && defined(CONFIG_SAE)
+		if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SAE) &&
+		    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_EPPKE) &&
+		    (wpa_s->drv_flags2 &
+		     WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION))
+			sec_profs |= BIT(SEC_PROF_EPPKE_NO_AUTH) |
+				BIT(SEC_PROF_EPPKE_SAE) |
+				BIT(SEC_PROF_EPPKE_FT_SAE);
+#endif /* CONFIG_ENC_ASSOC && CONFIG_PASN && CONFIG_SAE */
+#if defined(CONFIG_ENC_ASSOC)
+		if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_802_1X_AUTH) &&
+		    (wpa_s->drv_flags2 &
+		     WPA_DRIVER_FLAGS2_ASSOCIATION_FRAME_ENCRYPTION)) {
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_802_1X_SHA256)
+				sec_profs |= BIT(SEC_PROF_8021X_AUTH);
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_FT)
+				sec_profs |= BIT(SEC_PROF_8021X_FT_AUTH);
+			if (key_mgmt &
+			    WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384)
+				sec_profs |= BIT(SEC_PROF_8021X_FT384_AUTH);
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B_192)
+				sec_profs |= BIT(SEC_PROF_8021X_SUITEB_AUTH);
+			if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_802_1X_SHA384)
+				sec_profs |= BIT(SEC_PROF_8021X_SHA384_AUTH);
+		}
+
+#endif /* CONFIG_ENC_ASSOC */
+		if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OWE)
+			sec_profs |= BIT(SEC_PROF_OWE);
+
+		len = 0;
+		for (i = 0; i < 32; i++) {
+			if (!(sec_profs & BIT(i)))
+				continue;
+			res = os_snprintf(buf + len, buflen - len, "%s%d",
+					  first ? "" : " ", i);
+			if (os_snprintf_error(buflen - len, res))
+				return -1;
+			len += res;
+			first = false;
+		}
+
+		return len;
 	}
 
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown GET_CAPABILITY field '%s'",
@@ -11565,7 +11633,7 @@ static int wpas_ctrl_iface_pasn_start(struct wpa_supplicant *wpa_s, char *cmd)
 
 	ret = wpas_pasn_auth_start(wpa_s, wpa_s->own_addr, bssid, akmp, cipher,
 				   group, id, comeback, comeback_len,
-				   WLAN_AUTH_PASN, 0, 0, 0, NULL, false);
+				   WLAN_AUTH_PASN, 0, 0, 0, NULL, false, false);
 out:
 	os_free(comeback);
 	return ret;
@@ -11894,6 +11962,8 @@ static int wpas_ctrl_iface_pasn_driver(struct wpa_supplicant *wpa_s, char *cmd)
 			peer->password = os_strdup(token + 9);
 			if (!peer->password)
 				goto out;
+		} else if (os_strcmp(token, "ltf_keyseed_required") == 0) {
+			peer->ltf_keyseed_required = true;
 		} else {
 			wpa_printf(MSG_DEBUG,
 				   "CTRL: PASN Invalid parameter: '%s'",
@@ -12783,14 +12853,24 @@ static int wpas_ctrl_iface_mlo_status(struct wpa_supplicant *wpa_s,
 {
 	int ret, i;
 	char *pos, *end;
+	struct wpa_mlo_signal_info mlo_si;
+	bool have_live_cw;
 
 	if (!wpa_s->valid_links)
 		return -1;
+
+	have_live_cw = wpa_drv_mlo_signal_poll(wpa_s, &mlo_si) == 0;
 
 	pos = buf;
 	end = buf + buflen;
 
 	for_each_link(wpa_s->valid_links, i) {
+		enum chan_width cw = wpa_s->links[i].channel_bandwidth;
+
+		if (have_live_cw && (mlo_si.valid_links & BIT(i)) &&
+		    mlo_si.links[i].chanwidth != CHAN_WIDTH_UNKNOWN)
+			cw = mlo_si.links[i].chanwidth;
+
 		ret = os_snprintf(pos, end - pos, "link_id=%d\nfreq=%u\n"
 				  "ap_link_addr=" MACSTR
 				  "\nsta_link_addr=" MACSTR "\n",
@@ -12809,8 +12889,7 @@ static int wpas_ctrl_iface_mlo_status(struct wpa_supplicant *wpa_s,
 				"channel_width=%u\n",
 				wpa_s->links[i].max_nss_rx,
 				wpa_s->links[i].max_nss_tx,
-				channel_width_to_int(
-					wpa_s->links[i].channel_bandwidth));
+				channel_width_to_int(cw));
 			if (os_snprintf_error(end - pos, ret))
 				return pos - buf;
 			pos += ret;
