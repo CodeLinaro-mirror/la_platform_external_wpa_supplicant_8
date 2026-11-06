@@ -11429,7 +11429,7 @@ static int wpas_ctrl_iface_pasn_start(struct wpa_supplicant *wpa_s, char *cmd)
 	}
 
 	ret = wpas_pasn_auth_start(wpa_s, wpa_s->own_addr, bssid, akmp, cipher,
-				   group, id, comeback, comeback_len);
+				   group, id, comeback, comeback_len, false);
 out:
 	os_free(comeback);
 	return ret;
@@ -11544,6 +11544,8 @@ static int wpas_ctrl_iface_pasn_driver(struct wpa_supplicant *wpa_s, char *cmd)
 			peer->password = os_strdup(token + 9);
 			if (!peer->password)
 				goto out;
+		} else if (os_strcmp(token, "ltf_keyseed_required") == 0) {
+			peer->ltf_keyseed_required = true;
 		} else {
 			wpa_printf(MSG_DEBUG,
 				   "CTRL: PASN Invalid parameter: '%s'",
