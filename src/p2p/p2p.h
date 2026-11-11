@@ -746,7 +746,6 @@ struct p2p_config {
 	 */
 	bool chan_switch_req_enable;
 
-#ifdef CONFIG_TESTING_OPTIONS
 	/**
 	 * Operating class for own operational channel in Invitation Response
 	 */
@@ -756,7 +755,6 @@ struct p2p_config {
 	 * inv_op_channel - Own operational channel in Invitation Response
 	 */
 	u8 inv_op_channel;
-#endif /* CONFIG_TESTING_OPTIONS */
 
 	/**
 	 * cb_ctx - Context to use with callback functions
